@@ -33,7 +33,7 @@ import {
   buildStudentAcceptanceEvidence,
   type StudentAcceptanceEvidence,
 } from './rules/student-acceptance.rule';
-import type { RuleContradiction } from './output-rule.types';
+import { asRecord, type RuleContradiction } from './output-rule.types';
 import { OutboundReplySanitizer } from './sanitizer/outbound-reply-sanitizer';
 
 const RECENT_USER_TEXTS_LIMIT = 8;
@@ -221,11 +221,11 @@ export class OutputGuardrailService {
 
   private async readAdditionalCandidateBooking(
     input: OutputGuardInput,
-  ): Promise<{ jobId: number; workOrderId?: number } | undefined> {
+  ): Promise<{ jobId: number; workOrderId?: number; verifiedThisTurn: boolean } | undefined> {
     const latestPrecheck = [...input.toolCalls]
       .reverse()
       .find((call) => call.toolName === 'duliday_interview_precheck');
-    const args = latestPrecheck?.args as { jobId?: number } | undefined;
+    const args = latestPrecheck?.args as { jobId?: number; candidatePhone?: string } | undefined;
     const jobId = args?.jobId ?? input.memorySnapshot?.currentFocusJob?.jobId;
     if (!this.collectionForms || !input.corpId || !input.userId || !input.botUserName || !jobId) {
       return undefined;
@@ -237,9 +237,17 @@ export class OutputGuardrailService {
         botUserId: input.botUserName,
         jobId,
       });
-      return form?.candidateScope === 'additional'
-        ? { jobId, workOrderId: form.workOrderId }
-        : undefined;
+      if (form?.candidateScope !== 'additional') return undefined;
+      const result = asRecord(latestPrecheck?.result);
+      // 活动表单可能还停在上一位已提交的人，不能替没有经过预检的下一位作证。
+      const verifiedThisTurn =
+        result?.success === true &&
+        result.nextAction === 'already_submitted' &&
+        result.candidateScope === 'additional' &&
+        args?.candidatePhone === form.candidateRef &&
+        typeof form.workOrderId === 'number' &&
+        form.workOrderId > 0;
+      return { jobId, workOrderId: form.workOrderId, verifiedThisTurn };
     } catch (error) {
       this.logger.warn(`读取追加候选人表单失败，按未知处理: ${toErrorMessage(error)}`);
       return undefined;
@@ -292,13 +300,12 @@ export class OutputGuardrailService {
       studentAcceptance: sessionJobEvidence.studentAcceptance,
       activeBookings,
       pendingAdditionalCandidateJobId:
-        additionalCandidateBooking?.workOrderId === undefined
-          ? additionalCandidateBooking?.jobId
+        additionalCandidateBooking && !additionalCandidateBooking.verifiedThisTurn
+          ? additionalCandidateBooking.jobId
           : undefined,
-      submittedAdditionalCandidateBooking:
-        additionalCandidateBooking?.workOrderId !== undefined
-          ? additionalCandidateBooking
-          : undefined,
+      submittedAdditionalCandidateBooking: additionalCandidateBooking?.verifiedThisTurn
+        ? additionalCandidateBooking
+        : undefined,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
     });

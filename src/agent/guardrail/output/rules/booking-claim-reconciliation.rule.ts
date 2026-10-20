@@ -58,9 +58,9 @@ export interface BookingClaimContext {
   activeBookings?: readonly ActiveBookingEntry[];
   /** 本轮焦点岗位 jobId（会话工作台 currentFocusJob）。 */
   focusJobId?: number;
-  /** 当前活动追加候选人的持久化表单尚无工单；主候选人的同岗位工单不能为其作证。 */
+  /** 当前追加候选人尚无经本轮身份核实的工单；主候选人的同岗位工单不能为其作证。 */
   pendingAdditionalCandidateJobId?: number;
-  /** 活动追加候选人已提交的表单工单；代报不会写入联系人的 active_booking。 */
+  /** 经本轮 precheck 核实身份的追加候选人已提交表单工单；代报不会写入联系人的 active_booking。 */
   submittedAdditionalCandidateBooking?: { jobId: number; workOrderId?: number };
 }
 
@@ -105,7 +105,7 @@ export function detectBookingDoneClaimWithoutSubmission(
   if (context.pendingAdditionalCandidateJobId !== undefined) {
     return createOutputRuleFinding(
       'booking_done_claim_no_work_order',
-      `当前正在办理的追加候选人（岗位 ${context.pendingAdditionalCandidateJobId}）表单尚无工单，` +
+      `当前正在办理的追加候选人（岗位 ${context.pendingAdditionalCandidateJobId}）本轮尚未核实独立工单，` +
         '本轮也没有 booking 调用，却宣称报名/预约成功；主候选人的同岗位工单不能替此人作证',
     );
   }

@@ -49,12 +49,21 @@ describe('OutputGuardrailService', () => {
     );
   });
 
-  it.each([undefined, 9001])(
-    '读取当前追加候选人表单，工单 %s 决定是否可借用主候选人证据',
-    async (workOrderId) => {
+  it.each([
+    { workOrderId: undefined, precheckPhone: '13800000002', expectedBlocked: true },
+    { workOrderId: 9001, precheckPhone: '13800000002', expectedBlocked: false },
+    { workOrderId: 9001, precheckPhone: undefined, expectedBlocked: true },
+    { workOrderId: 9001, precheckPhone: '13800000003', expectedBlocked: true },
+  ])(
+    '追加候选人工单必须有同轮身份依据：%j',
+    async ({ workOrderId, precheckPhone, expectedBlocked }) => {
       useActualRules();
       const forms = {
-        peekActive: jest.fn().mockResolvedValue({ candidateScope: 'additional', workOrderId }),
+        peekActive: jest.fn().mockResolvedValue({
+          candidateScope: 'additional',
+          candidateRef: '13800000002',
+          workOrderId,
+        }),
       };
       const guard = new OutputGuardrailService(
         systemConfig as never,
@@ -66,15 +75,27 @@ describe('OutputGuardrailService', () => {
         forms as never,
       );
       const decision = await guard.check({
-        reply: '第二人也报名成功了',
-        toolCalls: [],
+        reply: precheckPhone === '13800000002' ? '第二人也报名成功了' : '第三人也报名成功了',
+        toolCalls: precheckPhone
+          ? ([
+              {
+                toolName: 'duliday_interview_precheck',
+                args: { jobId: 100, candidatePhone: precheckPhone },
+                result: {
+                  success: true,
+                  nextAction: 'already_submitted',
+                  candidateScope: 'additional',
+                },
+              },
+            ] as never)
+          : [],
         corpId: 'c1',
         userId: 'u1',
         botUserName: 'bot1',
         memorySnapshot: { currentFocusJob: { jobId: 100 } } as never,
       });
       expect(decision.blockedRuleIds).toEqual(
-        workOrderId === undefined ? ['booking_done_claim_no_work_order'] : [],
+        expectedBlocked ? ['booking_done_claim_no_work_order'] : [],
       );
       expect(forms.peekActive).toHaveBeenCalledWith({
         corpId: 'c1',
@@ -82,11 +103,6 @@ describe('OutputGuardrailService', () => {
         botUserId: 'bot1',
         jobId: 100,
       });
-      expect(ruleGuard.check).toHaveBeenCalledWith(
-        expect.objectContaining({
-          pendingAdditionalCandidateJobId: workOrderId === undefined ? 100 : undefined,
-        }),
-      );
     },
   );
 
