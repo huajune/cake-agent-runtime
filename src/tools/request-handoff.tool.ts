@@ -73,11 +73,15 @@ const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入�
 const inputSchema = z.object({
   // 枚举值域唯一来源：@enums/handoff-reason.enum（toolSelectable 的码，顺序即触发场景编号）
   reasonCode: z.enum(HANDOFF_REASON_CODES).describe('转人工原因代码'),
-  reason: z.string().describe('具体原因：结合候选人原话说明当前阻塞点'),
+  reason: z
+    .string()
+    .describe('具体原因：仅依据候选人原话和工具事实说明阻塞点；未知姓名、手机号或工单号不得补全'),
   actionAdvice: z
     .string()
     .optional()
-    .describe('建议动作：根据当前实际阻塞点，用一句话向招募经理建议明确的下一步动作'),
+    .describe(
+      '建议动作：只写需要人工核实或处理的下一步，不填写姓名、手机号或工单编号。身份和单据由运行时另行携带；资料缺失就建议人工核实，禁止用示例或常见占位值补全',
+    ),
   missingJobInfo: z
     .array(z.string())
     .optional()
