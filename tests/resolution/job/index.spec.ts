@@ -118,6 +118,27 @@ describe('resolution/job', () => {
     );
   });
 
+  it('岗位匹配分数不能让嵌入式短店名覆盖用户明确点名的长门店', () => {
+    const shortName = { ...chaoneiJob, storeName: '万达店' };
+    const fullName = {
+      ...dongdanJob,
+      storeName: '万达广场店',
+      jobName: '咖啡师',
+      jobCategoryName: '饮品/咖啡师',
+    };
+    const text = '我想看万达广场店的服务员岗位';
+    expect(pickBestReferencedJob([shortName, fullName], text)).toEqual(fullName);
+    expect(resolveCurrentFocusJob(text, [shortName], [], [shortName, fullName])).toEqual(fullName);
+    expect(
+      resolveAssistantAnchoredFocusJob(
+        '万达广场店服务员岗位，兼职，时薪 20元/小时',
+        [],
+        [],
+        [shortName, fullName],
+      ),
+    ).not.toEqual(shortName);
+  });
+
   it('should clear focus job when user asks to switch batch', () => {
     expect(resolveCurrentFocusJob('再看看别的', [chaoneiJob], [], [])).toBeNull();
   });

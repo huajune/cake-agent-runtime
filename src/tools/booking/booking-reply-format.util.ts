@@ -10,6 +10,7 @@
  */
 
 import { WEEKDAY_LABELS_SHORT } from '@infra/utils/chinese-numeral.util';
+import { containsSensitiveScreeningText } from '@resolution/collection/sensitive-screening';
 import { requiresStoreVisit, type InterviewMethod } from '@sponge/interview-method';
 
 /**
@@ -62,6 +63,9 @@ export function describeWaitNoticeForCandidate(
 ): string {
   switch (interviewMethod) {
     case 'AI面试': {
+      if (containsSensitiveScreeningText(processRemark)) {
+        return '面试形式为 AI 面试，请留意面试安排通知，保持手机畅通。';
+      }
       const processLead = firstSentence(processRemark);
       // 备注可能与枚举冲突；有明确备注时不再叠加默认短信渠道承诺。
       return processLead
@@ -93,6 +97,9 @@ export function buildWaitNoticeReplyGuide(params: {
   );
   const base = `告知候选人资料已提交，并照实说明：${candidateLine}禁止编造时间。`;
   if (params.interviewMethod === 'AI面试') {
+    if (containsSensitiveScreeningText(params.processRemark)) {
+      return `${base}流程备注含内部筛选信息，不得复述，也不得补充未经确认的通知渠道或安排。`;
+    }
     if (firstSentence(params.processRemark)) {
       return `${base}岗位面试方式字段为 AI 面试；通知渠道和安排以流程说明为准，存在冲突时优先采用流程说明，不得补充其未说明的短信或电话承诺。`;
     }

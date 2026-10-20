@@ -209,6 +209,19 @@ function hasIndependentStoreReference(
   );
 }
 
+/** 显式门店限定先于岗位/薪资打分，避免嵌在长店名内的短别名借职位分数胜出。 */
+function restrictToReferencedStores(
+  jobs: readonly RecommendedJobSummary[],
+  text: string,
+): readonly RecommendedJobSummary[] {
+  const referenced = jobs.map((job) => ({ job, spans: storeReferenceSpans(job, text) }));
+  const allSpans = referenced.flatMap(({ spans }) => spans);
+  const matches = referenced
+    .filter(({ spans }) => hasIndependentStoreReference(spans, allSpans))
+    .map(({ job }) => job);
+  return matches.length > 0 ? matches : jobs;
+}
+
 function matchesStoreReference(job: RecommendedJobSummary, normalizedText: string): boolean {
   return storeReferenceSpecificity(job, normalizedText) > 0;
 }
@@ -267,7 +280,7 @@ export function pickBestReferencedJob(
     return matches.length === 1 ? matches[0] : null;
   }
   const normalizedUserText = normalizeForMatch(userText);
-  const scored = jobs
+  const scored = restrictToReferencedStores(jobs, normalizedUserText)
     .map((job) => ({
       job,
       score: scoreJobReference(job, normalizedUserText),
@@ -291,7 +304,7 @@ function pickDominantReferencedJob(
   jobs: RecommendedJobSummary[],
   normalizedText: string,
 ): RecommendedJobSummary | null {
-  const scored = jobs
+  const scored = restrictToReferencedStores(jobs, normalizedText)
     .map((job) => ({ job, score: scoreJobReference(job, normalizedText) }))
     .filter(({ score }) => score >= 8)
     .sort((a, b) => b.score - a.score);

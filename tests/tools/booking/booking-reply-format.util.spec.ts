@@ -154,4 +154,15 @@ describe('等通知回执按面试方式分支（badcase 2026-10-14 trace batch_
     expect(guide).toContain('面试官会电话联系你');
     expect(guide).not.toContain('随便');
   });
+
+  it.each(['仅限本地户籍；报名后通知', '限汉族，短信通知', '只招已婚已育人员。等待通知'])(
+    '内部筛选条件不能进入候选人回执或模型复述指引：%s',
+    (processRemark) => {
+      const text = describeWaitNoticeForCandidate('AI面试', processRemark);
+      const guide = buildWaitNoticeReplyGuide({ interviewMethod: 'AI面试', processRemark });
+      expect(text).toBe('面试形式为 AI 面试，请留意面试安排通知，保持手机畅通。');
+      expect(guide).not.toMatch(/户籍|汉族|已婚已育|短信发到/);
+      expect(guide).toContain('不得复述');
+    },
+  );
 });
