@@ -272,10 +272,12 @@ export function buildSendStoreLocationTool(
             outcome: '缺少发送上下文',
             replyInstruction:
               '当前会话缺少发送定位所需的上下文（token / imBotId / imContactId / imRoomId）。' +
-              '这是结构性问题，本轮不要重试；按招募者口吻把门店地址用文字告诉候选人。',
+              '这是结构性问题，本轮不要重试；先核实候选人本轮点名的品牌和门店，无法唯一确认时先澄清。' +
+              '禁止沿用旧焦点直接给出地址；确认目标门店后才可用文字告知地址。',
           });
         }
 
+        let referenceVerified = false;
         try {
           const { jobs } = await spongeService.fetchJobs(
             {
@@ -356,6 +358,7 @@ export function buildSendStoreLocationTool(
               },
             });
           }
+          referenceVerified = true;
           const brandName = pickString(matchedJob.basicInfo?.brandName);
           const storeLabel = [brandName, store.storeName].filter(Boolean).join('·');
           const policy = buildJobPolicyAnalysis(matchedJob);
@@ -585,7 +588,9 @@ export function buildSendStoreLocationTool(
             outcome: '门店定位发送失败',
             replyInstruction: isActiveBooking
               ? '预约场景下定位发送失败。禁止改发工作门店定位或说“地址没错”；请调用 request_handoff(cannot_find_store) 确认面试地点。'
-              : '门店定位发送失败。不要把异常信息原文转述给候选人；重新核对岗位的工作门店地址后用文字告知。',
+              : referenceVerified
+                ? '门店定位发送失败。不要把异常信息原文转述给候选人；重新核对岗位的工作门店地址后用文字告知。'
+                : '尚未核实候选人本轮点名的门店，禁止沿用旧焦点给出地址。先澄清品牌和具体门店，唯一确认后再查询地址；不要转述异常信息。',
             details: { jobId: resolvedJobId, reason: message },
           });
         }

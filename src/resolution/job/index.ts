@@ -39,12 +39,43 @@ export function extractPresentedJobs(
   const normalizedReply = normalizeForMatch(assistantText);
   if (!normalizedReply || candidatePool.length === 0) return [];
 
-  return candidatePool
-    .map((job) => ({ job, score: scoreJobReference(job, normalizedReply) }))
-    .filter(({ score }) => score >= 5)
-    .sort((a, b) => b.score - a.score)
-    .map(({ job }) => job)
-    .slice(0, 3);
+  const referenced = candidatePool.map((job) => ({
+    job,
+    score: scoreJobReference(job, normalizedReply),
+    spans: storeReferenceNames(job).flatMap((name) => {
+      const spans: Array<{ start: number; end: number }> = [];
+      for (
+        let start = normalizedReply.indexOf(name);
+        start >= 0;
+        start = normalizedReply.indexOf(name, start + 1)
+      ) {
+        spans.push({ start, end: start + name.length });
+      }
+      return spans;
+    }),
+  }));
+  const allSpans = referenced.flatMap(({ spans }) => spans);
+  return (
+    referenced
+      // 短别名只出现在更长店名内部时，不算展示过该门店；独立提及短店名仍保留。
+      .filter(
+        ({ spans }) =>
+          spans.length === 0 ||
+          spans.some(
+            (span) =>
+              !allSpans.some(
+                (other) =>
+                  other.start <= span.start &&
+                  other.end >= span.end &&
+                  other.end - other.start > span.end - span.start,
+              ),
+          ),
+      )
+      .filter(({ score }) => score >= 5)
+      .sort((a, b) => b.score - a.score)
+      .map(({ job }) => job)
+      .slice(0, 3)
+  );
 }
 
 /**

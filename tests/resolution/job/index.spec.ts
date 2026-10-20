@@ -60,6 +60,16 @@ describe('resolution/job', () => {
     );
   });
 
+  it('展示记录剔除仅作为更长店名子串命中的短别名，不挤掉实际展示岗', () => {
+    const shortJobs = [1, 2, 3].map((jobId) => ({ ...chaoneiJob, jobId, storeName: '万达店' }));
+    const fullName = { ...dongdanJob, storeName: '万达广场店' };
+    expect(extractPresentedJobs('万达广场店可以', [...shortJobs, fullName])).toEqual([fullName]);
+    expect(extractPresentedJobs('万达店、万达广场店都可以', [shortJobs[0], fullName])).toEqual([
+      shortJobs[0],
+      fullName,
+    ]);
+  });
+
   it('should extract presented jobs from assistant reply', () => {
     expect(
       extractPresentedJobs('离你最近的是朝内店，东单店也可以。', [chaoneiJob, dongdanJob]),

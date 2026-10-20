@@ -449,6 +449,24 @@ describe('buildSendStoreLocationTool', () => {
     );
   });
 
+  it.each(['delivery', 'fetch'])('校验前 %s 失败只能澄清，不能沿用旧岗位地址', async (failure) => {
+    mockSpongeService.fetchJobs.mockRejectedValueOnce(new Error('upstream unavailable'));
+    const result = await executeTool(
+      { jobId: 100, referenceText: '幸福里' },
+      {
+        candidatePool: [referencedStore],
+        currentUserMessage: '幸福里定位发我',
+        ...(failure === 'delivery' ? { token: undefined } : {}),
+      },
+    );
+    expect(result.success).toBe(false);
+    expect(result._replyInstruction).toContain('澄清');
+    expect(result._replyInstruction).toContain('禁止沿用旧焦点');
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+    // 未调用 fetch 的参数分支不能把 once 拒绝泄漏给下一例。
+    mockSpongeService.fetchJobs.mockReset();
+  });
+
   it('should return error when delivery context is missing', async () => {
     const result = await executeTool(
       { jobId: 100 },
