@@ -1,4 +1,5 @@
 import { buildSkipReplyTool, isShortConfirmationMessage } from '@tools/skip-reply.tool';
+import { MessageParser } from '@/channels/wecom/message/utils/message-parser.util';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext, mergeToolContext } from '../helpers/tool-context.fixture';
@@ -227,6 +228,11 @@ describe('buildSkipReplyTool', () => {
   });
 
   describe('isShortConfirmationMessage', () => {
+    it('实际小程序入站格式保留简历内容，不能作为短确认关闭', () => {
+      const text = MessageParser.formatMiniProgramAsText({ title: '简历' } as never);
+      expect(isShortConfirmationMessage(text)).toBe(false);
+      expect(isShortConfirmationMessage(text + '\n好的')).toBe(false);
+    });
     it('enforces fewer than 10 characters after removing punctuation and markers', () => {
       expect(isShortConfirmationMessage('好的，谢谢您非常感谢[抱拳]')).toBe(true);
       expect(isShortConfirmationMessage('好的，谢谢您真的很感谢[抱拳]')).toBe(false);
@@ -265,6 +271,8 @@ describe('buildSkipReplyTool', () => {
       '[表情消息]',
       '[语音消息] 时长15秒',
       '[语音消息]',
+      '[小程序] 简历',
+      '[文件消息] 好的',
       '[图片消息]\n好的',
       '【图片消息 3 张】\n收到',
       '[图片 messageId=img-1]\n好的',
