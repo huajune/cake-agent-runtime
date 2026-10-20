@@ -131,7 +131,7 @@ Tool / Output 的确定性边界裁决。
 
 ### 6.1 确定性规则
 
-`output/output-rule-catalog.ts` 当前登记 **24 个 ruleId**（19 条执行档 + 5 条 observe 哨兵）：
+`output/output-rule-catalog.ts` 当前登记 **27 个 ruleId**（19 条执行档 + 8 条 observe 哨兵）：
 
 - 格式/内部泄漏：`invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、
   `human_service_phrase_leak`（人设露馅封闭词表，2026-08-26 数据复核恢复）；
