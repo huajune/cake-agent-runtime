@@ -14,7 +14,7 @@
 | --- | --- |
 | 能不能用 | **技术上能接（裸 HTTP 20 行），架构上没有合法落位。** 10 条候选经三路对抗审查（裁定 / 能力 / 价值）全部驳回，0 条通过、0 条有条件通过。 |
 | 用在哪 | **哪也不用。** 投递热路径被 [M-rt-1]/[T-4]/[T-6] 字面封死；异步与离线环虽不被封，但每一处都有"复用现有 LLM 调用"的零新供应商替代，Jev 的增量为零。 |
-| 先做什么 | 做候选评审时顺带发现的 **非 Jev 修法**，权威清单在 §7.5（§4.2 的"正解"列是它的摘要）。例如：删复聊 `decision` 冗余字段、动态禁令 location/salary 改靶、沉淀摘要改 `generateStructured` + `z.enum`、群通知渲染结构化字段并落库、`request_handoff` 描述相邻码边界。这些都是 0.5–2 人日、零新依赖。 |
+| 先做什么 | 做候选评审时顺带发现的 **非 Jev 修法**，研究建议清单在 §7.5（§4.2 的"正解"列是它的摘要）。例如：删复聊 `decision` 冗余字段、动态禁令 location/salary 改靶、沉淀摘要改 `generateStructured` + `z.enum`、群通知渲染结构化字段并落库、`request_handoff` 描述相邻码边界。这些是研究时的粗估，未立项或承诺排期。 |
 | 别做什么 | 别建 Jev 客户端、别升 `ai` 包只为 `experimental_decide`、别签境外处理者、别为 Jev 建标注流程、别建"Jev 与 LLM 并跑对账"（撞 [T-2]⑤/[T-6] 明文禁 shadow diff）。 |
 | 什么时候重议 | 同时满足：① 某决策点有 **现查可得的 badcase 量级**（不是防御式痛点）；② 该点确认 **无法搭现有 extract_facts / 主 Agent 顺风车**；③ 法务对候选人文本出境出具书面口径；④ 用自有中文样本证明 Jev 比已接入的 qwen-flash/deepseek-v4-flash 结构化输出 **显著更准**（≥5pp，配对检验）。四条缺一不重议；是否满足由用户按 [M-tax] 快环豁免评审裁定，结论入 `docs/principles/bitter-lessons.md`（见 §5.1）。 |
 
@@ -185,7 +185,7 @@
 | 9 | 转人工 reason_code 与对话事实一致性核对 | cron | weak / 4 | 驳回(major) | 驳回(major) | 驳回(major) | **驳回** | 修 `request_handoff` description 相邻码边界；周任务抽样 20→60（随机 20 + other/salary 定向 40） |
 | 10 | 守卫命中档案离线判真/假阳 + 修复回归形态 | cron | weak / 4 | 驳回(major) | 驳回(major) | 驳回(fatal) | **驳回** | 同 5 问加进现有 weekly-guardrail-analysis 任务或 deepseek-v4-flash 批量脚本（可附 quote） |
 
-**统计**：10 条全部驳回；30 张审查票中 28 张驳回、2 张"放行"只因设计稿本身已自判 reject。没有任何一条拿到"有条件通过"。表中"正解"列是摘要，完整的非 Jev 待办权威清单在 §7.5。
+**统计**：10 条全部驳回；30 张审查票中 28 张驳回、2 张"放行"只因设计稿本身已自判 reject。没有任何一条拿到"有条件通过"。表中"正解"列是摘要，完整的非 Jev 研究建议清单在 §7.5。
 
 ### 4.3 跨候选共性反驳（四条，几乎每张票都提到）
 
@@ -202,7 +202,7 @@
 - **代表性问题**（原文节选）：`manager_cancelled_interview`："招募经理是否已告诉候选人不用参加这一次面试——包括明确说取消、已经招满、不合适，也包括在了解候选人条件后给出否定性结论的婉拒——**并且此后招募经理没有再重新确认面试继续进行**？"
 - **一句话致命伤**：痛点可以靠删一个冗余字段定义性归零，而 Jev 要替代的那两道难题（婉拒、"此后未再确认"）正是它最弱的多跳 + 缺席推定。
 - **关键反驳**：
-  - 价值假设被零成本修法击穿：痛点"decision/blockReason 矛盾"源于 schema 里 `decision` 冗余于 `blockReason`（`agent.ts:121` describe 自述派生关系、`:293` 已按 blockReason 兜底）；删字段由代码派生即可让矛盾率定义性归零，设计 notes 自认"应先做"。
+  - 价值假设被零成本修法击穿：痛点"decision/blockReason 矛盾"源于 schema 里 `decision` 冗余于 `blockReason`（`src/agent/reengagement/reengagement.agent.ts` describe 自述派生关系、`ReengagementAgent` 已按 blockReason 兜底）；删字段由代码派生即可让矛盾率定义性归零，设计 notes 自认"应先做"。
   - 量级证伪（生产库实测）：近 30 天 post_booking 到达 LLM 环节 ≈243 次（sent 207 + 语义 skip 36 ≈ 8/天），非设计估的 ≤300/天；语义 skip ≈1.2/天，且无一条 badcase 实证现状 LLM 在这 36 条上误判（[M4]/[L1] 入场须实证）。
   - 两道核心题是"最新表态→取消→此后未再确认"的多跳 + 缺席推定，正中官方弱项与 [M-tax] 归零；中文推理型判断实测 0.60–0.68，设计自认 0.60–0.68。每题独立阈值要求正例 ≥30，12 题 ≥360 正例，而 30 天语义 skip 总量 100–200，多数题正例个位数，阈值不可标定。
   - Jev 判 clear 后 LLM 纯生成失去"写文案时顺便发现停止条件"的兜底，假阴直接变误发，风险方向与目标相反。
@@ -225,10 +225,10 @@
 - **设计要点**：设计者已自降为 offline_only；state = 送达的复述全文 + 紧邻 assistant 组 + 候选人短答（≈600 token）+ 代码旗标 `has_pending_question_outside_recap`；两道 noul（`confirms_recap`、`is_correction`）+ 一道 `reply_target` choice；若被迫在线只做 precheck 回执里的 observe 便签。
 - **一句话致命伤**：生产 30 天 102 次 recap 拒绝里零条是"读错短答"，而"是否确认"的第二条判定路径正是 [L10] 已废除的形态。
 - **关键反驳**：
-  - 代码核实：`recap-confirmation.ts:30-56` 明写"不判断同意/否定/礼貌语义"，`form-writes.ts:120-135` 改口只能由模型显式声明，`precheck.tool.ts:921-931` 纠正优先；三个 pain_evidence（0819/0916/6a8d583b）均已确定性闭环，无活跃 badcase。
+  - 代码核实：`src/resolution/notary/recap-confirmation.ts` 明写"不判断同意/否定/礼貌语义"，`src/resolution/collection/form-writes.ts` 改口只能由模型显式声明，`src/tools/duliday-interview-precheck.tool.ts` 纠正优先；三个 pain_evidence（0819/0916/6a8d583b）均已确定性闭环，无活跃 badcase。
   - 生产库实测：近 30 天 `recap_confirmation_rejected` 共 102 次（≈3.4/天）：`recap_not_required` 74、`already_affirmed` 17、`snapshot_mismatch` 11、`correction` 0——全是结构/状态机形态，**零条是"读错好的"**。
   - 裁定：Jev noul"是否确认"正是 [L10] 废除的"为一小类短答分叉第二条生产放行路径"的 [M5] 换名重建；[T-2.2] 禁同轮第二判定器重释 correct；便签在工具调用内无消费者（[P5] 死遥测）。
-  - 能力：中文肯定大量借否定词（没问题/没错/不用改），且 `recap-renderer.ts:33` 结束语本身含"没问题…不对…改哪项"进 state；改口常只报新值不带否定，需 recap 值 vs 新值比对 = 官方"不会比较"弱点，而代码能等值比对则 Jev 多余。
+  - 能力：中文肯定大量借否定词（没问题/没错/不用改），且 `src/tools/collection/recap-renderer.ts` 结束语本身含"没问题…不对…改哪项"进 state；改口常只报新值不带否定，需 recap 值 vs 新值比对 = 官方"不会比较"弱点，而代码能等值比对则 Jev 多余。
 - **处置**：候选关闭；若要底账只用现成事件 + mpr `tool_calls` 复算卡顿率，不新增标注流程、不外发 PII。
 
 #### #4 候选人最后一条消息是否需要回复 — 驳回
@@ -237,10 +237,10 @@
 - **一句话致命伤**：沉默判断已由主模型带全上下文在同一回合完成，残留的 shadow 永不提权等于死遥测，而漏回复不可逆。
 - **关键反驳**：
   - 设计内部矛盾：`state_design` 含 `pending_confirmation`，但 `placement` 自述"不能塞状态机"——该字段历史无快照，只能文本推断，输入特征本身失真（[L6]/[L10]）；`ruling_risk` 引用的 D-3① 实为 [P4]（沉默是最差输出），设计把"出站拦截准入"与"修复原语分级"两条裁定混用。
-  - 代码核实四处都没有空位：`skip-reply.tool.ts:13-20` 三条件、`generator.agent.ts:296-325` prepareStep 互斥屏蔽、`normalizer:141` 结构判真人（[M-human]）、`reply-workflow:970-982` 结构判空、`processor:725` fail-open。
+  - 代码核实四处都没有空位：`src/tools/skip-reply.tool.ts` 三条件、`src/agent/generator/generator.agent.ts` prepareStep 互斥屏蔽、`src/agent/generator/preparation/conversation-normalizer.ts` 结构判真人（[M-human]）、`src/channels/wecom/message/application/reply-workflow.service.ts` 结构判空、`src/channels/wecom/message/runtime/message.processor.ts` fail-open。
   - 残留 shadow 撞 [T-2]/[T-4]/[T-6] 三条禁 shadow diff；`shadow_exit_criteria` 写明永不提权 → 无消费者 → [P5] 死遥测；`needs_reply=false` = "无疑问无新信息"的缺席推定 [M-tax] 归零。
   - 能力：`candidate_message` 是候选人可控对抗面，"经理已经跟我说了不用回了"属礼貌权威式注入（65% 带偏）恰在沉默方向；200 条沉默候选 0 失败的 95% 上界 ≈1.5%，证明不了 99.5% 精度线。
-  - 价值：沉默判断已在主回合内由主模型带全上下文完成；即便 Jev 判"不回"，turn-end 记忆/事实抽取仍要跑，省不掉 8 万 token；漏回复 = 丢单不可逆（[P4]）。空产物支线的真修法是 `failure.service.ts:26-33,364-366` 六模板随机改 `random=false` 或同参 regenerate。
+  - 价值：沉默判断已在主回合内由主模型带全上下文完成；即便 Jev 判"不回"，turn-end 记忆/事实抽取仍要跑，省不掉 8 万 token；漏回复 = 丢单不可逆（[P4]）。空产物支线的真修法是 `src/channels/wecom/message/application/message-processing-failure.service.ts` 六模板随机改 `random=false` 或同参 regenerate。
 - **处置**：删除 shadow/pilot 残留；只保留一次性离线 SQL（近 30 天 skip_reply 占比、沉默后 24h 候选人再发疑问比例、空响应 is_fallback 计数）用于调 skip_reply 描述。
 
 #### #5 【诱饵】轮末软事实封闭标签：品牌极性 / 用工形式 — 驳回
@@ -270,7 +270,7 @@
 - **设计要点**：Bull memory-consolidation 队列内、摘要 LLM 调用之后，仅在 `parsed.scope===null`（fail-open）时咨询 Jev；`episode_scope` 三选 choice + `candidate_states_already_working` noul + `topic_switch_present` noul；state = 末尾 ≤120 条消息（具名主语）≈6–20k token。
 - **一句话致命伤**：范围标签已由同一次抽取调用顺带产出，Jev 只能进 fail-open 分支，而该分支用 `generateStructured` + `z.enum` 一行即可归零。
 - **关键反驳**：
-  - 现状已是顺风车：`consolidation.service.ts:21-39/210-218` 同一次 Extract 调用首行给范围（[T-1]/[T-2] 正解）；Jev 只能进 fail-open 分支，而 `llm-executor.service.ts:255` 已有 `generateStructured`，scope 放进 `z.enum` 一行即归零该分支——Jev 边际价值 ≈0。
+  - 现状已是顺风车：`src/memory/long-term/consolidation.service.ts` 同一次 Extract 调用首行给范围（[T-1]/[T-2] 正解）；Jev 只能进 fail-open 分支，而 `src/llm/llm-executor.service.ts` 已有 `generateStructured`，scope 放进 `z.enum` 一行即归零该分支——Jev 边际价值 ≈0。
   - 出口不对称（[P11-notary]）：误判非求职 = 水位已推、摘要永久缺失不可逆；误判求职 = 20 段滚动淘汰可逆；阈值必须偏求职，Jev 决策空间被压没。
   - 能力：中文无显性时态，"工资几号发/社保交不交"求职前后都会问，criteria 靠"已入职后"区分 = 隐含多跳；6k 中文 ≈12–20k Jev token，超出全部公开 benchmark（≤3.7k）无衰减曲线；三选项无 abstain；episode 边界需"切换点在第几条"的位置判断，位置指代 0.42→0.15，设计自认不能驱动分段。
   - 痛点"永久占 20 段配额"无 SQL 实证：scope 现只进 logger（[M-obs] 违规），满配比例从未查过。
@@ -281,9 +281,9 @@
 - **设计要点**：cron 慢环 `handlePrepare` 内两处：A）生成后逐行 `line_unsupported_claim` / `line_is_benefit_section` noul（observe，不拦）；B）`sanitizePublicText` 内按段送 Jev（`social_insurance_stance` / `student_stance` / `unpaid_or_forfeit_clause` choice，每段一请求 ≈600 token），替代 12 条敏感正则，正则永久 fallback + P≥0.15 保险带。合计 3–4 人日。
 - **一句话致命伤**：敏感条款来源字段本就是封闭枚举（能不渲染 `remark` 就没有分类问题），且通道每周百余条、运营人眼 100% 预览、零事故记录——没有可测的痛点。
 - **关键反驳**：
-  - P2 构造侧未问第一问：`hard-requirements.util.ts:41-50` 显示海绵 `hiringRequirement.figure` 是**封闭枚举**，`student_stance` 是对已结构化字段再分类（[L12] 字面命中）；`extractHiringRequirement` 只剩 `remark` 自由文本，"能否不渲染 remark"设计未问。
-  - "不提敏感政策"已住 3 处（`prompt.ts:55-69` 规则 13 + BadCase 末条 + `:185` 正则），Jev criteria 成第 4 处（[C4]/[CL-prompt]）；B 写明 shadow 双跑 + 正则永久 fallback，撞 [T-6]/[T-2.2]/[P6] 规则面净增。
-  - 量级与痛点（仓库核实）：兼职群 cron 仅工作日 13:30 一次、小贴士周六一次（scheduler `:113/:137`），≈50–150 条/周；每条正式发送同时推飞书预览给运营（notification-sender `:154`），**人眼已 100% 过目**；12 条敏感正则自 PR#76 一次写就从未改过，docs/memory/台账零群通知 badcase——pain_evidence 是防御式写法，不是事故。群任务无任何落库表，设计自认"现在量不出来"。
+  - P2 构造侧未问第一问：`src/tools/job-list/hard-requirements.util.ts` 显示海绵 `hiringRequirement.figure` 是**封闭枚举**，`student_stance` 是对已结构化字段再分类（[L12] 字面命中）；`extractHiringRequirement` 只剩 `remark` 自由文本，"能否不渲染 remark"设计未问。
+  - "不提敏感政策"已住 3 处（`src/biz/group-task/prompts/part-time-job.prompt.ts` 规则 13 + BadCase 末条 + `SENSITIVE_PUBLIC_COPY_PATTERNS` 正则），Jev criteria 成第 4 处（[C4]/[CL-prompt]）；B 写明 shadow 双跑 + 正则永久 fallback，撞 [T-6]/[T-2.2]/[P6] 规则面净增。
+  - 量级与痛点（仓库核实）：兼职群 cron 仅工作日 13:30 一次、小贴士周六一次（`src/biz/group-task/services/group-task-scheduler.service.ts`），≈50–150 条/周；每条正式发送同时推飞书预览给运营（`src/biz/group-task/services/notification-sender.service.ts`），**人眼已 100% 过目**；12 条敏感正则自 PR#76 一次写就从未改过，docs/memory/台账零群通知 badcase——pain_evidence 是防御式写法，不是事故。群任务无任何落库表，设计自认"现在量不出来"。
   - 能力：A 的"source 里找不到依据"是缺席/不可答判定，Jev 最差处；一次 state 含 source + 15–25 行，对每行 noul 其余全是无关上下文。B 本质是中文极性翻转（Jev 弱项）；中文置信饱和使 0.05 步长扫 P-R 取 τ 退化为 argmax；criteria 字面只列"社保/五险一金"，商家写"不买保险""社会保险"会被字面判 unrelated；按标点切段后"期间不计薪"丢指代。
   - 岗位商业文本 shadow 期即出境到无 SLA/无 PIPL 的美国处理者。
 - **处置**：先做 Jev 无关部分——群通知只渲染结构化字段、评估不渲染 remark；生成消息落库（复用 ops_events 或既有表）+ 确定性数字/门店名/薪资单位对账；跑 ≥4 周拿到真实编造/敏感泄漏基线，基线为零则候选关闭。只有现有正则召回实测 <0.85 且飞书预览历史能找到 ≥3 条实际上群的敏感短句才重开 B，且基线对照必须是已接入的 qwen-flash/`generateStructured`。
@@ -294,7 +294,7 @@
 - **一句话致命伤**：审计者（Jev 中文 17 路自估 0.70–0.85）不比被审者（生产码 0.74–0.89）准，分歧行里"生产确实错"约四成，请人复核一半是白看。
 - **关键反驳**：
   - 审计者精度低于被审者：设计自估 Jev 中文 17 路 0.70–0.85（zh-decision-bench 升级判定 0.600、CJ-Bench 68.35%），生产码精确率 0.74–0.89；按 0.75/0.85 独立误差算，分歧行中"生产确实错"仅 ≈0.41，低于 pass line 0.50——"请人再看一半是白看"。
-  - 收益已在无 Jev 下变好：价值审查者口述 10-08 周报 other 占比 28.6%→13.4% 靠 v11.12.0 拆码（**该数字未入 `docs/quality-metrics-ledger.md`，台账最新一期是 09-24 的 17/19，按口述处理**）；精确率 0.89→0.74 的根因被 19 条人读直接定位为 `request_handoff` description 相邻码边界——[P6] 命中即生成层欠债。
+  - 未核实收益：10-08 周报的 other 占比变化缺少可追溯查询和台账记录，已移除口述数字，不用于证明拆码收益或支持 go/no-go；精确率 0.89→0.74 的根因被 19 条人读直接定位为 `request_handoff` description 相邻码边界——[P6] 命中即生成层欠债。
   - 判码核心是时态：`onboarding_paperwork` / `interview_result_inquiry` / `employment_affairs` 的 `not_for` 全是"还没面试/入职"，正中"日期当文本+多跳"；20 条 `not_for` 全是否定式；`suspect` 判据 p(recorded) ≤0.20 是缺席推定。
   - 标定不可行：200 条/17 码 ≈12 条每码，"按码分组画 10 桶可靠性曲线"无统计意义；`human_handoff_request` 是系统码（enum `:297`，非 toolSelectable）却入 choice，argmax 永不等于工具记录码 → 结构性假 suspect。设计引用的"10-08 5/19=0.263"同样不在 quality-metrics-ledger；`handoff_events` 周量按生产 8 周实测为 62–275 条（70/153/170/240/275/260/121/62，中位约 160），设计估 50–100 偏低，替代方案的覆盖率算术随之失真。
   - 裁定：[M1]/[L2]/[M5] 再叫一次模型审另一次模型输出；[T-6]⑤ 200 条标注 + 新列 + 新 cron 服务一个 20 条周样本；[C4] criteria 成 30 码目录第二居所。
@@ -335,7 +335,7 @@
 - 每个 choice 必含 `none_of_the_above / 无法判断`（去 abstain 后不可答项准确率 0.950→0.000）。
 - 每题单独阈值、不跨题复用（中文 ECE 0.035–0.164 按任务漂移）；阈值附近 ±0.02 复测抖动（std 0.001–0.015）。
 - 否定/时态/"最后意图"类问题拆成正向字面子问由代码 AND/OR 合成；"此后未再确认"类顺序判断全部切到代码，由代码定位最近一条消息切片后只问单跳正向 noul。
-- state 只喂候选人侧文本，剔除 Agent 自产岗位卡/系统语/我方模板结束语（我方文本会被当成候选人表态，例如 `recap-renderer.ts:33` 结束语含"没问题/不对"）。
+- state 只喂候选人侧文本，剔除 Agent 自产岗位卡/系统语/我方模板结束语（我方文本会被当成候选人表态，例如 `src/tools/collection/recap-renderer.ts` 结束语含"没问题/不对"）。
 - 先用 `usage.input_tokens` 实测本项目汉字/token 比，再写容量与成本结论（目前零证据）。
 
 ### 5.3 成本估算（本项目量级，取数 2026-09-24，7 天窗口）
@@ -362,7 +362,7 @@
 | 方案 | 判定 | 能力 | 中文（证据等级） |
 | --- | --- | --- | --- |
 | **不做** | **本次 10 条候选的实际结论**：每条都有一个零新依赖修法 | — | — |
-| **deepseek-v4-flash（extract 角色已在用）** | **封闭标签的正解落点**（[T-2] 顺风车） | prompt 模拟封闭判断；可附 quote；`generateStructured` 已存在（`llm-executor.service.ts:255`） | 原生中文 |
+| **deepseek-v4-flash（extract 角色已在用）** | **封闭标签的正解落点**（[T-2] 顺风车） | prompt 模拟封闭判断；可附 quote；`generateStructured` 已存在（`src/llm/llm-executor.service.ts`） | 原生中文 |
 | **qwen3.7-flash / qwen-flash 非思考 + `json_schema` strict** | **若真需要独立判定时的默认基线**；但多数候选连它都不需要（搭现有调用即可） | 同上；无原生校准（需 logprobs 或输出分数再校准） | 原生中文最强；与主模型同家族 |
 | **Jev（API 直连 / OpenRouter）** | **不采用**（§4） | 三原语原生、分布输出；不算数/不多跳/不产 quote | 路由 0.88–0.98、推理型 0.60–0.68（独立小样本，业务子集 n=15–55） |
 | **Laya-multilingual 自建（GPU）** | **不建议现在建**；仅作"合规要求数据不出境 + 已攒 ≥1 万条标注"时的私有化预案 | 三原语、`/v1/systemone` 兼容；**必须微调**（基座零样本 typed-decisions 0.362，低于多数类基线 0.461） | 零样本中文业务路由 0.62 vs Jev 0.88（三份小样本的推断综合）；简繁翻转 12.8%（独立）；**准确率 0.766 vs 0.727、ECE 0.081/0.213 等对比全部来自 Laya 自己的 README/模型卡，厂商自报、利益相关，且自认未实测 Jev** |
@@ -422,7 +422,10 @@
 - Chorylee7 引用的"中文客服 64–65.2%"原始出处。
 - Laya ECE 0.081 vs 0.213 两处口径（首页 vs 模型卡）。
 
-### 7.5 非 Jev 待办权威清单（候选评审顺带发现；§1"先做什么"与 §4.2"正解"列均引用本节）
+### 7.5 非 Jev 研究建议清单（候选评审顺带发现；§1"先做什么"与 §4.2"正解"列均引用本节）
+
+以下十项是 2026-10-08 调研快照中的候选建议，尚未分配负责人、排期或验收标准，**不是已确认待办或当前实现状态的权威来源**。采纳前须重新核对代码、问题证据与已有任务；确认采纳后再进入正式任务系统，记录负责人、状态、完成标准和验证结果。
+
 - #1 删复聊 `ReengagementOutput.decision` 字段、代码由 `blockReason` 派生，用 `agent_invocation.outputCorrection` 量 4 周基线。
 - #2 `location_reference_needs_grounding` / `salary_account_no_fabricated_policy` 改 `candidate_side` 或删除，mpr 复测 PR#1339 之后的块覆盖率；按 [C9] 给整个动态禁令层写退场指标。
 - #3 74 次 `recap_not_required` 走 precheck description / 回执 hint 收口。
@@ -431,7 +434,7 @@
 - #6 5 条 observe 哨兵按 14 天命中与人工假阳率降档/下线；结论登记 `feedback_guardrail_rules_offlined`。
 - #7 摘要生成改 `generateStructured` + `z.enum`，删 `SCOPE_LINE_PATTERN`；scope/fail-open/消息数落库；先 SQL 量满配 20 段候选人占比。
 - #8 群通知只渲染结构化字段、不渲染 `remark`；生成消息落库 + 确定性对账；跑 4 周拿基线。
-- #9 修 `request_handoff` description 相邻码边界；周任务抽样 20→60；10-08 周报数字（含 28.6%→13.4% 口述值）核实后入 quality-metrics-ledger，入账前不得在其他文档引用。
+- #9 修 `request_handoff` description 相邻码边界；周任务抽样 20→60；10-08 周报数字核实来源、分母和窗口后入 quality-metrics-ledger，入账前不得在其他文档引用。
 - #10 同 5 问加进现有 weekly-guardrail-analysis；裁定清理死列 `semantic_reviews`；恢复断更的 accuracy 报告。
 
 ---
@@ -513,7 +516,7 @@
 
 ### 本仓库与生产库（内部）
 - 裁定来源：`docs/principles/rules-vs-semantics-design-philosophy.md`、`docs/principles/bitter-lessons.md`、`docs/principles/context-engineering-principles.md`、`docs/architecture/semantic-decision-taxonomy.md`、`docs/architecture/guardrail-quality-system.md`、`CLAUDE.md`、用户记忆（`feedback_no_realtime_feedback_loop`、`project_semantic_taxonomy_redesign` 等）
-- 候选评审引用的代码位置均以 `文件:行号` 内联于 §4；生产库数字来自 `message_processing_records` / `reengagement_touch_records` / `guardrail_review_records` / `agent_execution_events` / `handoff_events`（取数日 2026-09-24 七天窗口；审查者补查 2026-10-08 三十天窗口，文中分别注明）
+- 候选评审引用的代码位置均以仓库相对路径内联于 §4（移除易过期行号，关键符号可在对应文件检索）；生产库数字来自 `message_processing_records` / `reengagement_touch_records` / `guardrail_review_records` / `agent_execution_events` / `handoff_events`（取数日 2026-09-24 七天窗口；审查者补查 2026-10-08 三十天窗口，文中分别注明）
 - 中间产物：45 条丢弃候选及理由已并入本文附录 A；候选扫描 `map-*.json`、`cand-1..10.json`、`design-1..10.json`、六份 `research-*.md` 未入库，位于本次会话 scratchpad `jev/` 目录，关键结论均已在正文引用
 
 ---
