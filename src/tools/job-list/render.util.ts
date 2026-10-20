@@ -119,11 +119,7 @@ function formatInterviewDecisionSummary(
 
   // 面试形式固定成行：AI/电话/视频/线下决定后续"等通知"口径与是否到店，
   // 缺失也要显式写明，不让模型默认成电话或到店（badcase 2026-10-14 AI 面试说成电话面试）。
-  addSummaryLine(
-    lines,
-    '面试形式',
-    policy.interviewMeta.method ?? '未明确（以报名回执为准，不得默认电话或到店）',
-  );
+  addSummaryLine(lines, '面试形式', describeInterviewMethod(policy));
 
   if (policy.interviewMeta.demand) {
     addSummaryLine(lines, '报名要求', policy.interviewMeta.demand);
@@ -142,6 +138,10 @@ function formatInterviewDecisionSummary(
   }
 
   return lines.length > 0 ? '### 约面重点\n' + lines.join('\n') + '\n\n' : '';
+}
+
+function describeInterviewMethod(policy: JobPolicyAnalysis): string {
+  return policy.interviewMeta.method ?? '未明确（以报名回执为准，不得默认电话或到店）';
 }
 
 const GENDER_LABEL: Record<HardRequirements['gender'], string | null> = {
@@ -1075,6 +1075,7 @@ function formatJobToOneLine(
   if (hasValue(store.storeAddress)) parts.push(String(store.storeAddress));
   const distanceKm = asNumber(job._distanceKm);
   if (distanceKm != null) parts.push(`距离 ${formatDistanceKm(distanceKm, distanceAnchor)}`);
+  parts.push(`面试形式：${describeInterviewMethod(buildJobPolicyAnalysis(job as JobDetail))}`);
   return parts.join(' | ');
 }
 
@@ -1117,6 +1118,7 @@ function formatJobToSummaryLine(
   if (salary) parts.push(salary);
   const age = policy.normalizedRequirements.ageRequirement;
   if (age && age !== '不限') parts.push(age);
+  parts.push(`面试形式：${describeInterviewMethod(policy)}`);
   parts.push(`jobId:${hasValue(bi.jobId) ? bi.jobId : '未知'}`);
   return parts.join(' | ');
 }
@@ -1163,6 +1165,8 @@ function formatJobToMarkdown(
 
   if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
     md += formatInterviewDecisionSummary(policy, hardRequirements, shiftTimeText);
+  } else {
+    md += `- **面试形式**: ${describeInterviewMethod(policy)}\n\n`;
   }
   if (flags.includeBasicInfo) {
     md += renderBasicInfoSection(job.basicInfo, asNumber(job._distanceKm), distanceAnchor);

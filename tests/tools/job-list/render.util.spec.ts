@@ -75,6 +75,20 @@ describe('job-list render util', () => {
     expect(markdown.indexOf('⚠️ 同品牌多门店')).toBeLessThan(markdown.indexOf('## 1. 服务员'));
   });
 
+  it.each([false, true])(
+    '面试详情关闭时，精简和详细输出都保留面试形式（salary=%s）',
+    (includeJobSalary) => {
+      const job = {
+        ...makeJob(1),
+        interviewProcess: { firstInterview: { firstInterviewWay: 'AI面试' } },
+      };
+      const markdown = formatJobsToMarkdown([job], 1, 1, 1, { ...minimalFlags, includeJobSalary });
+      expect(markdown).toContain('AI面试');
+      expect(markdown).toContain('面试形式');
+      expect(markdown).not.toContain('### 面试流程');
+    },
+  );
+
   // figure='不限' 是海绵下发的**明确**取值，不是缺数据。此前卡片把它渲染成
   // 「未标注学生限制」，与硬过滤（判 any）各说各话，模型因此从不知道哪些岗收学生。
   it('renders an explicit figure=不限 as identity-unrestricted, not as missing data', () => {

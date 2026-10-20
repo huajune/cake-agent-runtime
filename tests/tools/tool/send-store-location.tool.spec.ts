@@ -191,6 +191,27 @@ describe('buildSendStoreLocationTool', () => {
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('does not send a store that contradicts the explicitly named brand', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const result = await executeTool(
+      { jobId: 100 },
+      { candidatePool: [referencedStore], currentUserMessage: '肯德基青塔店的定位发我' },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('same-turn booking followed by location failure keeps the booked handoff instruction', async () => {
+    mockSpongeService.fetchJobs.mockRejectedValueOnce(new Error('upstream unavailable'));
+    const result = await executeTool(
+      { jobId: 100 },
+      { confirmedBookingJobIds: [100], currentUserMessage: '面试地址发我' },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_SEND_FAILED);
+    expect(result._replyInstruction).toContain('request_handoff(cannot_find_store)');
+    expect(result._replyInstruction).not.toContain('用文字告知');
+  });
+
   it('allows multiple jobs at the same confirmed physical store', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
     const target = mockContext.archive.currentFocusJob!;

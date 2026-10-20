@@ -1158,7 +1158,7 @@ export function buildJobListTool(
                   includeWelfare,
                   includeHiringRequirement,
                   includeWorkTime,
-                  includeInterviewProcess: true,
+                  includeInterviewProcess,
                 }),
               ),
               ...(responseFormat.includes('rawData') ? { rawData: inspected } : {}),

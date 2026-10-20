@@ -1809,24 +1809,29 @@ describe('buildJobListTool', () => {
     });
   });
 
-  it('推荐查询始终拉取面试流程，推荐卡片约面重点固定能写出面试形式（badcase 2026-10-14）', async () => {
-    const job = makeJobData({
-      hiringRequirement: { basicPersonalRequirements: { minAge: 18, maxAge: 40 } },
-      interviewProcess: { firstInterview: { firstInterviewWay: 'AI面试' } },
-    });
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
-    const result = await executeTool(mockContext, {
-      ...defaultInput,
-      includeHiringRequirement: true,
-      includeInterviewProcess: false,
-    });
-    expect(mockSpongeService.fetchJobs.mock.calls[0][0].options).toEqual(
-      expect.objectContaining({ includeInterviewProcess: true }),
-    );
-    expect(result.markdown).toContain('**面试形式**: AI面试');
-    // 面试流程详情段仍由 includeInterviewProcess 开关控制
-    expect(result.markdown).not.toContain('### 面试流程');
-  });
+  it.each(['recommend', 'inspect'] as const)(
+    '%s 查询拉取面试流程，但按展示开关隐藏详情并保留面试形式',
+    async (purpose) => {
+      const job = makeJobData({
+        hiringRequirement: { basicPersonalRequirements: { minAge: 18, maxAge: 40 } },
+        interviewProcess: { firstInterview: { firstInterviewWay: 'AI面试' } },
+      });
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        purpose,
+        ...(purpose === 'inspect' ? { jobIdList: [1] } : {}),
+        includeHiringRequirement: true,
+        includeInterviewProcess: false,
+      } as typeof defaultInput);
+      expect(mockSpongeService.fetchJobs.mock.calls[0][0].options).toEqual(
+        expect.objectContaining({ includeInterviewProcess: true }),
+      );
+      expect(result.markdown).toContain('**面试形式**: AI面试');
+      // 面试流程详情段仍由 includeInterviewProcess 开关控制
+      expect(result.markdown).not.toContain('### 面试流程');
+    },
+  );
 
   describe('jobIdList provenance gate (badcase 6a6c4c13 幻觉参数查询)', () => {
     it('blocks jobIdList entries never recalled in this session', async () => {

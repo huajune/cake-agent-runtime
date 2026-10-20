@@ -66,6 +66,20 @@ describe('resolution/job', () => {
     ).toEqual([chaoneiJob, dongdanJob]);
   });
 
+  it('keeps conflicting explicit brand and store references ambiguous', () => {
+    const otherBrand = { ...dongdanJob, brandName: '肯德基' };
+    expect(pickBestReferencedJob([chaoneiJob, otherBrand], '肯德基朝内店地址', 'store')).toBeNull();
+    expect(findStoreReferencedJobs([chaoneiJob, otherBrand], '肯德基朝内店地址')).toHaveLength(2);
+  });
+
+  it('prefers a complete store name over another store’s shorter alias', () => {
+    const shortName = { ...chaoneiJob, storeName: '万达店' };
+    const fullName = { ...dongdanJob, storeName: '万达广场店' };
+    expect(pickBestReferencedJob([shortName, fullName], '万达广场店地址', 'store')).toEqual(
+      fullName,
+    );
+  });
+
   it('should resolve focus job when user explicitly picks a store', () => {
     expect(resolveCurrentFocusJob('我选朝内店', [chaoneiJob, dongdanJob], [], [])).toEqual(
       chaoneiJob,

@@ -246,6 +246,10 @@ export function buildSendStoreLocationTool(
           });
         }
 
+        const isActiveBooking =
+          (context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false) ||
+          (context.ledger.jobs.confirmedBookingJobIds?.includes(resolvedJobId) ?? false);
+
         if (
           !context.session.token ||
           !context.session.botImId ||
@@ -340,9 +344,6 @@ export function buildSendStoreLocationTool(
           const interviewAddress = policy.interviewMeta.address;
           const interviewMethod = policy.interviewMeta.method;
           const offlineInterview = requiresStoreVisit(interviewMethod);
-          const isActiveBooking =
-            (context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false) ||
-            (context.ledger.jobs.confirmedBookingJobIds?.includes(resolvedJobId) ?? false);
           const explicitlyAsksForWorkplace = /上班|工作(?:地点|地址)|入职后|工作门店/u.test(
             context.turnInput.currentUserMessage ?? '',
           );
@@ -564,10 +565,9 @@ export function buildSendStoreLocationTool(
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.STORE_LOCATION_SEND_FAILED,
             outcome: '门店定位发送失败',
-            replyInstruction:
-              (context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false)
-                ? '预约场景下定位发送失败。禁止改发工作门店定位或说“地址没错”；请调用 request_handoff(cannot_find_store) 确认面试地点。'
-                : '门店定位发送失败。不要把异常信息原文转述给候选人；重新核对岗位的工作门店地址后用文字告知。',
+            replyInstruction: isActiveBooking
+              ? '预约场景下定位发送失败。禁止改发工作门店定位或说“地址没错”；请调用 request_handoff(cannot_find_store) 确认面试地点。'
+              : '门店定位发送失败。不要把异常信息原文转述给候选人；重新核对岗位的工作门店地址后用文字告知。',
             details: { jobId: resolvedJobId, reason: message },
           });
         }

@@ -171,23 +171,37 @@ function matchesStoreReference(job: RecommendedJobSummary, normalizedText: strin
   return storeReferenceNames(job).some((name) => normalizedText.includes(name));
 }
 
-/** 返回同分的门店指称，交由发送工具澄清；不靠岗位工种、薪资或旧焦点猜定位。 */
+/** 品牌与门店联合约束；冲突返回双方候选供澄清，不能用门店分数覆盖显式品牌。 */
 export function findStoreReferencedJobs(
   jobs: readonly RecommendedJobSummary[],
   userText: string,
 ): RecommendedJobSummary[] {
   const text = normalizeForMatch(userText);
-  const scored = dedupeJobsById([...jobs]).map((job) => {
+  const unique = dedupeJobsById([...jobs]);
+  const brandMatches = unique.filter((job) => {
     const brand = normalizeForMatch(job.brandName);
-    return {
-      job,
-      score: (matchesStoreReference(job, text) ? 5 : 0) + (brand && text.includes(brand) ? 1 : 0),
-    };
+    return brand && text.includes(brand);
   });
-  const bestScore = Math.max(0, ...scored.map((item) => item.score));
-  return bestScore > 0
-    ? scored.filter((item) => item.score === bestScore).map((item) => item.job)
-    : [];
+  const scored = unique.map((job) => ({
+    job,
+    // 完整/更长门店名优先，避免「万达」短别名与「万达广场店」同分。
+    score: Math.max(
+      0,
+      ...storeReferenceNames(job)
+        .filter((name) => text.includes(name))
+        .map((name) => name.length),
+    ),
+  }));
+  const bestScore = Math.max(0, ...scored.map(({ score }) => score));
+  const storeMatches = scored
+    .filter(({ score }) => score > 0 && score === bestScore)
+    .map(({ job }) => job);
+  if (brandMatches.length === 0) return storeMatches;
+  if (storeMatches.length === 0) return brandMatches;
+  const joint = storeMatches.filter((job) =>
+    brandMatches.some((brandJob) => brandJob.jobId === job.jobId),
+  );
+  return joint.length > 0 ? joint : dedupeJobsById([...brandMatches, ...storeMatches]);
 }
 
 export function pickBestReferencedJob(
