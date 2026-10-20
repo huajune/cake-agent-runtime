@@ -336,9 +336,8 @@ export function buildSendStoreLocationTool(
           if (
             (explicitReference &&
               (!normalizedIncludes(candidateText, explicitReference) ||
-                !candidatePool.some((job) =>
-                  matchesExplicitStoreReference(job, explicitReference),
-                ))) ||
+                !targetReference ||
+                !matchesExplicitStoreReference(targetReference, explicitReference))) ||
             (referencedJobs.length > 1 && !sameDestination) ||
             (referencedJob && referencedJob.jobId !== resolvedJobId)
           ) {

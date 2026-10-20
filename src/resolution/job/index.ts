@@ -42,35 +42,13 @@ export function extractPresentedJobs(
   const referenced = candidatePool.map((job) => ({
     job,
     score: scoreJobReference(job, normalizedReply),
-    spans: storeReferenceNames(job).flatMap((name) => {
-      const spans: Array<{ start: number; end: number }> = [];
-      for (
-        let start = normalizedReply.indexOf(name);
-        start >= 0;
-        start = normalizedReply.indexOf(name, start + 1)
-      ) {
-        spans.push({ start, end: start + name.length });
-      }
-      return spans;
-    }),
+    spans: storeReferenceSpans(job, normalizedReply),
   }));
   const allSpans = referenced.flatMap(({ spans }) => spans);
   return (
     referenced
       // 短别名只出现在更长店名内部时，不算展示过该门店；独立提及短店名仍保留。
-      .filter(
-        ({ spans }) =>
-          spans.length === 0 ||
-          spans.some(
-            (span) =>
-              !allSpans.some(
-                (other) =>
-                  other.start <= span.start &&
-                  other.end >= span.end &&
-                  other.end - other.start > span.end - span.start,
-              ),
-          ),
-      )
+      .filter(({ spans }) => spans.length === 0 || hasIndependentStoreReference(spans, allSpans))
       .filter(({ score }) => score >= 5)
       .sort((a, b) => b.score - a.score)
       .map(({ job }) => job)
@@ -204,6 +182,33 @@ function storeReferenceNames(job: RecommendedJobSummary): string[] {
     .filter((value, index, values) => value.length >= 2 && values.indexOf(value) === index);
 }
 
+type StoreReferenceSpan = { start: number; end: number };
+
+function storeReferenceSpans(job: RecommendedJobSummary, text: string): StoreReferenceSpan[] {
+  return storeReferenceNames(job).flatMap((name) => {
+    const spans: StoreReferenceSpan[] = [];
+    for (let start = text.indexOf(name); start >= 0; start = text.indexOf(name, start + 1)) {
+      spans.push({ start, end: start + name.length });
+    }
+    return spans;
+  });
+}
+
+function hasIndependentStoreReference(
+  spans: StoreReferenceSpan[],
+  allSpans: StoreReferenceSpan[],
+): boolean {
+  return spans.some(
+    (span) =>
+      !allSpans.some(
+        (other) =>
+          other.start <= span.start &&
+          other.end >= span.end &&
+          other.end - other.start > span.end - span.start,
+      ),
+  );
+}
+
 function matchesStoreReference(job: RecommendedJobSummary, normalizedText: string): boolean {
   return storeReferenceSpecificity(job, normalizedText) > 0;
 }
@@ -238,14 +243,11 @@ export function findStoreReferencedJobs(
     const brand = normalizeForMatch(job.brandName);
     return brand && text.includes(brand);
   });
-  const scored = unique.map((job) => ({
-    job,
-    // 完整/更长门店名优先，避免「万达」短别名与「万达广场店」同分。
-    score: storeReferenceSpecificity(job, text),
-  }));
-  const bestScore = Math.max(0, ...scored.map(({ score }) => score));
-  const storeMatches = scored
-    .filter(({ score }) => score > 0 && score === bestScore)
+  const referenced = unique.map((job) => ({ job, spans: storeReferenceSpans(job, text) }));
+  const allSpans = referenced.flatMap(({ spans }) => spans);
+  // 只抑制嵌在长店名内的别名；独立提及的短店名仍须参与歧义判断。
+  const storeMatches = referenced
+    .filter(({ spans }) => hasIndependentStoreReference(spans, allSpans))
     .map(({ job }) => job);
   if (brandMatches.length === 0) return storeMatches;
   if (storeMatches.length === 0) return brandMatches;

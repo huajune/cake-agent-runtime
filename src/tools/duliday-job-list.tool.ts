@@ -1204,7 +1204,16 @@ export function buildJobListTool(
         try {
           brandCatalog = await spongeService.fetchBrandList();
         } catch (error) {
-          logger.warn(`品牌目录拉取失败，入口标准化按空目录降级: ${toErrorMessage(error)}`);
+          logger.warn(`品牌目录拉取失败: ${toErrorMessage(error)}`);
+          if (brandIdListInput.length > 0 || brandAliasListInput.length > 0) {
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+              outcome: '品牌目录暂时不可用，本次未查询岗位',
+              replyInstruction:
+                '保留原品牌 ID/名称和筛选条件重试。目录请求失败不代表品牌不存在或截图读错，' +
+                '不得让候选人重新读编号、不得声称品牌未合作或无岗，也不得清空品牌后扩展查询。',
+            });
+          }
         }
         const brandPlan = buildBrandQueryPlan({
           brandAliasList: brandAliasListInput,

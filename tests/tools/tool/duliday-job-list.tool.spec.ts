@@ -1674,6 +1674,25 @@ describe('buildJobListTool', () => {
       },
     );
 
+    it('目录异常不把有效 ID 判成截图读错，恢复后用原参数重试', async () => {
+      mockSpongeService.fetchBrandList.mockRejectedValueOnce(
+        new Error('catalog temporarily unavailable'),
+      );
+      const input = { ...defaultInput, cityNameList: ['常州'], brandIdList: [10006] };
+      const context = { ...mockContext, currentUserMessage: '必胜客有岗吗' };
+      const failed = await executeTool(context, input);
+      expect(failed.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
+      expect(failed.rejectedBrandIds).toBeUndefined();
+      expect(failed._replyInstruction).toContain('保留原品牌');
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      mockSpongeService.fetchBrandList.mockResolvedValue(catalogWithIds);
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+      await executeTool(context, input);
+      expect(mockSpongeService.fetchJobs.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ brandIdList: [10006] }),
+      );
+    });
+
     it('目录内 ID 与目录外 ID 混传：只按目录内 ID 查询', async () => {
       mockSpongeService.fetchBrandList.mockResolvedValue(catalogWithIds);
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });

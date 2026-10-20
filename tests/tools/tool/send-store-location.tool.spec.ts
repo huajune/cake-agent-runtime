@@ -177,6 +177,23 @@ describe('buildSendStoreLocationTool', () => {
     },
   );
 
+  it('长短店名独立出现时，不向候选人发送被拒绝的长店名定位', async () => {
+    const longer = makeJob({
+      storeInfo: { ...makeJob().basicInfo.storeInfo, storeName: '东方广场店' },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [longer] });
+    const result = await executeTool(
+      { jobId: 100, referenceText: '朝内店' },
+      {
+        candidatePool: [{ ...referencedStore, brandName: '必胜客', storeName: '朝内店' }],
+        currentUserMessage: '不要东方广场店，发朝内店定位',
+      },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+    expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
+  });
+
   it('accepts an exact named store and rejects a fabricated reference', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
     const rejected = await executeTool(

@@ -82,6 +82,13 @@ describe('resolution/job', () => {
     expect(findStoreReferencedJobs([chaoneiJob, otherBrand], '肯德基朝内店地址')).toHaveLength(2);
   });
 
+  it('独立点名的长短店名都参与歧义判断，不能默认选择长店名', () => {
+    const longer = { ...dongdanJob, storeName: '东方广场店' };
+    const message = '不要东方广场店，发朝内店定位';
+    expect(findStoreReferencedJobs([longer, chaoneiJob], message)).toEqual([longer, chaoneiJob]);
+    expect(pickBestReferencedJob([longer, chaoneiJob], message, 'store')).toBeNull();
+  });
+
   it('prefers a complete store name over another store’s shorter alias', () => {
     const shortName = { ...chaoneiJob, storeName: '万达店' };
     const fullName = { ...dongdanJob, storeName: '万达广场店' };
