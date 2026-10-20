@@ -900,9 +900,24 @@ export class GeneratorAgent {
     const lastUserText = this.lastUserMessageText(ctx.normalizedMessages);
     if (!lastUserText || !isRecoveryConfirmationReply(lastUserText)) return null;
 
-    const turnPrecheck = this.readLatestPrecheckState(result.toolCalls);
-    const pending = turnPrecheck ?? (await this.readPersistedCollectionState(ctx));
+    const lastPrecheckIndex = result.toolCalls
+      .map((call) => call.toolName)
+      .lastIndexOf('duliday_interview_precheck');
+    // 本轮已有 precheck 时以其最终状态为准，不能用旧表单覆盖 already_booked 等终态。
+    const pending =
+      lastPrecheckIndex >= 0
+        ? this.readLatestPrecheckState(result.toolCalls)
+        : await this.readPersistedCollectionState(ctx);
     if (!pending) return null;
+    // precheck 之后的同岗位成功提交已经兑现承诺，空正文应恢复真实回执。
+    // 旧的成功提交或其它岗位的成功不能替后续待提交表单销账。
+    const submitted = result.toolCalls.slice(lastPrecheckIndex + 1).some((call) => {
+      if (call.toolName !== 'duliday_interview_booking') return false;
+      const output = call.result as { success?: unknown } | null;
+      const args = call.args as { jobId?: unknown } | undefined;
+      return output?.success === true && args?.jobId === pending.jobId;
+    });
+    if (submitted) return null;
 
     const nodeText =
       pending.nextAction === 'confirm_collection'
@@ -982,6 +997,22 @@ export class GeneratorAgent {
 
   private buildEmptyTextRecoveryPrompt(result: GeneratorRunResult, ctx: WorkingMemory): string {
     const ranTools = result.toolCalls.length > 0;
+    // 长 precheck/阶段说明会把摘要尾部截掉；成功副作用单独置顶，不能丢失真实办理结果。
+    const completedActions = result.toolCalls
+      .filter(
+        (call) =>
+          [
+            'duliday_interview_booking',
+            'duliday_modify_interview_time',
+            'duliday_cancel_work_order',
+          ].includes(call.toolName) &&
+          (call.result as { success?: unknown } | null)?.success === true,
+      )
+      .map((call) => ({
+        toolName: call.toolName,
+        args: call.args,
+        result: this.truncateForPrompt(this.safeJsonStringify(call.result), 5000),
+      }));
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
       finishReason: step.finishReason,
@@ -1007,6 +1038,8 @@ export class GeneratorAgent {
       '- 如果工具结果显示 requestedDate.status=unavailable，必须明确说明不可约原因，并给最近可选替代时间。',
       '- 不要编造工具结果或提交进度。只有 duliday_interview_booking success=true 才能声称新预约已成功；' +
         'duliday_modify_interview_time success=true 可以确认改期结果，precheck 的 already_booked 可以复述已有预约。',
+      '- 已完成动作中有 booking success=true 时，必须明确告知报名成功并照实复述安排；' +
+        '禁止再说“这就提交/稍等结果”，也不得把前序 precheck 的待提交状态当作最终状态。',
       '- 工具返回的可选面试时间、地点可以如实转述，但必须区分“可选择”和“已预约”；' +
         'requestedDate.status=unavailable 的替代时段不代表已预约。只复述工具已证实的事实，不补造缺失的时间或地点。',
       '- 没有对应成功结果时，禁止写“这就帮你提交/马上帮你报名/已经约好”等暗示报名已办好或即将办好的话；' +
@@ -1017,6 +1050,9 @@ export class GeneratorAgent {
             '- 本轮没有执行任何工具：不得报出任何岗位名称、薪资、距离、班次等岗位事实，' +
               '也不要写"我帮你查下/稍后告诉你"这类无法兑现的承诺；直接顺着对话回应，或询问候选人还需要什么信息。',
           ]),
+      '',
+      '本轮已完成的业务动作（真实成功回执，优先于前序待提交状态）：',
+      this.safeJsonStringify(completedActions),
       '',
       '对话上下文：',
       this.truncateForPrompt(this.formatMessagesForRecovery(ctx.normalizedMessages), 8000),

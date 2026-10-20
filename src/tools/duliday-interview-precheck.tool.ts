@@ -1141,10 +1141,10 @@ function actionForForm(
       if (ageBoundarySignalOf(run.form, run.contract)?.severity === 'boundary') {
         return 'age_boundary_handoff';
       }
-      // 近期窗口无一可自助提交：资料齐了也没有 booking 出口，比照年龄弹性带在 recap 之前截住转人工。
+      if (!isCollectionAuthorized(run.form)) return 'confirm_collection';
+      // 近期窗口无一可自助提交：资料获授权后仍没有 booking 出口，转人工协调。
       // 这类岗位是直接转人工还是海绵补齐面试时间，待运营裁定；裁定前按转人工实现。
       if (allSlotsRequireManualConfirmation) return 'interview_time_manual_handoff';
-      if (!isCollectionAuthorized(run.form)) return 'confirm_collection';
       return isSubmissionAuthorized({
         form: run.form,
         waitNotice,

@@ -958,6 +958,21 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       { labelTitle: '性别', value: '女', quote: '我是女的' },
     ];
 
+    it('外部预填资料先确认复述，确认后才允许人工协调日期型面试', async () => {
+      sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_DATE_ONLY_WINDOWS] });
+      currentForm = filledForm();
+      const pending = await execute({ jobId: 100, mode: 'query' });
+      expect(pending.nextAction).toBe('confirm_collection');
+      expect(pending.recap.candidateMessage).toContain('姓名：兮兮');
+      expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+
+      context.turnInput.messages = recapDialogue('没问题');
+      const confirmed = await execute(recapConfirmationInput());
+      expect(currentForm?.lastRecap?.affirmed).toBe(true);
+      expect(confirmed.nextAction).toBe('interview_time_manual_handoff');
+      expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+    });
+
     it('资料收齐后不给 select_interview_time，改 interview_time_manual_handoff 并要求 request_handoff(interview_slot_coordination)', async () => {
       sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_DATE_ONLY_WINDOWS] });
       context.turnInput.messages = [

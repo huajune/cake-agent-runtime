@@ -442,6 +442,79 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
     expect(collectionForms.peekPrimary).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['success_after', true],
+    ['failed_after', false],
+    ['other_job_after', false],
+    ['success_before', false],
+    ['already_booked', true],
+  ])('本轮预约终态 %s 决定是否恢复回执，而非误报未提交', async (kind, recover) => {
+    const precheck = {
+      toolCallId: 'precheck',
+      toolName: 'duliday_interview_precheck',
+      input: { mode: 'validate', jobId: 100, recapConfirmation: true },
+      output: {
+        success: true,
+        nextAction: kind === 'already_booked' ? 'already_booked' : 'ready_to_book',
+      },
+    };
+    const booking = {
+      toolCallId: 'booking',
+      toolName: 'duliday_interview_booking',
+      input: { jobId: kind === 'other_job_after' ? 200 : 100 },
+      output: { success: kind !== 'failed_after', workOrderId: 901 },
+    };
+    const calls =
+      kind === 'already_booked'
+        ? [precheck]
+        : kind === 'success_before'
+          ? [booking, precheck]
+          : [precheck, booking];
+    if (kind === 'success_after') {
+      calls.unshift(
+        ...Array.from({ length: 3 }, (_, index) => ({
+          ...precheck,
+          toolCallId: `long-${index}`,
+          toolName: 'duliday_job_list',
+          output: { ...precheck.output, padding: 'x'.repeat(10000) },
+        })),
+      );
+    }
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ...emptyStep(),
+        steps: calls.map((call) => ({
+          text: '',
+          finishReason: 'tool-calls',
+          toolCalls: [{ toolCallId: call.toolCallId, toolName: call.toolName, input: call.input }],
+          toolResults: [
+            { toolCallId: call.toolCallId, toolName: call.toolName, output: call.output },
+          ],
+        })),
+      })
+      .mockResolvedValueOnce({ ...recoveredText(), text: '面试预约已成功。' });
+    const { service, collectionForms } = makeService(generate, '好的', awaitingRecapForm());
+    const result = await invoke(service, '好的');
+    expect(collectionForms.peekPrimary).not.toHaveBeenCalled();
+    if (recover) {
+      expect(result.recoveryDisposition).toBeUndefined();
+      expect(result.text).toBe('面试预约已成功。');
+      expect(generate).toHaveBeenCalledTimes(2);
+      if (kind === 'success_after') {
+        const prompt = generate.mock.calls[1][0].prompt as string;
+        const receipt = prompt
+          .split('本轮已完成的业务动作（真实成功回执，优先于前序待提交状态）：\n')[1]
+          .split('\n\n对话上下文：')[0];
+        expect(JSON.parse(JSON.parse(receipt)[0].result).workOrderId).toBe(901);
+        expect(prompt).toContain('禁止再说“这就提交/稍等结果”');
+      }
+    } else {
+      expect(result.recoveryDisposition?.reasonCode).toBe('empty_recovery_pending_submission');
+      expect(generate).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it('候选人不是确认词（在问别的时间）→ 闸不触发，照旧无工具恢复', async () => {
     const generate = jest
       .fn()
