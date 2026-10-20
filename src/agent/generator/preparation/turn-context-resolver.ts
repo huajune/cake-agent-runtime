@@ -1,4 +1,5 @@
 import { inferCitiesFromGeoSignals } from '@resolution/geo/city-adjudicator';
+import { isConcreteCityScope } from '@resolution/geo';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import {
@@ -248,6 +249,9 @@ export function resolveTurnContext(input: {
     bookingWorkOrders,
     visualSheetsByContent: sources.visualSheetsByContent,
     humanTakeoverActive: input.humanTakeoverActive,
+    realtimeGroupCities: sources.realtimeGroups
+      .map((group) => group.city)
+      .filter(isConcreteCityScope),
   });
 
   return {

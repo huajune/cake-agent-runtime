@@ -449,6 +449,37 @@ describe('tool-call-analysis', () => {
       expect(isForbiddenForProactive('invite_to_group')).toBe(true);
     });
 
+    it('取消/改约成功后阻断 replay（badcase [03]：首版已取消工单，重跑版向候选人要工单号）', () => {
+      // 首版 duliday_cancel_work_order 成功取消 472980 后候选人补发消息触发 replay，整轮被丢弃
+      // 重跑；重跑 prompt 里预约快照已空、工单号不在上下文，模型调 cancel(workOrderId=0) 被拒
+      // 后向候选人索要工单号。副作用既成的取消/改约与 booking/invite 同级，必须阻断 replay。
+      for (const toolName of ['duliday_cancel_work_order', 'duliday_modify_interview_time']) {
+        expect(REPLAY_BLOCKING_TOOLS.has(toolName)).toBe(true);
+        expect(
+          blocksReplay({
+            toolName,
+            result: { success: true, errorType: null, workOrderId: 472980 },
+          }),
+        ).toBe(true);
+        // 失败的取消/改约没有改变外部状态，照常吸收 pending 并 replay。
+        expect(
+          blocksReplay({
+            toolName,
+            result: buildToolError({
+              errorType: TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID,
+              outcome: '缺少有效工单号',
+              replyInstruction: 'x',
+            }),
+          }),
+        ).toBe(false);
+      }
+    });
+
+    it('keeps revise and proactive policy aligned with the side-effect set', () => {
+      expect(isForbiddenDuringRevise('duliday_interview_booking')).toBe(true);
+      expect(isForbiddenForProactive('invite_to_group')).toBe(true);
+    });
+
     it('reads the minimal side-effect and guardrail result fields when tools provide them', () => {
       expect(isSideEffectCommitted({ sideEffectCommitted: true })).toBe(true);
       expect(isToolSuccess({ sideEffectCommitted: true })).toBe(true);

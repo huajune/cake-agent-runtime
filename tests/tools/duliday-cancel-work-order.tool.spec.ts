@@ -311,6 +311,70 @@ describe('buildCancelWorkOrderTool', () => {
     });
   });
 
+  describe('工单号缺失回执（badcase [03]：replay 重跑后模型调 cancel(workOrderId=0) 再向候选人要工单号）', () => {
+    it.each([undefined, null, 0, -1, 1.5])(
+      'testing 链路缺少有效工单号 %s 时，先给业务处置指令，不要求手机号',
+      async (workOrderId) => {
+        const context = mergeToolContext(mockContext, {
+          runtime: { strategySource: 'testing' },
+        });
+        const result = await exec(buildTool(context), { workOrderId });
+        expect(result.errorType).toBe(TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID);
+        expect(result._replyInstruction).toContain('禁止向候选人索要工单号');
+        expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+        expect(spongeService.fetchFailureReasonsByPids).not.toHaveBeenCalled();
+      },
+    );
+
+    it('testing 链路有有效工单号时仍执行 PII 写入闸门', async () => {
+      const context = mergeToolContext(mockContext, { runtime: { strategySource: 'testing' } });
+      const result = await exec(buildTool(context), { workOrderId: 123 });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED);
+      expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['workOrderId=0', { workOrderId: 0 }],
+      ['workOrderId=null', { workOrderId: null }],
+      ['workOrderId 缺省', {}],
+    ])(
+      '%s：schema 放行、execute 回执禁止向候选人索要工单号并指向 request_handoff',
+      async (_label, args) => {
+        const tool = buildTool();
+        // 入参校验已从 zod positive() 移进 execute：schema 必须接受 0 / null / 缺省，
+        // 否则模型只会收到裸 zod 报错，没有任何处置指引。
+        const schema = tool.inputSchema as unknown as {
+          parseAsync: (v: unknown) => Promise<unknown>;
+        };
+        await expect(schema.parseAsync(args)).resolves.toBeDefined();
+
+        const result = (await exec(tool, args)) as Record<string, unknown>;
+
+        expect(spongeService.fetchFailureReasonsByPids).not.toHaveBeenCalled();
+        expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+          success: false,
+          errorType: TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID,
+        });
+        const instruction = String(result._replyInstruction);
+        expect(instruction).toContain('禁止向候选人索要工单号');
+        expect(instruction).toContain('系统内部编号');
+        expect(instruction).toContain('request_handoff(reasonCode="modify_appointment")');
+        expect(instruction).toContain('不得谎称已取消');
+        expect(instruction).toContain('不得否认预约存在');
+      },
+    );
+
+    it('description 与 schema 说明同步声明工单号是内部编号、不得向候选人索要', () => {
+      const tool = buildTool();
+      expect(String(tool.description)).toContain('严禁向候选人索要工单号');
+      const shape = (
+        tool.inputSchema as unknown as { shape: Record<string, { description?: string }> }
+      ).shape;
+      expect(shape.workOrderId.description).toContain('不得向候选人索要工单号');
+    });
+  });
+
   it('returns CANCEL_REJECTED when the cancel API reports business failure', async () => {
     spongeService.cancelWorkOrder.mockResolvedValue({ success: false, code: 500, message: 'busy' });
     const tool = buildTool();

@@ -231,12 +231,16 @@ export class BookingContextLoaderService {
         typeof job.basicInfo?.storeInfo?.storeAddress === 'string'
           ? job.basicInfo.storeInfo.storeAddress.trim()
           : undefined;
+      const storeCity =
+        typeof job.basicInfo?.storeInfo?.storeCityName === 'string'
+          ? job.basicInfo.storeInfo.storeCityName.trim() || undefined
+          : undefined;
       const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
       const interviewMethod = interviewMeta.method ?? undefined;
       const interviewAddress = requiresStoreVisit(interviewMeta.method)
         ? (interviewMeta.address ?? undefined)
         : undefined;
-      return { storeAddress, interviewMethod, interviewAddress };
+      return { storeAddress, storeCity, interviewMethod, interviewAddress };
     } catch (error) {
       this.logger.warn(`加载预约地址详情失败 workOrderId=${workOrderId}: ${toErrorMessage(error)}`);
       return undefined;

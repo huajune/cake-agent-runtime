@@ -1,7 +1,10 @@
-import { normalizeCityName as normalizeCity } from '@resolution/geo';
+import { normalizeCityName as normalizeCity, isConcreteCityScope } from '@resolution/geo';
 import { mentionsPlaceNameStandalone, scanGeoSignalsFromText } from '@resolution/geo';
+import { isAssistantQuestionConfirmedInDialogue } from '@resolution/notary/dialogue-confirmation';
+import { extractDialogueTurns } from '@resolution/signal/dialogue';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import { mapLocationCityCandidates } from '@resolution/turn-hints/admission';
+import type { ToolBuildContext } from '@shared-types/tool.types';
 
 /**
  * invite_to_group 城市 provenance gate（tool guardrail，纯函数）。
@@ -11,8 +14,17 @@ import { mapLocationCityCandidates } from '@resolution/turn-hints/admission';
  * ② 候选人本会话原文里出现过该城市（含定位消息渲染文本），或
  * ③ 候选人原文命中 @resolution/geo 地名白名单（区名唯一映射 / 高置信地标），
  *   且推导城市与入参一致（district_inference），或
- * ④ 本轮 geocode unique 解析确权过该城市（turn_geocode）。
+ * ④ 本轮 geocode unique 解析确权过该城市（turn_geocode），或
+ * ⑤ 本轮地图截图的城市字段（turn_map_screenshot），或
+ * ⑥ 候选人当前已在该城市的兼职群（实时核验结果，realtime_group），或
+ * ⑦ 候选人在途预约工单的门店在该城市（booking_store），或
+ * ⑧ 招募经理问过「你是在 X 对吧」且候选人下一条是肯定应答（confirmed_question，
+ *   复用 @resolution/notary 的问答绑定公证）。
  * 模型参数单独不构成依据（HC-2 权威字段准入的同一原则）。
+ *
+ * ⑥–⑧ 三档于 2026-10-19 加入（BadCase 复核 [17]：候选人在佛山群、模型传 city=佛山 被静默丢弃，
+ * 全国搜「王府井」唯一命中北京并写入 pref.city=北京）；它们都排在 session 冲突判定之前——
+ * 群成员关系/在途预约/候选人亲口确认都是比旧会话事实更贴近当前位置的外生证据。
  *
  * 判定只读、不产生副作用；拒绝均为可恢复（reject_collect 语义）：
  * - city_conflict：会话记忆有城市且与入参不一致 → 模型应改用 expectedCity 或先与候选人确认；
@@ -20,7 +32,8 @@ import { mapLocationCityCandidates } from '@resolution/turn-hints/admission';
  *
  * 已知边界（catalog residualRisk 同步登记）：
  * - 候选人原文提到他人城市/曾居城市时仍会放行（出处判定不是意图判定，区名/地标档同）；
- * - 跨会话回访客户城市只在长期画像里、本会话未提及时会被要求重新确认城市。
+ * - 跨会话回访客户城市只在长期画像里、本会话未提及时会被要求重新确认城市；
+ * - 在途预约门店城市只在本轮加载了预约地址详情时可用（面试/地址相关回合），不是每轮都有。
  */
 
 export type InviteCityGateVerdict =
@@ -31,7 +44,10 @@ export type InviteCityGateVerdict =
         | 'user_text'
         | 'district_inference'
         | 'turn_geocode'
-        | 'turn_map_screenshot';
+        | 'turn_map_screenshot'
+        | 'realtime_group'
+        | 'booking_store'
+        | 'confirmed_question';
     }
   | {
       decision: 'reject';
@@ -64,6 +80,36 @@ export interface InviteCityGateInput {
    * 门店城市不算，因为它不表示候选人所在地。
    */
   turnVisualSheets?: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
+  /**
+   * 候选人当前已在的兼职群城市（与 prompt [候选人当前所在兼职群] 同源的实时核验结果，
+   * 核验失败为空）。群成员关系是候选人所在城市的强外生证据。
+   */
+  realtimeGroupCities?: readonly string[];
+  /**
+   * 候选人在途预约工单的门店城市（与 [当前预约信息] 同门可见的工单；只在本轮加载了
+   * 预约地址详情时有值），排除已明确不属于候选人本人的工单。
+   */
+  bookingStoreCities?: readonly string[];
+  /**
+   * 本会话对话消息（user/assistant 原始 transport messages），用于识别「招募经理问
+   * 你是在 X 对吧 → 候选人肯定应答」的确认链。
+   */
+  dialogueMessages?: readonly unknown[];
+}
+
+/** 工具上下文里⑥–⑧ 三档出处的统一取数，geocode 与 invite 两个消费方共用一份口径。 */
+export function collectCityGateContextInputs(
+  context: ToolBuildContext,
+): Pick<InviteCityGateInput, 'realtimeGroupCities' | 'bookingStoreCities' | 'dialogueMessages'> {
+  return {
+    realtimeGroupCities: (context.archive.realtimeGroupCities ?? []).filter(isConcreteCityScope),
+    bookingStoreCities: (context.archive.bookingWorkOrders ?? [])
+      // 非本人快照仅供展示；指针路径未显式标记归属，由 active_booking 保证。
+      .filter((workOrder) => workOrder.ownedByCandidate !== false)
+      .map((workOrder) => workOrder.storeCity ?? null)
+      .filter((city): city is string => Boolean(city && city.trim())),
+    dialogueMessages: context.turnInput.messages,
+  };
 }
 
 export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGateVerdict {
@@ -122,8 +168,89 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
     return { decision: 'allow', matchedBy: 'turn_map_screenshot' };
   }
 
+  // 已在群档：候选人已经在该城市的兼职群里（实时核验，非记忆），群成员关系即城市证据。
+  if (normalizeCitySet(input.realtimeGroupCities).has(requested)) {
+    return { decision: 'allow', matchedBy: 'realtime_group' };
+  }
+
+  // 在途预约门店档：候选人已约面的门店在该城市。
+  if (normalizeCitySet(input.bookingStoreCities).has(requested)) {
+    return { decision: 'allow', matchedBy: 'booking_store' };
+  }
+
+  // 问答确认档：招募经理问「你是在 X 对吧」且候选人下一条为肯定短答。
+  if (
+    input.dialogueMessages?.length &&
+    isCityConfirmedByCandidate(requested, input.dialogueMessages)
+  ) {
+    return { decision: 'allow', matchedBy: 'confirmed_question' };
+  }
+
   if (session) {
     return { decision: 'reject', reason: 'city_conflict', expectedCity: session };
   }
   return { decision: 'reject', reason: 'city_unverified' };
+}
+
+function normalizeCitySet(cities: readonly string[] | undefined): Set<string> {
+  const normalized = new Set<string>();
+  for (const city of cities ?? []) {
+    const value = normalizeCity(city);
+    if (value) normalized.add(value);
+  }
+  return normalized;
+}
+
+/** 句级切分：只拿含城市名、且带求证语气的那一句当问句，避免整条消息里别处的「吗/？」误配。 */
+const SENTENCE_SPLIT_RE = /[。！？!?\n；;]+/u;
+// 只公证“你（现在）在 X（这边）吗/对吧”这一封闭问句形态；
+// 岗位意向、工作经历等含城市的其他问题不能据肯定短答推成当前位置。
+const CITY_LOCATION_PREFIX_RE = /(?:你|您)(?:现在|目前)?(?:是)?在\s*$/u;
+const CITY_LOCATION_SUFFIX_RE =
+  /^(?:市)?(?:这边|这里|这儿|附近)?\s*(?:对吧|对吗|对么|对不对|是吗|是么|是吧|吗|么|吧)$/u;
+
+function extractCityConfirmationQuestion(assistantText: string, city: string): string | null {
+  for (const raw of assistantText.split(SENTENCE_SPLIT_RE)) {
+    const sentence = raw.trim();
+    if (!sentence || !mentionsPlaceNameStandalone(sentence, city)) continue;
+    const cityIndex = sentence.indexOf(city);
+    if (
+      CITY_LOCATION_PREFIX_RE.test(sentence.slice(0, cityIndex)) &&
+      CITY_LOCATION_SUFFIX_RE.test(sentence.slice(cityIndex + city.length))
+    )
+      return sentence;
+  }
+  return null;
+}
+
+/**
+ * 候选人最近一次城市证据是否仍支持「你是在 X 对吧」的肯定应答。
+ *
+ * 问句与应答的相邻绑定、肯定词表判定都交给 @resolution/notary 的
+ * isAssistantQuestionConfirmedInDialogue；只传入当前问答对，避免重复问句绑定到旧答案。
+ * 后来的城市陈述或另一轮城市问答会覆盖旧确认，不能让旧确认穿透 session 冲突闸。
+ */
+function isCityConfirmedByCandidate(city: string, messages: readonly unknown[]): boolean {
+  const turns = extractDialogueTurns(messages);
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const answer = turns[index];
+    if (answer.role !== 'user') continue;
+    const statedCity = normalizeCity(scanGeoSignalsFromText(answer.text).city?.value ?? null);
+    if (statedCity && statedCity !== city) return false;
+
+    const previous = turns[index - 1];
+    if (previous?.role !== 'assistant') continue;
+    const questionCity = normalizeCity(scanGeoSignalsFromText(previous.text).city?.value ?? null);
+    if (!questionCity) continue;
+    const question = extractCityConfirmationQuestion(previous.text, questionCity);
+    if (!question) continue;
+    return (
+      questionCity === city &&
+      isAssistantQuestionConfirmedInDialogue(question, answer.text, [
+        { role: 'assistant', content: previous.text },
+        { role: 'user', content: answer.text },
+      ])
+    );
+  }
+  return false;
 }

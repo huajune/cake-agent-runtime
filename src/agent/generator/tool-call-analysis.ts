@@ -185,8 +185,20 @@ export const SIDE_EFFECT_TOOLS = new Set([
   'request_handoff',
 ]);
 
-/** 成功提交后会产生不可逆外部动作，本轮 replay 必须跳过的工具。 */
-export const REPLAY_BLOCKING_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking']);
+/**
+ * 成功提交后会产生不可逆外部动作，本轮 replay 必须跳过的工具。
+ *
+ * 取消/改约与报名/拉群同级：首版已成功取消工单后若整轮被丢弃重跑，预约快照已空、
+ * 工单号不在重跑 prompt 里，模型会凭空调 cancel(workOrderId=0) 甚至向候选人索要工单号
+ * （badcase [03] batch_6ad19d27ce406a6aee98bb9f_1792125255605）。副作用既成就保留首版回复，
+ * 候选人补发的消息按新回合处理，与 booking 口径一致。
+ */
+export const REPLAY_BLOCKING_TOOLS = new Set([
+  'invite_to_group',
+  'duliday_interview_booking',
+  'duliday_cancel_work_order',
+  'duliday_modify_interview_time',
+]);
 
 /** repair 是纯文本修复阶段：这些工具绝不允许在 repair 中暴露。 */
 export const REVISION_FORBIDDEN_TOOLS = new Set([...SIDE_EFFECT_TOOLS]);
