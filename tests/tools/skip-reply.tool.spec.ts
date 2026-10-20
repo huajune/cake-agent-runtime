@@ -91,6 +91,24 @@ describe('buildSkipReplyTool', () => {
   // 「我是星空」，模型 reason 自述「不符合 skip_reply 条件，应正常回复」仍以 confirmation_closure 调用，
   // 工具一接受即整轮静默，候选人等了 51 分钟。
   describe('confirmation_closure runtime admission', () => {
+    it('短确认附带独立传入的图片时不能静默', async () => {
+      const ctx = mergeToolContext(mockContext, {
+        turnInput: {
+          currentUserMessage: '好的',
+          imageUrls: ['https://example.invalid/candidate-upload.png'],
+        },
+      });
+      const result = await execute(buildTool(ctx), {
+        scene: 'confirmation_closure',
+        reason: '候选人回复好的',
+      });
+      expect(result).toMatchObject({
+        skipped: false,
+        errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK,
+      });
+      expect(result).not.toHaveProperty('shortCircuited');
+    });
+
     it.each(['我是星空', '好的'])(
       'rejects an opening line without assistant history: %s',
       async (message) => {

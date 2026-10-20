@@ -198,6 +198,22 @@ describe('PreparationService orchestration', () => {
     expect(result.confirmationClosureEligible).toBe(true);
   });
 
+  it('结构化图片与短确认同时传入时，空回复信封也不具有确认收尾资格', async () => {
+    const harness = createHarness();
+    const result = await harness.service.prepare(
+      {
+        ...params,
+        messages: [
+          { role: 'assistant', content: '请看一下这个岗位。' },
+          { role: 'user', content: '好的' },
+        ],
+        imageUrls: ['https://example.invalid/candidate-upload.png'],
+      },
+      'invoke',
+    );
+    expect(result.confirmationClosureEligible).toBe(false);
+  });
+
   it('lets the resolver own injection-to-security projection and sends only redacted evidence', async () => {
     const harness = createHarness();
     const assessment = {

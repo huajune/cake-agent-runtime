@@ -92,11 +92,15 @@ function resolveCurrentUserText(turnInput: {
 export function getConfirmationClosureRejection(turnInput: {
   messages: readonly unknown[];
   currentUserMessage?: string;
+  imageUrls?: readonly string[];
 }): string | null {
   if (!hasAssistantMessage(turnInput.messages)) {
     return TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN;
   }
-  if (!isShortConfirmationMessage(resolveCurrentUserText(turnInput))) {
+  if (
+    turnInput.imageUrls?.length ||
+    !isShortConfirmationMessage(resolveCurrentUserText(turnInput))
+  ) {
     return TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK;
   }
   return null;
@@ -210,7 +214,7 @@ export function buildSkipReplyTool(): ToolBuilder {
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK,
               replyInstruction:
-                '候选人当前消息为空、达到 10 字或含问句标记，不满足确认收尾的运行时准入；本轮必须正常回复，不得再次调用 skip_reply。',
+                '候选人当前消息含待理解图片、为空、达到 10 字或含问句标记，不满足确认收尾的运行时准入；本轮必须正常回复，不得再次调用 skip_reply。',
               details: { skipped: false, scene, reason: trimmedReason },
             });
           }
