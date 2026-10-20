@@ -14,7 +14,7 @@
 **预计版本**: `v11.13.3`
 **最近更新**: `2026-10-20`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 运营说明
 已实现并完成本轮定向回归，待合入。**本次不合并、不部署。**
@@ -65,6 +65,13 @@
 - PR #1419 **`ship-release` 接入 Claude Code**：新增 `.claude/skills/ship-release` 链接，并与用户现行要求对齐：
 - PR #1419 PR 默认 ready，用户明确要求才开草稿；
 - PR #1419 "准备发版"不等于授权发版：合发布 PR、批准部署、推生产迁移各自确认。
+- PR #1420 收录 Jev（TypeSafe System One）可行性调研
+- PR #1420 核实代码引用并区分建议与正式待办
+- PR #1420 纠正人工预览与结构化输出基线
+- PR #1420 补齐决策上下文与四周指标留存前提
+- PR #1420 修正配置示例和评估上下文保真约束
+- PR #1420 收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。
+- PR #1420 `docs/README.md` 新增「技术调研 (technical/)」分区与入口。
 
 ### 新功能
 - PR #1422 无。
@@ -84,6 +91,8 @@
 - PR #1419 **`ship-release` 接入 Claude Code**：新增 `.claude/skills/ship-release` 链接，并与用户现行要求对齐：
 - PR #1419 PR 默认 ready，用户明确要求才开草稿；
 - PR #1419 沉淀运营版上线通知写法与发送脚本，ship-release 接入 Claude Code
+- PR #1420 收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。
+- PR #1420 `docs/README.md` 新增「技术调研 (technical/)」分区与入口。
 
 ### 问题修复
 - PR #1418 移除 `src/infra/feishu/constants/constants.ts` 中硬编码的 3 组 Webhook URL / SECRET，常量只保留 `ENV_URL_KEY` / `ENV_SECRET_KEY` 键名（落实 CLAUDE.md「禁硬编码密钥（走 ConfigService）」）。
@@ -92,6 +101,7 @@
 - PR #1422 审查补修以当前提交 `e96fe276b4fb6adc70613034f6c2fd9b67e3421f` 为准。
 - PR #1422 电话/视频也豁免时间冲突是用户已确认需求，不按审查建议改成 AI-only。
 - PR #1419 每条两头核实：终点代码成立并能走到，起点按行为搜确实没有；修复条目要证明问题在线上真的出现过
+- PR #1420 修正配置示例和评估上下文保真约束
 
 ### 优化调整
 - PR #1418 `FeishuWebhookService` 只通过 ConfigService 读取配置：
@@ -125,6 +135,10 @@
 - PR #1419 补充部署标签取证来源和缺失处理
 - PR #1419 独占发送标记避免并发重复通知
 - PR #1419 持有独占锁时对明确限流进行有界退避重试
+- PR #1420 收录 Jev（TypeSafe System One）可行性调研
+- PR #1420 核实代码引用并区分建议与正式待办
+- PR #1420 纠正人工预览与结构化输出基线
+- PR #1420 补齐决策上下文与四周指标留存前提
 
 ### 配置变更
 - PR #1418 无新增键。`.env.example` 已有全部 6 个键，补充说明「代码不内置默认值，URL 未配置时跳过发送」。
@@ -169,6 +183,11 @@
 - PR #1419 用范例重新生成的卡片正文，与 2026-10-15 实际发出的卡片逐字一致。
 - PR #1419 `ci:check`（push 前 hook）全部通过：lint、format、typecheck、各项校验、build:ci，jest 8211 通过 / 5 跳过。
 - PR #1419 文档与脚本经四视角 AI 审查（由 Claude 执行），25 条意见均已处理（`~` 未转义：转义会改动正文字符）；其中“模拟新代理执行”这一视角因网络中断未完成。
+- PR #1420 `pnpm run ci:check`（本地 pre-push 全量通过）
+- PR #1420 关键链路已人工验证（纯文档改动，不涉及）
+- PR #1420 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；如有探测需求，已先走 shadow diff（不涉及）
+- PR #1420 新增虚构 prompt 示例值均来自 `src/agent/guardrail/prompt/example-registry.ts`（不涉及）
+- PR #1420 其他说明：这份文档此前只在本地 stash 里有一份（2026-10-12 清理时保留），本 PR 原样收录、未改正文。文中生产数字取自 2026-09-24 与 2026-10-08 的取数窗口，引用前请按当时口径理解。按 `docs/README.md` 的文档规范，若日后把结论转写进 `docs/principles/bitter-lessons.md` 等现状文档，本文可随之删除。
 <!-- release:pending:end -->
 
 ## [11.13.2] - 2026-10-15

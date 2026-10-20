@@ -239,6 +239,52 @@
         "文档与脚本经四视角 AI 审查（由 Claude 执行），25 条意见均已处理（`~` 未转义：转义会改动正文字符）；其中“模拟新代理执行”这一视角因网络中断未完成。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1420",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1420",
+      "title": "收录 Jev（TypeSafe System One）可行性调研",
+      "author": "huajune",
+      "mergedAt": "2026-10-20",
+      "opsNotes": [],
+      "businessUpdates": [
+        "收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。",
+        "`docs/README.md` 新增「技术调研 (technical/)」分区与入口。",
+        "修正配置示例和评估上下文保真约束"
+      ],
+      "summary": [
+        "收录 Jev（TypeSafe System One）可行性调研",
+        "核实代码引用并区分建议与正式待办",
+        "纠正人工预览与结构化输出基线",
+        "补齐决策上下文与四周指标留存前提",
+        "修正配置示例和评估上下文保真约束",
+        "收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。",
+        "`docs/README.md` 新增「技术调研 (technical/)」分区与入口。"
+      ],
+      "features": [
+        "收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。",
+        "`docs/README.md` 新增「技术调研 (technical/)」分区与入口。"
+      ],
+      "fixes": [
+        "修正配置示例和评估上下文保真约束"
+      ],
+      "optimizations": [],
+      "ops": [
+        "收录 Jev（TypeSafe System One）可行性调研",
+        "核实代码引用并区分建议与正式待办",
+        "纠正人工预览与结构化输出基线",
+        "补齐决策上下文与四周指标留存前提"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（本地 pre-push 全量通过）",
+        "关键链路已人工验证（纯文档改动，不涉及）",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；如有探测需求，已先走 shadow diff（不涉及）",
+        "新增虚构 prompt 示例值均来自 `src/agent/guardrail/prompt/example-registry.ts`（不涉及）",
+        "其他说明：这份文档此前只在本地 stash 里有一份（2026-10-12 清理时保留），本 PR 原样收录、未改正文。文中生产数字取自 2026-09-24 与 2026-10-08 的取数窗口，引用前请按当时口径理解。按 `docs/README.md` 的文档规范，若日后把结论转写进 `docs/principles/bitter-lessons.md` 等现状文档，本文可随之删除。"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -373,5 +419,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2304302c0d6543d72f6eb135602ec27abcc46d69"
+  "lastAnalyzedSha": "4e74ba5f3bd1cc54209e03b158bd57c57927426a"
 }
