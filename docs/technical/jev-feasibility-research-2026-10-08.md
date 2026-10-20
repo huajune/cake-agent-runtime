@@ -175,7 +175,7 @@
 | # | 决策点 | 链路 | 设计自评 | 裁定审 | 能力审 | 价值审 | 结论 | 正解（非 Jev） |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 复聊发送前语义停止条件（blockReason 12 枚举） | 异步 Bull | conditional / 5 | 驳回(major) | 驳回(major) | 驳回(fatal) | **驳回** | 删 schema `decision` 冗余字段，代码由 `blockReason` 派生；观测 ≥2 周 |
-| 2 | 关键轮动态硬禁令：regex 粗召回 + noul 精判 | 生成前同步 | weak / 3 | 驳回(major) | 驳回(fatal) | 驳回(fatal) | **驳回** | location/salary 规则改 `candidate_side` 或删；post_interview 改结构化外生信号 |
+| 2 | 关键轮动态硬禁令：regex 粗召回 + noul 精判 | 生成前同步 | weak / 3 | 驳回(major) | 驳回(fatal) | 驳回(fatal) | **驳回** | location/salary 保留必要 assistant 上下文，按结构化条件收窄触发；post_interview 改结构化外生信号 |
 | 3 | 收资短答是否确认复述 / 是否改口 | 工具层同步 | weak / 3 | 驳回(fatal) | 驳回(major) | 驳回(fatal) | **驳回** | 用现成 `recap_confirmation_rejected` 事件算底账；74 次 `recap_not_required` 走 description 收口 |
 | 4 | 候选人最后一条消息是否需要回复 | 生成前同步 | reject / 2 | 驳回(fatal) | 驳回(major) | 驳回(major) | **驳回** | 空产物兜底 `random=false` 或同参 regenerate 一次；复聊待答闸修 timeout 丢消息 |
 | 5 | 【诱饵】轮末软事实标签：品牌极性/用工形式 | 轮末异步 | weak / 2 | 驳回(fatal) | 驳回(fatal) | 驳回(fatal) | **驳回** | 配 `AGENT_EXTRACT_FALLBACKS`；补 labor_form 规则兜底写入的落库事件 |
@@ -212,13 +212,13 @@
 #### #2 关键轮动态硬禁令 regex 粗召回 + noul 精判 — 驳回
 
 - **设计要点**：`PreparationService` 构造 `normalizedMessages` 后、`resolveTurnContext()` 前，仅在正则命中时发一次 Jev（6 道 noul：纹身自陈 / 性别自报 / 裸数字=年龄 / 面试后状态 / 面试日期 / 地址来自候选人），p ≤ τ_suppress 则抑制注入；硬超时 1200ms，超时按现状注入；state = 候选人侧近 12 条 ≈2.5–4k token。
-- **一句话致命伤**：假阳大头已被改靶吃掉，剩下的仍是一行改靶能修的；真正交给 Jev 的残余量每天个位数，且 state 剔除了判断所需的 assistant 上一轮。
+- **一句话致命伤**：部分历史假阳已被针对性改靶削减，其余须保留决策上下文重新测量；真正交给 Jev 的残余量每天个位数，且 state 剔除了判断所需的 assistant 上一轮。
 - **关键反驳**：
-  - 痛点基线已失效：76%/69/52 是 0920 改靶前数字，PR#1339（0924 已在 origin/develop）把 post_interview 改 `candidate_side`、health_cert 加 `(?!健康证)`，SQL 估算 post_interview 69→5（−93%）、health_cert 52→19（−63%），合计 121→24 ≈80% 假阳消失；剩余 location 122/200、salary"工资"仍是 `combined` 靶，一行改靶即修，而方案明文"不扩不缩召回"，对它们零作用。
+  - 痛点基线已失效：76%/69/52 是 0920 改靶前数字，PR#1339（0924 已在 origin/develop）把 post_interview 改 `candidate_side`、health_cert 加 `(?!健康证)`，SQL 估算 post_interview 69→5（−93%）、health_cert 52→19（−63%），合计 121→24 ≈80% 假阳消失；剩余 location 122/200、salary"工资"仍是 `combined` 靶，但两者保护上下文回复，不能直接改 `candidate_side`：例如助手先提地址/银行卡、候选人只问“那这个怎么办”时，仍需前一条 assistant 证据。应保留所需上下文或设计结构化触发条件，再测残余假阳；现有数据不能证明一行改靶即可解决。
   - 仓库核实：tattoo/bare_number/gender/interview_date 规则 target 本就是 `current`，不读 Agent 文本；设计把"剔除 Agent 文本"当主要增量实际不成立。`bare_number` 的真判据"刚被问过年龄"依赖 assistant 上一轮，而 state 剔除 assistant 文本——Jev 不识信息不足，会给高置信假答。
   - 标定不可行：`agent_invocation` 7 天即 NULL（migration 20260706171000），"近 30 天重放"不成立；tattoo/gender 日真阳个位数。judgekit 中文 ~890ms vs 1200ms 硬超时，p95 大概率回落。
   - 裁定：[T-6]①③双命中；[C9] 已定性整个动态禁令层是替 qwen 的折旧 harness，再叠境外判定器是为折旧层续命；[C4]/[CL-prompt] 每条规则同时有 regex pattern 与 noul criteria = 同一约束两处居所。
-- **若仍要重议的硬门**：先完成确定性改靶并用 mpr 实测残余语义假阳率 >20% 且每天 >100 回合；给出一个现在可查、与假阳禁令因果绑定的业务指标；tattoo/gender 先按 [T-2] 挂进 extract_facts 试过；按 [C9] 先给整个禁令层写退场指标。
+- **若仍要重议的硬门**：先验证保留必要上下文的结构化触发条件，并用 mpr 实测残余语义假阳率 >20% 且每天 >100 回合；给出一个现在可查、与假阳禁令因果绑定的业务指标；tattoo/gender 先按 [T-2] 挂进 extract_facts 试过；按 [C9] 先给整个禁令层写退场指标。
 
 #### #3 收资短答绑定（是否确认复述 / 是否改口） — 驳回
 
@@ -251,7 +251,7 @@
   - 正常路径被 [T-2]/[T-2.1]/[T-2.2]/[D-5]/[M-tax] 封死（"封闭标签搭现有 extract_facts、不新增调用"）；extract_facts（deepseek-v4-flash）已顺带输出 `brand_intents.polarity` 三值与 `labor_form_intent` set/clear/ignore 并强制逐字 quote，Jev 不能产 quote，[P9] 不采信。
   - **唯一合规落点流量为零**（生产库实测）：近 30 天 25,647 回合、extract_facts 跑 23,401 次，`degraded=0`、`failure=0`（7 天 0/149）——`router.resolveRoute` 对 Dashboard override 仍保留 `AGENT_DEFAULT/EXTRACT_FALLBACKS` 链，降级已被 `providers/reliable` 吃掉。[P8] 的 ≥2 周判例永远攒不出。
   - 即便触发，Jev 比被替换的规则轨更差：`decideLaborFormIntent` 按小句归并出 clear + clearedValues[]，7 选 1 choice 丢掉被排除值，无法表达"不要暑假工，普通兼职就行"；无 abstain 让 ignore 兼任"无法判断"（去 abstain 后 ECE 0.793）；"假期工"需按日期判暑/寒；`coref_target` 位置指代实测 0.42。
-- **处置**：方案作废；零代码替代是配 `AGENT_EXTRACT_FALLBACKS`（如 deepseek-v4-flash → qwen/qwen3.7-flash → qwen3.7-plus），并补 labor_form 规则兜底写入的观测事件落库。
+- **处置**：方案作废；零代码替代是配 `AGENT_EXTRACT_FALLBACKS`（如 deepseek/deepseek-v4-flash → qwen/qwen3.7-flash → qwen/qwen3.7-plus），并补 labor_form 规则兜底写入的观测事件落库。
 - **若仍要重议的硬门**：先用 `message_processing_records` 查近 30 天 `extract_facts_llm_degraded` 回合数——<1% 或日均 <15 回合直接作废；配好三模型降级链跑两周后降级率仍持续 >3% 才重开；重开时 choice 必须保留 `clearedValues` 语义（拆成 set 问 + 每形式一道 clear noul 由代码合成）、显式加"无法判断"选项与 ignore 分离、`coref_target` 与 `brand not_mentioned` 不得作为写入依据；按 [M-ledger] 书面论证非 L11 换名重建并过 [M-tax] 评审；法务放行出境。
 
 #### #6 【诱饵】出站 observe 档句级极性/时态/意图分类 — 驳回
@@ -322,7 +322,7 @@
 | 步 | 做什么 | 输入 | 通过线 | 不过线 | 成本 |
 | --- | --- | --- | --- | --- | --- |
 | 0 前置 | 法务书面口径（PIPL 出境机制 / 单独同意 / ZDR 条款 / 保留期）；大陆生产机到 `api.typesafe.ai` 的 TCP/TLS 可达性与 1000 次 p95 | — | p95 ≤1.2s、错误率 ≤2%、法务放行 | 任何一项不过 → 全部终止 | 0.5 人日 + 法务 |
-| 1 离线重放 | 对**一个**决策点、**全量去标识**后的历史样本（姓名/手机号/住址/年龄一律占位），固定 `model=jev-1.13.0`，并发 ≤3、限速 ≤5 rps；每个 choice 双向换序跑；同时跑已接入的 deepseek-v4-flash / qwen/qwen3.7-flash 的现有结构化输出（JSON 模式 + 本地 schema 校验） 作基线 | 300–600 条双人标注（κ≥0.75），阳性每类 ≥30 | 自动采信桶（max(prob) ≥ 自标定阈值）精确率 ≥0.90、覆盖 ≥60%；换序翻转 ≤3%；中文礼貌式注入对照组带偏 ≤10%；**显著优于基线 ≥5pp（McNemar p<0.05）** | Jev 出局；结论入 bitter-lessons（"不是换名重建"的论证一并写） | 1–2 人日 + <$1 token + 标注 |
+| 1 离线重放 | 对**一个**决策点、**全量去标识**后的历史样本（无关标识移除；影响判定的年龄、电话形态、地址关系使用保留格式与决策条件的合成替身，不用带答案标签的占位符；逐样本复核脱敏前后金标一致），固定 `model=jev-1.13.0`，并发 ≤3、限速 ≤5 rps；每个 choice 双向换序跑；同时跑已接入的 deepseek-v4-flash / qwen/qwen3.7-flash 的现有结构化输出（JSON 模式 + 本地 schema 校验） 作基线 | 300–600 条双人标注（κ≥0.75），阳性每类 ≥30 | 自动采信桶（max(prob) ≥ 自标定阈值）精确率 ≥0.90、覆盖 ≥60%；换序翻转 ≤3%；中文礼貌式注入对照组带偏 ≤10%；**显著优于基线 ≥5pp（McNemar p<0.05）** | Jev 出局；结论入 bitter-lessons（"不是换名重建"的论证一并写） | 1–2 人日 + <$1 token + 标注 |
 | 2 豁免评审 | 过线后按 [M-tax] 单独过快环豁免评审；按 [M-ledger] 逐条写明为何不是 L2/L5/L10/L11 换名重建；question/criteria 登记 prompt-rule-ledger；确定退场判据与 kill switch | 步 1 报告 | 用户裁定 | 不裁定不进任何在线阶段 | 评审会 |
 
 **谁裁定、入哪本账**：步 0/1 的通过线由数据说话，步 2 由用户按 [M-tax] 快环豁免评审裁定；任一步不过线，即按 [M-ledger] 在 `docs/principles/bitter-lessons.md` 入账"Jev 不立项"及论证（含该决策点的样本量、精确率与对照基线数字），本报告作为附件引用。过线进入步 2 后的结论无论通过与否，同样入该台账。
@@ -429,7 +429,7 @@
 以下十项是 2026-10-08 调研快照中的候选建议，尚未分配负责人、排期或验收标准，**不是已确认待办或当前实现状态的权威来源**。采纳前须重新核对代码、问题证据与已有任务；确认采纳后再进入正式任务系统，记录负责人、状态、完成标准和验证结果。
 
 - #1 删复聊 `ReengagementOutput.decision` 字段、代码由 `blockReason` 派生。四周观测的前置条件是先将 `outputCorrection` 记录为保留期覆盖观测窗口的持久标量/事件，或在清理前按日聚合并持久保存校正数、总调用数与采集完整性。`DataCleanupService` 的 `DATA_CLEANUP_AGENT_INVOCATION_DAYS` 默认仅保留 7 天，不能在四周后直接回查 `agent_invocation.outputCorrection`；持久化或聚合未落实前，不启动四周基线测量。
-- #2 `location_reference_needs_grounding` / `salary_account_no_fabricated_policy` 改 `candidate_side` 或删除，mpr 复测 PR#1339 之后的块覆盖率；按 [C9] 给整个动态禁令层写退场指标。
+- #2 `location_reference_needs_grounding` / `salary_account_no_fabricated_policy` 保留所需 assistant 上下文，先设计和验证结构化触发条件，不因候选人短答不含关键词就删除保护；mpr 复测 PR#1339 之后的块覆盖率；按 [C9] 给整个动态禁令层写退场指标。
 - #3 74 次 `recap_not_required` 走 precheck description / 回执 hint 收口。
 - #4 空产物兜底 `random=false` 删第 6 条模板；复聊待答闸修 timeout 丢消息。
 - #5 配 `AGENT_EXTRACT_FALLBACKS`；补 labor_form 规则兜底写入的落库事件。
