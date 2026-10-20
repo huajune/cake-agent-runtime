@@ -785,6 +785,21 @@ describe('geocode tool', () => {
   });
 
   describe('城市出处回执与全国搜交叉核对（BadCase 复核 [17]：佛山候选人说王府井被推北京）', () => {
+    it('全国群不构成城市冲突，唯一全国搜索结果仍可使用', async () => {
+      const ctx = createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        archive: { realtimeGroupCities: ['全国'] },
+        turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
+      });
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        wangfujingBeijing(),
+      ]);
+      const result = await run(ctx, { address: '王府井' });
+      expect(result.resolution).toBe('unique');
+      expect(String(result._replyInstruction)).not.toContain('全国还是');
+      expect(ctx.ledger.geo.anchors).toHaveLength(1);
+    });
+
     const wangfujingBeijing = () =>
       makeCandidate({
         formattedAddress: '北京市东城区王府井',

@@ -1,4 +1,4 @@
-import { normalizeCityName as normalizeCity } from '@resolution/geo';
+import { normalizeCityName as normalizeCity, isConcreteCityScope } from '@resolution/geo';
 import { mentionsPlaceNameStandalone, scanGeoSignalsFromText } from '@resolution/geo';
 import { isAssistantQuestionConfirmedInDialogue } from '@resolution/notary/dialogue-confirmation';
 import { extractDialogueTurns } from '@resolution/signal/dialogue';
@@ -102,7 +102,7 @@ export function collectCityGateContextInputs(
   context: ToolBuildContext,
 ): Pick<InviteCityGateInput, 'realtimeGroupCities' | 'bookingStoreCities' | 'dialogueMessages'> {
   return {
-    realtimeGroupCities: context.archive.realtimeGroupCities ?? [],
+    realtimeGroupCities: (context.archive.realtimeGroupCities ?? []).filter(isConcreteCityScope),
     bookingStoreCities: (context.archive.bookingWorkOrders ?? [])
       // 非本人快照仅供展示；指针路径未显式标记归属，由 active_booking 保证。
       .filter((workOrder) => workOrder.ownedByCandidate !== false)

@@ -503,7 +503,7 @@ describe('evaluateInviteCityGate', () => {
       const messages = [{ role: 'user', content: '你好' }];
       const ctx = createToolContext({
         archive: {
-          realtimeGroupCities: ['佛山'],
+          realtimeGroupCities: ['佛山', '全国', '  '],
           bookingWorkOrders: [
             { workOrderId: 1, jobId: 2, source: 'active_booking', storeCity: '佛山市' },
             { workOrderId: 3, jobId: 4, source: 'out_of_band', storeCity: null },

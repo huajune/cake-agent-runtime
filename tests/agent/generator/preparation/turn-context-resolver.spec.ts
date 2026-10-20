@@ -168,7 +168,10 @@ describe('resolveTurnContext', () => {
           turnHints: null,
         },
         booking: { state: 'none' },
-        realtimeGroups: [{ groupName: '佛山兼职群', city: '佛山' }],
+        realtimeGroups: [
+          { groupName: '佛山兼职群', city: '佛山' },
+          { groupName: '全国兼职群', city: '全国' },
+        ],
         groupInventory: undefined,
         accountIdentity: { nickname: null, gender: null },
         strategyConfig: {
