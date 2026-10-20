@@ -124,17 +124,29 @@ describe('等通知回执按面试方式分支（badcase 2026-10-14 trace batch_
     expect(describeWaitNoticeForCandidate('视频面试')).toContain('视频面试通知');
   });
 
-  it('模型指引：AI 面试并入流程说明第一句并禁止"面试官会电话联系"', () => {
+  it('模型指引：AI 面试采用流程说明首句，不额外承诺通知渠道', () => {
     const guide = buildWaitNoticeReplyGuide({
       interviewMethod: 'AI面试',
       processRemark:
         '报名后 24 小时内短信发送 AI 面试链接，请在 48 小时内完成。通过后由店长电话约到店。',
     });
     expect(guide).toContain('短信');
-    expect(guide).toContain('禁止说"面试官会电话联系"');
+    expect(guide).toContain('通知渠道和安排以流程说明为准');
     expect(guide).toContain('「报名后 24 小时内短信发送 AI 面试链接，请在 48 小时内完成」');
     expect(guide).not.toContain('通过后由店长电话约到店');
     expect(guide).toContain('禁止编造时间');
+  });
+
+  it('岗位 527743 的 AI 枚举与电话备注冲突时，不叠加短信或禁止电话的承诺', () => {
+    const processRemark =
+      '有负责人打电话与候选人沟通！请保证填写名单是电话号码是准确的、正在使用的、可接通的！！！';
+    const text = describeWaitNoticeForCandidate('AI面试', processRemark);
+    expect(text).toContain('有负责人打电话与候选人沟通');
+    expect(text).not.toContain('短信');
+    const guide = buildWaitNoticeReplyGuide({ interviewMethod: 'AI面试', processRemark });
+    expect(guide).not.toContain('面试链接会短信');
+    expect(guide).not.toContain('禁止说"面试官会电话联系"');
+    expect(guide).toContain('存在冲突时优先采用流程说明');
   });
 
   it('模型指引：电话面试沿用原口径；流程说明不并入', () => {

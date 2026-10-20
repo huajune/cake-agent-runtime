@@ -61,11 +61,13 @@ export function describeWaitNoticeForCandidate(
   processRemark?: string | null,
 ): string {
   switch (interviewMethod) {
-    case 'AI面试':
-      return (
-        '第一轮是 AI 面试，面试链接会短信发到你手机，留意短信并按时完成；通过后店长再联系你。' +
-        (firstSentence(processRemark) ? `流程说明：「${firstSentence(processRemark)}」。` : '')
-      );
+    case 'AI面试': {
+      const processLead = firstSentence(processRemark);
+      // 备注可能与枚举冲突；有明确备注时不再叠加默认短信渠道承诺。
+      return processLead
+        ? `请留意面试安排通知，保持手机畅通。流程说明：「${processLead}」。`
+        : '第一轮是 AI 面试，面试链接会短信发到你手机，留意短信并按时完成；通过后店长再联系你。';
+    }
     case '视频面试':
       return '面试形式是视频面试，留意视频面试通知，请保持手机畅通。';
     case '电话面试':
@@ -91,6 +93,9 @@ export function buildWaitNoticeReplyGuide(params: {
   );
   const base = `告知候选人资料已提交，并照实说明：${candidateLine}禁止编造时间。`;
   if (params.interviewMethod === 'AI面试') {
+    if (firstSentence(params.processRemark)) {
+      return `${base}岗位面试方式字段为 AI 面试；通知渠道和安排以流程说明为准，存在冲突时优先采用流程说明，不得补充其未说明的短信或电话承诺。`;
+    }
     return `${base}这个岗位第一轮是 AI 面试，禁止说"面试官会电话联系"。`;
   }
   if (params.interviewMethod === '视频面试') {
