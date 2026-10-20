@@ -152,6 +152,50 @@ describe('ops release notice card', () => {
     }
   });
 
+  it('reserves the notice before posting so concurrent sends cannot both reach Feishu', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-notice-'));
+    const noticePath = path.join(dir, 'notice.json');
+    fs.writeFileSync(noticePath, JSON.stringify(notice()));
+    let finish!: (value: { statusCode: number; body: string }) => void;
+    const deps = {
+      loadWebhookConfig: mockDeps().loadWebhookConfig,
+      postJson: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    };
+    try {
+      const first = main([noticePath], deps);
+      await expect(main([noticePath], deps)).rejects.toThrow('正在发送或上次结果未确认');
+      expect(deps.postJson).toHaveBeenCalledTimes(1);
+      finish({ statusCode: 200, body: '{"code":0}' });
+      await first;
+      expect(fs.existsSync(`${noticePath}.sent`)).toBe(true);
+      expect(fs.existsSync(`${noticePath}.pending`)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps uncertain attempts reserved until the group receipt is manually checked', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-notice-'));
+    const noticePath = path.join(dir, 'notice.json');
+    fs.writeFileSync(noticePath, JSON.stringify(notice()));
+    const deps = mockDeps();
+    deps.postJson.mockRejectedValue(new Error('timeout'));
+    try {
+      await expect(main([noticePath], deps)).rejects.toThrow('timeout');
+      expect(fs.existsSync(`${noticePath}.pending`)).toBe(true);
+      expect(fs.existsSync(`${noticePath}.sent`)).toBe(false);
+      await expect(main([noticePath], deps)).rejects.toThrow('上次结果未确认');
+      expect(deps.postJson).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('does not mark the notice as sent when Feishu rejects it', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-notice-'));
     const noticePath = path.join(dir, 'notice.json');

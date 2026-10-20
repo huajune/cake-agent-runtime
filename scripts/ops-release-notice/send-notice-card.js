@@ -69,9 +69,24 @@ async function main(argv = process.argv.slice(2), deps = { loadWebhookConfig, po
     payload.sign = generateFeishuSign(timestamp, secret);
   }
 
+  // 在第一个网络请求之前独占通知，避免两个进程同时通过 .sent 检查。
+  // 请求结果不明时保留 pending：超时不代表群里没有收到，必须先人工核对。
+  const pendingMarker = `${path.resolve(noticePath)}.pending`;
+  try {
+    fs.writeFileSync(pendingMarker, `${new Date().toISOString()}\n`, { flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    throw new Error(`这份通知正在发送或上次结果未确认；先核对群消息，再处理 ${pendingMarker}`);
+  }
+  // 前一个进程可能刚把 pending 改名为 sent；拿到锁后再检查一次。
+  if (fs.existsSync(sentMarker)) {
+    fs.unlinkSync(pendingMarker);
+    throw new Error('这份通知已发送过；请先核对群消息');
+  }
   const response = await deps.postJson(url, payload);
   assertFeishuResponse(response);
-  fs.writeFileSync(sentMarker, `${new Date().toISOString()}\n`);
+  fs.writeFileSync(pendingMarker, `${new Date().toISOString()}\n`);
+  fs.renameSync(pendingMarker, sentMarker);
   console.log(`${notice.dateLabel}上线通知已发送到蛋糕私聊监控群。`);
 }
 
