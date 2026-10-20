@@ -1315,8 +1315,11 @@ describe('AgentRunnerService.runInboundTurn', () => {
   // 旧链路拆封后把 reason 里的内部理由投递给了候选人。正解等效 skip_reply：整轮静默、
   // 不进 repair、不派守卫介入副作用，守卫档案照常落库。
   it('skip_reply argument envelope is silenced as intentional skip (not unwrapped)', async () => {
-    const draft = '{"reason":"候选人回复纯确认词\'好\'，上轮已完成预约成功回执，无新诉求"}';
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    const draft =
+      '{"scene":"confirmation_closure","reason":"候选人回复纯确认词\'好\'，上轮已完成预约成功回执，无新诉求"}';
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: draft, confirmationClosureEligible: true }),
+    );
     outputGuard.check.mockResolvedValueOnce({
       decision: 'repair',
       riskLevel: 'high',
@@ -1360,73 +1363,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
   });
 
-  // 2026-10-13 生产（trace …_1791860105040，guardrail_review_records#19522，复核 [12]）：模型自造结构化信封
-  // `{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"…应沉默收尾"}`，旧链路
-  // envelope_unwrapped 把 thought 当正文投递。确认收尾准入通过且零工具调用才可整轮静默。
-  it('empty reply-slot envelope is silenced as intentional skip (thought never unwrapped)', async () => {
-    const draft = JSON.stringify({
-      agent_reply: '',
-      candidate_intention: '确认收尾',
-      thought: '候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾',
-      intention_stage: 'interview_scheduling',
-    });
-    generator.invoke.mockResolvedValueOnce(
-      makeResult({ text: draft, confirmationClosureEligible: true }),
-    );
-    outputGuard.check.mockResolvedValueOnce({
-      decision: 'repair',
-      riskLevel: 'high',
-      violations: [
-        {
-          type: 'internal_output_leak',
-          evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=json）',
-          suggestion: '删除泄漏内容',
-          allowFailOpen: false,
-          repairMode: 'rewrite',
-        },
-      ],
-      ruleIds: ['internal_output_leak'],
-      blockedRuleIds: ['internal_output_leak'],
-      repairMode: 'rewrite',
-    });
-
-    const outcome = await service.runInboundTurn({
-      sessionRef,
-      input: { text: '好' },
-      context: { messageId: 'trace-empty-slot-envelope-1' },
-    });
-
-    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
-    expect(outputGuard.check).toHaveBeenCalledTimes(1);
-    expect(outcome.kind).toBe('skipped');
-    expect(outcome.reply).toBeUndefined();
-    expect(outcome.handoff).toBeUndefined();
-    expect(outcome.sideEffects ?? []).toEqual([]);
-    expect(outcome.outputGuardrail).toMatchObject({
-      decision: 'repair',
-      finalOutcome: 'skipped',
-      reasonCode: 'empty_reply_envelope_silenced',
-    });
-    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        finalOutcome: 'skipped',
-        reasonCode: 'empty_reply_envelope_silenced',
-        repaired: false,
-      }),
-    );
-  });
-
   it.each([
-    [
-      { agent_reply: '', thought: '候选人回复好，本轮无新诉求，应沉默收尾' },
-      'skipped',
-      'empty_reply_envelope_silenced',
-    ],
-    [
-      { reply: null, reasoning: '本轮无新诉求，应沉默收尾' },
-      'skipped',
-      'empty_reply_envelope_silenced',
-    ],
     [
       { reply: '', riskType: 'insult', reason: '候选人需要人工协助' },
       'handoff',
@@ -1488,6 +1425,10 @@ describe('AgentRunnerService.runInboundTurn', () => {
     ['first turn', false, '我是星空'],
     ['question after a prior reply', false, '在哪里？'],
     ['missing eligibility evidence', undefined, '好'],
+    ['short new location request', true, '发定位'],
+    ['short booking request', true, '想报名'],
+    ['short switch request', true, '换一家'],
+    ['acknowledgement without explicit envelope intent', true, '好'],
   ])('repairs empty reply envelopes for %s without exposing thought', async (_, eligible, text) => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({
@@ -1506,6 +1447,38 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
     expect(outputGuard.check).toHaveBeenCalledTimes(2);
     expect(generator.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['first turn', false, '我是星空', []],
+    ['question', false, '在哪里？', []],
+    [
+      'successful action',
+      true,
+      '好',
+      [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 123 },
+          result: { success: true, workOrderId: 'wo-1' },
+        },
+      ],
+    ],
+  ])('repairs explicit skip envelopes for %s', async (_, eligible, text, calls) => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: JSON.stringify({ scene: 'confirmation_closure', reason: '无需回复' }),
+        confirmationClosureEligible: eligible as boolean,
+        toolCalls: calls as GeneratorRunResult['toolCalls'],
+      }),
+    );
+    const reply = '您好，你想在哪个城市找工作？';
+    replyRepairAgent.repair.mockResolvedValueOnce(reply);
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: text as string } });
+    expect(outcome.kind).toBe('reply');
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outcome.toolCalls).toEqual(calls);
   });
 
   it.each([

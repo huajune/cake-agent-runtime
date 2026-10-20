@@ -430,7 +430,10 @@ const SKIP_ENVELOPE_NESTED_ARGS_KEYS = new Set(['input', 'arguments', 'parameter
 const SKIP_ENVELOPE_ARG_KEYS = new Set(['reason', 'scene']);
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
 
-export function isSkipIntentEnvelope(content: string): boolean {
+export function isSkipIntentEnvelope(
+  content: string,
+  requiredScene?: 'confirmation_closure',
+): boolean {
   const record = parseJsonObjectEnvelope(content);
   if (!record) return false;
   let nestedArgs: Record<string, unknown> | null = null;
@@ -466,6 +469,7 @@ export function isSkipIntentEnvelope(content: string): boolean {
     return false;
   }
   if (nestedArgs && 'scene' in nestedArgs && typeof nestedArgs.scene !== 'string') return false;
+  if (requiredScene && (nestedArgs ?? record).scene !== requiredScene) return false;
   const reason = (nestedArgs ?? record).reason;
   return typeof reason === 'string' && reason.trim() !== '';
 }
