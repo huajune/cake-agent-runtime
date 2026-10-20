@@ -257,6 +257,9 @@ describe('buildSkipReplyTool', () => {
       '是不是要带身份证',
       '',
       '[表情消息]',
+      '[语音消息] 时长15秒',
+      '[语音消息]',
+      '【语音消息】 时长2秒\n好的',
     ])('rejects non-acknowledgement or question: %s', (text) => {
       expect(isShortConfirmationMessage(text)).toBe(false);
     });
