@@ -1722,6 +1722,16 @@ describe('buildJobListTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
     });
 
+    it('候选人引用的助手品牌不算本人原话出处', async () => {
+      const quoted = '[引用 招聘经理：星巴克有岗吗]不是';
+      const result = await executeTool(
+        { ...mockContext, corpusBlocks: [evidence(quoted)], currentUserMessage: quoted },
+        { ...defaultInput, cityNameList: ['佛山'], brandAliasList: ['星巴克'] },
+      );
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+      expect(result.brandNotPartneredScript).toBeUndefined();
+    });
+
     it('候选人历史原话提过：照常走「没合作」话术（运营 2026-09-24 裁定不变）', async () => {
       const result = await executeTool(
         {

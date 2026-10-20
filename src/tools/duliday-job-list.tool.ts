@@ -120,6 +120,7 @@ import {
   type AgeScreeningSignal,
 } from '@resolution/candidate/age';
 import { normalizeCitationText, normalizedIncludes } from '@resolution/notary/text-normalization';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 
 // ==================== 常量 ====================
 
@@ -180,9 +181,11 @@ function hasCandidateGroundedPostInviteLookup(params: {
 function collectCandidateBrandProvenanceTexts(context: ToolBuildContext): string[] {
   const blocks = context.turnInput.corpusBlocks ?? [];
   const texts = selectCorpusMessages(blocks, { domains: ['evidence'], roles: ['user'] })
-    .map((message) => extractMessageText(message.content))
+    .map((message) => stripMessageDecorations(extractMessageText(message.content)))
     .filter(Boolean);
-  if (context.turnInput.currentUserMessage) texts.push(context.turnInput.currentUserMessage);
+  if (context.turnInput.currentUserMessage) {
+    texts.push(stripMessageDecorations(context.turnInput.currentUserMessage));
+  }
   texts.push(...(context.turnInput.contactBrandAliases ?? []));
   for (const entry of context.ledger.visual.factSheets) {
     texts.push(entry.sheet.rawDescription, ...entry.sheet.fields.map((field) => field.value));

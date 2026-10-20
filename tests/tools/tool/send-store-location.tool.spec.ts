@@ -164,6 +164,33 @@ describe('buildSendStoreLocationTool', () => {
     },
   );
 
+  it.each(['虹桥店', '必胜客虹桥店'])(
+    'rejects an explicitly named store absent from the pool: %s',
+    async (referenceText) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      const result = await executeTool(
+        { jobId: 100, referenceText },
+        { currentUserMessage: `${referenceText}定位发我` },
+      );
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+      expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts an exact named store and rejects a fabricated reference', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const rejected = await executeTool(
+      { jobId: 100, referenceText: '青塔店' },
+      { currentUserMessage: '虹桥店定位发我' },
+    );
+    expect(rejected.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+    const accepted = await executeTool(
+      { jobId: 100, referenceText: '必胜客青塔店' },
+      { currentUserMessage: '必胜客青塔店定位发我' },
+    );
+    expect(accepted.errorType).not.toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+  });
+
   it('rejects a different store even within the same brand', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
     const result = await executeTool(

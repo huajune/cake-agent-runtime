@@ -14,8 +14,14 @@ import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util
 import { requiresStoreVisit } from '@sponge/interview-method';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
-import { findStoreReferencedJobs, pickBestReferencedJob } from '@resolution/job';
+import {
+  findStoreReferencedJobs,
+  matchesExplicitStoreReference,
+  pickBestReferencedJob,
+} from '@resolution/job';
 import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
+import { normalizedIncludes } from '@resolution/notary/text-normalization';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 
 const logger = new Logger('send_store_location');
 
@@ -26,6 +32,7 @@ const DESCRIPTION = `向候选人发送面试地点或工作门店的企微位�
 - 已有进行中的面试预约时，上述问法默认是在问面试地点，不是工作门店
 
 ## 参数规则
+- referenceText 必填：候选人本轮点名品牌/门店时，逐字复制对应原文；只说“发定位”等未点名请求时传空字符串。不得因为候选池查不到而改传空字符串。
 - jobId 可选：
   - 当前焦点岗位已经唯一明确时，可省略，让工具自动复用当前焦点岗位
   - 若最近同时聊了多个岗位或门店，必须传入明确的 jobId；不明确时先向候选人问清楚是哪家店
@@ -50,6 +57,11 @@ const DESCRIPTION = `向候选人发送面试地点或工作门店的企微位�
 
 const inputSchema = z.object({
   jobId: z.number().int().optional().describe('目标岗位 jobId。若当前焦点岗位已唯一明确，可省略'),
+  referenceText: z
+    .string()
+    .describe(
+      '候选人本轮点名的品牌/门店原文；未点名时传空字符串。点名但目录无匹配也必须保留原文，不能借旧焦点发送。',
+    ),
   destination: z
     .enum(['auto', 'interview', 'store'])
     .optional()
@@ -234,7 +246,7 @@ export function buildSendStoreLocationTool(
     tool({
       description: DESCRIPTION,
       inputSchema,
-      execute: async ({ jobId, destination }) => {
+      execute: async ({ jobId, destination, referenceText }) => {
         const resolvedJobId = jobId ?? context.archive.currentFocusJob?.jobId ?? null;
         if (!resolvedJobId) {
           return buildToolError({
@@ -301,7 +313,8 @@ export function buildSendStoreLocationTool(
               ].map((job) => [job.jobId, job]),
             ).values(),
           ];
-          const candidateText = context.turnInput.currentUserMessage ?? '';
+          const candidateText = stripMessageDecorations(context.turnInput.currentUserMessage ?? '');
+          const explicitReference = referenceText?.trim() ?? '';
           const referencedJob = pickBestReferencedJob(candidatePool, candidateText, 'store');
           const referencedJobs = referencedJob
             ? [referencedJob]
@@ -319,6 +332,11 @@ export function buildSendStoreLocationTool(
                 job.cityName === targetReference?.cityName,
             );
           if (
+            (explicitReference &&
+              (!normalizedIncludes(candidateText, explicitReference) ||
+                !candidatePool.some((job) =>
+                  matchesExplicitStoreReference(job, explicitReference),
+                ))) ||
             (referencedJobs.length > 1 && !sameDestination) ||
             (referencedJob && referencedJob.jobId !== resolvedJobId)
           ) {

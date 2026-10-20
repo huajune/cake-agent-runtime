@@ -171,6 +171,16 @@ function matchesStoreReference(job: RecommendedJobSummary, normalizedText: strin
   return storeReferenceNames(job).some((name) => normalizedText.includes(name));
 }
 
+/** 模型提取的点名原文须整体对上品牌或门店别名，不能只因品牌相同就吞掉未知店名。 */
+export function matchesExplicitStoreReference(job: RecommendedJobSummary, text: string): boolean {
+  const normalized = normalizeForMatch(text);
+  const brand = normalizeForMatch(job.brandName);
+  if (!normalized) return false;
+  if (brand && normalized === brand) return true;
+  const store = brand && normalized.startsWith(brand) ? normalized.slice(brand.length) : normalized;
+  return storeReferenceNames(job).some((name) => name === normalized || name === store);
+}
+
 /** 品牌与门店联合约束；冲突返回双方候选供澄清，不能用门店分数覆盖显式品牌。 */
 export function findStoreReferencedJobs(
   jobs: readonly RecommendedJobSummary[],
