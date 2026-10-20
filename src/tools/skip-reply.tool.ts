@@ -24,10 +24,10 @@ const CONFIRMATION_MAX_CHARS = 10;
 const QUESTION_MARKER_PATTERN =
   /[?？]|吗|怎么|什么|哪|多少|多久|为什么|几点|几号|几天|能不能|可不可以|行不行|是不是|是否|有没有|啥|([\u4e00-\u9fff])不\1/u;
 /** 只剥已知表情与平台占位格式，普通括号中的用户内容必须参与问句和长度检查。 */
-const BRACKET_TOKEN_PATTERN =
-  /[\[【](?:抱拳|表情消息|图片消息(?:\s+\d+\s+张)?|语音转文字(?:[，,]\s*时长\d+秒)?)[\]】]/gu;
-/** 未转写语音内容未知，即使与短确认合并，也不能据此关闭当前回合。 */
-const UNTRANSCRIBED_VOICE_PATTERN = /[\[【]语音消息[\]】]/u;
+const BRACKET_TOKEN_PATTERN = /[\[【](?:抱拳|表情消息|语音转文字(?:[，,]\s*时长\d+秒)?)[\]】]/gu;
+/** 图片和未转写语音含待理解内容，即使与短确认合并，也不能据此关闭回合。 */
+const UNRESOLVED_MEDIA_PATTERN =
+  /[\[【](?:语音消息|图片消息(?:\s+\d+\s+张)?|图片\s+messageId=[^\]】]*)[\]】]/u;
 
 function normalizeAckText(text: string): string {
   return stripTimeContext(text)
@@ -37,7 +37,7 @@ function normalizeAckText(text: string): string {
 
 /** 只校验短句形状，不裁决确认语义；是否存在新诉求仍由模型按工具契约判断。 */
 export function isShortConfirmationMessage(text: string): boolean {
-  if (UNTRANSCRIBED_VOICE_PATTERN.test(text)) return false;
+  if (UNRESOLVED_MEDIA_PATTERN.test(text)) return false;
   const stripped = stripTimeContext(text).replace(BRACKET_TOKEN_PATTERN, '');
   if (QUESTION_MARKER_PATTERN.test(stripped)) return false;
   const normalized = normalizeAckText(text);

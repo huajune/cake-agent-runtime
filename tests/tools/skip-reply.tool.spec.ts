@@ -265,6 +265,9 @@ describe('buildSkipReplyTool', () => {
       '[表情消息]',
       '[语音消息] 时长15秒',
       '[语音消息]',
+      '[图片消息]\n好的',
+      '【图片消息 3 张】\n收到',
+      '[图片 messageId=img-1]\n好的',
       '【语音消息】 时长2秒\n好的',
     ])('rejects non-acknowledgement or question: %s', (text) => {
       expect(isShortConfirmationMessage(text)).toBe(false);
