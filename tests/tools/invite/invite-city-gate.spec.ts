@@ -1,6 +1,10 @@
-import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
+import {
+  collectCityGateContextInputs,
+  evaluateInviteCityGate,
+} from '@tools/invite/invite-city-gate';
 import type { InviteCityGateInput } from '@tools/invite/invite-city-gate';
 import { inferCitiesFromGeoSignals } from '@resolution/geo/city-adjudicator';
+import { createToolContext } from '../../helpers/tool-context.fixture';
 
 function evaluateGate(input: Omit<InviteCityGateInput, 'geoSignalCities'>) {
   const userTexts = input.userTexts.filter((text): text is string => typeof text === 'string');
@@ -288,6 +292,236 @@ describe('evaluateInviteCityGate', () => {
         turnResolvedCities: [null, undefined, ''],
       });
       expect(verdict).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    });
+  });
+  describe('⑥–⑧ 已在群 / 在途预约门店 / 问答确认三档出处（2026-10-19，BadCase 复核 [17]）', () => {
+    it('候选人已在该城市兼职群 → allow realtime_group，且优先于 session 冲突判定', () => {
+      expect(
+        evaluateGate({
+          requestedCity: '佛山',
+          sessionCity: null,
+          userTexts: ['王府井附近有兼职吗'],
+          realtimeGroupCities: ['佛山'],
+        }),
+      ).toEqual({ decision: 'allow', matchedBy: 'realtime_group' });
+      // [17] 第二轮：pref.city 已被污染为北京，模型再传佛山不应再被 city_conflict 丢弃。
+      expect(
+        evaluateGate({
+          requestedCity: '佛山市',
+          sessionCity: '北京',
+          userTexts: [],
+          realtimeGroupCities: ['佛山'],
+        }),
+      ).toEqual({ decision: 'allow', matchedBy: 'realtime_group' });
+    });
+
+    it('在途预约门店在该城市 → allow booking_store', () => {
+      expect(
+        evaluateGate({
+          requestedCity: '佛山',
+          sessionCity: null,
+          userTexts: [],
+          bookingStoreCities: ['佛山市'],
+        }),
+      ).toEqual({ decision: 'allow', matchedBy: 'booking_store' });
+    });
+
+    it('招募经理问「你是在 X 对吧」且候选人下一条肯定 → allow confirmed_question', () => {
+      const dialogueMessages = [
+        { role: 'user', content: '王府井附近有兼职吗' },
+        { role: 'assistant', content: '好的～你是在佛山这边对吧？' },
+        { role: 'user', content: '对的' },
+      ];
+      expect(
+        evaluateGate({
+          requestedCity: '佛山',
+          sessionCity: null,
+          userTexts: ['王府井附近有兼职吗', '对的'],
+          dialogueMessages,
+        }),
+      ).toEqual({ decision: 'allow', matchedBy: 'confirmed_question' });
+    });
+
+    it.each([
+      [{ role: 'user', content: '我现在在北京' }],
+      [
+        { role: 'assistant', content: '你现在在北京对吧？' },
+        { role: 'user', content: '对的' },
+      ],
+      [
+        { role: 'assistant', content: '你是在上海对吧？' },
+        { role: 'user', content: '不是' },
+      ],
+    ])('旧城市确认不能覆盖后来的城市证据：%j', (...laterTurns) => {
+      expect(
+        evaluateGate({
+          requestedCity: '上海',
+          sessionCity: '北京',
+          userTexts: [],
+          dialogueMessages: [
+            { role: 'assistant', content: '你是在上海对吧？' },
+            { role: 'user', content: '对的' },
+            ...laterTurns,
+          ],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_conflict', expectedCity: '北京' });
+    });
+
+    it('最近再次确认的城市可以覆盖旧 session 城市和旧否定', () => {
+      expect(
+        evaluateGate({
+          requestedCity: '上海',
+          sessionCity: '北京',
+          userTexts: [],
+          dialogueMessages: [
+            { role: 'assistant', content: '你是在上海对吧？' },
+            { role: 'user', content: '不是' },
+            { role: 'assistant', content: '你是在上海对吧？' },
+            { role: 'user', content: '对的' },
+          ],
+        }),
+      ).toEqual({ decision: 'allow', matchedBy: 'confirmed_question' });
+    });
+
+    it('问答确认档只认求证句 + 相邻肯定短答：否定/答非所问/非求证句都不放行', () => {
+      const base = { requestedCity: '佛山', sessionCity: null, userTexts: [] as string[] };
+      // 否定应答
+      expect(
+        evaluateGate({
+          ...base,
+          dialogueMessages: [
+            { role: 'assistant', content: '你是在佛山对吧？' },
+            { role: 'user', content: '不是，我在广州' },
+          ],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+      // 答非所问（长句不是肯定短答）
+      expect(
+        evaluateGate({
+          ...base,
+          dialogueMessages: [
+            { role: 'assistant', content: '你是在佛山对吧？' },
+            { role: 'user', content: '有没有晚班的' },
+          ],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+      // 含城市但不是求证句（经理只是陈述），候选人回「好的」不算确认城市
+      expect(
+        evaluateGate({
+          ...base,
+          dialogueMessages: [
+            { role: 'assistant', content: '佛山这边岗位挺多的，我帮你看看。' },
+            { role: 'user', content: '好的' },
+          ],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+      // 同一条消息里别句的「？」不能借给含城市的陈述句
+      expect(
+        evaluateGate({
+          ...base,
+          dialogueMessages: [
+            { role: 'assistant', content: '佛山这边岗位挺多的。你想找什么岗位？' },
+            { role: 'user', content: '好的' },
+          ],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    });
+
+    it('三档都没有时维持原判（city_unverified / city_conflict）', () => {
+      expect(
+        evaluateGate({
+          requestedCity: '佛山',
+          sessionCity: null,
+          userTexts: ['王府井附近有兼职吗'],
+          realtimeGroupCities: ['广州'],
+          bookingStoreCities: [],
+          dialogueMessages: [{ role: 'user', content: '王府井附近有兼职吗' }],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+      expect(
+        evaluateGate({
+          requestedCity: '佛山',
+          sessionCity: '北京',
+          userTexts: [],
+          realtimeGroupCities: ['广州'],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_conflict', expectedCity: '北京' });
+    });
+
+    it.each(['你想找佛山的岗位对吧？', '你在佛山工作过对吧？', '佛山的店招满了对吧？'])(
+      '对其他含城市问题的肯定应答不构成当前位置确认：%s',
+      (question) => {
+        expect(
+          evaluateGate({
+            requestedCity: '佛山',
+            sessionCity: null,
+            userTexts: ['对的'],
+            dialogueMessages: [
+              { role: 'assistant', content: question },
+              { role: 'user', content: '对的' },
+            ],
+          }),
+        ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+      },
+    );
+  });
+
+  describe('collectCityGateContextInputs', () => {
+    it.each([true, false, undefined])(
+      '预约归属为 %s 时，只有本人或隐式归属的工单能证明城市',
+      (ownedByCandidate) => {
+        const ctx = createToolContext({
+          archive: {
+            bookingWorkOrders: [
+              {
+                workOrderId: 1,
+                jobId: 2,
+                source: 'active_booking',
+                storeCity: '佛山市',
+                ownedByCandidate,
+              },
+            ],
+          },
+        });
+
+        expect(
+          evaluateGate({
+            requestedCity: '佛山',
+            sessionCity: null,
+            userTexts: [],
+            ...collectCityGateContextInputs(ctx),
+          }),
+        ).toEqual(
+          ownedByCandidate === false
+            ? { decision: 'reject', reason: 'city_unverified' }
+            : { decision: 'allow', matchedBy: 'booking_store' },
+        );
+      },
+    );
+
+    it('从工具上下文汇集群城市、在途预约门店城市与对话消息；缺省为空', () => {
+      const messages = [{ role: 'user', content: '你好' }];
+      const ctx = createToolContext({
+        archive: {
+          realtimeGroupCities: ['佛山', '全国', '  '],
+          bookingWorkOrders: [
+            { workOrderId: 1, jobId: 2, source: 'active_booking', storeCity: '佛山市' },
+            { workOrderId: 3, jobId: 4, source: 'out_of_band', storeCity: null },
+            { workOrderId: 5, jobId: 6, source: 'active_booking' },
+          ],
+        },
+        turnInput: { messages },
+      });
+      expect(collectCityGateContextInputs(ctx)).toEqual({
+        realtimeGroupCities: ['佛山'],
+        bookingStoreCities: ['佛山市'],
+        dialogueMessages: messages,
+      });
+      expect(collectCityGateContextInputs(createToolContext())).toEqual({
+        realtimeGroupCities: [],
+        bookingStoreCities: [],
+        dialogueMessages: [],
+      });
     });
   });
 });

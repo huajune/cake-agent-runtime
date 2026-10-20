@@ -25,6 +25,7 @@ interface InviteContextOverrides {
   strategySource?: ToolBuildContext['runtime']['strategySource'];
   bookingSucceeded?: boolean;
   jobListExecuted?: boolean;
+  bookingWorkOrders?: ToolBuildContext['archive']['bookingWorkOrders'];
 }
 
 describe('buildInviteToGroupTool', () => {
@@ -66,6 +67,7 @@ describe('buildInviteToGroupTool', () => {
         },
       },
       runtime: has('strategySource') ? { strategySource: overrides.strategySource } : {},
+      archive: has('bookingWorkOrders') ? { bookingWorkOrders: overrides.bookingWorkOrders } : {},
     });
   };
 
@@ -1085,6 +1087,25 @@ describe('buildInviteToGroupTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT);
       expect(result.expectedCity).toBe('上海');
       expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    });
+
+    it('rejects a city supported only by another person’s booking before inviting', async () => {
+      const result = await executeToolWithSession({ city: '杭州' }, makeSessionService(null), {
+        messages: [{ role: 'user', content: '想找兼职' }],
+        bookingWorkOrders: [
+          {
+            workOrderId: 1,
+            jobId: 2,
+            source: 'out_of_band',
+            storeCity: '杭州市',
+            ownedByCandidate: false,
+          },
+        ],
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
+      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 
     it('allows via session fact when candidate never typed the city this session', async () => {

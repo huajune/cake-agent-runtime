@@ -147,12 +147,14 @@ export const TOOL_GUARDRAIL_CATALOG = [
     coverage: GUARDRAIL_COVERAGE.CODE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
-      '拉群城市必须有据：city 入参要么与会话记忆中的高置信城市一致，要么出现在候选人原文里，不能由模型凭空指定。',
+      '拉群城市必须有据：city 入参须能追溯到会话记忆高置信城市、候选人原文、地名白名单推断、本轮 geocode/地图截图确权、候选人已在的兼职群城市、在途预约门店城市或候选人对「你在 X 对吧」的肯定应答，不能由模型凭空指定。geocode 的 city 入参共用同一道门。',
     riskGoal: '防止模型凭空或错误指定城市，把候选人拉进错误城市的兼职群（不可逆副作用）。',
-    source: 'tools/invite/invite-city-gate.ts + tools/invite-to-group.tool.ts',
-    exogenousSignal: '会话记忆高置信 city 事实 + 候选人本会话原文城市提及（出处判定）',
+    source:
+      'tools/invite/invite-city-gate.ts + tools/invite-to-group.tool.ts + tools/geocode.tool.ts',
+    exogenousSignal:
+      '会话记忆高置信 city 事实 + 候选人本会话原文城市提及 + 实时群成员关系（realtimeGroupCities）+ 在途预约门店城市（bookingWorkOrders[].storeCity）+ notary 问答绑定（出处判定）',
     residualRisk:
-      '候选人原文提及他人城市/曾居城市时仍会放行；跨会话回访客户城市只在长期画像时会被要求重新确认。',
+      '候选人原文提及他人城市/曾居城市时仍会放行；跨会话回访客户城市只在长期画像时会被要求重新确认；在途预约门店城市只在加载了预约地址详情的回合可用。',
     verification:
       'tests/tools/invite/invite-city-gate.spec.ts + tests/tools/tool/invite-to-group.tool.spec.ts',
     owner: 'tools-runtime',

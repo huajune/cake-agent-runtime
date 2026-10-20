@@ -53,6 +53,11 @@ export interface ToolBookingWorkOrderRef {
   /** 海绵 `yyyy-MM-dd HH:mm`；等通知单为 null。 */
   interviewTime?: string | null;
   signUpTime?: string | null;
+  /**
+   * 门店所在城市（岗位详情 storeInfo.storeCityName）；只在本轮加载了预约地址详情时有值。
+   * 城市出处门（invite/geocode）据此把在途预约门店城市当作候选人所在城市的一档证据。
+   */
+  storeCity?: string | null;
 }
 
 export interface ToolArchiveContext {
@@ -75,6 +80,11 @@ export interface ToolArchiveContext {
   bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;
   /** 已成功拉群事实；用于阻止重复拉群及 Agent 主动续推，候选人明确点名详情时不作永久封口。 */
   invitedGroups?: InvitedGroupRecord[];
+  /**
+   * 候选人当前已在的兼职群城市（与 prompt [候选人当前所在兼职群] 同源的实时核验结果，非记忆；
+   * 核验失败/未核验为空数组）。城市出处门把它当作候选人所在城市的一档证据。
+   */
+  realtimeGroupCities?: string[];
 }
 
 export interface ToolTurnInputContext {
