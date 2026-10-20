@@ -8,6 +8,66 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.13.3`
+**最近更新**: `2026-10-20`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 运营说明
+- 无
+
+### 更新摘要
+- PR #1418 群机器人密钥只读环境变量
+- PR #1418 未知通道跳过发送不抛错
+- PR #1418 三个飞书群机器人（告警群 / 群运营通知群 / 私聊监控群）的 Webhook 地址和签名密钥不再写在代码里，只从环境变量读取。
+- PR #1418 环境变量已配置时行为不变；未配置时该群通知记 warn 并跳过发送，不影响服务启动。
+- PR #1418 **旧地址和密钥仍留在 git 历史里，合并后需要人工到飞书轮换（见下方清单）。本 PR 未轮换任何密钥。**
+- PR #1418 群机器人 Webhook 地址与密钥只读环境变量
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1418 移除 `src/infra/feishu/constants/constants.ts` 中硬编码的 3 组 Webhook URL / SECRET，常量只保留 `ENV_URL_KEY` / `ENV_SECRET_KEY` 键名（落实 CLAUDE.md「禁硬编码密钥（走 ConfigService）」）。
+- PR #1418 三个飞书群机器人（告警群 / 群运营通知群 / 私聊监控群）的 Webhook 地址和签名密钥不再写在代码里，只从环境变量读取。
+- PR #1418 环境变量已配置时行为不变；未配置时该群通知记 warn 并跳过发送，不影响服务启动。
+
+### 优化调整
+- PR #1418 `FeishuWebhookService` 只通过 ConfigService 读取配置：
+- PR #1418 `*_URL` 为空或未设置：记 warn 并跳过发送，`sendMessage` 返回 `false`，不重试、不向告警群补发失败告警；`sendMessageOrThrow` 维持原契约抛「未配置」错误（调用方均已捕获）。
+- PR #1418 `*_SECRET` 显式为空：照旧不带签名发送；未设置：首次记 warn 后按不带签名发送。
+- PR #1418 告警群本身未配置时，其他通道的失败告警补发直接跳过。
+- PR #1418 群任务预览失败提示去掉「或默认 webhook 配置」字样。
+- PR #1418 **旧地址和密钥仍留在 git 历史里，合并后需要人工到飞书轮换（见下方清单）。本 PR 未轮换任何密钥。**
+
+### 运维与流程
+- PR #1418 群机器人密钥只读环境变量
+- PR #1418 未知通道跳过发送不抛错
+
+### 配置变更
+- PR #1418 无新增键。`.env.example` 已有全部 6 个键，补充说明「代码不内置默认值，URL 未配置时跳过发送」。
+- PR #1418 本地 `.env.local` / `.env.production` 已核对 6 个键均存在且非空（只核对键名与是否为空，未输出取值）。
+- PR #1418 ⚠️ 服务器上的 `/data/cake/.env.production` 未能直接核验；合并发版前请确认这 6 个键都在，否则对应群的通知会停发（日志可见 warn）。
+
+### 环境变量提醒
+- PR #1418 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #1418 `pnpm run ci:check` 通过（pre-push 全量：518 个测试套件 / 8204 个用例通过，5 个既有 skip；含 build:ci）
+- PR #1418 `pnpm run typecheck` 通过
+- PR #1418 `pnpm run lint:check` 通过；`pnpm run format:check` 通过
+- PR #1418 相关 jest：`tests/infra/feishu`、`tests/notification`、`tests/biz/group-task`、`tests/scripts/send-deploy-notification.spec.ts` 共 44 个套件 511 个用例通过（`--watchman=false`）
+- PR #1418 `pnpm run test:di-smoke`（AppModule 依赖注入冒烟）通过
+- PR #1418 新增单测：常量不含取值；URL 缺失时 warn + 跳过且不补发告警；`sendMessageOrThrow` 缺配置抛错不发请求；SECRET 未设置时无签名发送且只 warn 一次；告警群未配置时跳过失败告警补发
+- PR #1418 关键链路已人工验证（未在真实飞书群发送测试消息）
+- PR #1418 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支
+- PR #1418 未新增虚构 prompt 示例值
+- PR #1418 其他说明：无
+<!-- release:pending:end -->
+
 ## [11.13.2] - 2026-10-15
 
 **来源分支**: `develop`
