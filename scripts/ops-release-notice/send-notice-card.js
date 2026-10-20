@@ -28,6 +28,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const { setTimeout: sleep } = require('timers/promises');
 
 const WEBHOOK_URL_KEY = 'PRIVATE_CHAT_MONITOR_WEBHOOK_URL';
 const WEBHOOK_SECRET_KEY = 'PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET';
@@ -83,8 +84,17 @@ async function main(argv = process.argv.slice(2), deps = { loadWebhookConfig, po
     fs.unlinkSync(pendingMarker);
     throw new Error('这份通知已发送过；请先核对群消息');
   }
-  const response = await deps.postJson(url, payload);
-  assertFeishuResponse(response);
+  // 只重试飞书明确拒收的限流；网络异常或不明回执继续保留独占锁，避免重复投递。
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await deps.postJson(url, payload);
+    try {
+      assertFeishuResponse(response);
+      break;
+    } catch (error) {
+      if (error.feishuCode !== 11232 || attempt >= 3) throw error;
+      await (deps.sleep || sleep)(1000 * 2 ** attempt);
+    }
+  }
   fs.writeFileSync(pendingMarker, `${new Date().toISOString()}\n`);
   fs.renameSync(pendingMarker, sentMarker);
   console.log(`${notice.dateLabel}上线通知已发送到蛋糕私聊监控群。`);
@@ -317,9 +327,11 @@ function assertFeishuResponse(response) {
   const code = typeof parsed.code === 'number' ? parsed.code : parsed.StatusCode;
   if (typeof code !== 'number') throw new Error('飞书 webhook 缺少成功状态码');
   if (code !== 0) {
-    throw new Error(
+    const error = new Error(
       `飞书 webhook code=${code}: ${parsed.msg || parsed.StatusMessage || response.body}`,
     );
+    error.feishuCode = code;
+    throw error;
   }
 }
 

@@ -196,6 +196,47 @@ describe('ops release notice card', () => {
     }
   });
 
+  it('retries explicit rate limits with backoff while keeping the exclusive reservation', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-notice-'));
+    const noticePath = path.join(dir, 'notice.json');
+    fs.writeFileSync(noticePath, JSON.stringify(notice()));
+    const deps = {
+      ...mockDeps(),
+      sleep: jest.fn(async () => {
+        expect(fs.existsSync(`${noticePath}.pending`)).toBe(true);
+        await expect(main([noticePath], mockDeps())).rejects.toThrow('正在发送或上次结果未确认');
+      }),
+    };
+    deps.postJson
+      .mockResolvedValueOnce({ statusCode: 200, body: '{"code":11232}' })
+      .mockResolvedValueOnce({ statusCode: 200, body: '{"code":11232}' });
+    try {
+      await main([noticePath], deps);
+      expect(deps.sleep.mock.calls).toEqual([[1000], [2000]]);
+      expect(deps.postJson).toHaveBeenCalledTimes(3);
+      expect(fs.existsSync(`${noticePath}.sent`)).toBe(true);
+      expect(fs.existsSync(`${noticePath}.pending`)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('bounds rate-limit retries and does not mark an exhausted attempt as sent', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-notice-'));
+    const noticePath = path.join(dir, 'notice.json');
+    fs.writeFileSync(noticePath, JSON.stringify(notice()));
+    const deps = { ...mockDeps('{"code":11232}'), sleep: jest.fn(async () => undefined) };
+    try {
+      await expect(main([noticePath], deps)).rejects.toThrow('code=11232');
+      expect(deps.postJson).toHaveBeenCalledTimes(4);
+      expect(deps.sleep.mock.calls).toEqual([[1000], [2000], [4000]]);
+      expect(fs.existsSync(`${noticePath}.sent`)).toBe(false);
+      expect(fs.existsSync(`${noticePath}.pending`)).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('does not mark the notice as sent when Feishu rejects it', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-notice-'));
     const noticePath = path.join(dir, 'notice.json');
