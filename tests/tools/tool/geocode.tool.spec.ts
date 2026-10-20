@@ -53,6 +53,15 @@ describe('geocode tool', () => {
     jest.clearAllMocks();
   });
 
+  it('city schema 与 description 使用同一出处要求，不再指导模型凭通识填城市', () => {
+    const schema = toolInstance.inputSchema as unknown as {
+      shape: { city: { description: string } };
+    };
+    expect(schema.shape.city.description).toContain('没有这些出处时留空');
+    expect(schema.shape.city.description).toContain('不得凭通识');
+    expect(schema.shape.city.description).not.toContain('有高置信通识时填入');
+  });
+
   describe('resolution=unique（单城唯一命中）', () => {
     it('city 已传 + 单城返回 → 直接采纳首个候选并展开成 result', async () => {
       (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([

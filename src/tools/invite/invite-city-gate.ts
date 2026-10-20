@@ -224,21 +224,33 @@ function extractCityConfirmationQuestion(assistantText: string, city: string): s
 }
 
 /**
- * 候选人是否对「你是在 X 对吧」类问句作出过肯定应答。
+ * 候选人最近一次城市证据是否仍支持「你是在 X 对吧」的肯定应答。
  *
  * 问句与应答的相邻绑定、肯定词表判定都交给 @resolution/notary 的
- * isAssistantQuestionConfirmedInDialogue；本函数只负责在对话里找出含该城市的求证句。
+ * isAssistantQuestionConfirmedInDialogue；只传入当前问答对，避免重复问句绑定到旧答案。
+ * 后来的城市陈述或另一轮城市问答会覆盖旧确认，不能让旧确认穿透 session 冲突闸。
  */
 function isCityConfirmedByCandidate(city: string, messages: readonly unknown[]): boolean {
   const turns = extractDialogueTurns(messages);
-  for (let index = 0; index < turns.length - 1; index += 1) {
-    const turn = turns[index];
-    if (turn.role !== 'assistant') continue;
-    const question = extractCityConfirmationQuestion(turn.text, city);
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const answer = turns[index];
+    if (answer.role !== 'user') continue;
+    const statedCity = normalizeCity(scanGeoSignalsFromText(answer.text).city?.value ?? null);
+    if (statedCity && statedCity !== city) return false;
+
+    const previous = turns[index - 1];
+    if (previous?.role !== 'assistant') continue;
+    const questionCity = normalizeCity(scanGeoSignalsFromText(previous.text).city?.value ?? null);
+    if (!questionCity) continue;
+    const question = extractCityConfirmationQuestion(previous.text, questionCity);
     if (!question) continue;
-    const answer = turns.slice(index + 1).find((next) => next.role === 'user');
-    if (!answer) continue;
-    if (isAssistantQuestionConfirmedInDialogue(question, answer.text, messages)) return true;
+    return (
+      questionCity === city &&
+      isAssistantQuestionConfirmedInDialogue(question, answer.text, [
+        { role: 'assistant', content: previous.text },
+        { role: 'user', content: answer.text },
+      ])
+    );
   }
   return false;
 }

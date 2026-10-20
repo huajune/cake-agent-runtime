@@ -312,6 +312,27 @@ describe('buildCancelWorkOrderTool', () => {
   });
 
   describe('工单号缺失回执（badcase [03]：replay 重跑后模型调 cancel(workOrderId=0) 再向候选人要工单号）', () => {
+    it.each([undefined, null, 0, -1, 1.5])(
+      'testing 链路缺少有效工单号 %s 时，先给业务处置指令，不要求手机号',
+      async (workOrderId) => {
+        const context = mergeToolContext(mockContext, {
+          runtime: { strategySource: 'testing' },
+        });
+        const result = await exec(buildTool(context), { workOrderId });
+        expect(result.errorType).toBe(TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID);
+        expect(result._replyInstruction).toContain('禁止向候选人索要工单号');
+        expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+        expect(spongeService.fetchFailureReasonsByPids).not.toHaveBeenCalled();
+      },
+    );
+
+    it('testing 链路有有效工单号时仍执行 PII 写入闸门', async () => {
+      const context = mergeToolContext(mockContext, { runtime: { strategySource: 'testing' } });
+      const result = await exec(buildTool(context), { workOrderId: 123 });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED);
+      expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+    });
+
     it.each([
       ['workOrderId=0', { workOrderId: 0 }],
       ['workOrderId=null', { workOrderId: null }],

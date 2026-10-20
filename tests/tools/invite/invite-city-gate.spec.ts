@@ -342,6 +342,47 @@ describe('evaluateInviteCityGate', () => {
       ).toEqual({ decision: 'allow', matchedBy: 'confirmed_question' });
     });
 
+    it.each([
+      [{ role: 'user', content: '我现在在北京' }],
+      [
+        { role: 'assistant', content: '你现在在北京对吧？' },
+        { role: 'user', content: '对的' },
+      ],
+      [
+        { role: 'assistant', content: '你是在上海对吧？' },
+        { role: 'user', content: '不是' },
+      ],
+    ])('旧城市确认不能覆盖后来的城市证据：%j', (...laterTurns) => {
+      expect(
+        evaluateGate({
+          requestedCity: '上海',
+          sessionCity: '北京',
+          userTexts: [],
+          dialogueMessages: [
+            { role: 'assistant', content: '你是在上海对吧？' },
+            { role: 'user', content: '对的' },
+            ...laterTurns,
+          ],
+        }),
+      ).toEqual({ decision: 'reject', reason: 'city_conflict', expectedCity: '北京' });
+    });
+
+    it('最近再次确认的城市可以覆盖旧 session 城市和旧否定', () => {
+      expect(
+        evaluateGate({
+          requestedCity: '上海',
+          sessionCity: '北京',
+          userTexts: [],
+          dialogueMessages: [
+            { role: 'assistant', content: '你是在上海对吧？' },
+            { role: 'user', content: '不是' },
+            { role: 'assistant', content: '你是在上海对吧？' },
+            { role: 'user', content: '对的' },
+          ],
+        }),
+      ).toEqual({ decision: 'allow', matchedBy: 'confirmed_question' });
+    });
+
     it('问答确认档只认求证句 + 相邻肯定短答：否定/答非所问/非求证句都不放行', () => {
       const base = { requestedCity: '佛山', sessionCity: null, userTexts: [] as string[] };
       // 否定应答

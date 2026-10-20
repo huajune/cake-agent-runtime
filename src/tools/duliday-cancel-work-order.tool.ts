@@ -158,19 +158,6 @@ export function buildCancelWorkOrderTool(
       }) => {
         const chatId = context.session.chatId ?? context.session.sessionId;
 
-        // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
-        // 假身份工单，与 booking 共用同一条生产写入防线。
-        if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,
-            outcome: '测试链路拦截：手机号不在测试白名单，未执行真实取消',
-            replyInstruction:
-              '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝执行、未触达真实工单。' +
-              '不得谎称已取消；请如实说明未执行。测试用例应使用统一假身份（兮兮/18271421690）。',
-            details: { phone: maskPhoneForDetails(phone), workOrderId },
-          });
-        }
-
         if (typeof workOrderId !== 'number' || !Number.isInteger(workOrderId) || workOrderId <= 0) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID,
@@ -181,6 +168,19 @@ export function buildCancelWorkOrderTool(
               '直接调 request_handoff(reasonCode="modify_appointment") 交人工取消，并告诉候选人这边帮 TA 处理取消；' +
               '不得谎称已取消，也不得否认预约存在或声称报名记录仍在。',
             details: { workOrderId: workOrderId ?? null },
+          });
+        }
+
+        // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
+        // 假身份工单，与 booking 共用同一条生产写入防线。
+        if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,
+            outcome: '测试链路拦截：手机号不在测试白名单，未执行真实取消',
+            replyInstruction:
+              '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝执行、未触达真实工单。' +
+              '不得谎称已取消；请如实说明未执行。测试用例应使用统一假身份（兮兮/18271421690）。',
+            details: { phone: maskPhoneForDetails(phone), workOrderId },
           });
         }
 
