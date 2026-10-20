@@ -52,6 +52,7 @@ describe('OutputGuardrailService', () => {
   it.each([undefined, 9001])(
     '读取当前追加候选人表单，工单 %s 决定是否可借用主候选人证据',
     async (workOrderId) => {
+      useActualRules();
       const forms = {
         peekActive: jest.fn().mockResolvedValue({ candidateScope: 'additional', workOrderId }),
       };
@@ -59,12 +60,12 @@ describe('OutputGuardrailService', () => {
         systemConfig as never,
         ruleGuard as never,
         shortTerm as never,
-        undefined,
+        { tryGetActiveBookings: jest.fn().mockResolvedValue([]) } as never,
         undefined,
         undefined,
         forms as never,
       );
-      await guard.check({
+      const decision = await guard.check({
         reply: '第二人也报名成功了',
         toolCalls: [],
         corpId: 'c1',
@@ -72,6 +73,9 @@ describe('OutputGuardrailService', () => {
         botUserName: 'bot1',
         memorySnapshot: { currentFocusJob: { jobId: 100 } } as never,
       });
+      expect(decision.blockedRuleIds).toEqual(
+        workOrderId === undefined ? ['booking_done_claim_no_work_order'] : [],
+      );
       expect(forms.peekActive).toHaveBeenCalledWith({
         corpId: 'c1',
         userId: 'u1',

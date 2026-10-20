@@ -135,6 +135,7 @@ export class HardRulesService {
      */
     activeBookings?: readonly ActiveBookingEntry[];
     pendingAdditionalCandidateJobId?: number;
+    submittedAdditionalCandidateBooking?: { jobId: number; workOrderId?: number };
     /**
      * 候选人学生身份（会话事实 + 本轮线索高置信合并）与已展示/焦点岗位的结构化社会身份档位，
      * 供零工具轮“这家接受学生”断言对账。读不到会话记忆时缺省，哨兵不运行。
@@ -300,6 +301,7 @@ export class HardRulesService {
       {
         activeBookings: params.activeBookings,
         pendingAdditionalCandidateJobId: params.pendingAdditionalCandidateJobId,
+        submittedAdditionalCandidateBooking: params.submittedAdditionalCandidateBooking,
         focusJobId: params.memorySnapshot?.currentFocusJob?.jobId,
       },
     );

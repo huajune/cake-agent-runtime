@@ -220,6 +220,24 @@ describe('booking_done_claim_no_work_order（长期记忆确证无在途工单�
 });
 
 describe('追加候选人的完成回执独立对账', () => {
+  it.each([100, 200])('已提交追加表单只为当前预检岗位 %s 作证', (jobId) => {
+    const hit = detectBookingDoneClaimWithoutSubmission(
+      '第二人报名成功了',
+      [
+        {
+          ...call('duliday_interview_precheck', { nextAction: 'already_submitted' }),
+          args: { jobId },
+        },
+      ],
+      {
+        activeBookings: [],
+        focusJobId: 100,
+        submittedAdditionalCandidateBooking: { jobId: 100, workOrderId: 9001 },
+      },
+    );
+    if (jobId === 100) expect(hit).toBeNull();
+    else expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
+  });
   it('第一人同岗有工单，第二人活动表单未提交，仍要求 replan', () => {
     const hit = detectBookingDoneClaimWithoutSubmission('第二人也预约成功了', [], {
       activeBookings: [{ work_order_id: 1, linked_at: '2026-10-20', job_id: 100 }],

@@ -219,9 +219,9 @@ export class OutputGuardrailService {
     return [...fetchedJobs, ...(attestedFocusJob ? [attestedFocusJob] : [])];
   }
 
-  private async readPendingAdditionalCandidate(
+  private async readAdditionalCandidateBooking(
     input: OutputGuardInput,
-  ): Promise<number | undefined> {
+  ): Promise<{ jobId: number; workOrderId?: number } | undefined> {
     const latestPrecheck = [...input.toolCalls]
       .reverse()
       .find((call) => call.toolName === 'duliday_interview_precheck');
@@ -237,8 +237,8 @@ export class OutputGuardrailService {
         botUserId: input.botUserName,
         jobId,
       });
-      return form?.candidateScope === 'additional' && form.workOrderId === undefined
-        ? jobId
+      return form?.candidateScope === 'additional'
+        ? { jobId, workOrderId: form.workOrderId }
         : undefined;
     } catch (error) {
       this.logger.warn(`读取追加候选人表单失败，按未知处理: ${toErrorMessage(error)}`);
@@ -250,24 +250,19 @@ export class OutputGuardrailService {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const [
-      recent,
-      runtimeConfig,
-      activeBookings,
-      sessionJobEvidence,
-      pendingAdditionalCandidateJobId,
-    ] = await Promise.all([
-      this.readRecentTexts(input.chatId),
-      this.systemConfig.getAgentReplyConfig(),
-      this.readActiveBookings(input.corpId, input.userId),
-      this.readSessionJobEvidence(
-        input.corpId,
-        input.userId,
-        input.sessionId,
-        input.turnLedger?.facts,
-      ),
-      this.readPendingAdditionalCandidate(input),
-    ]);
+    const [recent, runtimeConfig, activeBookings, sessionJobEvidence, additionalCandidateBooking] =
+      await Promise.all([
+        this.readRecentTexts(input.chatId),
+        this.systemConfig.getAgentReplyConfig(),
+        this.readActiveBookings(input.corpId, input.userId),
+        this.readSessionJobEvidence(
+          input.corpId,
+          input.userId,
+          input.sessionId,
+          input.turnLedger?.facts,
+        ),
+        this.readAdditionalCandidateBooking(input),
+      ]);
     const sessionJobs = sessionJobEvidence.jobs;
     const sessionJobFactTexts = formatJobFactProvenanceTexts(sessionJobs);
     const pruned = OutboundReplySanitizer.pruneRepeatedSegments(
@@ -296,7 +291,14 @@ export class OutputGuardrailService {
       turnJobs: this.readTurnJobs(input.turnLedger),
       studentAcceptance: sessionJobEvidence.studentAcceptance,
       activeBookings,
-      pendingAdditionalCandidateJobId,
+      pendingAdditionalCandidateJobId:
+        additionalCandidateBooking?.workOrderId === undefined
+          ? additionalCandidateBooking?.jobId
+          : undefined,
+      submittedAdditionalCandidateBooking:
+        additionalCandidateBooking?.workOrderId !== undefined
+          ? additionalCandidateBooking
+          : undefined,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
     });

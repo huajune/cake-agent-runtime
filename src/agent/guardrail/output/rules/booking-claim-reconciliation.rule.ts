@@ -60,6 +60,8 @@ export interface BookingClaimContext {
   focusJobId?: number;
   /** 当前活动追加候选人的持久化表单尚无工单；主候选人的同岗位工单不能为其作证。 */
   pendingAdditionalCandidateJobId?: number;
+  /** 活动追加候选人已提交的表单工单；代报不会写入联系人的 active_booking。 */
+  submittedAdditionalCandidateBooking?: { jobId: number; workOrderId?: number };
 }
 
 /**
@@ -106,6 +108,15 @@ export function detectBookingDoneClaimWithoutSubmission(
       `当前正在办理的追加候选人（岗位 ${context.pendingAdditionalCandidateJobId}）表单尚无工单，` +
         '本轮也没有 booking 调用，却宣称报名/预约成功；主候选人的同岗位工单不能替此人作证',
     );
+  }
+  const submitted = context.submittedAdditionalCandidateBooking;
+  const currentJobId = readPrecheckJobId(toolCalls) ?? context.focusJobId;
+  if (
+    submitted?.workOrderId !== undefined &&
+    submitted.workOrderId > 0 &&
+    submitted.jobId === currentJobId
+  ) {
+    return null;
   }
   if (hasActiveWorkOrderEvidence(toolCalls)) return null;
 
