@@ -29,7 +29,7 @@ describe('SpongeStatusPollService.runOnce', () => {
   it('emits interview.passed when interview is passed (no longer tracks hired)', async () => {
     opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue({
       pending: [pendingWo],
-      nextOffset: 0,
+      nextCursor: null,
     });
     spongeService.getCachedWorkOrderById.mockResolvedValue({
       workOrderId: 9001,
@@ -39,7 +39,7 @@ describe('SpongeStatusPollService.runOnce', () => {
 
     const result = await service.runOnce();
 
-    expect(result).toEqual({ scanned: 1, passed: 1, nextOffset: 0 });
+    expect(result).toEqual({ scanned: 1, passed: 1, nextCursor: null });
     expect(opsEventsRecorder.recordEvent).toHaveBeenCalledTimes(1);
     expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventName: 'interview.passed', idempotencyKey: '9001:pass' }),
@@ -53,7 +53,7 @@ describe('SpongeStatusPollService.runOnce', () => {
   it('emits nothing when interview not yet passed', async () => {
     opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue({
       pending: [pendingWo],
-      nextOffset: 0,
+      nextCursor: null,
     });
     spongeService.getCachedWorkOrderById.mockResolvedValue({
       workOrderId: 9001,
@@ -63,20 +63,20 @@ describe('SpongeStatusPollService.runOnce', () => {
 
     const result = await service.runOnce();
 
-    expect(result).toEqual({ scanned: 1, passed: 0, nextOffset: 0 });
+    expect(result).toEqual({ scanned: 1, passed: 0, nextCursor: null });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
   });
 
   it('skips work orders whose sponge lookup fails (graceful)', async () => {
     opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue({
       pending: [pendingWo],
-      nextOffset: 0,
+      nextCursor: null,
     });
     spongeService.getCachedWorkOrderById.mockRejectedValue(new Error('sponge down'));
 
     const result = await service.runOnce();
 
-    expect(result).toEqual({ scanned: 1, passed: 0, nextOffset: 0 });
+    expect(result).toEqual({ scanned: 1, passed: 0, nextCursor: null });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
   });
 });
