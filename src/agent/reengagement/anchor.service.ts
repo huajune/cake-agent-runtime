@@ -118,6 +118,9 @@ export class ReengagementAnchorService {
           .catch((error) => this.logFailure('save booked terminal', context, error)),
       );
     }
+    // Observe a rejected durable write immediately, before awaiting any other
+    // admission. The caller must keep the original turn pending for recovery.
+    await terminalChain;
 
     // 改约成功：新锚点只触发面试排程解析；正式提醒/回访按海绵返回的新时间重排。
     // 旧任务到点也会重新查同一工单，并因实时触发时间变化而停止或替换。
@@ -533,5 +536,6 @@ export class ReengagementAnchorService {
         error,
       )}`,
     );
+    if (context.logicalTurnId) throw error;
   }
 }

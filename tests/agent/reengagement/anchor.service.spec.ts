@@ -85,6 +85,35 @@ describe('ReengagementAnchorService', () => {
     }
   });
 
+  it('does not acknowledge a durable turn when its local terminal write fails', async () => {
+    session.saveTerminalState.mockRejectedValue(new Error('redis down'));
+    await expect(
+      buildService().handleToolAnchors(
+        { toolCalls: [bookingCall] },
+        {
+          ...context,
+          logicalTurnId: 'durable-turn',
+          inputOccurredAt: '2026-06-24T02:00:00.000Z',
+        },
+      ),
+    ).rejects.toThrow('redis down');
+    expect(scheduler.scheduleBookingResolution).not.toHaveBeenCalled();
+  });
+
+  it('propagates failed admission of a delivered durable reply anchor for same-turn repair', async () => {
+    scheduler.scheduleFollowUp.mockRejectedValue(new Error('queue unavailable'));
+    await expect(
+      buildService().handleDeliveredReplyAnchors(
+        { reply: { content: '把你的位置发我一下' } },
+        {
+          ...context,
+          logicalTurnId: 'durable-turn',
+          inputOccurredAt: '2026-06-24T02:00:00.000Z',
+        },
+      ),
+    ).rejects.toThrow('queue unavailable');
+  });
+
   it('stops pending store follow-ups immediately after a successful group invite', async () => {
     buildService().handleToolAnchors(
       {
