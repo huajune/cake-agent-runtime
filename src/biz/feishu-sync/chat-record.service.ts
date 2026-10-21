@@ -1,3 +1,4 @@
+import { CronRunnerService, type CronBudget } from '@infra/queue/cron-runner.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -49,6 +50,7 @@ export class ChatRecordSyncService {
   constructor(
     private readonly chatSessionService: ChatSessionService,
     private readonly bitableApi: FeishuBitableApiService,
+    private readonly cronRunner: CronRunnerService,
     @Optional()
     private readonly configService?: ConfigService,
     @Optional()
@@ -62,6 +64,14 @@ export class ChatRecordSyncService {
   async syncYesterdayChatRecords(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
 
+    await this.cronRunner.run(
+      'chat-record-sync',
+      { timeMs: 10 * 60_000, maxRows: 1000 },
+      (budget) => this.runYesterdaySync(budget),
+    );
+  }
+
+  private async runYesterdaySync(budget: CronBudget): Promise<void> {
     this.logger.log('[ChatRecordSync] 开始同步前一日聊天记录到飞书多维表格...');
 
     const chatConfig = this.bitableApi.getTableConfig('chat');
@@ -76,7 +86,13 @@ export class ChatRecordSyncService {
         `[ChatRecordSync] 时间范围: ${new Date(start).toISOString()} ~ ${new Date(end).toISOString()}`,
       );
 
-      const summary = await this.syncWindow(chatConfig.appToken, chatConfig.tableId, start, end);
+      const summary = await this.syncWindow(
+        chatConfig.appToken,
+        chatConfig.tableId,
+        start,
+        end,
+        budget,
+      );
 
       this.logger.log(
         `[ChatRecordSync] ✓ 同步完成，会话: ${summary.total}，新增: ${summary.created}，更新: ${summary.updated}，失败: ${
@@ -98,6 +114,7 @@ export class ChatRecordSyncService {
         error,
         severity: AlertLevel.ERROR,
       });
+      throw error;
     }
   }
 
@@ -198,6 +215,7 @@ export class ChatRecordSyncService {
     tableId: string,
     startTime: number,
     endTime: number,
+    budget?: CronBudget,
   ): Promise<SyncSummary> {
     const chatRecords = await this.getChatRecordsByTimeRange(startTime, endTime);
     if (chatRecords.length === 0) {
@@ -207,7 +225,8 @@ export class ChatRecordSyncService {
 
     this.logger.log(`[ChatRecordSync] 找到 ${chatRecords.length} 个活跃会话，开始回查完整会话...`);
 
-    const fullChatRecords = await this.hydrateFullChatRecords(chatRecords);
+    await budget?.checkpoint(chatRecords.length);
+    const fullChatRecords = await this.hydrateFullChatRecords(chatRecords, budget);
     const feishuRecords = this.convertToFeishuRecords(fullChatRecords);
     if (feishuRecords.length === 0) {
       this.logger.log('[ChatRecordSync] 无有效数据，跳过同步');
@@ -220,7 +239,7 @@ export class ChatRecordSyncService {
       };
     }
 
-    const existingRecords = await this.getExistingChatRecordIndex(appToken, tableId);
+    const existingRecords = await this.getExistingChatRecordIndex(appToken, tableId, budget);
     const createRecords: BatchCreateRequest[] = [];
     const updateRecords: Array<{ record_id: string; fields: Record<string, unknown> }> = [];
 
@@ -239,15 +258,34 @@ export class ChatRecordSyncService {
       }
     }
 
-    const createResult =
-      createRecords.length > 0
-        ? await this.bitableApi.batchCreateRecords(appToken, tableId, createRecords, 100)
-        : { created: 0, failed: 0 };
-
-    const updateResult =
-      updateRecords.length > 0
-        ? await this.bitableApi.batchUpdateRecords(appToken, tableId, updateRecords)
-        : { success: 0, failed: 0 };
+    const createResult = { created: 0, failed: 0 };
+    for (let offset = 0; offset < createRecords.length; offset += 100) {
+      await budget?.checkpoint();
+      const result = await this.bitableApi.batchCreateRecords(
+        appToken,
+        tableId,
+        createRecords.slice(offset, offset + 100),
+        100,
+      );
+      createResult.created += result.created;
+      createResult.failed += result.failed;
+    }
+    const updateResult = { success: 0, failed: 0 };
+    for (let offset = 0; offset < updateRecords.length; offset += 100) {
+      await budget?.checkpoint();
+      const result = await this.bitableApi.batchUpdateRecords(
+        appToken,
+        tableId,
+        updateRecords.slice(offset, offset + 100),
+      );
+      updateResult.success += result.success;
+      updateResult.failed += result.failed;
+    }
+    if (budget && createResult.failed + updateResult.failed > 0) {
+      throw new Error(
+        `Chat sync incomplete: ${createResult.failed + updateResult.failed} failed writes`,
+      );
+    }
 
     return {
       total: feishuRecords.length,
@@ -264,9 +302,14 @@ export class ChatRecordSyncService {
   private async getExistingChatRecordIndex(
     appToken: string,
     tableId: string,
+    budget?: CronBudget,
   ): Promise<Map<string, ExistingChatRecord>> {
     const index = new Map<string, ExistingChatRecord>();
-    const records = await this.bitableApi.getAllRecords(appToken, tableId);
+    const records = await this.bitableApi.getAllRecords(
+      appToken,
+      tableId,
+      budget ? { maxRecords: 10_000, checkpoint: () => budget.checkpoint() } : undefined,
+    );
 
     for (const record of records) {
       const chatId = this.normalizeFieldValue(record.fields?.chatId);
@@ -285,31 +328,32 @@ export class ChatRecordSyncService {
    */
   private async hydrateFullChatRecords(
     chatRecords: Array<{ chatId: string; messages: EnhancedMessageHistoryItem[] }>,
+    budget?: CronBudget,
   ): Promise<Array<{ chatId: string; messages: EnhancedMessageHistoryItem[] }>> {
-    const hydrated = await Promise.all(
-      chatRecords.map(async (record) => {
-        try {
-          const detail = await this.chatSessionService.getChatSessionMessages(record.chatId);
-          const messages = (detail.messages || []).map((m) => ({
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp,
-            chatId: record.chatId,
-            messageId: m.messageId,
-            candidateName: m.candidateName,
-            managerName: m.managerName,
-          })) as EnhancedMessageHistoryItem[];
+    const hydrated: Array<{ chatId: string; messages: EnhancedMessageHistoryItem[] }> = [];
+    for (const record of chatRecords) {
+      await budget?.checkpoint();
+      try {
+        const detail = await this.chatSessionService.getChatSessionMessages(record.chatId);
+        const messages = (detail.messages || []).map((m) => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+          chatId: record.chatId,
+          messageId: m.messageId,
+          candidateName: m.candidateName,
+          managerName: m.managerName,
+        })) as EnhancedMessageHistoryItem[];
 
-          return messages.length > 0 ? { chatId: record.chatId, messages } : record;
-        } catch (error: unknown) {
-          const err = error as { message?: string };
-          this.logger.warn(
-            `[ChatRecordSync] 回查完整会话失败 chatId=${record.chatId}: ${err?.message}，使用窗口内消息`,
-          );
-          return record;
-        }
-      }),
-    );
+        hydrated.push(messages.length > 0 ? { chatId: record.chatId, messages } : record);
+      } catch (error: unknown) {
+        const err = error as { message?: string };
+        this.logger.warn(
+          `[ChatRecordSync] 回查完整会话失败 chatId=${record.chatId}: ${err?.message}，使用窗口内消息`,
+        );
+        hydrated.push(record);
+      }
+    }
 
     return hydrated;
   }

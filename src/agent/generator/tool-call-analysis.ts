@@ -8,6 +8,12 @@
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
 import { TOOL_ERROR_TYPES, type ToolErrorType } from '@tools/shared/tool-error-types';
 import { asRecord } from '@infra/utils/object.util';
+import {
+  BUILT_IN_TOOL_CONTRACTS,
+  DEFAULT_TOOL_CALL_LIMIT,
+  getBuiltInToolContract,
+  toolNamesMatching,
+} from '@tools/tool-contracts';
 import type { AgentToolCall } from './generator.types';
 
 /**
@@ -16,13 +22,14 @@ import type { AgentToolCall } from './generator.types';
  * 模型在不稳定入参（如 storeNameList 精确匹配）查询失败后会连续多次调同一工具自行扩面，
  * 把单轮拖到百秒级、token 翻数倍。Agent 层加硬上限阻断这类失控循环。
  */
-export const MAX_SAME_TOOL_CALLS_PER_TURN = 3;
+export const MAX_SAME_TOOL_CALLS_PER_TURN = DEFAULT_TOOL_CALL_LIMIT;
 
 /**
  * precheck 是同一岗位的确定性校验，不应靠换参数穷举；保留一次纠正遗漏入参的机会，
  * 第二次后即屏蔽，避免身份/补充字段识别异常时单轮连续调用 4~5 次。
  */
-export const MAX_PRECHECK_CALLS_PER_TURN = 2;
+export const MAX_PRECHECK_CALLS_PER_TURN =
+  BUILT_IN_TOOL_CONTRACTS.duliday_interview_precheck.maxCallsPerTurn;
 
 /**
  * "narrow（仅 1 条结果）"语义只对搜索类工具有意义：
@@ -175,53 +182,18 @@ export function extractToolApiCode(result: unknown): string | number | undefined
  * 本轮已成功执行过一次后必须屏蔽，防止模型重复提交（线上观测到同 turn
  * booking 连续调用 2 次的样本）；失败后的重试不受此限制（自纠错合法）。
  */
-export const SIDE_EFFECT_TOOLS = new Set([
-  'duliday_interview_booking',
-  'invite_to_group',
-  'duliday_cancel_work_order',
-  'duliday_modify_interview_time',
-  'send_store_location',
-  'raise_risk_alert',
-  'request_handoff',
-]);
+export const SIDE_EFFECT_TOOLS = toolNamesMatching(
+  (value) => value.effect === 'external_action' || value.effect === 'intervention_intent',
+);
 
-/**
- * 成功提交后会产生不可逆外部动作，本轮 replay 必须跳过的工具。
- *
- * 取消/改约与报名/拉群同级：首版已成功取消工单后若整轮被丢弃重跑，预约快照已空、
- * 工单号不在重跑 prompt 里，模型会凭空调 cancel(workOrderId=0) 甚至向候选人索要工单号
- * （badcase [03] batch_6ad19d27ce406a6aee98bb9f_1792125255605）。副作用既成就保留首版回复，
- * 候选人补发的消息按新回合处理，与 booking 口径一致。
- */
-export const REPLAY_BLOCKING_TOOLS = new Set([
-  'invite_to_group',
-  'duliday_interview_booking',
-  'duliday_cancel_work_order',
-  'duliday_modify_interview_time',
-]);
+export const REPLAY_BLOCKING_TOOLS = toolNamesMatching(
+  (value) => value.replay === 'block_on_success',
+);
 
-/** repair 是纯文本修复阶段：这些工具绝不允许在 repair 中暴露。 */
-export const REVISION_FORBIDDEN_TOOLS = new Set([...SIDE_EFFECT_TOOLS]);
-
-/** 主动复聊默认只读；这些工具在 proactive 触发源下默认禁用。 */
-export const PROACTIVE_FORBIDDEN_TOOLS = new Set([...SIDE_EFFECT_TOOLS]);
-
-/**
- * @deprecated Tool guardrail 审计入口已迁到 agent/guardrail/tool。
- * 保留 re-export 兼容旧引用，避免这里和 guardrail/tool 维护两份列表。
- */
 export { TOOL_GUARDRAIL_IDS } from '@agent/guardrail/tool/tool-guardrail.catalog';
 
 export function isSideEffectTool(toolName: string): boolean {
   return SIDE_EFFECT_TOOLS.has(toolName);
-}
-
-export function isForbiddenDuringRevise(toolName: string): boolean {
-  return REVISION_FORBIDDEN_TOOLS.has(toolName);
-}
-
-export function isForbiddenForProactive(toolName: string): boolean {
-  return PROACTIVE_FORBIDDEN_TOOLS.has(toolName);
 }
 
 /**
@@ -461,14 +433,15 @@ export function buildSideEffectBlockNotice(blockedTools: string[]): string {
  *
  * 用于在 prepareStep 中动态屏蔽，让 LLM 在第 4 次想调同一工具时被强制收敛。
  */
-export function findToolsExceedingLimit(
-  steps: StepLike[],
-  limit: number = MAX_SAME_TOOL_CALLS_PER_TURN,
-): string[] {
+export function findToolsExceedingLimit(steps: StepLike[], limit?: number): string[] {
   const counts = countToolCallsByName(steps);
   const exceeded: string[] = [];
   for (const [name, count] of counts.entries()) {
-    if (count >= limit) exceeded.push(name);
+    if (
+      count >=
+      (limit ?? getBuiltInToolContract(name)?.maxCallsPerTurn ?? MAX_SAME_TOOL_CALLS_PER_TURN)
+    )
+      exceeded.push(name);
   }
   return exceeded;
 }

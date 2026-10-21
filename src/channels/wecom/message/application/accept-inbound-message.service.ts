@@ -1,3 +1,4 @@
+import { ReengagementCommandService } from '@agent/reengagement/reengagement-command.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ScenarioType } from '@enums/agent.enum';
@@ -74,6 +75,7 @@ export class AcceptInboundMessageService {
   private readonly logger = new Logger(AcceptInboundMessageService.name);
 
   constructor(
+    private readonly reengagementCommands: ReengagementCommandService,
     private readonly deduplicationService: MessageDeduplicationService,
     private readonly chatSession: ChatSessionService,
     private readonly filterService: MessageFilterService,
@@ -122,8 +124,8 @@ export class AcceptInboundMessageService {
 
     // 候选人入站事件（非 self、过滤通过、非重复、非群聊）：friend.added（首次插入时开户长期记忆）
     // + candidate.message_received + 原子检测首条破冰（candidate.engaged）。
-    // 微信「加好友纯默认招呼语」不计候选人消息/破冰。全部 fire-and-forget。
-    this.recordLastCandidateMessageAt(messageData);
+    // 微信「加好友纯默认招呼语」不计候选人消息/破冰。活跃时间等待可靠写入，统计事件异步写。
+    await this.recordLastCandidateMessageAt(messageData);
     this.recordInboundCandidateEvents(messageData, filterResult.content);
 
     return this.prepareForDispatch(messageData, filterResult);
@@ -228,7 +230,9 @@ export class AcceptInboundMessageService {
     return messageData.imContactId || messageData.externalUserId || messageData.chatId || null;
   }
 
-  private recordLastCandidateMessageAt(messageData: EnterpriseMessageCallbackDto): void {
+  private async recordLastCandidateMessageAt(
+    messageData: EnterpriseMessageCallbackDto,
+  ): Promise<void> {
     if (messageData.imRoomId) return;
     const userId = this.resolveLongTermUserId(messageData);
     if (!userId) return;
@@ -236,14 +240,22 @@ export class AcceptInboundMessageService {
     if (!Number.isFinite(timestamp)) return;
 
     const corpId = messageData.orgId || 'default';
-    void this.session
-      .recordCandidateActivity(corpId, userId, messageData.chatId, new Date(timestamp))
-      .catch((error: unknown) => {
-        const errorMessage = toErrorMessage(error);
-        this.logger.warn(
-          `[reengagement] lastCandidateMessageAt 写入失败 [${messageData.messageId}]: ${errorMessage}`,
-        );
+    try {
+      await this.session.recordCandidateActivity(
+        corpId,
+        userId,
+        messageData.chatId,
+        new Date(timestamp),
+      );
+    } catch (error) {
+      this.logger.warn(`[reengagement] 活跃时间写入失败，转恢复队列: ${toErrorMessage(error)}`);
+      await this.reengagementCommands.recordCandidateActivity({
+        corpId,
+        userId,
+        sessionId: messageData.chatId,
+        timestamp,
       });
+    }
   }
 
   /**

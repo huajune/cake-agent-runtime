@@ -1,3 +1,7 @@
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
+import { CRITICAL_WRITE_JOB_OPTIONS } from '@infra/queue/queue-policy';
+import { INTERVENTION_TASK_QUEUE, type InterventionTaskJob } from './intervention-task-job';
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -109,7 +113,7 @@ function joinBrandStore(
  *
  * 每次介入提交独立新建任务，按表头组装本次上下文、按上班时间算最晚跟进时间。
  * 不按会话、岗位或时间窗口合并。创建标识仅用于同一次 HTTP 请求重试的幂等保护。
- * 任何失败只记日志 + 飞书告警，不抛给调用方。
+ * 先持久化队列意图；入队失败会告警并抛给调用方，消费者负责准备与执行。
  */
 @Injectable()
 export class InterventionTaskService implements OnApplicationBootstrap {
@@ -129,6 +133,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     private readonly hostingMemberConfig: HostingMemberConfigService,
     private readonly alertNotifier: AlertNotifierService,
     private readonly moduleRef: ModuleRef,
+    @InjectQueue(INTERVENTION_TASK_QUEUE) private readonly taskQueue: Queue<InterventionTaskJob>,
   ) {
     this.tasklistGuid = (this.configService.get<string>('FEISHU_TASK_TASKLIST_GUID') ?? '').trim();
     this.fieldNames = this.loadFieldNames();
@@ -153,18 +158,23 @@ export class InterventionTaskService implements OnApplicationBootstrap {
 
   // ==================== public ====================
 
-  /** 介入提交后异步调用；永不抛错。 */
+  /** 等待任务持久化；实际创建由队列执行，外部结果未知时不盲目重发。 */
   async submit(payload: InterventionPayload): Promise<void> {
     try {
       if (this.isTestSession(payload.corpId, payload.chatId)) return;
       if (!(await this.isEnabled())) return;
-      const draft = await this.buildDraft(payload);
-      await this.createNewTask(draft);
+      const clientToken = randomUUID();
+      await this.taskQueue.add(
+        'create',
+        { payload, clientToken, triggeredAt: new Date().toISOString() },
+        { ...CRITICAL_WRITE_JOB_OPTIONS, jobId: clientToken },
+      );
     } catch (error) {
       this.logger.warn(
         `[FeishuTask] submit 异常: chatId=${payload.chatId}, error=${toErrorMessage(error)}`,
       );
       await this.alertFailure('submit', payload.chatId, toErrorMessage(error), payload.contactName);
+      throw error;
     }
   }
 
@@ -196,8 +206,11 @@ export class InterventionTaskService implements OnApplicationBootstrap {
 
   // ==================== 组装 ====================
 
-  private async buildDraft(payload: InterventionPayload): Promise<TaskDraft> {
-    const triggeredAt = new Date();
+  private async buildDraft(
+    payload: InterventionPayload,
+    triggeredAt: Date,
+    clientToken: string,
+  ): Promise<TaskDraft> {
     const reasonCode =
       payload.kind === 'conversation_risk' ? payload.riskType : (payload.reasonCode ?? null);
     const category = resolveTaskCategory(reasonCode);
@@ -289,7 +302,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       interviewTimeText,
       members,
       // 每次提交独立；FeishuTaskClient 的网络重试复用同一个标识和请求体。
-      clientToken: randomUUID(),
+      clientToken,
     };
   }
 
@@ -360,40 +373,25 @@ export class InterventionTaskService implements OnApplicationBootstrap {
 
   // ==================== 创建 ====================
 
-  private async createNewTask(draft: TaskDraft): Promise<void> {
+  async prepareRequest(job: InterventionTaskJob): Promise<InterventionTaskJob['request'] | null> {
+    if (!(await this.isEnabled())) return null;
+    const draft = await this.buildDraft(job.payload, new Date(job.triggeredAt), job.clientToken);
     const customFields = await this.buildCustomFields(draft);
     const sectionGuid = await this.client.resolveSectionGuid(
       this.tasklistGuid,
       sectionNameOf(draft.category),
     );
-    const task = await this.client.createTask({
+    return {
       summary: draft.title,
       description: draft.description,
-      startAt: draft.triggeredAt,
-      dueAt: draft.dueAt,
+      startAt: draft.triggeredAt.toISOString(),
+      dueAt: draft.dueAt.toISOString(),
       members: draft.members,
       tasklistGuid: this.tasklistGuid,
       sectionGuid,
       customFields,
       clientToken: draft.clientToken,
-    });
-    if (!task) {
-      await this.alertFailure(
-        'createTask',
-        draft.chatId,
-        '飞书任务创建失败（详见日志）',
-        draft.nickname,
-      );
-      return;
-    }
-    if (draft.members.length === 0) {
-      this.logger.warn(
-        `[FeishuTask] 任务无负责人（托管账号未配置飞书接收人且无默认负责人）: guid=${task.guid}, chatId=${draft.chatId}`,
-      );
-    }
-    this.logger.log(
-      `[FeishuTask] 已建任务: guid=${task.guid} category=${draft.category} priority=${draft.priority} due=${formatLocalMinute(draft.dueAt)} chatId=${draft.chatId}`,
-    );
+    };
   }
 
   // ==================== 解析 ====================

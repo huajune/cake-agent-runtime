@@ -1,3 +1,5 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service';
@@ -58,6 +60,8 @@ describe('SimpleMergeService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        RedisLeaseService,
+        { provide: QueueFailureService, useValue: { report: jest.fn(), exhausted: jest.fn() } },
         SimpleMergeService,
         { provide: RedisService, useValue: mockRedisService },
         { provide: MessageRuntimeConfigService, useValue: mockRuntimeConfigService },
@@ -290,12 +294,12 @@ describe('SimpleMergeService', () => {
 
       expect(renewed).toBe(true);
       expect(mockRedisService.eval).toHaveBeenCalledWith(
-        expect.stringContaining('redis.call("expire"'),
+        expect.stringContaining("redis.call('expire'"),
         ['wecom:message:lock:chat-123'],
-        ['owner-123', '90'],
+        ['owner-123', 90],
       );
       expect(mockRedisService.eval.mock.calls[0][0]).toContain(
-        'redis.call("get", KEYS[1]) == ARGV[1]',
+        "redis.call('get', KEYS[1]) == ARGV[1]",
       );
     });
 

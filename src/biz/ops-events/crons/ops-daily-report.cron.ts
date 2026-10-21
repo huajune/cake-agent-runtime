@@ -1,4 +1,5 @@
-import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
+import { CronRunnerService, type CronBudget } from '@infra/queue/cron-runner.service';
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -146,10 +147,10 @@ export class OpsDailyReportCronService {
   private readonly appToken: string;
   private readonly tableId: string;
   private readonly enabled: boolean;
-  private running = false;
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly cronRunner: CronRunnerService,
     private readonly dailyOpsReportService: DailyOpsReportService,
     private readonly bitableApi: FeishuBitableApiService,
     private readonly spongeService: SpongeService,
@@ -169,29 +170,27 @@ export class OpsDailyReportCronService {
   async run(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
 
-    if (this.running) {
-      this.logger.warn('上一轮运营日报推送尚未结束，跳过本次');
-      return;
-    }
-    this.running = true;
-    try {
-      const reportDate = formatLocalDate(getLocalDayStart());
-      await this.pushReport(reportDate);
-    } catch (error) {
-      this.logger.error('运营日报推送失败', toErrorStack(error));
-    } finally {
-      this.running = false;
-    }
+    await this.cronRunner.run(
+      'ops-daily-report',
+      { timeMs: 10 * 60_000, maxRows: 200 },
+      async (budget) => {
+        await this.pushReport(formatLocalDate(getLocalDayStart()), budget);
+      },
+    );
   }
 
   /** 推送指定日期日报（独立方法便于测试 / 手动触发）。 */
-  async pushReport(reportDate: string): Promise<{ rows: number; written: number }> {
+  async pushReport(
+    reportDate: string,
+    budget?: CronBudget,
+  ): Promise<{ rows: number; written: number }> {
     if (isWeekend(reportDate)) {
       this.logger.log(`运营日报: ${reportDate} 为周末，跳过`);
       return { rows: 0, written: 0 };
     }
 
     const rawRows = await this.dailyOpsReportService.findByReportDate(reportDate);
+    await budget?.checkpoint(rawRows.length);
     const rows = await this.canonicalizeRowsByCurrentBots(rawRows);
     if (rows.length === 0) {
       this.logger.log(`运营日报: ${reportDate} 无数据，跳过`);
@@ -211,13 +210,14 @@ export class OpsDailyReportCronService {
       return { rows: rows.length, written: 0 };
     }
 
-    const hydratedRows = await this.hydrateRowsFromSponge(reportDate, rows);
+    const hydratedRows = await this.hydrateRowsFromSponge(reportDate, rows, budget);
 
     let fields: BitableField[];
     try {
       fields = await this.bitableApi.getFields(this.appToken, this.tableId);
     } catch (error) {
       this.logger.error(`运营日报: 获取飞书表字段失败，跳过本次: ${toErrorMessage(error)}`);
+      if (budget) throw error;
       return { rows: rows.length, written: 0 };
     }
 
@@ -238,7 +238,20 @@ export class OpsDailyReportCronService {
     const records = hydratedRows.map((row) => ({
       fields: this.buildFields(row, usableColumns, fieldTypeByName),
     }));
-    const result = await this.bitableApi.batchCreateRecords(this.appToken, this.tableId, records);
+    const result = { created: 0, failed: 0 };
+    for (let offset = 0; offset < records.length; offset += 100) {
+      await budget?.checkpoint();
+      const batch = await this.bitableApi.batchCreateRecords(
+        this.appToken,
+        this.tableId,
+        records.slice(offset, offset + 100),
+      );
+      result.created += batch.created;
+      result.failed += batch.failed;
+    }
+    if (budget && result.failed > 0) {
+      throw new Error(`Daily report incomplete: ${result.failed} failed writes`);
+    }
     this.logger.log(
       `运营日报推送完成: ${reportDate} 行=${rows.length} 写入成功=${result.created} 失败=${result.failed}`,
     );
@@ -332,45 +345,47 @@ export class OpsDailyReportCronService {
   private async hydrateRowsFromSponge(
     reportDate: string,
     rows: DailyOpsReportRow[],
+    budget?: CronBudget,
   ): Promise<OpsDailyReportOutputRow[]> {
     const startTime = `${reportDate} 00:00:00`;
     const endTime = `${reportDate} 23:59:59`;
 
-    return Promise.all(
-      rows.map(async (row) => {
-        try {
-          const [signupResult, passResult] = await Promise.all([
-            this.spongeService.fetchSelfSignupWorkOrders(
-              {
-                queryParam: {
-                  signUpStartTime: startTime,
-                  signUpEndTime: endTime,
-                },
+    const hydrated: OpsDailyReportOutputRow[] = [];
+    for (const row of rows) {
+      await budget?.checkpoint();
+      try {
+        const [signupResult, passResult] = await Promise.all([
+          this.spongeService.fetchSelfSignupWorkOrders(
+            {
+              queryParam: {
+                signUpStartTime: startTime,
+                signUpEndTime: endTime,
               },
-              { botImId: row.bot_im_id },
-            ),
-            this.spongeService.fetchSelfSignupWorkOrders(
-              {
-                queryParam: {
-                  interviewPassStartTime: startTime,
-                  interviewPassEndTime: endTime,
-                },
+            },
+            { botImId: row.bot_im_id },
+          ),
+          this.spongeService.fetchSelfSignupWorkOrders(
+            {
+              queryParam: {
+                interviewPassStartTime: startTime,
+                interviewPassEndTime: endTime,
               },
-              { botImId: row.bot_im_id },
-            ),
-          ]);
+            },
+            { botImId: row.bot_im_id },
+          ),
+        ]);
 
-          return this.mergeSpongeMetrics(row, signupResult, passResult);
-        } catch (error) {
-          this.logger.warn(
-            `运营日报: 海绵工单数据覆盖失败 bot=${row.bot_im_id} date=${reportDate}，海绵口径字段留空: ${toErrorMessage(
-              error,
-            )}`,
-          );
-          return this.fallbackToProjectedMetrics(row);
-        }
-      }),
-    );
+        hydrated.push(await this.mergeSpongeMetrics(row, signupResult, passResult));
+      } catch (error) {
+        this.logger.warn(
+          `运营日报: 海绵工单数据覆盖失败 bot=${row.bot_im_id} date=${reportDate}，海绵口径字段留空: ${toErrorMessage(
+            error,
+          )}`,
+        );
+        hydrated.push(this.fallbackToProjectedMetrics(row));
+      }
+    }
+    return hydrated;
   }
 
   private async mergeSpongeMetrics(

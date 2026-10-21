@@ -1,9 +1,10 @@
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { ConfigService } from '@nestjs/config';
-import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { FilterReason } from '@enums/message-filter.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -33,11 +34,12 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly messagePipeline: MessagePipelineService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly workerManager: MessageWorkerManagerService,
-    private readonly userHostingService: UserHostingService,
+    private readonly actionPermit: ActionPermitService,
     private readonly deduplicationService: MessageDeduplicationService,
     private readonly messageTracking: MessageTrackingService,
     private readonly configService: ConfigService,
     private readonly chatSession: ChatSessionService,
+    private readonly queueFailures: QueueFailureService,
   ) {
     this.drainTimeoutMs = parseInt(
       this.configService.get('SHUTDOWN_DRAIN_TIMEOUT_MS', '60000'),
@@ -168,6 +170,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
 
     this.messageQueue.on('failed', (job: Job, error: Error) => {
       this.logger.error(`[Bull] ❌ 任务 ${job.id} 失败: ${error.message}`);
+      void this.queueFailures.exhausted('message-merge', job, error);
     });
 
     this.messageQueue.on('active', (job: Job) => {
@@ -310,15 +313,17 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     jobId: string | number,
   ): Promise<boolean> {
     const primary = messages[messages.length - 1];
-    const hit = await this.userHostingService.isAnyPaused([
+    const hit = await this.actionPermit.evaluate({
       chatId,
-      primary.imContactId,
-      primary.externalUserId,
-    ]);
-    if (!hit.paused) return false;
+      action: 'reply',
+      botImId: primary.imBotId,
+      groupId: primary.groupId,
+      candidateIds: [primary.imContactId, primary.externalUserId],
+    });
+    if (hit.allowed) return false;
 
     this.logger.log(
-      `[Bull][已暂停托管] 任务 ${jobId} 丢弃 ${messages.length} 条消息 (chatId=${chatId}, matchedId=${hit.matchedId})`,
+      `[Bull][已暂停托管] 任务 ${jobId} 丢弃 ${messages.length} 条消息 (chatId=${chatId}, reason=${hit.reason})`,
     );
 
     await Promise.all(
@@ -338,7 +343,13 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     await this.chatSession
       .markHistoryOnly(
         messages.map((message) => message.messageId),
-        FilterReason.USER_PAUSED,
+        hit.reason === 'candidate_blacklisted'
+          ? FilterReason.CANDIDATE_BLACKLISTED
+          : hit.reason === 'group_blacklisted'
+            ? FilterReason.GROUP_BLACKLISTED
+            : hit.reason === 'hosting_paused'
+              ? FilterReason.USER_PAUSED
+              : FilterReason.ACTION_NOT_PERMITTED,
       )
       .catch((error: unknown) => {
         this.logger.warn(`[Bull][已暂停托管] 补记只存历史原因失败: ${toErrorMessage(error)}`);

@@ -1,7 +1,10 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import {
+  ActionPermitService,
+  type ActionDenialReason,
+} from '@biz/action-permit/services/action-permit.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -34,7 +37,7 @@ export class MessageDeliveryService implements OnModuleInit {
     private readonly monitoringService: MessageTrackingService,
     private readonly typingPolicy: TypingPolicyService,
     private readonly wecomObservability: WecomMessageObservabilityService,
-    private readonly userHostingService: UserHostingService,
+    private readonly actionPermit: ActionPermitService,
   ) {}
 
   async onModuleInit() {
@@ -62,9 +65,10 @@ export class MessageDeliveryService implements OnModuleInit {
       }
 
       // 入口/worker 复查后，Agent 推理 + 工具调用还会再消耗 10-30s。
-      // 投递前用同一组 ID 再做一次 isAnyPaused，命中即整批回复一段不发，
+      // 投递前重新判定行动许可，拒绝即整批回复一段不发，
       // 避免运营关托管后仍有"撤回很多条"的体验（1tsdimfg badcase）。
-      if (await this.shouldSkipForHostingPause(context)) {
+      const denied = await this.deniedActionReason(context);
+      if (denied) {
         const totalTime = Date.now() - startTime;
         const skippedResult: DeliveryResult = {
           success: true,
@@ -73,14 +77,14 @@ export class MessageDeliveryService implements OnModuleInit {
           deliveredSegments: 0,
           totalTime,
           skipped: true,
-          skipReason: 'hosting_paused',
+          skipReason: denied,
         };
         if (recordMonitoring) {
-          this.monitoringService.recordReplySkipped(messageId, 'hosting_paused');
+          this.monitoringService.recordReplySkipped(messageId, denied);
           await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
         }
         this.logger.warn(
-          `[${contactName}] 投递前命中已暂停托管，${reply.content.length} 字符回复全部丢弃 (chatId=${context.chatId})`,
+          `[${contactName}] 投递前行动许可拒绝（${denied}），${reply.content.length} 字符回复全部丢弃 (chatId=${context.chatId})`,
         );
         return skippedResult;
       }
@@ -165,7 +169,7 @@ export class MessageDeliveryService implements OnModuleInit {
     let successCount = 0;
     let failedCount = 0;
     let firstSegmentSent = false;
-    let pauseInterrupted = false;
+    let pauseInterrupted: ActionDenialReason | undefined;
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
@@ -180,10 +184,11 @@ export class MessageDeliveryService implements OnModuleInit {
       // 段间打字延迟 + 段间 paragraph gap 加起来可达数秒，运营在分段过程中点
       // 关托管时必须立刻止损，避免循环把后续段一段段发出。每段发送前复查
       // isUserPaused，命中则截断（已发出的段保留）。
-      if (await this.shouldSkipForHostingPause(context)) {
-        pauseInterrupted = true;
+      const denied = await this.deniedActionReason(context);
+      if (denied) {
+        pauseInterrupted = denied;
         this.logger.warn(
-          `[${contactName}] 分段投递期间命中已暂停托管，` +
+          `[${contactName}] 分段投递期间行动许可拒绝（${denied}），` +
             `已发 ${successCount}/${segments.length} 段，丢弃剩余 ${segments.length - i} 段 (chatId=${chatId})`,
         );
         break;
@@ -214,7 +219,7 @@ export class MessageDeliveryService implements OnModuleInit {
     }
 
     if (pauseInterrupted) {
-      this.monitoringService.recordReplySkipped(context.messageId, 'hosting_paused');
+      this.monitoringService.recordReplySkipped(context.messageId, pauseInterrupted);
     }
 
     this.logger.log(
@@ -228,8 +233,8 @@ export class MessageDeliveryService implements OnModuleInit {
       failedSegments: failedCount,
       deliveredSegments: successCount,
       totalTime: 0,
-      skipped: pauseInterrupted || undefined,
-      skipReason: pauseInterrupted ? 'hosting_paused' : undefined,
+      skipped: Boolean(pauseInterrupted) || undefined,
+      skipReason: pauseInterrupted,
       error: failedCount > 0 ? `${failedCount}/${segments.length} 个消息片段发送失败` : undefined,
     };
 
@@ -240,16 +245,18 @@ export class MessageDeliveryService implements OnModuleInit {
     return result;
   }
 
-  /**
-   * 投递前/段间统一的"已暂停托管"复查。
-   *
-   * 与 PausedUserFilterRule、MessageProcessor.dropIfHostingPaused 共用 `isAnyPaused`
-   * helper（前两层多查 externalUserId，本层 DeliveryContext 不携带该 ID；pauseUser
-   * 以 chatId 落锚，实务等价）：任一 ID 命中暂停即视为关托管。
-   */
-  private async shouldSkipForHostingPause(context: DeliveryContext): Promise<boolean> {
-    const hit = await this.userHostingService.isAnyPaused([context.chatId, context.imContactId]);
-    return hit.paused;
+  /** 投递前及每段发送前重新读取聊天级行动许可，长推理/打字期间的变更立即生效。 */
+  private async deniedActionReason(
+    context: DeliveryContext,
+  ): Promise<ActionDenialReason | undefined> {
+    const permit = await this.actionPermit.evaluate({
+      chatId: context.chatId,
+      action: context.action ?? 'reply',
+      botImId: context.imBotId,
+      groupId: context.groupId,
+      candidateIds: [context.imContactId],
+    });
+    return permit.allowed ? undefined : permit.reason;
   }
 
   private calculateDelay(text: string, isFirstSegment: boolean = false): number {

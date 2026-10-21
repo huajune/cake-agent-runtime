@@ -1,13 +1,11 @@
+import { ReengagementCommandService } from './reengagement-command.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { extractPresentedJobs } from '@resolution/job';
 import type { ReengagementSessionState } from '@memory/recall.types';
 import { SessionStateService } from '@memory/short-term/session-state.service';
-import {
-  FollowUpSchedulerService,
-  type ReengagementChannelIdentity,
-} from './follow-up-scheduler.service';
+import { type ReengagementChannelIdentity } from './follow-up-scheduler.service';
 import { type FollowUpScenarioCode } from './scenario-registry';
 
 interface AnchorContext {
@@ -47,24 +45,23 @@ export class ReengagementAnchorService {
   private readonly logger = new Logger(ReengagementAnchorService.name);
 
   constructor(
-    private readonly scheduler: FollowUpSchedulerService,
+    private readonly scheduler: ReengagementCommandService,
     private readonly session: SessionStateService,
   ) {}
 
   /**
-   * 排程仍是 fire-and-forget；返回值只是本轮**终态写入链**（取消清 booked → 报名写 booked）
-   * 的 settle 承诺（内部已兜错，永不 reject），供渠道层把带外对账排在终态落定之后，
+   * 排程先等待恢复队列接收，再等待本轮终态写入链（取消清 booked → 报名写 booked），供渠道层把带外对账排在终态落定之后，
    * 避免两条链路对同一会话终态并发读-判-写。
    */
-  handleToolAnchors(result: AnchorAgentResult, context: AnchorContext): Promise<void> {
-    if (context.isGroupChat) return Promise.resolve();
+  async handleToolAnchors(result: AnchorAgentResult, context: AnchorContext): Promise<void> {
+    if (context.isGroupChat) return;
     // lastCandidateMessageAt（「锚点后已回话」停止信号）由入站接收层刷新：
     // accept-inbound-message.service 在消息进入时按回调时间戳调 recordCandidateActivity，
     // 比在这里（Agent 生成完成后）更早且带真实消息时间，此处不再重复写。
     const toolCalls = result.toolCalls ?? [];
     const deliverable = this.isDeliverable(result);
     if (deliverable && toolCalls.some((call) => this.isCollectionStarted(call))) {
-      void this.schedule('booking_incomplete', `${context.traceId}:collection_started`, context);
+      await this.schedule('booking_incomplete', `${context.traceId}:collection_started`, context);
     } else if (
       deliverable &&
       toolCalls.some((call) => this.isCollectionAwaitingConfirmation(call))
@@ -72,7 +69,7 @@ export class ReengagementAnchorService {
       // 资料已收齐、复述已发出：收资锚点刷新为"待确认"子态，到点只请候选人确认，
       // 不能再按"还缺资料"催填（badcase 0iepqqf5：复述发出 30 分钟后主动跟进说"还有几项资料
       // 需要再补充"，候选人反问"还要补什么"，随后又被完整复述一遍）。
-      void this.schedule(
+      await this.schedule(
         'booking_incomplete',
         `${context.traceId}:collection_awaiting_confirmation`,
         context,
@@ -90,7 +87,8 @@ export class ReengagementAnchorService {
     const booking = toolCalls.find((call) => this.isBookingSucceeded(call));
     const groupInvited = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
     if (groupInvited) {
-      void this.scheduler.stopPendingJobsForSessionScenario({
+      await this.scheduler.stopPendingJobsForSessionScenario({
+        commandId: `${context.traceId}:stop-store-follow-up`,
         sessionRef: {
           corpId: context.corpId,
           userId: context.userId,
@@ -123,11 +121,15 @@ export class ReengagementAnchorService {
     // 真人是否已接手由 processor 到点的真人介入闸判断，不在锚点侧预先放弃。
     const modified = toolCalls.find((call) => this.isInterviewModified(call));
     if (modified) {
-      this.scheduleBookingFollowUps(modified, `${context.traceId}:interview_modified`, context);
+      await this.scheduleBookingFollowUps(
+        modified,
+        `${context.traceId}:interview_modified`,
+        context,
+      );
     }
 
     if (booking) {
-      this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
+      await this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
     }
     return terminalChain;
   }
@@ -136,15 +138,15 @@ export class ReengagementAnchorService {
    * booking / 改约共用：只把稳定工单号送入解析重试任务。正式触达时间必须由 worker
    * 查询海绵实时工单后计算，禁止使用预约工具入参或旧任务快照。
    */
-  private scheduleBookingFollowUps(
+  private async scheduleBookingFollowUps(
     call: AgentToolCall,
     anchorEventBase: string,
     context: AnchorContext,
-  ): void {
+  ): Promise<void> {
     const workOrderId = this.extractWorkOrderId(call);
     if (workOrderId == null) return;
     for (const scenarioCode of ['interview_reminder', 'post_interview_followup'] as const) {
-      void this.scheduler.scheduleBookingResolution({
+      await this.scheduler.scheduleBookingResolution({
         sessionRef: {
           corpId: context.corpId,
           userId: context.userId,
@@ -195,7 +197,7 @@ export class ReengagementAnchorService {
     const collectionContinued = !collectionStartedThisTurn && this.asksForCollectionDetails(reply);
     const groupInvitedThisTurn = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
     if (collectionContinued) {
-      void this.schedule('booking_incomplete', `${context.traceId}:collection_continued`, context);
+      await this.schedule('booking_incomplete', `${context.traceId}:collection_continued`, context);
     }
 
     const presentedStoreCalls =
@@ -219,7 +221,8 @@ export class ReengagementAnchorService {
       await this.scheduleRecalledPoolPresentation(reply, context);
     }
     if (!context.suppressAddressMissing && this.asksForLocation(reply)) {
-      void this.scheduler.removeSupersededPendingJobs({
+      await this.scheduler.removeSupersededPendingJobs({
+        commandId: `${context.traceId}:supersede-opening-follow-up`,
         sessionRef: {
           corpId: context.corpId,
           userId: context.userId,
@@ -228,7 +231,7 @@ export class ReengagementAnchorService {
         scenarioCode: 'address_missing',
         reason: 'address_missing_supersedes_opening_no_reply',
       });
-      void this.schedule('address_missing', `${context.traceId}:address_missing`, context);
+      await this.schedule('address_missing', `${context.traceId}:address_missing`, context);
     }
   }
 

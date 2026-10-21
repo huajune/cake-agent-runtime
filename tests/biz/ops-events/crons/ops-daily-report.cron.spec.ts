@@ -36,6 +36,7 @@ function buildService(overrides: Record<string, string>) {
   };
   const service = new OpsDailyReportCronService(
     configService as never,
+    { run: jest.fn(async (_id, _limits, task) => task({ checkpoint: jest.fn() })) } as never,
     dailyOpsReportService as never,
     bitableApi as never,
     spongeService as never,

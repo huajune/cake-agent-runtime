@@ -92,54 +92,67 @@ export class OpsEventsRepository extends BaseRepository {
   /**
    * 查待轮询面试结果的工单：window 内 booking.succeeded 但尚未 interview.passed 的工单。
    *
-   * 两次 select + 应用层差集（已 pass 的不再轮询）。同一 workOrderId 去重。
+   * 一页 booking + 按企业精确键查询 pass，再取差集。同一企业的 workOrderId 去重。
    * 注：统计收口到面试通过，不再轮询 / 采集入职（candidate.hired）。
    * @param sinceReportDate YYYY-MM-DD（Asia/Shanghai），window 下界（含）。
    */
-  async findWorkOrdersPendingPass(sinceReportDate: string): Promise<PendingHireWorkOrder[]> {
-    if (!this.isAvailable()) {
-      return [];
+  async findWorkOrdersPendingPass(
+    sinceReportDate: string,
+    offset = 0,
+  ): Promise<{ pending: PendingHireWorkOrder[]; nextOffset: number }> {
+    if (!this.isAvailable()) throw new Error('Ops events store unavailable');
+    const pageSize = 100;
+    // Bound returned rows to one date-ordered page; query-plan validation guards scan cost.
+    const bookingRows = await this.selectFrom<{
+      corp_id: string;
+      user_id?: string | null;
+      chat_id?: string | null;
+      bot_im_id?: string | null;
+      payload?: { work_order_id?: unknown } | null;
+    }>(this.tableName, 'corp_id,user_id,chat_id,bot_im_id,payload', (q) =>
+      q
+        .eq('event_name', 'booking.succeeded')
+        .gte('report_date', sinceReportDate)
+        .order('report_date', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1),
+    );
+    const keysByCorp = new Map<string, Set<string>>();
+    for (const row of bookingRows) {
+      const id = Number(row.payload?.work_order_id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const keys = keysByCorp.get(row.corp_id) ?? new Set<string>();
+      keys.add(`${id}:pass`);
+      keysByCorp.set(row.corp_id, keys);
     }
-
-    // selectAllPaged 复用熔断器 + 退避重试；modifier 内附带稳定排序（report_date + id），
-    // 避免分页跨 1000 行时漏/重。
-    const [bookingRows, passedRows] = await Promise.all([
-      this.selectAllPaged<{
-        corp_id: string;
-        user_id?: string | null;
-        chat_id?: string | null;
-        bot_im_id?: string | null;
-        payload?: { work_order_id?: unknown } | null;
-      }>(this.tableName, 'corp_id, user_id, chat_id, bot_im_id, payload', (q) =>
-        q
-          .eq('event_name', 'booking.succeeded')
-          .gte('report_date', sinceReportDate)
-          .order('report_date', { ascending: true })
-          .order('id', { ascending: true }),
-      ),
-      this.selectAllPaged<{ idempotency_key?: string | null }>(
+    const passedWorkOrders = new Set<string>();
+    for (const [corpId, keys] of keysByCorp) {
+      // Uses the existing unique (corp_id, event_name, idempotency_key) index.
+      const passedRows = await this.selectFrom<{ idempotency_key?: string | null }>(
         this.tableName,
         'idempotency_key',
         (q) =>
           q
+            .eq('corp_id', corpId)
             .eq('event_name', 'interview.passed')
-            .gte('report_date', sinceReportDate)
-            .order('report_date', { ascending: true })
-            .order('id', { ascending: true }),
-      ),
-    ]);
+            .in('idempotency_key', [...keys])
+            .limit(pageSize),
+      );
+      for (const row of passedRows) {
+        passedWorkOrders.add(
+          `${corpId}:${String(row.idempotency_key ?? '').replace(/:pass$/, '')}`,
+        );
+      }
+    }
 
-    const passedWorkOrderIds = new Set(
-      passedRows.map((row) => String(row.idempotency_key ?? '').replace(/:pass$/, '')),
-    );
-
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     const pending: PendingHireWorkOrder[] = [];
     for (const row of bookingRows) {
       const workOrderId = Number(row.payload?.work_order_id);
       if (!Number.isFinite(workOrderId) || workOrderId <= 0) continue;
-      if (passedWorkOrderIds.has(String(workOrderId)) || seen.has(workOrderId)) continue;
-      seen.add(workOrderId);
+      const workOrderKey = `${row.corp_id}:${workOrderId}`;
+      if (passedWorkOrders.has(workOrderKey) || seen.has(workOrderKey)) continue;
+      seen.add(workOrderKey);
       pending.push({
         workOrderId,
         corpId: row.corp_id,
@@ -148,7 +161,7 @@ export class OpsEventsRepository extends BaseRepository {
         botImId: row.bot_im_id ?? null,
       });
     }
-    return pending;
+    return { pending, nextOffset: bookingRows.length === pageSize ? offset + pageSize : 0 };
   }
 
   /**

@@ -92,6 +92,7 @@ describe('AcceptInboundMessageService', () => {
       Promise.resolve(url),
     );
     service = new AcceptInboundMessageService(
+      { recordCandidateActivity: jest.fn().mockResolvedValue(undefined) } as never,
       deduplicationService as never,
       chatSession as never,
       filterService as never,

@@ -9,6 +9,8 @@ describe('SpongeStatusPollService.runOnce', () => {
     opsEventsRepository as never,
     opsEventsRecorder as never,
     spongeService as never,
+    {} as never,
+    {} as never,
   );
 
   const pendingWo = {
@@ -25,7 +27,10 @@ describe('SpongeStatusPollService.runOnce', () => {
   });
 
   it('emits interview.passed when interview is passed (no longer tracks hired)', async () => {
-    opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue([pendingWo]);
+    opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue({
+      pending: [pendingWo],
+      nextOffset: 0,
+    });
     spongeService.getCachedWorkOrderById.mockResolvedValue({
       workOrderId: 9001,
       interviewPassTime: '2026-05-20 10:00:00',
@@ -34,7 +39,7 @@ describe('SpongeStatusPollService.runOnce', () => {
 
     const result = await service.runOnce();
 
-    expect(result).toEqual({ scanned: 1, passed: 1 });
+    expect(result).toEqual({ scanned: 1, passed: 1, nextOffset: 0 });
     expect(opsEventsRecorder.recordEvent).toHaveBeenCalledTimes(1);
     expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventName: 'interview.passed', idempotencyKey: '9001:pass' }),
@@ -46,7 +51,10 @@ describe('SpongeStatusPollService.runOnce', () => {
   });
 
   it('emits nothing when interview not yet passed', async () => {
-    opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue([pendingWo]);
+    opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue({
+      pending: [pendingWo],
+      nextOffset: 0,
+    });
     spongeService.getCachedWorkOrderById.mockResolvedValue({
       workOrderId: 9001,
       interviewPassTime: null,
@@ -55,17 +63,20 @@ describe('SpongeStatusPollService.runOnce', () => {
 
     const result = await service.runOnce();
 
-    expect(result).toEqual({ scanned: 1, passed: 0 });
+    expect(result).toEqual({ scanned: 1, passed: 0, nextOffset: 0 });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
   });
 
   it('skips work orders whose sponge lookup fails (graceful)', async () => {
-    opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue([pendingWo]);
+    opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue({
+      pending: [pendingWo],
+      nextOffset: 0,
+    });
     spongeService.getCachedWorkOrderById.mockRejectedValue(new Error('sponge down'));
 
     const result = await service.runOnce();
 
-    expect(result).toEqual({ scanned: 1, passed: 0 });
+    expect(result).toEqual({ scanned: 1, passed: 0, nextOffset: 0 });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,5 @@
+import { MESSAGE_MERGE_JOB_OPTIONS } from '@infra/queue/queue-policy';
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
@@ -53,6 +55,7 @@ export class SimpleMergeService implements OnModuleInit {
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     @InjectQueue('message-merge') private readonly messageQueue: Queue,
+    private readonly leases: RedisLeaseService,
   ) {}
 
   async onModuleInit() {
@@ -102,13 +105,7 @@ export class SimpleMergeService implements OnModuleInit {
           {
             jobId: `${chatId}:${messageData.messageId}`,
             delay: mergeDelayMs,
-            removeOnComplete: true,
-            removeOnFail: false, // 失败时保留用于调试
-            attempts: 3,
-            backoff: {
-              type: 'exponential',
-              delay: 2000,
-            },
+            ...MESSAGE_MERGE_JOB_OPTIONS,
           },
         );
         this.logger.debug(
@@ -230,10 +227,10 @@ export class SimpleMergeService implements OnModuleInit {
   }
 
   async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
-    return this.redisService.setNx(
-      RedisKeyBuilder.lock(chatId),
-      ownerToken,
-      this.PROCESSING_LOCK_TTL_SECONDS,
+    return Boolean(
+      await this.leases.acquire(RedisKeyBuilder.lock(chatId), this.PROCESSING_LOCK_TTL_SECONDS, {
+        owner: ownerToken,
+      }),
     );
   }
 
@@ -311,10 +308,7 @@ export class SimpleMergeService implements OnModuleInit {
           {
             jobId: params.jobId,
             delay: params.delayMs,
-            removeOnComplete: true,
-            removeOnFail: false,
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 2000 },
+            ...MESSAGE_MERGE_JOB_OPTIONS,
           },
         );
         return;
@@ -366,30 +360,19 @@ export class SimpleMergeService implements OnModuleInit {
 
   /** 仅当仍是锁持有者时才续期（Lua 原子判断），避免误续他人的锁。 */
   private async renewProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
-    const result = await this.redisService.eval(
-      `
-          if redis.call("get", KEYS[1]) == ARGV[1] then
-            return redis.call("expire", KEYS[1], ARGV[2])
-          end
-          return 0
-        `,
-      [RedisKeyBuilder.lock(chatId)],
-      [ownerToken, String(this.PROCESSING_LOCK_TTL_SECONDS)],
-    );
-    return result === 1;
+    return this.leases.renew({
+      key: RedisKeyBuilder.lock(chatId),
+      owner: ownerToken,
+      ttlSeconds: this.PROCESSING_LOCK_TTL_SECONDS,
+    });
   }
 
   async releaseProcessingLock(chatId: string, ownerToken: string): Promise<void> {
-    await this.redisService.eval(
-      `
-          if redis.call("get", KEYS[1]) == ARGV[1] then
-            return redis.call("del", KEYS[1])
-          end
-          return 0
-        `,
-      [RedisKeyBuilder.lock(chatId)],
-      [ownerToken],
-    );
+    await this.leases.release({
+      key: RedisKeyBuilder.lock(chatId),
+      owner: ownerToken,
+      ttlSeconds: this.PROCESSING_LOCK_TTL_SECONDS,
+    });
   }
 
   /**
@@ -420,13 +403,7 @@ export class SimpleMergeService implements OnModuleInit {
         {
           jobId: newJobId,
           delay: scheduledDelayMs,
-          removeOnComplete: true,
-          removeOnFail: false,
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
+          ...MESSAGE_MERGE_JOB_OPTIONS,
         },
       );
       return true;

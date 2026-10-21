@@ -1,12 +1,13 @@
 import { ConsolidationProcessor } from '@memory/long-term/consolidation.processor';
-import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 
 describe('ConsolidationProcessor', () => {
   const queue = { process: jest.fn() };
   const session = { getSessionState: jest.fn() };
   const consolidation = { consolidateIdleSession: jest.fn() };
   const scheduler = { schedule: jest.fn().mockResolvedValue('job-2') };
-  const incidents = { notify: jest.fn().mockResolvedValue(true) };
+  const alerts = { sendAlert: jest.fn().mockResolvedValue(true) };
+  const incidents = new QueueFailureService(alerts as never);
   const data = {
     corpId: 'corp-1',
     userId: 'user-1',
@@ -71,25 +72,21 @@ describe('ConsolidationProcessor', () => {
     consolidation.consolidateIdleSession.mockRejectedValue(new Error('db down'));
 
     await expect(processor.process(makeJob(0))).rejects.toThrow('db down');
-    expect(incidents.notify).not.toHaveBeenCalled();
+    expect(alerts.sendAlert).not.toHaveBeenCalled();
   });
 
   it('最终失败先写持久化告警再向 Bull 抛出', async () => {
     consolidation.consolidateIdleSession.mockRejectedValue(new Error('db down'));
 
     await expect(processor.process(makeJob(2))).rejects.toThrow('db down');
-    expect(incidents.notify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: 'memory.consolidation_failed',
-        source: expect.objectContaining({ subsystem: 'memory', trigger: 'queue' }),
-        scope: { userId: 'user-1', sessionId: 'session-1' },
-      }),
+    expect(alerts.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'queue.retry_exhausted' }),
     );
   });
 
-  it('最终失败经过真实 IncidentReporterService 分发到 AlertNotifier', async () => {
+  it('最终失败经过真实 QueueFailureService 分发到 AlertNotifier', async () => {
     const alertNotifier = { sendAlert: jest.fn().mockResolvedValue(true) };
-    const reporter = new IncidentReporterService(alertNotifier as never);
+    const reporter = new QueueFailureService(alertNotifier as never);
     const processorWithRealReporter = new ConsolidationProcessor(
       queue as never,
       session as never,
@@ -106,14 +103,8 @@ describe('ConsolidationProcessor', () => {
     );
     expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        code: 'memory.consolidation_failed',
-        summary: '会话记忆定时沉淀重试耗尽',
-        source: expect.objectContaining({ subsystem: 'memory', trigger: 'queue' }),
-        scope: { userId: 'user-1', sessionId: 'session-1' },
-        diagnostics: expect.objectContaining({
-          errorMessage: 'memory_consolidation_summary_empty:session-1',
-          totalAttempts: 3,
-        }),
+        code: 'queue.retry_exhausted',
+        diagnostics: { errorMessage: 'memory_consolidation_summary_empty:session-1' },
       }),
     );
   });

@@ -78,6 +78,7 @@ describe('ReengagementAnchorService', () => {
     await flush();
 
     expect(scheduler.stopPendingJobsForSessionScenario).toHaveBeenCalledWith({
+      commandId: 'trace-1:stop-store-follow-up',
       sessionRef: { corpId: 'corp-1', userId: 'user-1', sessionId: 'chat-1' },
       scenarioCode: 'store_presented_no_reply',
       reason: 'candidate_invited_to_group',
@@ -823,6 +824,7 @@ describe('ReengagementAnchorService', () => {
       }),
     );
     expect(scheduler.removeSupersededPendingJobs).toHaveBeenCalledWith({
+      commandId: 'trace-1:supersede-opening-follow-up',
       sessionRef: { corpId: 'corp-1', userId: 'user-1', sessionId: 'chat-1' },
       scenarioCode: 'address_missing',
       reason: 'address_missing_supersedes_opening_no_reply',

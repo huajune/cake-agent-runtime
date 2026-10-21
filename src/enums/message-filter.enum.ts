@@ -11,6 +11,7 @@ export enum FilterReason {
   NON_PERSONAL_WECHAT = 'non-personal-wechat',
   /** 用户已暂停托管 */
   USER_PAUSED = 'user-paused',
+  ACTION_NOT_PERMITTED = 'action-not-permitted',
   /** 小组在黑名单中（仅记录历史） */
   GROUP_BLACKLISTED = 'group-blacklisted',
   /** 候选人在黑名单中（告警并永久取消该会话托管，仅记录历史） */
@@ -29,6 +30,7 @@ export enum FilterReason {
  */
 export const HISTORY_ONLY_REASONS = [
   FilterReason.USER_PAUSED,
+  FilterReason.ACTION_NOT_PERMITTED,
   FilterReason.CANDIDATE_BLACKLISTED,
   FilterReason.GROUP_BLACKLISTED,
 ] as const;
@@ -37,4 +39,9 @@ export type HistoryOnlyReason = (typeof HISTORY_ONLY_REASONS)[number];
 
 export function isHistoryOnlyReason(value: unknown): value is HistoryOnlyReason {
   return (HISTORY_ONLY_REASONS as readonly unknown[]).includes(value);
+}
+
+/** 系统开关/权限源不可用不等于有人接管了候选人问题。 */
+export function isHumanHandledHistoryReason(value: unknown): boolean {
+  return isHistoryOnlyReason(value) && value !== FilterReason.ACTION_NOT_PERMITTED;
 }

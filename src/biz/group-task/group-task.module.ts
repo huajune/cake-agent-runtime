@@ -1,3 +1,4 @@
+import { retainedJobs } from '@infra/queue/queue-policy';
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { SpongeModule } from '@sponge/sponge.module';
@@ -41,8 +42,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
       name: GROUP_TASK_QUEUE_NAME,
       defaultJobOptions: {
         // 单 job 默认保留 7 天，便于 web 端看历史、必要时点重试
-        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 1000 },
-        removeOnFail: { age: 7 * 24 * 60 * 60, count: 1000 },
+        ...retainedJobs(1000),
       },
     }),
   ],

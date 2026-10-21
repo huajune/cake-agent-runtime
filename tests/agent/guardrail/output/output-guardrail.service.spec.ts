@@ -172,7 +172,7 @@ describe('OutputGuardrailService', () => {
     expect(longTerm.tryGetActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
     expect(ruleGuard.check).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeBookings: [],
+        activeBookings: undefined,
         priorAssistantTexts: ['肯德基 2.7km'],
       }),
     );

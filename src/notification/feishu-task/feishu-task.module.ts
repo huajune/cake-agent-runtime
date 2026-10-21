@@ -1,3 +1,6 @@
+import { BullModule } from '@nestjs/bull';
+import { InterventionTaskProcessor } from './intervention-task.processor';
+import { INTERVENTION_TASK_QUEUE } from './intervention-task-job';
 import { Module } from '@nestjs/common';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { FeishuTaskClient } from './feishu-task.client';
@@ -12,8 +15,8 @@ import { InterventionTaskService } from './intervention-task.service';
  * 避免把 MemoryModule 整块拖进来。
  */
 @Module({
-  imports: [HostingConfigModule],
-  providers: [FeishuTaskClient, InterventionTaskService],
+  imports: [HostingConfigModule, BullModule.registerQueue({ name: INTERVENTION_TASK_QUEUE })],
+  providers: [FeishuTaskClient, InterventionTaskService, InterventionTaskProcessor],
   exports: [FeishuTaskClient, InterventionTaskService],
 })
 export class FeishuTaskModule {}

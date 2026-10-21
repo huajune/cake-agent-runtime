@@ -1,3 +1,4 @@
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageFilterService, FilterReason } from '@wecom/message/application/filter.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
@@ -21,8 +22,8 @@ import {
 describe('MessageFilterService', () => {
   let service: MessageFilterService;
 
+  const mockActionPermit = { evaluate: jest.fn() };
   const mockUserHostingService = {
-    isAnyPaused: jest.fn(),
     pauseUser: jest.fn(),
   };
 
@@ -59,6 +60,7 @@ describe('MessageFilterService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageFilterService,
+        { provide: ActionPermitService, useValue: mockActionPermit },
         SelfMessageFilterRule,
         SourceMessageFilterRule,
         ContactTypeFilterRule,
@@ -79,7 +81,7 @@ describe('MessageFilterService', () => {
     jest.clearAllMocks();
 
     // Default: user not paused, group/candidate not blacklisted
-    mockUserHostingService.isAnyPaused.mockResolvedValue({ paused: false });
+    mockActionPermit.evaluate.mockResolvedValue({ allowed: true });
     mockGroupBlacklistService.isGroupBlacklisted.mockResolvedValue(false);
     mockCandidateBlacklistService.matchBlacklisted.mockResolvedValue(null);
     mockCandidateBlacklistService.recordHit.mockResolvedValue(undefined);
@@ -137,8 +139,9 @@ describe('MessageFilterService', () => {
     });
 
     it('should store paused user messages as historyOnly', async () => {
-      mockUserHostingService.isAnyPaused.mockResolvedValue({
-        paused: true,
+      mockActionPermit.evaluate.mockResolvedValue({
+        allowed: false,
+        reason: 'hosting_paused',
         matchedId: 'chat-123',
       });
 
@@ -148,17 +151,20 @@ describe('MessageFilterService', () => {
       expect(result.historyOnly).toBe(true);
       expect(result.content).toBe('Hello, world!');
       expect(result.reason).toBe(FilterReason.USER_PAUSED);
-      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
-        'chat-123',
-        validMessageData.imContactId,
-        validMessageData.externalUserId,
-      ]);
-      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledTimes(1);
+      expect(mockActionPermit.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'chat-123',
+          action: 'reply',
+          candidateIds: [validMessageData.imContactId, validMessageData.externalUserId],
+        }),
+      );
+      expect(mockActionPermit.evaluate).toHaveBeenCalledTimes(1);
     });
 
-    it('should use externalUserId when chatId and imContactId are not available', async () => {
-      mockUserHostingService.isAnyPaused.mockResolvedValue({
-        paused: true,
+    it('passes candidate aliases to permission boundary without treating them as chat pauses', async () => {
+      mockActionPermit.evaluate.mockResolvedValue({
+        allowed: false,
+        reason: 'hosting_paused',
         matchedId: 'ext-user-123',
       });
       const messageData = {
@@ -172,11 +178,9 @@ describe('MessageFilterService', () => {
 
       expect(result.pass).toBe(true);
       expect(result.historyOnly).toBe(true);
-      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
-        undefined,
-        undefined,
-        'ext-user-123',
-      ]);
+      expect(mockActionPermit.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({ chatId: undefined, candidateIds: [undefined, 'ext-user-123'] }),
+      );
       expect(result.reason).toBe(FilterReason.USER_PAUSED);
     });
 
@@ -191,11 +195,9 @@ describe('MessageFilterService', () => {
       const result = await service.validate(messageData);
 
       // helper 内部短路过滤掉 null/undefined → 调用一次但无任何 ID 命中
-      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
-        undefined,
-        undefined,
-        undefined,
-      ]);
+      expect(mockActionPermit.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({ chatId: undefined, candidateIds: [undefined, undefined] }),
+      );
       expect(result.pass).toBe(true);
     });
 
@@ -246,8 +248,9 @@ describe('MessageFilterService', () => {
 
     it('should not re-alert blacklisted candidates once the chat is paused', async () => {
       // 命中黑名单后会话已被永久暂停，暂停规则先短路，黑名单规则不再触发
-      mockUserHostingService.isAnyPaused.mockResolvedValue({
-        paused: true,
+      mockActionPermit.evaluate.mockResolvedValue({
+        allowed: false,
+        reason: 'hosting_paused',
         matchedId: 'chat-123',
       });
       mockCandidateBlacklistService.matchBlacklisted.mockResolvedValue({

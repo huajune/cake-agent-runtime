@@ -67,6 +67,15 @@ async function serializeProviderToolPrefix(tools: ToolSet): Promise<string> {
 }
 
 describe('ToolRegistryService', () => {
+  it('declares every registered and dynamic tool, and rejects undeclared MCP tools', () => {
+    const registry = buildRegistry();
+    for (const name of [...registry.list(), 'save_image_description', 'read_resume_attachment']) {
+      expect(registry.getContract(name)).toBeDefined();
+    }
+    expect(() => registry.registerMcpTool('undeclared', {} as never, 'test')).toThrow(
+      'no action contract',
+    );
+  });
   it('keeps normal text-turn provider tool serialization byte-identical', async () => {
     const registry = buildRegistry();
     const first = registry.buildForScenario(

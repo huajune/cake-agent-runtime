@@ -1,3 +1,5 @@
+import { InterventionTaskProcessor } from '@notification/feishu-task/intervention-task.processor';
+import type { InterventionTaskJob } from '@notification/feishu-task/intervention-task-job';
 import type {
   GeneralHandoffInterventionPayload,
   RiskInterventionPayload,
@@ -58,6 +60,17 @@ describe('InterventionTaskService', () => {
     }),
   };
 
+  const taskQueue = {
+    add: jest.fn(async (_name: string, data: InterventionTaskJob) => {
+      const worker = new InterventionTaskProcessor(
+        {} as never,
+        client as never,
+        {} as never,
+        service,
+      );
+      await worker.process({ data, update: jest.fn().mockResolvedValue(undefined) } as never);
+    }),
+  };
   let service: InterventionTaskService;
 
   const basePayload: GeneralHandoffInterventionPayload = {
@@ -110,6 +123,7 @@ describe('InterventionTaskService', () => {
       hostingMember as never,
       alertNotifier as never,
       moduleRef as never,
+      taskQueue as never,
     );
     service.onApplicationBootstrap();
   });
@@ -161,6 +175,7 @@ describe('InterventionTaskService', () => {
       hostingMember as never,
       alertNotifier as never,
       moduleRef as never,
+      taskQueue as never,
     );
     noTasklistService.onApplicationBootstrap();
 
@@ -506,17 +521,17 @@ describe('InterventionTaskService', () => {
     expect(input.description).toContain('详见企微会话');
   });
 
-  it('创建失败时发飞书告警，不抛错', async () => {
+  it('工作任务创建失败时向队列抛错并告警', async () => {
     client.createTask.mockResolvedValue(null);
-    await expect(service.submit(basePayload)).resolves.toBeUndefined();
+    await expect(service.submit(basePayload)).rejects.toThrow();
     expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'feishu_task.create_failed' }),
     );
   });
 
-  it('依赖抛异常时吞掉并告警', async () => {
+  it('依赖抛异常时向队列抛错并告警', async () => {
     client.createTask.mockRejectedValue(new Error('boom'));
-    await expect(service.submit(basePayload)).resolves.toBeUndefined();
+    await expect(service.submit(basePayload)).rejects.toThrow();
     expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
   });
 });
