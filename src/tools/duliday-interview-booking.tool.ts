@@ -790,7 +790,7 @@ export function buildInterviewBookingTool(
                 failureReason: result.message ?? `海绵返回 code=${result.code}`,
               }),
             };
-            void notifyBooking(
+            await notifyBooking(
               privateChatNotifier,
               context,
               identity,
@@ -1011,7 +1011,7 @@ export function buildInterviewBookingTool(
               : {}),
           };
           if (!manualGroup && action?.dispatched !== false) {
-            void notifyBooking(
+            await notifyBooking(
               privateChatNotifier,
               context,
               identity,

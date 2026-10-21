@@ -633,10 +633,10 @@ describe('SupabaseStore', () => {
   it('strict repair never reports persistence complete when Supabase is unavailable', async () => {
     mockSupabaseService.getSupabaseClient.mockReturnValue(null);
     await expect(store.setActiveBooking('corp', 'user', 42, {}, { strict: true })).rejects.toThrow(
-      'memory_booking_store_unavailable',
+      'active_booking_store_unavailable',
     );
     await expect(store.clearActiveBooking('corp', 'user', 42, { strict: true })).rejects.toThrow(
-      'memory_booking_store_unavailable',
+      'active_booking_store_unavailable',
     );
     await expect(
       store.upsertProfileFacts(
@@ -654,9 +654,9 @@ describe('SupabaseStore', () => {
   it('strict booking repair bypasses stale local cache and does not treat query failure as an empty booking list', async () => {
     mockRedis.get.mockResolvedValue({ active_booking: null });
     mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'read timeout' } });
-    await expect(
-      store.setActiveBooking('corp', 'user', 42, {}, { strict: true }),
-    ).rejects.toMatchObject({ message: 'read timeout' });
+    await expect(store.setActiveBooking('corp', 'user', 42, {}, { strict: true })).rejects.toThrow(
+      'active_booking_read_failed: read timeout',
+    );
     expect(mockRedis.get).not.toHaveBeenCalled();
     expect(mockUpsert).not.toHaveBeenCalled();
   });

@@ -1,6 +1,11 @@
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
-import type { ActionExecution, ActionIntent } from '@biz/action-execution/action-execution.types';
+import type {
+  ActionExecution,
+  ActionIntent,
+  ActionSyncContext,
+} from '@biz/action-execution/action-execution.types';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RoomService } from '@channels/wecom/room/room.service';
@@ -109,6 +114,7 @@ export class GroupInviteService implements OnModuleInit {
     configService: ConfigService,
     private readonly actions: ActionExecutorService,
     private readonly recoveryRegistry: ActionRecoveryRegistry,
+    private readonly permits: ActionPermitService,
   ) {
     this.memberLimit = Number.parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     this.enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || null;
@@ -124,7 +130,8 @@ export class GroupInviteService implements OnModuleInit {
           detail: 'membership_is_not_request_completion_evidence',
         },
       }),
-      sync: (record) => this.syncInviteAction(record.intent, record.result as InviteApiResult),
+      sync: (record, context) =>
+        this.syncInviteAction(record.intent, record.result as InviteApiResult, context),
     });
   }
 
@@ -547,7 +554,17 @@ export class GroupInviteService implements OnModuleInit {
       },
     };
     const action = await this.actions.execute<InviteApiResult>(intent, {
-      authorize: input.authorize,
+      authorize: async () => {
+        if (input.authorize && !(await input.authorize())) return false;
+        return (
+          await this.permits.evaluate({
+            chatId: input.chatId ?? input.sessionId,
+            action: 'tool',
+            botImId: input.botImId,
+            candidateIds: [input.userId, input.contactWxid],
+          })
+        ).allowed;
+      },
       dispatch: async () => {
         const result = this.parseInviteApiResult(
           await this.roomService.addMemberEnterprise(external),
@@ -586,7 +603,11 @@ export class GroupInviteService implements OnModuleInit {
     return { ...action.result, action };
   }
 
-  private async syncInviteAction(intent: ActionIntent, result: InviteApiResult): Promise<void> {
+  private async syncInviteAction(
+    intent: ActionIntent,
+    result: InviteApiResult,
+    context?: ActionSyncContext,
+  ): Promise<void> {
     const data = intent.recovery;
     if (
       !data?.candidate ||
@@ -600,6 +621,7 @@ export class GroupInviteService implements OnModuleInit {
       typeof data.city !== 'string'
     )
       throw new Error('Invite repair data unavailable');
+    await context?.assertOwned();
     await this.memoryService.saveInvitedGroup(intent.corpId, data.userId, data.sessionId, {
       groupName: data.groupName,
       city: data.city,

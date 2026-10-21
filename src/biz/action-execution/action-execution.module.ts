@@ -1,3 +1,4 @@
+import { ActionLocalSyncService } from './action-local-sync.service';
 import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { ActionExecutorService } from './action-executor.service';
@@ -14,6 +15,7 @@ import {
 @Module({
   imports: [BullModule.registerQueue({ name: ACTION_REPAIR_QUEUE })],
   providers: [
+    ActionLocalSyncService,
     ActionExecutorService,
     ActionRecordsRepository,
     ActionRecoveryRegistry,

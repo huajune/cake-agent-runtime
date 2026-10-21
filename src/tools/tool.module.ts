@@ -1,3 +1,4 @@
+import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { Module } from '@nestjs/common';
 import { ToolActionService } from './actions/tool-action.service';
 import { MemoryModule } from '@memory/memory.module';
@@ -18,6 +19,7 @@ import { BookingSnapshotService } from './booking/booking-snapshot.service';
 
 @Module({
   imports: [
+    ActionPermitModule,
     MemoryModule,
     SpongeModule,
     BrandResolutionModule,

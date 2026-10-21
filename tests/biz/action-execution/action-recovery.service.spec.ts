@@ -4,7 +4,8 @@ import type { ActionRecord } from '@biz/action-execution/action-execution.types'
 
 const record = {
   actionId: 'action',
-  intent: { kind: 'booking' },
+  intent: { kind: 'booking', chatId: 'chat' },
+  mode: 'execute',
   status: 'unknown',
   owner: 'owner',
   fence: 1,
@@ -33,11 +34,13 @@ function setup(row = record) {
     sync: jest.fn(),
   };
   const registry = { get: jest.fn().mockReturnValue(handler) };
+  const localSync = { run: jest.fn(async (r, h) => h.sync?.(r)) };
   return {
     records,
     handler,
     registry,
-    service: new ActionRecoveryService(records as never, registry as never),
+    localSync,
+    service: new ActionRecoveryService(records as never, registry as never, localSync as never),
   };
 }
 describe('bounded action reconciliation', () => {
@@ -97,9 +100,31 @@ describe('bounded action reconciliation', () => {
     expect(handler.reconcile).not.toHaveBeenCalled();
     expect(records.settle).not.toHaveBeenCalled();
   });
+  it('accepts terminal callback evidence after the query deadline and attempt budget', async () => {
+    const { service, records, handler } = setup({
+      ...record,
+      attempts: 99,
+      recoveryDeadline: '2020-01-01T00:00:00Z',
+    });
+    records.terminalEvidence.mockResolvedValue({
+      conflicting: false,
+      completion: {
+        status: 'succeeded',
+        result: { id: 1 },
+        evidence: { kind: 'completed', requestTerminated: true },
+      },
+    });
+    await service.recoverDue();
+    expect(handler.reconcile).not.toHaveBeenCalled();
+    expect(records.markSynced).toHaveBeenCalled();
+  });
   it('queued settlement never calls the business request', async () => {
-    const { records, registry, handler } = setup();
-    const processor = new ActionRepairProcessor(records as never, registry as never);
+    const { records, registry, handler, localSync } = setup();
+    const processor = new ActionRepairProcessor(
+      records as never,
+      registry as never,
+      localSync as never,
+    );
     await processor.settle({
       data: { record, completion: { status: 'succeeded', result: { id: 1 } } },
     } as never);

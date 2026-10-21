@@ -212,15 +212,13 @@ describe('duliday_interview_booking（form → labelList）', () => {
     'action %s never triggers booking failure, pause, red card or a direct second request',
     async (status) => {
       const actions = {
-        executeSponge: jest
-          .fn()
-          .mockResolvedValue({
-            status,
-            actionId: 'action',
-            requestId: 'request',
-            localSync: 'complete',
-            dispatched: false,
-          }),
+        executeSponge: jest.fn().mockResolvedValue({
+          status,
+          actionId: 'action',
+          requestId: 'request',
+          localSync: 'complete',
+          dispatched: false,
+        }),
       };
       const result = await execute({ jobId: 100 }, actions as never);
       expect(result).toMatchObject({
@@ -240,16 +238,14 @@ describe('duliday_interview_booking（form → labelList）', () => {
 
   it('success with pending local sync is still a successful booking receipt', async () => {
     const actions = {
-      executeSponge: jest
-        .fn()
-        .mockResolvedValue({
-          status: 'succeeded',
-          actionId: 'action',
-          requestId: 'request',
-          localSync: 'pending',
-          dispatched: true,
-          result: { success: true, code: 0, workOrderId: 9001 },
-        }),
+      executeSponge: jest.fn().mockResolvedValue({
+        status: 'succeeded',
+        actionId: 'action',
+        requestId: 'request',
+        localSync: 'pending',
+        dispatched: true,
+        result: { success: true, code: 0, workOrderId: 9001 },
+      }),
     };
     const result = await execute({ jobId: 100 }, actions as never);
     expect(result).toMatchObject({ success: true, localSync: 'pending' });
@@ -598,6 +594,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
     expect(notifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({ toolOutput: expect.objectContaining({ hostingPaused: false }) }),
+      expect.objectContaining({ sessionId: 'session-1' }),
     );
   });
 

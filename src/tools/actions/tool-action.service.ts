@@ -1,3 +1,4 @@
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { z } from 'zod';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
@@ -6,6 +7,7 @@ import type {
   ActionCompletion,
   ActionExecution,
   ActionIntent,
+  ActionSyncContext,
 } from '@biz/action-execution/action-execution.types';
 import { SpongeService } from '@sponge/sponge.service';
 import {
@@ -58,6 +60,7 @@ export class ToolActionService implements OnModuleInit {
     private readonly phoneIndex: PhoneSessionIndexService,
     private readonly forms: CollectionFormStore,
     private readonly snapshots: BookingSnapshotService,
+    private readonly permits: ActionPermitService,
   ) {}
 
   onModuleInit(): void {
@@ -72,7 +75,7 @@ export class ToolActionService implements OnModuleInit {
             detail: 'manual_provider_request_verification_required',
           },
         }),
-        sync: (record) => this.sync(record.intent, record.result),
+        sync: (record, context) => this.sync(record.intent, record.result, context),
       });
   }
 
@@ -88,8 +91,7 @@ export class ToolActionService implements OnModuleInit {
   ): Promise<ActionExecution<T>> {
     const intent = toolActionIntent(context, input);
     return this.executor.execute(intent, {
-      authorize: async () =>
-        !context.runtime.hasNewerUserInput || !(await context.runtime.hasNewerUserInput()),
+      authorize: () => this.authorized(context),
       dispatch: async () => {
         try {
           return spongeActionCompletion(await dispatch());
@@ -116,8 +118,7 @@ export class ToolActionService implements OnModuleInit {
     dispatch: (requestId?: string) => Promise<unknown>,
   ): Promise<ActionExecution<unknown>> {
     return this.executor.execute(toolActionIntent(context, { kind, target, parameters }), {
-      authorize: async () =>
-        !context.runtime.hasNewerUserInput || !(await context.runtime.hasNewerUserInput()),
+      authorize: () => this.authorized(context),
       dispatch: async (requestId, mode) => {
         try {
           const result = await dispatch(mode === 'execute' ? requestId : undefined);
@@ -148,7 +149,24 @@ export class ToolActionService implements OnModuleInit {
     });
   }
 
-  private async sync(intent: ActionIntent, rawResult: unknown): Promise<void> {
+  private async authorized(context: ToolBuildContext): Promise<boolean> {
+    if (context.runtime.hasNewerUserInput && (await context.runtime.hasNewerUserInput()))
+      return false;
+    const permit = await this.permits.evaluate({
+      chatId: context.session.chatId ?? context.session.sessionId,
+      action: 'tool',
+      botImId: context.session.botImId,
+      groupId: context.session.groupId,
+      candidateIds: [context.session.userId, context.session.imContactId],
+    });
+    return permit.allowed;
+  }
+
+  private async sync(
+    intent: ActionIntent,
+    rawResult: unknown,
+    context?: ActionSyncContext,
+  ): Promise<void> {
     if (!intent.kind.startsWith('sponge.')) return;
     const data = recoverySchema.parse(intent.recovery);
     const result = z
@@ -158,6 +176,8 @@ export class ToolActionService implements OnModuleInit {
     if (!result.success) return;
     const workOrderId = result.workOrderId ?? data.workOrderId;
     if (!workOrderId) throw new Error('Successful action has no recoverable work order ID');
+    await context?.assertOwned();
+    await this.sponge.invalidateWorkOrderCache(workOrderId, { strict: true });
     // Read the current provider projection before applying historical success. Missing/failed reads
     // leave local_sync pending; they never prove cancellation or permit a repeated write request.
     const current = await this.sponge.fetchSignupWorkOrders(
@@ -169,6 +189,9 @@ export class ToolActionService implements OnModuleInit {
     if (!order?.currentStatus)
       throw new Error('Current work order state unavailable for local repair');
     const active = ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(order.currentStatus);
+    if (intent.kind === 'sponge.cancel' && active)
+      throw new Error('Cancellation projection has not converged; keep local sync pending');
+    await context?.assertOwned();
     if (!data.additional) {
       if (active && order.jobId != null)
         await this.longTerm.setActiveBooking(
@@ -183,6 +206,7 @@ export class ToolActionService implements OnModuleInit {
           strict: true,
         });
     }
+    await context?.assertOwned();
     await this.snapshots.invalidate(
       {
         phone: data.phone,
@@ -200,6 +224,7 @@ export class ToolActionService implements OnModuleInit {
       !data.jobId
     )
       return;
+    await context?.assertOwned();
     const currentForm = await this.forms.markSubmittedIfUnchanged(
       {
         corpId: intent.corpId,
@@ -241,6 +266,7 @@ export class ToolActionService implements OnModuleInit {
         evidence: `收资表单办结：${field}`,
         extractedAt: intent.occurredAt,
       });
+    await context?.assertOwned();
     await this.session.saveCompletedCollectionFacts(intent.corpId, data.userId, data.sessionId, {
       name: fact(identity.name, '姓名'),
       phone: fact(identity.phone, '手机号'),
@@ -252,6 +278,7 @@ export class ToolActionService implements OnModuleInit {
         extractedAt: intent.occurredAt,
       }),
     });
+    await context?.assertOwned();
     if (!data.testing)
       await this.phoneIndex.record(
         identity.phone,
@@ -264,6 +291,7 @@ export class ToolActionService implements OnModuleInit {
         },
         { strict: true },
       );
+    await context?.assertOwned();
     await this.longTerm.writeFromBooking(
       intent.corpId,
       data.userId,

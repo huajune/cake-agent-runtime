@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectQueue, OnQueueFailed, Process, Processor } from '@nestjs/bull';
 import type { Job, Queue } from 'bull';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { ActionLocalSyncService } from './action-local-sync.service';
 import { ActionRecordsRepository } from './action-records.repository';
 import { ActionRecoveryRegistry } from './action-recovery.registry';
 import { actionDigest } from './action-identity';
@@ -46,6 +48,8 @@ export class ActionRepairProcessor {
   constructor(
     private readonly records: ActionRecordsRepository,
     private readonly handlers: ActionRecoveryRegistry,
+    private readonly localSync: ActionLocalSyncService,
+    @Optional() private readonly incidents?: IncidentReporterService,
   ) {}
   @Process('settle')
   async settle(job: Job<RepairJob>): Promise<void> {
@@ -53,12 +57,25 @@ export class ActionRepairProcessor {
     if (record.status !== 'succeeded' || record.localSync === 'complete') return;
     const handler = this.handlers.get(record.intent.kind);
     if (!handler) return; // Durable pending work remains discoverable by the scanner.
-    if (handler.sync) await handler.sync(record);
+    if (record.mode !== 'execute') return;
+    await this.localSync.run(record, handler);
     await this.records.markSynced(record);
   }
   @OnQueueFailed()
   failed(job: Job<RepairJob>, error: Error): void {
-    if (job.attemptsMade >= (job.opts.attempts ?? 1))
-      this.logger.error(`action.repair_queue_exhausted ${job.data.record.actionId}: ${error.name}`);
+    if (job.attemptsMade < (job.opts.attempts ?? 1)) return;
+    this.incidents?.notifyAsync({
+      source: {
+        subsystem: 'action-execution',
+        component: 'ActionRepairProcessor',
+        action: 'settle',
+        trigger: 'queue',
+      },
+      code: 'action.repair_queue_exhausted',
+      summary: '外部动作本地补账重试用尽，保留记录等待核实',
+      error,
+      dedupe: { key: `action.repair_queue_exhausted:${job.data.record.actionId}` },
+    });
+    this.logger.error(`action.repair_queue_exhausted ${job.data.record.actionId}: ${error.name}`);
   }
 }

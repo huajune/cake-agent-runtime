@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { Cron } from '@nestjs/schedule';
+import { ActionLocalSyncService } from './action-local-sync.service';
 import { ActionRecordsRepository } from './action-records.repository';
 import { ActionRecoveryRegistry } from './action-recovery.registry';
 import type { ActionRecord } from './action-execution.types';
@@ -14,6 +15,7 @@ export class ActionRecoveryService {
   constructor(
     private readonly records: ActionRecordsRepository,
     private readonly handlers: ActionRecoveryRegistry,
+    private readonly localSync: ActionLocalSyncService,
     @Optional() private readonly incidents?: IncidentReporterService,
   ) {}
 
@@ -56,7 +58,7 @@ export class ActionRecoveryService {
           await this.requestReview(record);
           return;
         }
-        if (handler.sync) await handler.sync(record);
+        await this.localSync.run(record, handler);
         await this.records.markSynced(record);
         return;
       }
@@ -73,14 +75,15 @@ export class ActionRecoveryService {
         await this.requestReview(record);
         return;
       }
-      const completion = late.completion ?? (await handler!.reconcile(record));
+      const completion =
+        late.completion ?? (await this.queryWithinBudget(() => handler!.reconcile(record)));
       const settled = await this.records.settle(record, completion);
       if (settled.status === 'succeeded') {
         if (!handler) {
           await this.requestReview(settled);
           return;
         }
-        if (handler.sync) await handler.sync(settled);
+        await this.localSync.run(settled, handler);
         await this.records.markSynced(settled);
       } else if (settled.status === 'unknown' || settled.status === 'executing') {
         await this.records.defer(settled, this.nextCheck(settled));
@@ -89,6 +92,20 @@ export class ActionRecoveryService {
       // Query failure is not definitive absence and never authorizes a new dispatch.
       await this.records.defer(record, this.nextCheck(record));
       this.logger.warn(`action.reconciliation_pending ${record.actionId}`);
+    }
+  }
+
+  private async queryWithinBudget<T>(query: () => Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        query(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('action_reconciliation_query_timeout')), 5000);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 

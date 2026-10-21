@@ -5,6 +5,7 @@ import { PrivateChatMonitorNotifierService } from '@notification/services/privat
 describe('PrivateChatMonitorNotifierService', () => {
   const mockPrivateChatChannel = {
     send: jest.fn<Promise<boolean>, [Record<string, unknown>]>(),
+    sendOnce: jest.fn<Promise<boolean>, [Record<string, unknown>]>(),
   };
 
   const mockRenderer = {
@@ -23,6 +24,7 @@ describe('PrivateChatMonitorNotifierService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrivateChatChannel.send.mockResolvedValue(true);
+    mockPrivateChatChannel.sendOnce.mockResolvedValue(true);
     mockRenderer.buildInterviewBookingCard.mockReturnValue({
       isFailure: false,
       card: { kind: 'booking-card' },
@@ -94,5 +96,38 @@ describe('PrivateChatMonitorNotifierService', () => {
       }),
     );
     expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'cancellation-card' });
+  });
+  it('registers a notification at the webhook boundary and preserves unknown acceptance', async () => {
+    mockPrivateChatChannel.sendOnce.mockResolvedValue(false);
+    const execute = jest.fn(async (_intent, callbacks) => callbacks.dispatch('request', 'execute'));
+    service = new PrivateChatMonitorNotifierService(
+      mockPrivateChatChannel as never,
+      mockRenderer,
+      mockHostingMemberConfig as never,
+      { execute } as never,
+    );
+    const result = await service.notifyInterviewCancellation(
+      { workOrderId: 42 },
+      {
+        corpId: 'corp',
+        userId: 'user',
+        sessionId: 'chat',
+        botImId: 'bot',
+        logicalTurnId: 'turn',
+        inputOccurredAt: '2026-10-21T01:00:00Z',
+      },
+    );
+    expect(result).toBe(false);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'cancellation_notification',
+        intentId: 'turn',
+        identityReliable: true,
+      }),
+      expect.anything(),
+    );
+    expect(await execute.mock.results[0].value).toMatchObject({ status: 'unknown' });
+    expect(mockPrivateChatChannel.sendOnce).toHaveBeenCalledTimes(1);
+    expect(mockPrivateChatChannel.send).not.toHaveBeenCalled();
   });
 });

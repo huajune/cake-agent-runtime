@@ -1,3 +1,4 @@
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
 import { createActionExecutorFixture } from '../../helpers/action-executor.fixture';
@@ -389,6 +390,10 @@ describe('runGroupInvitePipeline', () => {
       const moduleRef = await Test.createTestingModule({
         providers: [
           GroupInviteService,
+          {
+            provide: ActionPermitService,
+            useValue: { evaluate: jest.fn().mockResolvedValue({ allowed: true }) },
+          },
           { provide: ActionExecutorService, useValue: createActionExecutorFixture() },
           { provide: ActionRecoveryRegistry, useValue: new ActionRecoveryRegistry() },
           { provide: GroupResolverService, useValue: mockGroupResolver },

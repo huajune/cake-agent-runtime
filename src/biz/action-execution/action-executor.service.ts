@@ -157,7 +157,8 @@ export class ActionExecutorService {
     }
 
     try {
-      if (!(await this.records.validateClaim(claimed))) return blocked('dispatch_lease_expired');
+      if (!(await this.records.validateClaim(claimed)))
+        return enforce ? blocked('dispatch_lease_expired') : this.untracked(intent, callbacks);
     } catch {
       return enforce
         ? blocked('dispatch_ownership_unconfirmed')
@@ -174,7 +175,8 @@ export class ActionExecutorService {
         evidence: completion.evidence,
         localSync: 'pending',
       };
-      if (!saved || saved.status !== 'succeeded') return this.existing<T>(known, true);
+      if (!saved || saved.status !== 'succeeded')
+        return enforce ? this.existing<T>(known, true) : this.synchronize(known, callbacks, true);
       return this.synchronize(saved, callbacks, true);
     }
     return this.existing<T>(
@@ -271,6 +273,7 @@ export class ActionExecutorService {
     this.logger.error(
       `action.settlement_pending ${record.actionId}; external=${completion.status}`,
     );
+    if (record.mode !== 'execute') return null;
     try {
       await this.repair?.enqueue(record, completion);
     } catch {

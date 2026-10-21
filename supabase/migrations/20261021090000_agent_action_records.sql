@@ -31,7 +31,7 @@ create table public.agent_action_records (
 );
 
 create index agent_action_due_idx on public.agent_action_records(next_check_at, corp_id, action_id)
-  where next_check_at is not null and (status in ('executing','unknown') or (status='succeeded' and local_sync='pending'));
+  where mode='execute' and next_check_at is not null and (status in ('executing','unknown') or (status='succeeded' and local_sync='pending'));
 create index agent_action_unresolved_resource_idx on public.agent_action_records(corp_id, resource_hash)
   where mode='execute' and status in ('executing','unknown');
 create index agent_action_retention_idx on public.agent_action_records(updated_at)
@@ -86,7 +86,9 @@ begin
       returning * into r;
     end if;
     if r.action_id is not null and (r.payload_hash<>p_input->>'payloadHash'
-      or r.account_id<>p_input->'intent'->>'accountId' or r.resource_hash<>p_input->>'resourceHash') then
+      or r.account_id<>p_input->'intent'->>'accountId' or r.resource_hash<>p_input->>'resourceHash'
+      or r.chat_id<>p_input->'intent'->>'chatId' or r.logical_turn_id<>p_input->'intent'->>'logicalTurnId'
+      or r.kind<>p_input->'intent'->>'kind' or r.request_id<>p_input->>'requestId') then
       return jsonb_build_object('record',to_jsonb(r),'conflict','identity_payload_mismatch');
     end if;
     return jsonb_build_object('record',case when r.action_id is null then null else to_jsonb(r) end,'conflict',v_conflict);
@@ -156,6 +158,82 @@ end $$;
 revoke all on function public.transition_agent_action(text,jsonb) from public, anon, authenticated;
 grant execute on function public.transition_agent_action(text,jsonb) to service_role;
 
+-- Operator conclusions are append-only and are not a generic retry button. The caller
+-- must present the frozen account, payload and original dispatch attempt being reviewed.
+create table public.agent_action_reviews (
+  id bigint generated always as identity primary key,
+  corp_id text not null,
+  action_id text not null,
+  operator_id text not null,
+  basis text not null,
+  conclusion text not null check (conclusion in ('succeeded','failed','leave_unknown','retry_local_sync')),
+  completion jsonb,
+  created_at timestamptz not null default now(),
+  foreign key (corp_id, action_id) references public.agent_action_records(corp_id, action_id)
+);
+create index agent_action_reviews_action_idx on public.agent_action_reviews(corp_id,action_id,created_at);
+alter table public.agent_action_reviews enable row level security;
+revoke all on public.agent_action_reviews from public,anon,authenticated;
+grant select on public.agent_action_reviews to service_role;
+
+create or replace function public.review_agent_action(p_input jsonb)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare
+  r public.agent_action_records%rowtype;
+  v_corp text := p_input->>'corpId';
+  v_id text := p_input->>'actionId';
+  v_resource text;
+  v_conclusion text := p_input->>'conclusion';
+  v_completion jsonb := p_input->'completion';
+begin
+  if nullif(trim(p_input->>'operator'),'') is null or nullif(trim(p_input->>'basis'),'') is null then
+    raise exception 'operator and evidence basis required';
+  end if;
+  select resource_hash into v_resource from public.agent_action_records where corp_id=v_corp and action_id=v_id;
+  if v_resource is null then raise exception 'action not found'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(v_corp || ':' || v_resource,0));
+  select * into r from public.agent_action_records where corp_id=v_corp and action_id=v_id for update;
+  if r.mode<>'execute' or r.account_id is distinct from p_input->>'accountId'
+    or r.payload_hash is distinct from p_input->>'payloadHash'
+    or r.dispatch_attempt_id is distinct from p_input->>'dispatchAttemptId' then
+    raise exception 'review action identity mismatch';
+  end if;
+  if v_conclusion='retry_local_sync' then
+    if r.status<>'succeeded' or r.local_sync<>'pending' then raise exception 'no pending local sync'; end if;
+    update public.agent_action_records set review_required=false,attempts=0,next_check_at=now(),
+      recovery_deadline=now()+interval '24 hours',updated_at=now()
+      where corp_id=v_corp and action_id=v_id returning * into r;
+  elsif v_conclusion in ('succeeded','failed','leave_unknown') then
+    if r.status not in ('executing','unknown') then raise exception 'terminal action cannot be overwritten'; end if;
+    if v_conclusion<>'leave_unknown' then
+      if v_completion->>'status' is distinct from v_conclusion
+        or not coalesce((v_completion->'evidence'->>'requestTerminated')::boolean,false)
+        or (v_conclusion='failed' and v_completion->'evidence'->>'kind' is distinct from 'definitive_no_effect')
+        or (v_conclusion='succeeded' and not (v_completion ? 'result')) then
+        raise exception 'authoritative terminal evidence required';
+      end if;
+      insert into public.agent_action_evidence(corp_id,action_id,attempt_id,evidence_hash,completion)
+        values(v_corp,v_id,r.dispatch_attempt_id,md5(v_completion::text),v_completion) on conflict do nothing;
+      update public.agent_action_records set status=v_conclusion,result=v_completion->'result',evidence=v_completion->'evidence',
+        local_sync=case when v_conclusion='succeeded' then 'pending' else 'complete' end,
+        retryable=false,owner=null,fence=fence+1,review_required=false,attempts=0,
+        next_check_at=case when v_conclusion='succeeded' then now() else null end,
+        recovery_deadline=case when v_conclusion='succeeded' then now()+interval '24 hours' else recovery_deadline end,
+        updated_at=now() where corp_id=v_corp and action_id=v_id returning * into r;
+    else
+      update public.agent_action_records set status='unknown',review_required=true,next_check_at=null,
+        owner=null,fence=fence+1,updated_at=now()
+        where corp_id=v_corp and action_id=v_id returning * into r;
+    end if;
+  else raise exception 'unsupported review conclusion';
+  end if;
+  insert into public.agent_action_reviews(corp_id,action_id,operator_id,basis,conclusion,completion)
+    values(v_corp,v_id,p_input->>'operator',p_input->>'basis',v_conclusion,v_completion);
+  return to_jsonb(r);
+end $$;
+revoke all on function public.review_agent_action(jsonb) from public,anon,authenticated;
+grant execute on function public.review_agent_action(jsonb) to service_role;
+
 -- Terminal records retain a minimal tombstone. Unresolved actions and pending local
 -- repair are never removed by retention. Executors reject input older than 90 days.
 create or replace function public.redact_completed_agent_actions(p_limit integer default 100)
@@ -168,8 +246,11 @@ begin
       and local_sync='complete' and not retention_redacted
     order by updated_at limit least(greatest(p_limit,1),100) for update skip locked
   ), redacted as (
-    update public.agent_action_records a set intent=a.intent-'parameters'-'recovery',result=null,evidence=null,retention_redacted=true
+    update public.agent_action_records a set intent=a.intent-'parameters'-'recovery'-'target',result=null,evidence=null,retention_redacted=true
     from batch b where a.corp_id=b.corp_id and a.action_id=b.action_id returning a.corp_id,a.action_id
+  ), cleaned_reviews as (
+    update public.agent_action_reviews v set completion=null
+    from redacted r where v.corp_id=r.corp_id and v.action_id=r.action_id
   ) delete from public.agent_action_evidence e using redacted r where e.corp_id=r.corp_id and e.action_id=r.action_id;
   get diagnostics n=row_count;
   return n;

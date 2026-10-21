@@ -315,7 +315,10 @@ export function buildCancelWorkOrderTool(
                       null,
                   },
                 },
-                () => spongeService.cancelWorkOrder(parameters, tokenContext),
+                () =>
+                  spongeService.cancelWorkOrder(parameters, tokenContext, {
+                    deferCacheInvalidation: true,
+                  }),
               )
             : undefined;
           if (action && (isUnresolvedAction(action) || !action.result))

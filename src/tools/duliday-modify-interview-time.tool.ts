@@ -229,7 +229,10 @@ export function buildModifyInterviewTimeTool(
                       null,
                   },
                 },
-                () => spongeService.modifyInterviewTime(parameters, tokenContext),
+                () =>
+                  spongeService.modifyInterviewTime(parameters, tokenContext, {
+                    deferCacheInvalidation: true,
+                  }),
               )
             : undefined;
           if (action && (isUnresolvedAction(action) || !action.result))

@@ -86,6 +86,7 @@ export class ActionRecordsRepository extends BaseRepository {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
+      .eq('mode', 'execute')
       .lte('next_check_at', new Date().toISOString())
       .or('status.in.(executing,unknown),and(status.eq.succeeded,local_sync.eq.pending)')
       .order('next_check_at')
@@ -147,9 +148,16 @@ export class ActionRecordsRepository extends BaseRepository {
   }
 
   async redactCompleted(): Promise<void> {
-    if ((await this.rpc<number>('redact_completed_agent_actions', { p_limit: 100 })) === null) {
-      throw new Error('Action retention failed');
+    if (this.circuitBlocked('action_retention'))
+      throw new Error('Action retention store unavailable');
+    const { error } = await this.getClient()
+      .rpc('redact_completed_agent_actions', { p_limit: 100 })
+      .abortSignal(AbortSignal.timeout(5000));
+    if (error) {
+      this.noteOutcome('action_retention', error);
+      throw error;
     }
+    this.recordCircuitSuccess('action_retention');
   }
 
   private ownership(record: ActionRecord): Record<string, unknown> {

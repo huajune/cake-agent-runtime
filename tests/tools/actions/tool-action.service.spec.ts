@@ -48,7 +48,7 @@ const input = {
 describe('ToolActionService actual external boundary', () => {
   let mode: ActionMode;
   let savedIntent: ActionIntent;
-  const sponge = { fetchSignupWorkOrders: jest.fn() };
+  const sponge = { fetchSignupWorkOrders: jest.fn(), invalidateWorkOrderCache: jest.fn() };
   const longTerm = {
     setActiveBooking: jest.fn(),
     clearActiveBooking: jest.fn(),
@@ -58,11 +58,20 @@ describe('ToolActionService actual external boundary', () => {
   const phoneIndex = { record: jest.fn() };
   const forms = { markSubmittedIfUnchanged: jest.fn(), readPrimaryCandidateRef: jest.fn() };
   const snapshots = { invalidate: jest.fn() };
+  const permits = { evaluate: jest.fn() };
   let registry: ActionRecoveryRegistry;
   const settled = jest.fn();
   const execute = jest.fn(
     async <T>(intent: ActionIntent, callbacks: ActionCallbacks<T>): Promise<ActionExecution<T>> => {
       savedIntent = intent;
+      if (callbacks.authorize && !(await callbacks.authorize()))
+        return {
+          actionId: 'action',
+          requestId: 'stable-request',
+          status: 'blocked',
+          localSync: 'complete',
+          dispatched: false,
+        };
       let completion;
       try {
         completion = await callbacks.dispatch('stable-request', mode);
@@ -97,6 +106,7 @@ describe('ToolActionService actual external boundary', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mode = 'execute';
+    permits.evaluate.mockResolvedValue({ allowed: true });
     registry = new ActionRecoveryRegistry();
     sponge.fetchSignupWorkOrders.mockResolvedValue({
       workOrders: [
@@ -108,6 +118,7 @@ describe('ToolActionService actual external boundary', () => {
         },
       ],
     });
+    sponge.invalidateWorkOrderCache.mockResolvedValue(undefined);
     longTerm.setActiveBooking.mockResolvedValue(undefined);
     longTerm.clearActiveBooking.mockResolvedValue(undefined);
     longTerm.writeFromBooking.mockResolvedValue(undefined);
@@ -126,6 +137,7 @@ describe('ToolActionService actual external boundary', () => {
       phoneIndex as never,
       forms as never,
       snapshots as never,
+      permits as never,
     );
     service.onModuleInit();
   });
@@ -138,6 +150,18 @@ describe('ToolActionService actual external boundary', () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(settled).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded' }));
     expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+  });
+  it('rechecks the actual tool permission before a provider request', async () => {
+    permits.evaluate.mockResolvedValue({ allowed: false, reason: 'hosting_paused' });
+    const dispatch = jest.fn();
+    expect(await service.executeSponge(context, input, dispatch)).toMatchObject({
+      status: 'blocked',
+      dispatched: false,
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(permits.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'tool', chatId: 'session', botImId: 'bot-im' }),
+    );
   });
 
   it('preserves external success when a strict local write fails', async () => {
@@ -185,6 +209,16 @@ describe('ToolActionService actual external boundary', () => {
       { strict: true, occurredAt: context.session.inputOccurredAt },
     );
     expect(forms.markSubmittedIfUnchanged).not.toHaveBeenCalled();
+  });
+  it('does not declare cancellation repair complete while the provider projection is still active', async () => {
+    const result = await service.executeSponge(
+      context,
+      { ...input, kind: 'sponge.cancel' },
+      async () => booking,
+    );
+    expect(result).toMatchObject({ status: 'succeeded', localSync: 'pending' });
+    expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+    expect(longTerm.clearActiveBooking).not.toHaveBeenCalled();
   });
 
   it.each(['missing', 'changed'])('does not recreate or overwrite %s form data', async () => {

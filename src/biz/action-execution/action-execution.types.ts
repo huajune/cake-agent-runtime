@@ -82,8 +82,13 @@ export interface ActionRecord {
   reviewRequired: boolean;
 }
 
+export interface ActionSyncContext {
+  /** Check before every local write; losing the lease leaves local_sync pending. */
+  assertOwned: () => Promise<void>;
+}
+
 export interface ActionRecoveryHandler {
   /** Query only. No automatic resend without a separately verified provider contract. */
   reconcile: (record: ActionRecord) => Promise<ActionCompletion<unknown>>;
-  sync?: (record: ActionRecord) => Promise<void>;
+  sync?: (record: ActionRecord, context?: ActionSyncContext) => Promise<void>;
 }

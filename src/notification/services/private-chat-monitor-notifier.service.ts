@@ -114,8 +114,11 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
         identityReliable: Boolean(session.logicalTurnId && session.inputOccurredAt),
       },
       {
-        dispatch: async () => {
-          const accepted = await this.privateChatChannel.send(card);
+        dispatch: async (_requestId, mode) => {
+          const accepted =
+            mode === 'execute'
+              ? await this.privateChatChannel.sendOnce(card)
+              : await this.privateChatChannel.send(card);
           return accepted
             ? {
                 status: 'succeeded',

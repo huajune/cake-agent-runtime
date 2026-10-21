@@ -194,6 +194,21 @@ describe('external action failure boundaries', () => {
     expect((await service.execute(intent, { dispatch, authorize })).status).toBe('blocked');
     expect(dispatch).not.toHaveBeenCalled();
   });
+  it('does not dispatch when the claim expires or its final confirmation fails', async () => {
+    const { service, repository } = setup();
+    repository.validateClaim.mockResolvedValue(false);
+    const dispatch = jest.fn();
+    expect((await service.execute(intent, { dispatch })).status).toBe('blocked');
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+  it('returns a blocked receipt for malformed identity instead of raising an outer tool retry', async () => {
+    const { service } = setup();
+    const dispatch = jest.fn();
+    expect((await service.execute({ ...intent, accountId: '' }, { dispatch })).reason).toBe(
+      'invalid_action_identity',
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+  });
   it('does not promote observation evidence during cutover', async () => {
     const { service, set } = setup();
     const observed = setup('observe', null);
