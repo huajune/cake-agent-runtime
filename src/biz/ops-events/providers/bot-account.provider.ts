@@ -12,6 +12,7 @@ export const BOT_ACCOUNT_PROVIDER = Symbol('BOT_ACCOUNT_PROVIDER');
 export interface BotAccountInfo {
   id?: string;
   weixin?: string;
+  corpId?: string;
   wxid?: string;
   wecomUserId?: string;
   name?: string;

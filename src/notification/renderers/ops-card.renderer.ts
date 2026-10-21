@@ -6,7 +6,7 @@ export interface GroupTaskExecutionDetail {
   groupKey: string;
   groupCount: number;
   dataSummary: string;
-  status: 'success' | 'skipped' | 'partial' | 'failed';
+  status: 'success' | 'skipped' | 'partial' | 'failed' | 'pending';
 }
 
 export interface GroupTaskExecutionError {
@@ -21,6 +21,7 @@ export interface GroupTaskReportCardParams {
   successCount: number;
   failedCount: number;
   skippedCount: number;
+  pendingCount?: number;
   durationSeconds: number;
   details: GroupTaskExecutionDetail[];
   errors: GroupTaskExecutionError[];
@@ -62,7 +63,11 @@ export class OpsCardRenderer {
     let statusText: string;
     let color: 'green' | 'yellow' | 'red';
     let titleEmoji: string;
-    if (isSuccess) {
+    if (params.pendingCount) {
+      statusText = '结果待核对';
+      color = 'yellow';
+      titleEmoji = '⏳';
+    } else if (isSuccess) {
       statusText = '全部成功';
       color = 'green';
       titleEmoji = '📢';
@@ -81,6 +86,8 @@ export class OpsCardRenderer {
       `**成功**: ${params.successCount} | **失败**: ${params.failedCount} | **跳过**: ${params.skippedCount} | **耗时**: ${params.durationSeconds.toFixed(1)}s`,
       '---',
     ];
+    if (params.pendingCount)
+      lines.splice(2, 0, `**待核对**: ${params.pendingCount}（结果未知，不自动重发）`);
 
     const appendSection = (header: string, sectionLines: string[]): void => {
       if (sectionLines.length === 0) return;
@@ -111,6 +118,15 @@ export class OpsCardRenderer {
         .filter((detail) => detail.status === 'partial')
         .map(
           (detail) => `⚠️ **${detail.groupKey}** (${detail.groupCount}群) — ${detail.dataSummary}`,
+        ),
+    );
+
+    appendSection(
+      '**⏳ 待核对分组**',
+      params.details
+        .filter((detail) => detail.status === 'pending')
+        .map(
+          (detail) => `⏳ **${detail.groupKey}** (${detail.groupCount}群) — ${detail.dataSummary}`,
         ),
     );
 
