@@ -575,6 +575,19 @@ export function buildInterviewBookingTool(
             );
           }
 
+          const jobInfo = readJobInfo(job);
+          const opsEventPayload = {
+            job_id: jobId,
+            interview_time: interviewTime ?? null,
+            candidate_name: identity.name,
+            phone: identity.phone,
+            candidate_age: Number(identity.age),
+            candidate_gender: identity.gender,
+            brand_name: jobInfo.brandName,
+            store_name: jobInfo.storeName,
+            job_name: jobInfo.jobName,
+            turn_id: context.session.turnId ?? null,
+          };
           const bookingParameters = { jobId, interviewTime, labelList: payload.labelList };
           const action = deps.actions
             ? await deps.actions.executeSponge(
@@ -594,6 +607,7 @@ export function buildInterviewBookingTool(
                     formDigest: createHash('sha256').update(JSON.stringify(form)).digest('hex'),
                     additional: isAdditionalCandidate,
                     identity,
+                    opsEventPayload,
                     testing: context.runtime.strategySource === 'testing',
                   },
                 },
@@ -735,7 +749,6 @@ export function buildInterviewBookingTool(
             };
           }
 
-          const jobInfo = readJobInfo(job);
           const interviewType = analysis.interviewMeta.method ?? undefined;
 
           if (!result.success) {
@@ -911,14 +924,7 @@ export function buildInterviewBookingTool(
             interviewTime,
             {
               work_order_id: result.workOrderId ?? null,
-              candidate_name: identity.name,
-              phone: identity.phone,
-              candidate_age: Number(identity.age),
-              candidate_gender: identity.gender,
-              brand_name: jobInfo.brandName,
-              store_name: jobInfo.storeName,
-              job_name: jobInfo.jobName,
-              turn_id: context.session.turnId ?? null,
+              ...opsEventPayload,
               group_invite: describePostBookingGroupInviteForEvent(groupInvite),
             },
             result.workOrderId,
@@ -1185,6 +1191,7 @@ async function recordBookingEvent(
     corpId: context.session.corpId,
     eventName,
     idempotencyKey: suffix,
+    ...(context.session.inputOccurredAt ? { occurredAt: context.session.inputOccurredAt } : {}),
     botImId: context.session.botImId,
     managerName: context.session.botUserId,
     userId: context.session.userId,

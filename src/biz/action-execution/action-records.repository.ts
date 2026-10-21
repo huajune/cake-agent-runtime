@@ -29,7 +29,9 @@ export class ActionRecordsRepository extends BaseRepository {
       intent,
       mode,
       resourceHash: actionDigest([intent.corpId, intent.target]),
-      recoveryDeadline: new Date(Date.parse(intent.occurredAt) + 24 * 60 * 60 * 1000).toISOString(),
+      recoveryDeadline: new Date(
+        Date.parse(intent.recoveryWindowStartedAt ?? intent.occurredAt) + 24 * 60 * 60 * 1000,
+      ).toISOString(),
     });
   }
 
@@ -196,6 +198,7 @@ export class ActionRecordsRepository extends BaseRepository {
   private fromDb(row: ActionDbRecord): ActionRecord {
     return {
       actionId: row.action_id,
+      previousActionId: row.previous_action_id ?? null,
       requestId: row.request_id,
       intent: row.intent,
       payloadHash: row.payload_hash,

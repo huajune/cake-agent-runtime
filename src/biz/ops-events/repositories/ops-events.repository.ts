@@ -25,10 +25,11 @@ interface BookingPollRow {
 }
 
 /**
- * ops_events 写入侧仓储：只调两个 RPC，写底账 + 投影日报全在 PG 内原子完成。
+ * ops_events 写入侧仓储：写底账 + 投影日报全在 PG 内原子完成。
  *
  * - upsert_ops_event：INSERT ops_events（幂等）+ 投影 daily_ops_report
  * - check_and_record_first_engaged：记录候选人消息 + 原子检测首条破冰
+ * - enrich_booking_invite_event：仅补报名后的进群结果，不改时间或重复投影
  *
  * 读取侧（KPI / cohort / 对比）不走这里，由 conversion-analytics 模块独立查询。
  */
@@ -50,6 +51,7 @@ export class OpsEventsRepository extends BaseRepository {
    */
   async upsertOpsEvent(
     input: RecordOpsEventInput & { occurredAt: Date | string },
+    context?: { assertOwned(): Promise<void> },
   ): Promise<OpsEventWriteResult> {
     // 走 BaseRepository.rpc：受进程级熔断器保护（DB 濒死时快速失败、记录故障），
     // 避免绕过 事故后加固的熔断逻辑。null = 不可用/熔断/出错 → 'failed'。
@@ -69,6 +71,26 @@ export class OpsEventsRepository extends BaseRepository {
 
     if (data === null) {
       return 'failed';
+    }
+
+    // The immutable booking fact may have been repaired before its separate
+    // group invitation finished. Enrich only that whitelisted result; never
+    // increment the report or replace the original occurrence time on replay.
+    const invite = input.payload?.group_invite;
+    if (
+      data.inserted !== true &&
+      input.eventName === 'booking.succeeded' &&
+      invite !== null &&
+      typeof invite === 'object' &&
+      !Array.isArray(invite)
+    ) {
+      await context?.assertOwned();
+      const enriched = await this.rpc<boolean>('enrich_booking_invite_event', {
+        p_corp_id: input.corpId,
+        p_idempotency_key: input.idempotencyKey,
+        p_group_invite: invite,
+      });
+      if (enriched !== true) return 'failed';
     }
 
     return data.inserted === true ? 'inserted' : 'duplicate';

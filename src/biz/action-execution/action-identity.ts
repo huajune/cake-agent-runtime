@@ -42,6 +42,11 @@ export function identifyAction(intent: ActionIntent): {
   }
   if (!Number.isFinite(Date.parse(intent.occurredAt)))
     throw new Error('Action input time is required');
+  if (intent.recoveryWindowStartedAt !== undefined) {
+    const windowStart = Date.parse(intent.recoveryWindowStartedAt);
+    if (!Number.isFinite(windowStart) || windowStart < Date.parse(intent.occurredAt))
+      throw new Error('Action recovery window must not precede the original input');
+  }
   const actionId = actionDigest([
     intent.corpId,
     intent.accountId,
@@ -53,6 +58,13 @@ export function identifyAction(intent: ActionIntent): {
   return {
     actionId,
     requestId: `cake_${actionId.slice(0, 48)}`,
-    payloadHash: actionDigest(intent.parameters),
+    payloadHash: actionDigest(
+      intent.recoveryWindowStartedAt === undefined
+        ? intent.parameters
+        : {
+            parameters: intent.parameters,
+            recoveryWindowStartedAt: new Date(intent.recoveryWindowStartedAt).toISOString(),
+          },
+    ),
   };
 }

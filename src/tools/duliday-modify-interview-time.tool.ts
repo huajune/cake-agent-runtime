@@ -210,6 +210,12 @@ export function buildModifyInterviewTimeTool(
 
         try {
           const parameters = { workOrderId, newInterviewTime: trimmedTime };
+          const opsEventPayload = {
+            work_order_id: workOrderId,
+            new_interview_time: trimmedTime,
+            // 带外工单（供应商后台建单）的后续改约按来源单列统计。
+            source: bookingEventSource(snapshotRef),
+          };
           const action = deps?.actions
             ? await deps.actions.executeSponge(
                 context,
@@ -223,6 +229,7 @@ export function buildModifyInterviewTimeTool(
                     botUserId: context.session.botUserId ?? '',
                     botImId: context.session.botImId ?? '',
                     workOrderId,
+                    opsEventPayload,
                     phone:
                       context.archive.bookingCandidateFacts?.phone ??
                       context.archive.profile?.phone ??
@@ -283,14 +290,12 @@ export function buildModifyInterviewTimeTool(
             idempotencyKey: `${workOrderId}:interview_modified:${trimmedTime}`,
             botImId: context.session.botImId,
             managerName: context.session.botUserId,
+            ...(context.session.inputOccurredAt
+              ? { occurredAt: context.session.inputOccurredAt }
+              : {}),
             userId: context.session.userId,
             chatId: context.session.sessionId,
-            payload: {
-              work_order_id: workOrderId,
-              new_interview_time: trimmedTime,
-              // 带外工单（供应商后台建单）的后续改约按来源单列统计。
-              source: bookingEventSource(snapshotRef),
-            },
+            payload: opsEventPayload,
           });
           // 预约快照按手机号缓存 5 分钟；不失效会让后续回合仍显示旧面试时间。
           if (!deps?.actions) {

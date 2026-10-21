@@ -38,6 +38,16 @@ describe('SessionStateService reengagement store presentation state', () => {
     };
     const redisStore = {
       getHash: jest.fn(async () => ({ ...hashState })),
+      readHashFieldSnapshot: jest.fn(async (_key: string, field: string) => ({
+        raw: JSON.stringify(hashState[field]) ?? null,
+        generation: 'test-generation',
+        value: hashState[field] ?? null,
+      })),
+      compareHashField: jest.fn(async (_key: string, field: string, snapshot, value) => {
+        if ((JSON.stringify(hashState[field]) ?? null) !== snapshot.raw) return false;
+        hashState[field] = value;
+        return true;
+      }),
       get: jest.fn().mockResolvedValue(null),
       patchHash: jest.fn(async (_key: string, patch: Record<string, unknown>) => {
         Object.assign(hashState, patch);

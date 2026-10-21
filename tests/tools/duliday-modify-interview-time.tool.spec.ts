@@ -43,15 +43,13 @@ describe('buildModifyInterviewTimeTool', () => {
     'action %s does not become a failure or repeat external mutation',
     async (status) => {
       const actions = {
-        executeSponge: jest
-          .fn()
-          .mockResolvedValue({
-            status,
-            actionId: 'action',
-            requestId: 'request',
-            localSync: 'complete',
-            dispatched: false,
-          }),
+        executeSponge: jest.fn().mockResolvedValue({
+          status,
+          actionId: 'action',
+          requestId: 'request',
+          localSync: 'complete',
+          dispatched: false,
+        }),
       };
       const result = await exec(
         buildModifyInterviewTimeTool(
@@ -67,6 +65,18 @@ describe('buildModifyInterviewTimeTool', () => {
         errorType: 'action.result_unresolved',
         sideEffect: { kind: 'general_handoff' },
       });
+      expect(actions.executeSponge).toHaveBeenCalledWith(
+        mockContext,
+        expect.objectContaining({
+          recovery: expect.objectContaining({
+            opsEventPayload: expect.objectContaining({
+              work_order_id: 123,
+              new_interview_time: '2026-06-20 14:00',
+            }),
+          }),
+        }),
+        expect.any(Function),
+      );
       expect(result.success).toBeUndefined();
       expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
       expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
