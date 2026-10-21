@@ -20,6 +20,7 @@ describe('SupabaseStore', () => {
     eq: jest.fn().mockReturnThis(),
     is: jest.fn().mockReturnThis(),
     maybeSingle: mockMaybeSingle,
+    abortSignal: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
   };
@@ -651,58 +652,102 @@ describe('SupabaseStore', () => {
     ).rejects.toThrow('memory_profile_store_unavailable');
   });
 
-  it('strict booking repair bypasses stale local cache and does not treat query failure as an empty booking list', async () => {
-    mockRedis.get.mockResolvedValue({ active_booking: null });
-    mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'read timeout' } });
-    await expect(store.setActiveBooking('corp', 'user', 42, {}, { strict: true })).rejects.toThrow(
-      'active_booking_read_failed: read timeout',
-    );
-    expect(mockRedis.get).not.toHaveBeenCalled();
-    expect(mockUpsert).not.toHaveBeenCalled();
-  });
-  it('strict booking persistence errors remain pending instead of being swallowed', async () => {
-    const update = jest
-      .fn()
-      .mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: { message: 'write failed' } }) });
-    mockSupabaseClient.from.mockReturnValue({ select: mockSelect, update } as never);
-    mockMaybeSingle.mockResolvedValue({ data: { id: 'row', active_booking: null }, error: null });
-    await expect(
-      store.setActiveBooking('corp', 'user', 42, {}, { strict: true }),
-    ).rejects.toMatchObject({ message: 'write failed' });
-  });
-
-  it('historical repair preserves a newer booking as the current pointer and never backdates the same order', async () => {
-    const existing = [
-      { work_order_id: 99, linked_at: '2026-10-22T00:00:00Z', job_id: 200 },
-      { work_order_id: 42, linked_at: '2026-10-21T00:00:00Z', job_id: 100 },
-    ];
-    const update = jest.fn().mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: null }) });
-    mockSupabaseClient.from.mockReturnValue({ select: mockSelect, update } as never);
-    mockMaybeSingle.mockResolvedValue({
-      data: { id: 'row', active_booking: { ...existing[0], bookings: existing } },
-      error: null,
-    });
+  it('routes every pointer mutation through one bounded atomic projection RPC', async () => {
+    const abortSignal = jest.fn().mockResolvedValue({ data: { superseded: false }, error: null });
+    mockRpc.mockReturnValue({ abortSignal });
+    const assertOwned = jest.fn().mockResolvedValue(undefined);
     await store.setActiveBooking(
       'corp',
       'user',
       42,
       { job_id: 100, interview_time: '2026-10-23 14:00' },
-      { strict: true, occurredAt: '2026-10-20T00:00:00Z' },
+      { strict: true, occurredAt: '2026-10-20T00:00:00Z', assertOwned },
     );
-    expect(update).toHaveBeenCalledWith(
+    expect(mockRpc).toHaveBeenCalledWith('apply_active_booking_projection', {
+      p_corp_id: 'corp',
+      p_user_id: 'user',
+      p_operation: 'set',
+      p_work_order_id: 42,
+      p_occurred_at: '2026-10-20T00:00:00Z',
+      p_job_id: 100,
+      p_interview_time: '2026-10-23 14:00',
+    });
+    expect(assertOwned).toHaveBeenCalledTimes(1);
+    expect(abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(mockRedis.get).not.toHaveBeenCalled();
+    expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    await store.clearActiveBooking('corp', 'user', 42, { occurredAt: '2026-10-21T00:00:00Z' });
+    expect(mockRpc).toHaveBeenLastCalledWith(
+      'apply_active_booking_projection',
       expect.objectContaining({
-        active_booking: expect.objectContaining({
-          work_order_id: 99,
-          bookings: [
-            existing[0],
-            expect.objectContaining({
-              work_order_id: 42,
-              linked_at: '2026-10-21T00:00:00Z',
-              interview_time: '2026-10-23 14:00',
-            }),
-          ],
-        }),
+        p_operation: 'clear',
+        p_work_order_id: 42,
+        p_occurred_at: '2026-10-21T00:00:00Z',
       }),
     );
+    await store.clearActiveBooking('corp', 'user');
+    expect(mockRpc).toHaveBeenLastCalledWith(
+      'apply_active_booking_projection',
+      expect.objectContaining({
+        p_operation: 'clear',
+        p_work_order_id: null,
+        p_occurred_at: expect.any(String),
+      }),
+    );
+  });
+
+  it('does not dispatch a projection RPC after lease loss', async () => {
+    await expect(
+      store.setActiveBooking(
+        'corp',
+        'user',
+        42,
+        {},
+        {
+          strict: true,
+          assertOwned: async () => {
+            throw new Error('lease_lost');
+          },
+        },
+      ),
+    ).rejects.toThrow('lease_lost');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('strict projection RPC errors leave synchronization pending', async () => {
+    mockRpc.mockReturnValue({
+      abortSignal: jest.fn().mockResolvedValue({ error: { message: 'write failed' } }),
+    });
+    await expect(
+      store.setActiveBooking('corp', 'user', 42, {}, { strict: true }),
+    ).rejects.toMatchObject({ message: 'write failed' });
+  });
+
+  it('reports superseded historical projection so callers do not apply old identity facts', async () => {
+    mockRpc.mockReturnValue({
+      abortSignal: jest.fn().mockResolvedValue({ data: { superseded: true }, error: null }),
+    });
+    expect(await store.setActiveBooking('corp', 'user', 42, {}, { strict: true })).toBe(false);
+    expect(mockRedis.del).toHaveBeenCalledWith('active-booking:corp:user');
+  });
+
+  it('bounds strict reads and profile writes with an abort signal', async () => {
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+    await store.getActiveBookings('corp', 'user', { strict: true });
+    expect(mockEqChain.abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
+    const abortSignal = jest
+      .fn()
+      .mockResolvedValue({ data: { written_fields: [], skipped_fields: [] }, error: null });
+    mockRpc.mockReturnValue({ abortSignal });
+    await store.upsertProfileFacts(
+      'corp',
+      'user',
+      'bot',
+      { name: profileFact('张三') },
+      undefined,
+      undefined,
+      { strict: true },
+    );
+    expect(abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
 });

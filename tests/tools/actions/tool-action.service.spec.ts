@@ -150,6 +150,7 @@ describe('ToolActionService actual external boundary', () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(settled).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded' }));
     expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+    expect(snapshots.invalidate).toHaveBeenCalled();
   });
   it('rechecks the actual tool permission before a provider request', async () => {
     permits.evaluate.mockResolvedValue({ allowed: false, reason: 'hosting_paused' });
@@ -184,7 +185,10 @@ describe('ToolActionService actual external boundary', () => {
       status: 'succeeded',
       localSync: 'complete',
     });
-    expect(longTerm.clearActiveBooking).toHaveBeenCalledWith('corp', 'user', 42, { strict: true });
+    expect(longTerm.clearActiveBooking).toHaveBeenCalledWith('corp', 'user', 42, {
+      strict: true,
+      occurredAt: context.session.inputOccurredAt,
+    });
     expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
     expect(forms.markSubmittedIfUnchanged).not.toHaveBeenCalled();
     expect(session.saveCompletedCollectionFacts).not.toHaveBeenCalled();
@@ -218,7 +222,10 @@ describe('ToolActionService actual external boundary', () => {
     );
     expect(result).toMatchObject({ status: 'succeeded', localSync: 'pending' });
     expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
-    expect(longTerm.clearActiveBooking).not.toHaveBeenCalled();
+    expect(longTerm.clearActiveBooking).toHaveBeenCalledWith('corp', 'user', 42, {
+      strict: true,
+      occurredAt: context.session.inputOccurredAt,
+    });
   });
 
   it.each(['missing', 'changed'])('does not recreate or overwrite %s form data', async () => {
@@ -226,6 +233,16 @@ describe('ToolActionService actual external boundary', () => {
     await service.executeSponge(context, input, async () => booking);
     expect(session.saveCompletedCollectionFacts).not.toHaveBeenCalled();
     expect(longTerm.writeFromBooking).not.toHaveBeenCalled();
+  });
+
+  it('does not repair old identity or form state after a newer pointer version superseded the action', async () => {
+    longTerm.setActiveBooking.mockResolvedValueOnce(false);
+    expect(await service.executeSponge(context, input, async () => booking)).toMatchObject({
+      status: 'succeeded',
+      localSync: 'complete',
+    });
+    expect(forms.markSubmittedIfUnchanged).not.toHaveBeenCalled();
+    expect(session.saveCompletedCollectionFacts).not.toHaveBeenCalled();
   });
 
   it('does not restore an older person after the primary locator changed', async () => {
