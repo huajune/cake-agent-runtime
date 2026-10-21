@@ -1,3 +1,4 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { Logger } from '@nestjs/common';
 import {
   JOB_DATA_AUDIT_LOCK_KEY,
@@ -24,6 +25,7 @@ function makeService(configMap: ConfigMap) {
   const redisService = {
     setNx: jest.fn().mockResolvedValue(true),
     del: jest.fn().mockResolvedValue(1),
+    eval: jest.fn().mockResolvedValue(1),
   };
   const configService = {
     get: (key: string, fallback?: string) => configMap[key] ?? fallback,
@@ -31,7 +33,7 @@ function makeService(configMap: ConfigMap) {
   const service = new JobDataAuditCronService(
     spongeService as never,
     alertNotifier as never,
-    redisService as never,
+    new RedisLeaseService(redisService as never, { report: jest.fn() } as never),
     configService as never,
   );
   return { service, spongeService, alertNotifier, redisService };
@@ -336,7 +338,11 @@ describe('JobDataAuditCronService.run 护栏', () => {
       expect.any(String),
       1800,
     );
-    expect(redisService.del).toHaveBeenCalledWith(JOB_DATA_AUDIT_LOCK_KEY);
+    expect(redisService.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      [JOB_DATA_AUDIT_LOCK_KEY],
+      [expect.any(String)],
+    );
   });
 
   it('RUNTIME_ENV=production 优先于 NODE_ENV', async () => {

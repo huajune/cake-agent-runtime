@@ -21,8 +21,12 @@ describe('OpsEventsRepository', () => {
           }),
           gte: jest.fn(() => builder),
           lte: jest.fn(() => builder),
+          in: jest.fn(() => builder),
+          limit: jest.fn(() =>
+            Promise.resolve({ data: pagesByEvent[eventName]?.[0] ?? [], error: null }),
+          ),
           range: jest.fn((from: number) => {
-            const pageIndex = Math.floor(from / 1000);
+            const pageIndex = Math.floor(from / 100);
             return Promise.resolve({
               data: pagesByEvent[eventName]?.[pageIndex] ?? [],
               error: null,
@@ -34,34 +38,30 @@ describe('OpsEventsRepository', () => {
     };
   }
 
-  it('paginates pending booking and passed event queries beyond the first 1000 rows', async () => {
-    const firstBookingPage = Array.from({ length: 1000 }, (_, index) => ({
+  it('reads one bounded booking page and only the matching pass keys, then advances its cursor', async () => {
+    const first = Array.from({ length: 100 }, (_, index) => ({
       corp_id: 'corp-1',
-      user_id: `user-${index + 1}`,
-      chat_id: `chat-${index + 1}`,
-      bot_im_id: 'bot-1',
       payload: { work_order_id: index + 1 },
     }));
-    const secondBookingPage = [
-      {
-        corp_id: 'corp-1',
-        user_id: 'user-1001',
-        chat_id: 'chat-1001',
-        bot_im_id: 'bot-1',
-        payload: { work_order_id: 1001 },
-      },
-    ];
     const client = makeClient({
-      'booking.succeeded': [firstBookingPage, secondBookingPage],
-      'interview.passed': [[{ idempotency_key: '1000:pass' }]],
+      'booking.succeeded': [first, [{ corp_id: 'corp-1', payload: { work_order_id: 101 } }]],
+      'interview.passed': [[{ idempotency_key: '100:pass' }]],
     });
-
-    const result = await makeRepository(client).findWorkOrdersPendingPass('2026-05-01');
-
-    expect(result).toHaveLength(1000);
-    expect(result.some((row) => row.workOrderId === 1000)).toBe(false);
-    expect(result.some((row) => row.workOrderId === 1001)).toBe(true);
-    expect(client.from).toHaveBeenCalledTimes(3);
+    const repo = makeRepository(client);
+    const result = await repo.findWorkOrdersPendingPass('2026-05-01');
+    expect(result.pending).toHaveLength(99);
+    expect(result.nextOffset).toBe(100);
+    expect(client.from).toHaveBeenCalledTimes(2);
+    const passedQuery = client.from.mock.results[1].value;
+    expect(passedQuery.eq).toHaveBeenCalledWith('corp_id', 'corp-1');
+    expect(passedQuery.in).toHaveBeenCalledWith(
+      'idempotency_key',
+      expect.arrayContaining(['100:pass']),
+    );
+    expect(passedQuery.limit).toHaveBeenCalledWith(100);
+    const next = await repo.findWorkOrdersPendingPass('2026-05-01', result.nextOffset);
+    expect(next.pending.map((row) => row.workOrderId)).toEqual([101]);
+    expect(next.nextOffset).toBe(0);
   });
 
   it('returns only schedulable interview.passed events from the inclusive time window', async () => {

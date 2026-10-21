@@ -1,3 +1,4 @@
+import { MESSAGE_MERGE_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
@@ -70,15 +71,7 @@ import {
     // 注册消息聚合队列
     BullModule.registerQueue({
       name: 'message-merge',
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        removeOnComplete: true,
-        removeOnFail: false,
-      },
+      defaultJobOptions: MESSAGE_MERGE_JOB_OPTIONS,
     }),
   ],
   controllers: [MessageIngressController, MessageOpsController],

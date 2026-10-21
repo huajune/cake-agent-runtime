@@ -1,3 +1,4 @@
+import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bull';
@@ -58,6 +59,10 @@ describe('GroupTaskSchedulerService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        {
+          provide: CronRunnerService,
+          useValue: { run: jest.fn(async (_id, _limits, work) => work({ checkpoint: jest.fn() })) },
+        },
         GroupTaskSchedulerService,
         {
           provide: ConfigService,

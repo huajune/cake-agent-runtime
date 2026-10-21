@@ -56,7 +56,7 @@ export class BookingCardRenderer {
 
     if (isFailure) {
       sections.push(
-        `候选人 ${payload.candidateName} 预约失败，请尽快跟进处理。\n⚠️ 该用户已暂停托管`,
+        `候选人 ${payload.candidateName} 预约失败，请尽快跟进处理。\n⚠️ ${toolOutput.hostingPaused === true ? '该用户已暂停托管' : '暂停托管失败或未确认，请人工立即检查'}`,
       );
     }
 

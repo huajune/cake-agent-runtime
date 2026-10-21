@@ -24,7 +24,12 @@ describe('OpsEventsRecorderService', () => {
 
   it('enriches bot manager/group and returns detailed insert state', async () => {
     const occurredAt = new Date('2026-06-05T03:00:00.000Z');
-    const service = new OpsEventsRecorderService(repository as never, botGroupResolver as never);
+    const service = new OpsEventsRecorderService(
+      repository as never,
+      botGroupResolver as never,
+      { add: jest.fn() } as never,
+      { report: jest.fn() } as never,
+    );
 
     await expect(
       service.recordEventDetailed({
@@ -55,7 +60,12 @@ describe('OpsEventsRecorderService', () => {
 
   it('keeps caller manager/group when the bot resolver misses', async () => {
     botGroupResolver.resolve.mockReturnValueOnce(null);
-    const service = new OpsEventsRecorderService(repository as never, botGroupResolver as never);
+    const service = new OpsEventsRecorderService(
+      repository as never,
+      botGroupResolver as never,
+      { add: jest.fn() } as never,
+      { report: jest.fn() } as never,
+    );
 
     await service.recordEvent({
       corpId: 'corp-1',
@@ -75,7 +85,12 @@ describe('OpsEventsRecorderService', () => {
   });
 
   it('records candidate messages with enriched bot metadata', async () => {
-    const service = new OpsEventsRecorderService(repository as never, botGroupResolver as never);
+    const service = new OpsEventsRecorderService(
+      repository as never,
+      botGroupResolver as never,
+      { add: jest.fn() } as never,
+      { report: jest.fn() } as never,
+    );
 
     await expect(
       service.recordCandidateMessage({
@@ -100,7 +115,12 @@ describe('OpsEventsRecorderService', () => {
   it('returns failed/empty results instead of throwing when repository calls fail', async () => {
     repository.upsertOpsEvent.mockRejectedValueOnce(new Error('rpc down'));
     repository.checkAndRecordFirstEngaged.mockRejectedValueOnce(new Error('rpc down'));
-    const service = new OpsEventsRecorderService(repository as never, botGroupResolver as never);
+    const service = new OpsEventsRecorderService(
+      repository as never,
+      botGroupResolver as never,
+      { add: jest.fn() } as never,
+      { report: jest.fn() } as never,
+    );
 
     await expect(
       service.recordEventDetailed({

@@ -1,7 +1,11 @@
-import { Injectable, Module, Logger, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Module, Logger, OnApplicationShutdown, Global } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import type { Redis as IORedisClient } from 'ioredis';
+import { QUEUE_JOB_DEFAULTS, QUEUE_WORKER_SETTINGS } from './queue-policy';
+import { RedisLeaseService } from './redis-lease.service';
+import { QueueFailureService } from './queue-failure.service';
+import { CronRunnerService } from './cron-runner.service';
 import { sleepUnref } from '@infra/utils/async.util';
 
 /**
@@ -67,7 +71,7 @@ function resolveBullPrefix(configService: ConfigService): string {
   return `bull:${env}`;
 }
 
-function createBullQueueOptions(configService: ConfigService) {
+export function createBullQueueOptions(configService: ConfigService) {
   const logger = new Logger(BullQueueModule.name);
   const prefix = resolveBullPrefix(configService);
   logger.log(`Bull 队列前缀: ${prefix}`);
@@ -119,18 +123,8 @@ function createBullQueueOptions(configService: ConfigService) {
               throw new Error(`Unknown Redis connection type: ${type}`);
           }
         },
-        defaultJobOptions: {
-          removeOnComplete: 100,
-          removeOnFail: 1000,
-        },
-        settings: {
-          stalledInterval: 30000,
-          lockDuration: 60000,
-          lockRenewTime: 15000,
-          maxStalledCount: 2,
-          // delayed job 激活轮询间隔，默认 5s → 压到 1s，降低单条消息排队抖动
-          guardInterval: 1000,
-        },
+        defaultJobOptions: QUEUE_JOB_DEFAULTS,
+        settings: QUEUE_WORKER_SETTINGS,
       };
     }
 
@@ -153,10 +147,8 @@ function createBullQueueOptions(configService: ConfigService) {
           maxRetriesPerRequest: null,
           enableReadyCheck: false,
         },
-        defaultJobOptions: {
-          removeOnComplete: 100,
-          removeOnFail: 1000,
-        },
+        defaultJobOptions: QUEUE_JOB_DEFAULTS,
+        settings: QUEUE_WORKER_SETTINGS,
       };
     }
   }
@@ -172,13 +164,12 @@ function createBullQueueOptions(configService: ConfigService) {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
     },
-    defaultJobOptions: {
-      removeOnComplete: 100,
-      removeOnFail: 1000,
-    },
+    defaultJobOptions: QUEUE_JOB_DEFAULTS,
+    settings: QUEUE_WORKER_SETTINGS,
   };
 }
 
+@Global()
 @Module({
   imports: [
     ConfigModule,
@@ -188,7 +179,7 @@ function createBullQueueOptions(configService: ConfigService) {
       inject: [ConfigService],
     }),
   ],
-  providers: [BullRedisLifecycleService],
-  exports: [BullModule],
+  providers: [BullRedisLifecycleService, RedisLeaseService, QueueFailureService, CronRunnerService],
+  exports: [BullModule, RedisLeaseService, QueueFailureService, CronRunnerService],
 })
 export class BullQueueModule {}

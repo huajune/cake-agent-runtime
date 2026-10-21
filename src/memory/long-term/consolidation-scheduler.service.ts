@@ -1,3 +1,4 @@
+import { retainedJobs } from '@infra/queue/queue-policy';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Queue } from 'bull';
@@ -53,8 +54,7 @@ export class ConsolidationSchedulerService {
       delay,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5 * 60 * 1000 },
-      removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-      removeOnFail: { age: 14 * 24 * 60 * 60, count: 500 },
+      ...retainedJobs(500, 14),
     });
 
     this.logger.debug(

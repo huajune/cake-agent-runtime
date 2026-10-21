@@ -1,3 +1,5 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -35,6 +37,8 @@ describe('UserHostingService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        RedisLeaseService,
+        { provide: QueueFailureService, useValue: { report: jest.fn(), exhausted: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn((_k: string, d?: unknown) => d) } },
         UserHostingService,
         { provide: UserHostingRepository, useValue: mockUserHostingRepository },

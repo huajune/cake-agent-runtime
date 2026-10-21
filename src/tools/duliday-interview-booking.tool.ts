@@ -640,10 +640,21 @@ export function buildInterviewBookingTool(
               after: rewritten,
             });
             await deps.collectionForms.persist(scope, rewritten);
-            recordBookingEvent(opsEventsRecorder, context, 'booking.failed', jobId, interviewTime, {
-              reason: result.message ?? null,
-            });
-            pauseUserHostingAsync(userHostingService, context.session.sessionId, '预约失败');
+            await recordBookingEvent(
+              opsEventsRecorder,
+              context,
+              'booking.failed',
+              jobId,
+              interviewTime,
+              {
+                reason: result.message ?? null,
+              },
+            );
+            const hostingPaused = await pauseUserHosting(
+              userHostingService,
+              context.session.sessionId,
+              '预约失败',
+            );
 
             const toolResult = {
               ...baseToolOutput,
@@ -661,7 +672,7 @@ export function buildInterviewBookingTool(
                   applyErrorList: result.applyErrorList ?? [],
                 },
               }),
-              hostingPaused: true,
+              hostingPaused,
               // 报名失败类介入落 handoff_events 底账（recordOnly：托管已在上面暂停、卡片由 notifyBooking 发）
               sideEffect: buildBookingFailureRecordIntent({
                 context,
@@ -782,7 +793,7 @@ export function buildInterviewBookingTool(
             isAdditionalCandidate,
             hasOtherActiveBookings: otherActiveBookings.length > 0,
           });
-          recordBookingEvent(
+          await recordBookingEvent(
             opsEventsRecorder,
             context,
             'booking.succeeded',
@@ -898,10 +909,21 @@ export function buildInterviewBookingTool(
           }
           logger.error(`预约面试失败: ${toErrorMessage(error)}`);
           context.ledger.jobs.bookingSucceeded = false;
-          recordBookingEvent(opsEventsRecorder, context, 'booking.failed', jobId, interviewTime, {
-            reason: toErrorMessage(error),
-          });
-          pauseUserHostingAsync(userHostingService, context.session.sessionId, '预约异常');
+          await recordBookingEvent(
+            opsEventsRecorder,
+            context,
+            'booking.failed',
+            jobId,
+            interviewTime,
+            {
+              reason: toErrorMessage(error),
+            },
+          );
+          const hostingPaused = await pauseUserHosting(
+            userHostingService,
+            context.session.sessionId,
+            '预约异常',
+          );
           return {
             ...buildToolError({
               errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
@@ -910,7 +932,7 @@ export function buildInterviewBookingTool(
                 '用真人招募者口吻简短说明会让同事确认，并停止继续推进；不要透露接口错误。',
               details: { jobId, reason: toErrorMessage(error) },
             }),
-            hostingPaused: true,
+            hostingPaused,
             sideEffect: buildBookingFailureRecordIntent({
               context,
               jobId,
@@ -993,10 +1015,18 @@ async function buildLabelList(params: {
   return { labelList };
 }
 
-function pauseUserHostingAsync(service: UserHostingService, chatId: string, reason: string): void {
-  void service
-    .pauseUser(chatId, { source: 'interview_booking', reason })
-    .catch((error: unknown) => logger.error(`[booking] 暂停托管失败: ${toErrorMessage(error)}`));
+async function pauseUserHosting(
+  service: UserHostingService,
+  chatId: string,
+  reason: string,
+): Promise<boolean> {
+  try {
+    await service.pauseUser(chatId, { source: 'interview_booking', reason });
+    return true;
+  } catch (error) {
+    logger.error(`[booking] 暂停托管失败: ${toErrorMessage(error)}`);
+    return false;
+  }
 }
 
 /**
@@ -1014,7 +1044,7 @@ async function runPostBookingWrite(
   }
 }
 
-function recordBookingEvent(
+async function recordBookingEvent(
   recorder: OpsEventsRecorderService,
   context: ToolBuildContext,
   eventName: 'booking.failed' | 'booking.succeeded',
@@ -1022,12 +1052,12 @@ function recordBookingEvent(
   interviewTime: string | undefined,
   payload: Record<string, unknown>,
   workOrderId?: number | null,
-): void {
+): Promise<void> {
   const suffix =
     workOrderId != null
       ? String(workOrderId)
       : `${context.session.sessionId}:${eventName}:${jobId}:${interviewTime ?? 'wait_notice'}`;
-  void recorder.recordEvent({
+  await recorder.recordEvent({
     corpId: context.session.corpId,
     eventName,
     idempotencyKey: suffix,

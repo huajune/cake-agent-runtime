@@ -1,3 +1,5 @@
+import { conversationProcessingLeaseKey } from '@infra/queue/lease-keys';
+
 /**
  * Redis Key 构建器
  *
@@ -37,7 +39,7 @@ export class RedisKeyBuilder {
 
   /** 处理状态锁 Key */
   static lock(chatId: string): string {
-    return `${this.scope}:lock:${chatId}`;
+    return conversationProcessingLeaseKey(chatId);
   }
 
   /** 企微消息 trace 上下文 Key */

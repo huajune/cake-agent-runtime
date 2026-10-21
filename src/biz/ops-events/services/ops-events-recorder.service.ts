@@ -1,3 +1,9 @@
+import { createHash } from 'node:crypto';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
+import { CRITICAL_WRITE_JOB_OPTIONS } from '@infra/queue/queue-policy';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
+import { CRITICAL_OPS_EVENT_QUEUE } from '../critical-event.processor';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from './bot-group-resolver.service';
@@ -15,7 +21,7 @@ import type {
  * 所有事件写入都走这里：内部调 PG RPC 完成「写 ops_events 底账（幂等）+ 投影 daily_ops_report」。
  *
  * 设计原则：
- * - **绝不阻断主流程**：任何失败只 warn 日志、返回 false，不抛异常。
+ * - **绝不阻断主流程**：关键事件落库失败时等待恢复队列接收；两处均失败告警，不触发外部动作重试。
  * - **幂等**：重复 idempotencyKey 由底账 UNIQUE 拒绝，投影不会重复 +1。
  * - occurredAt 缺省取当前时间；report_date 由 RPC 内部按 Asia/Shanghai 计算。
  */
@@ -26,6 +32,9 @@ export class OpsEventsRecorderService {
   constructor(
     private readonly repository: OpsEventsRepository,
     private readonly botGroupResolver: BotGroupResolverService,
+    @InjectQueue(CRITICAL_OPS_EVENT_QUEUE)
+    private readonly recoveryQueue: Queue<RecordOpsEventInput>,
+    private readonly failures: QueueFailureService,
   ) {}
 
   /**
@@ -46,16 +55,33 @@ export class OpsEventsRecorderService {
    * 重复（duplicate），调用方可据此跳过本轮分类、等待后续重试，避免漏记。
    */
   async recordEventDetailed(input: RecordOpsEventInput): Promise<OpsEventWriteResult> {
+    let enriched = { ...input, occurredAt: input.occurredAt ?? new Date() };
+    let result: OpsEventWriteResult = 'failed';
     try {
-      const occurredAt = input.occurredAt ?? new Date();
-      const enriched = this.enrichBotGroup(input);
-      return await this.repository.upsertOpsEvent({ ...enriched, occurredAt });
+      enriched = this.enrichBotGroup(enriched);
+      result = await this.repository.upsertOpsEvent(enriched);
     } catch (error) {
-      this.logger.warn(
-        `记录运营事件失败 event=${input.eventName} key=${input.idempotencyKey}: ${this.errorMessage(error)}`,
-      );
-      return 'failed';
+      this.logger.warn(`记录运营事件失败 event=${input.eventName}: ${this.errorMessage(error)}`);
     }
+    if (result !== 'failed') return result;
+    const critical = [
+      'booking.succeeded',
+      'booking.canceled',
+      'booking.interview_modified',
+      'interview.passed',
+    ].includes(input.eventName);
+    if (critical) {
+      try {
+        const jobId = createHash('sha256')
+          .update(`${input.corpId}:${input.eventName}:${input.idempotencyKey}`)
+          .digest('hex');
+        await this.recoveryQueue.add('persist', enriched, { ...CRITICAL_WRITE_JOB_OPTIONS, jobId });
+      } catch (error) {
+        // Both sinks failed: expose the gap; never re-run the external booking to repair its accounting.
+        await this.failures.report('ops.critical_event_not_durable', input.eventName, error);
+      }
+    }
+    return 'failed';
   }
 
   /**

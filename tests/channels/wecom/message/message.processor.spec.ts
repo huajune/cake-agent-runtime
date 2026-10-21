@@ -1,3 +1,4 @@
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
@@ -75,6 +76,7 @@ describe('MessageProcessor', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: QueueFailureService, useValue: { exhausted: jest.fn() } },
         MessageProcessor,
         MessageWorkerManagerService,
         { provide: getQueueToken('message-merge'), useValue: mockQueue },

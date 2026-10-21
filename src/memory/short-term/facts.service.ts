@@ -111,7 +111,7 @@ export class SessionFactsService {
   // 存储形态：Redis hash（factsv2:*），每个 top-level 字段一个 hash field。
   //
   // 为什么不是单 JSON blob：save* 的"读整份-改-写整份"在并发写入方之间互相覆盖
-  // （入站 fire-and-forget 的 recordCandidateActivity、复聊 processor 的
+  // （入站等待写入的 recordCandidateActivity、复聊 processor 的
   // saveTerminalState 与 worker 回合收尾不持同一把锁，P0 丢更新）。hash 形态下
   // 每个 save* 只 HSET 自己的字段，跨字段并发写天然隔离。
   //
@@ -649,9 +649,12 @@ export class SessionFactsService {
     sessionId: string,
     at: Date = new Date(),
   ): Promise<void> {
-    await this.patchSessionState(corpId, userId, sessionId, {
-      lastCandidateMessageAt: at.toISOString(),
-    });
+    await this.redisStore.advanceHashTimestamp(
+      buildSessionFactsHashKey(corpId, userId, sessionId),
+      'lastCandidateMessageAt',
+      at,
+      this.config.sessionFactsTtl,
+    );
   }
 
   /**

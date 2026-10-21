@@ -226,11 +226,20 @@ export class FeishuBitableApiService {
   /**
    * 获取表格所有记录（自动分页）
    */
-  async getAllRecords(appToken: string, tableId: string): Promise<BitableRecord[]> {
+  async getAllRecords(
+    appToken: string,
+    tableId: string,
+    budget?: { maxRecords: number; checkpoint(): Promise<void> },
+  ): Promise<BitableRecord[]> {
     const allRecords: BitableRecord[] = [];
     let pageToken: string | undefined;
 
     do {
+      await budget?.checkpoint();
+      if (budget && allRecords.length >= budget.maxRecords)
+        throw new Error(
+          'Feishu record scan budget exceeded; incomplete index must not be used for creates',
+        );
       const params: Record<string, unknown> = { page_size: 100 };
       if (pageToken) {
         params.page_token = pageToken;

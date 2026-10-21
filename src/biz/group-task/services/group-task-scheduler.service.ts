@@ -1,3 +1,5 @@
+import { CronRunnerService } from '@infra/queue/cron-runner.service';
+import { retainedJobs } from '@infra/queue/queue-policy';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -39,6 +41,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly cronRunner: CronRunnerService,
     private readonly systemConfigService: SystemConfigService,
     @InjectQueue(GROUP_TASK_QUEUE_NAME)
     private readonly groupTaskQueue: Queue,
@@ -93,51 +96,85 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   @Cron('0 10 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabMorning(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
-    await this.executeTask(this.orderGrabStrategy, {
-      timeSlot: TimeSlot.MORNING,
-      trigger: 'cron',
-    });
+    await this.cronRunner.run(
+      'group-order-morning',
+      { timeMs: 30_000, maxRows: 1 },
+      async (budget) => {
+        await budget.checkpoint(1);
+        await this.executeTask(this.orderGrabStrategy, {
+          timeSlot: TimeSlot.MORNING,
+          trigger: 'cron',
+        });
+      },
+    );
   }
 
   /** 抢单群 — 下午场 13:00 */
   @Cron('0 13 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabAfternoon(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
-    await this.executeTask(this.orderGrabStrategy, {
-      timeSlot: TimeSlot.AFTERNOON,
-      trigger: 'cron',
-    });
+    await this.cronRunner.run(
+      'group-order-afternoon',
+      { timeMs: 30_000, maxRows: 1 },
+      async (budget) => {
+        await budget.checkpoint(1);
+        await this.executeTask(this.orderGrabStrategy, {
+          timeSlot: TimeSlot.AFTERNOON,
+          trigger: 'cron',
+        });
+      },
+    );
   }
 
   /** 兼职群 — 工作日 13:30 */
   @Cron('30 13 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async cronPartTimeJob(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.partTimeJobStrategy.type)) return;
-    await this.executeTask(this.partTimeJobStrategy, { trigger: 'cron' });
+    await this.cronRunner.run('group-part-time', { timeMs: 30_000, maxRows: 1 }, async (budget) => {
+      await budget.checkpoint(1);
+      await this.executeTask(this.partTimeJobStrategy, { trigger: 'cron' });
+    });
   }
 
   /** 抢单群 — 晚上场 17:30 */
   @Cron('30 17 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabEvening(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
-    await this.executeTask(this.orderGrabStrategy, {
-      timeSlot: TimeSlot.EVENING,
-      trigger: 'cron',
-    });
+    await this.cronRunner.run(
+      'group-order-evening',
+      { timeMs: 30_000, maxRows: 1 },
+      async (budget) => {
+        await budget.checkpoint(1);
+        await this.executeTask(this.orderGrabStrategy, {
+          timeSlot: TimeSlot.EVENING,
+          trigger: 'cron',
+        });
+      },
+    );
   }
 
   /** 店长群 — 工作日 10:30 */
   @Cron('30 10 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async cronStoreManager(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.storeManagerStrategy.type)) return;
-    await this.executeTask(this.storeManagerStrategy, { trigger: 'cron' });
+    await this.cronRunner.run(
+      'group-store-manager',
+      { timeMs: 30_000, maxRows: 1 },
+      async (budget) => {
+        await budget.checkpoint(1);
+        await this.executeTask(this.storeManagerStrategy, { trigger: 'cron' });
+      },
+    );
   }
 
   /** 工作小贴士 — 周六 15:00 */
   @Cron('0 15 * * 6', { timeZone: 'Asia/Shanghai' })
   async cronWorkTips(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.workTipsStrategy.type)) return;
-    await this.executeTask(this.workTipsStrategy, { trigger: 'cron' });
+    await this.cronRunner.run('group-work-tips', { timeMs: 30_000, maxRows: 1 }, async (budget) => {
+      await budget.checkpoint(1);
+      await this.executeTask(this.workTipsStrategy, { trigger: 'cron' });
+    });
   }
 
   // ==================== 核心入口（入队而非执行） ====================
@@ -191,8 +228,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
         jobId,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5_000 },
-        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 200 },
-        removeOnFail: { age: 7 * 24 * 60 * 60, count: 200 },
+        ...retainedJobs(200),
       });
 
       // Bull 在 jobId 冲突时会返回已存在的 job，data 仍是首次的 planData

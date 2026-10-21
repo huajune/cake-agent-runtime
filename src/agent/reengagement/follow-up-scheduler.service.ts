@@ -1,3 +1,4 @@
+import { retainedJobs, FOLLOW_UP_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
@@ -289,10 +290,7 @@ export class FollowUpSchedulerService {
         {
           jobId,
           delay,
-          attempts: 2,
-          backoff: { type: 'fixed', delay: 30_000 },
-          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+          ...FOLLOW_UP_JOB_OPTIONS,
         },
       );
       this.logger.log(
@@ -335,10 +333,7 @@ export class FollowUpSchedulerService {
         {
           jobId,
           delay: Math.max(0, fireAt - Date.now()),
-          attempts: 2,
-          backoff: { type: 'fixed', delay: 30_000 },
-          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+          ...FOLLOW_UP_JOB_OPTIONS,
         },
       );
       this.logger.log(
@@ -399,10 +394,7 @@ export class FollowUpSchedulerService {
         {
           jobId,
           delay: Math.max(0, fireAt - Date.now()),
-          attempts: 2,
-          backoff: { type: 'fixed', delay: 30_000 },
-          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+          ...FOLLOW_UP_JOB_OPTIONS,
         },
       );
       this.logger.log(
@@ -444,8 +436,7 @@ export class FollowUpSchedulerService {
           jobId,
           attempts: 6,
           backoff: { type: 'exponential', delay: 10_000 },
-          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+          ...retainedJobs(500),
         },
       );
       this.logger.log(`[reengagement] 已排面试排程解析重试 jobId=${jobId}`);
@@ -458,10 +449,15 @@ export class FollowUpSchedulerService {
     }
   }
 
-  async removePendingJob(jobId: string, reason?: string): Promise<boolean> {
+  async removePendingJob(
+    jobId: string,
+    reason?: string,
+    beforeAnchorAt?: number,
+  ): Promise<boolean> {
     try {
       const job = await this.queue.getJob(jobId);
       if (!job) return false;
+      if (beforeAnchorAt != null && job.data.anchorAt > beforeAnchorAt) return false;
       const state = await job.getState();
       if (state === 'stuck' || !PENDING_JOB_STATUSES.includes(state)) {
         this.logger.debug(
@@ -477,7 +473,7 @@ export class FollowUpSchedulerService {
       return true;
     } catch (error) {
       this.logger.warn(`[reengagement] 移除任务失败 jobId=${jobId}: ${toErrorMessage(error)}`);
-      return false;
+      throw error;
     }
   }
 
@@ -485,6 +481,7 @@ export class FollowUpSchedulerService {
     sessionRef: SessionRef;
     scenarioCode: FollowUpScenarioCode;
     reason?: string;
+    beforeAnchorAt?: number;
   }): Promise<number> {
     const scenario = getScenario(input.scenarioCode);
     if (!scenario?.supersedes?.length) return 0;
@@ -497,6 +494,7 @@ export class FollowUpSchedulerService {
       const ok = await this.removePendingJob(
         jobId,
         input.reason ?? `${input.scenarioCode}_supersedes_${targetCode}`,
+        input.beforeAnchorAt,
       );
       if (ok) removed += 1;
     }
@@ -511,6 +509,7 @@ export class FollowUpSchedulerService {
     sessionRef: SessionRef;
     scenarioCode: FollowUpScenarioCode;
     reason: string;
+    beforeAnchorAt?: number;
   }): Promise<number> {
     let pendingJobs: Array<Job<FollowUpJob> | null> = [];
     try {
@@ -521,7 +520,7 @@ export class FollowUpSchedulerService {
           error,
         )}`,
       );
-      return 0;
+      throw error;
     }
 
     let removed = 0;
@@ -529,7 +528,8 @@ export class FollowUpSchedulerService {
       if (
         !job?.data?.sessionRef ||
         job.data.sessionRef.sessionId !== input.sessionRef.sessionId ||
-        job.data.scenarioCode !== input.scenarioCode
+        job.data.scenarioCode !== input.scenarioCode ||
+        (input.beforeAnchorAt != null && job.data.anchorAt > input.beforeAnchorAt)
       ) {
         continue;
       }
@@ -546,6 +546,7 @@ export class FollowUpSchedulerService {
         this.logger.warn(
           `[reengagement] 提前终止任务失败 jobId=${jobId}: ${toErrorMessage(error)}`,
         );
+        throw error;
       }
     }
     return removed;

@@ -534,6 +534,47 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(hosting.pauseUser).not.toHaveBeenCalled();
   });
 
+  it('等待暂停托管结果，暂停失败时不宣称已暂停', async () => {
+    sponge.bookInterview.mockResolvedValue({
+      success: false,
+      code: 400,
+      message: '字段错误',
+      applyErrorList: [{ labelId: 103, field: '年龄', msg: '请重填' }],
+    });
+    hosting.pauseUser.mockRejectedValueOnce(new Error('pause store unavailable'));
+    const result = await execute({ jobId: 100 });
+    expect(result.hostingPaused).toBe(false);
+    expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
+    expect(notifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
+      expect.objectContaining({ toolOutput: expect.objectContaining({ hostingPaused: false }) }),
+    );
+  });
+
+  it('暂停尚未落定时不提前返回已暂停回执', async () => {
+    sponge.bookInterview.mockResolvedValue({
+      success: false,
+      code: 400,
+      message: '字段错误',
+      applyErrorList: [{ labelId: 103, field: '年龄', msg: '请重填' }],
+    });
+    let release: () => void = () => undefined;
+    hosting.pauseUser.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    let settled = false;
+    const operation = execute({ jobId: 100 }).then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(hosting.pauseUser).toHaveBeenCalled();
+    expect(settled).toBe(false);
+    release();
+    expect((await operation).hostingPaused).toBe(true);
+  });
+
   it('applyErrorList 带 labelId 时只重开对应槽位', async () => {
     sponge.bookInterview.mockResolvedValue({
       success: false,

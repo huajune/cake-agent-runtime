@@ -1,3 +1,4 @@
+import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatRecordSyncService } from '@biz/feishu-sync/chat-record.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
@@ -52,6 +53,18 @@ describe('ChatRecordSyncService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        {
+          provide: CronRunnerService,
+          useValue: {
+            run: jest.fn(async (_id, _limits, task) => {
+              try {
+                return await task({ checkpoint: jest.fn() });
+              } catch {
+                return undefined;
+              }
+            }),
+          },
+        },
         ChatRecordSyncService,
         { provide: FeishuBitableApiService, useValue: mockBitableApi },
         { provide: ChatSessionService, useValue: mockChatSessionService },

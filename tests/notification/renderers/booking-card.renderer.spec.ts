@@ -65,6 +65,17 @@ describe('BookingCardRenderer', () => {
     expect(result.card).toEqual(expect.objectContaining({ title: '🎉 面试预约成功 · AI面试' }));
   });
 
+  it('never claims a successful pause without an acknowledged pause result', () => {
+    const result = renderer.buildInterviewBookingCard({
+      candidateName: '候选人',
+      phone: '18271421690',
+      interviewTime: '待通知',
+      toolOutput: { success: false, hostingPaused: false },
+    });
+    expect(result.card.content).toContain('暂停托管失败或未确认');
+    expect(result.card.content).not.toContain('该用户已暂停托管');
+  });
+
   it('should append interview type to the failure title when provided', () => {
     const result = renderer.buildInterviewBookingCard({
       candidateName: 'Dave',
@@ -89,6 +100,7 @@ describe('BookingCardRenderer', () => {
       toolOutput: {
         success: false,
         error: '名额已满',
+        hostingPaused: true,
         applyErrorList: ['门店无可约时间', { code: 'CAPACITY_FULL' }],
         notice: '请人工跟进',
         traceId: 'trace-xyz-789',
