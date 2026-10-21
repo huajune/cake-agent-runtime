@@ -10,7 +10,10 @@ import {
   getLocalDayStart,
   parseLocalDateTime,
 } from '@infra/utils/date.util';
-import { OpsEventsRepository } from '../repositories/ops-events.repository';
+import {
+  OpsEventsRepository,
+  type OpsBookingPollCursor,
+} from '../repositories/ops-events.repository';
 import { OpsEventsRecorderService } from '../services/ops-events-recorder.service';
 
 /**
@@ -44,9 +47,11 @@ export class SpongeStatusPollService {
       'sponge-status-poll',
       { timeMs: 10 * 60_000, maxRows: 100 },
       async (budget) => {
-        const offset = (await this.redis.get<number>('cron:sponge-status-poll:offset')) ?? 0;
-        const result = await this.runOnce(budget, offset);
-        await this.redis.setex('cron:sponge-status-poll:offset', 90 * 86400, result.nextOffset);
+        const cursor = await this.redis.get<OpsBookingPollCursor>(
+          'cron:sponge-status-poll:cursor:v2',
+        );
+        const result = await this.runOnce(budget, cursor);
+        await this.redis.setex('cron:sponge-status-poll:cursor:v2', 90 * 86400, result.nextCursor);
       },
     );
   }
@@ -54,12 +59,12 @@ export class SpongeStatusPollService {
   /** 执行一次轮询（独立方法便于测试 / 手动触发）。 */
   async runOnce(
     budget?: CronBudget,
-    offset = 0,
-  ): Promise<{ scanned: number; passed: number; nextOffset: number }> {
+    cursor?: OpsBookingPollCursor | null,
+  ): Promise<{ scanned: number; passed: number; nextCursor: OpsBookingPollCursor | null }> {
     const sinceReportDate = formatLocalDate(addLocalDays(getLocalDayStart(), -this.lookbackDays));
-    const { pending, nextOffset } = await this.opsEventsRepository.findWorkOrdersPendingPass(
+    const { pending, nextCursor } = await this.opsEventsRepository.findWorkOrdersPendingPass(
       sinceReportDate,
-      offset,
+      cursor,
     );
 
     let passed = 0;
@@ -91,7 +96,7 @@ export class SpongeStatusPollService {
     }
 
     this.logger.log(`海绵状态轮询完成: 扫描=${pending.length}, 新通过=${passed}`);
-    return { scanned: pending.length, passed, nextOffset };
+    return { scanned: pending.length, passed, nextCursor };
   }
 
   private isReadOnlyPreview(): boolean {

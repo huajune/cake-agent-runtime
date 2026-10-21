@@ -12,6 +12,7 @@ describe('OpsEventsRepository', () => {
     return {
       from: jest.fn(() => {
         let eventName = '';
+        let seek = false;
         const builder = {
           select: jest.fn(() => builder),
           order: jest.fn(() => builder),
@@ -20,10 +21,14 @@ describe('OpsEventsRepository', () => {
             return builder;
           }),
           gte: jest.fn(() => builder),
+          gt: jest.fn(() => {
+            seek = true;
+            return builder;
+          }),
           lte: jest.fn(() => builder),
           in: jest.fn(() => builder),
           limit: jest.fn(() =>
-            Promise.resolve({ data: pagesByEvent[eventName]?.[0] ?? [], error: null }),
+            Promise.resolve({ data: pagesByEvent[eventName]?.[seek ? 1 : 0] ?? [], error: null }),
           ),
           range: jest.fn((from: number) => {
             const pageIndex = Math.floor(from / 100);
@@ -41,6 +46,8 @@ describe('OpsEventsRepository', () => {
   it('reads one bounded booking page and only the matching pass keys, then advances its cursor', async () => {
     const first = Array.from({ length: 100 }, (_, index) => ({
       corp_id: 'corp-1',
+      id: index + 1,
+      report_date: '2026-05-01',
       payload: { work_order_id: index + 1 },
     }));
     const client = makeClient({
@@ -50,7 +57,7 @@ describe('OpsEventsRepository', () => {
     const repo = makeRepository(client);
     const result = await repo.findWorkOrdersPendingPass('2026-05-01');
     expect(result.pending).toHaveLength(99);
-    expect(result.nextOffset).toBe(100);
+    expect(result.nextCursor).toEqual({ reportDate: '2026-05-01', id: '100' });
     expect(client.from).toHaveBeenCalledTimes(2);
     const passedQuery = client.from.mock.results[1].value;
     expect(passedQuery.eq).toHaveBeenCalledWith('corp_id', 'corp-1');
@@ -59,9 +66,10 @@ describe('OpsEventsRepository', () => {
       expect.arrayContaining(['100:pass']),
     );
     expect(passedQuery.limit).toHaveBeenCalledWith(100);
-    const next = await repo.findWorkOrdersPendingPass('2026-05-01', result.nextOffset);
+    const next = await repo.findWorkOrdersPendingPass('2026-05-01', result.nextCursor);
     expect(next.pending.map((row) => row.workOrderId)).toEqual([101]);
-    expect(next.nextOffset).toBe(0);
+    expect(next.nextCursor).toBeNull();
+    expect(client.from.mock.results[2].value.gt).toHaveBeenCalledWith('id', '100');
   });
 
   it('returns only schedulable interview.passed events from the inclusive time window', async () => {
