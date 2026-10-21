@@ -36,8 +36,13 @@ export class McpClientService implements OnModuleDestroy {
         const mcpTool = (tool as (...args: unknown[]) => unknown)({
           description: t.description ?? '',
           inputSchema: jsonSchema(t.inputSchema as Record<string, unknown>),
-          execute: async (args) =>
-            c.callTool({ name: n, arguments: args as Record<string, unknown> }),
+          execute: async (args) => {
+            const result = await c.callTool({
+              name: n,
+              arguments: args as Record<string, unknown>,
+            });
+            return { ...result, success: result.isError !== true };
+          },
         }) as AiTool;
         this.toolRegistry.registerMcpTool(n, mcpTool, config.name, config.toolContracts?.[n]);
         names.push(n);

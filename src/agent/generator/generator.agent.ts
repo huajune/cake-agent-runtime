@@ -1,4 +1,4 @@
-import { getBuiltInToolContract } from '@tools/tool-contracts';
+import { getToolContract } from '@tools/tool-contracts';
 /**
  * Agent 生成器：prepare → AI SDK 多步模型/工具循环 → 生成结果归一化。
  *
@@ -342,9 +342,7 @@ export class GeneratorAgent {
       const activeTools = baseTools.filter((name) => !blocked.includes(name));
       const noticeParts: string[] = [];
       for (const name of overused.filter((toolName) => !sideEffectBlocked.includes(toolName))) {
-        noticeParts.push(
-          buildToolCallLimitNotice([name], getBuiltInToolContract(name)?.maxCallsPerTurn),
-        );
+        noticeParts.push(buildToolCallLimitNotice([name], getToolContract(name)?.maxCallsPerTurn));
       }
       if (skipReplyBlocked.length > 0) {
         noticeParts.push(

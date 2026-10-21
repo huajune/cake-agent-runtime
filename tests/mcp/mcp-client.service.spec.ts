@@ -1,3 +1,4 @@
+import { isToolSuccess } from '@agent/generator/tool-call-analysis';
 import { McpClientService } from '@mcp/mcp-client.service';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { BUILT_IN_TOOL_CONTRACTS } from '@tools/tool-contracts';
@@ -11,6 +12,7 @@ jest.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 describe('MCP contract connection', () => {
   const registry = { registerMcpTool: jest.fn(), removeByMcpServer: jest.fn() };
   const client = {
+    callTool: jest.fn(),
     connect: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
     listTools: jest
@@ -52,4 +54,20 @@ describe('MCP contract connection', () => {
       }),
     ).resolves.toBeDefined();
   });
+  it.each([undefined, false, true])(
+    'normalizes MCP isError=%s into an explicit receipt',
+    async (isError) => {
+      const service = new McpClientService(registry as never);
+      await service.connect({
+        name: 'test',
+        transport: { transport: 'http', url: 'https://example.test' },
+        toolContracts: { remote_read: BUILT_IN_TOOL_CONTRACTS.duliday_interview_booking },
+      });
+      client.callTool.mockResolvedValue({ content: [{ type: 'text', text: 'result' }], isError });
+      const tool = registry.registerMcpTool.mock.calls[0][1];
+      const result = await tool.execute({});
+      expect(isToolSuccess(result)).toBe(isError !== true);
+      expect(result.content).toEqual([{ type: 'text', text: 'result' }]);
+    },
+  );
 });
