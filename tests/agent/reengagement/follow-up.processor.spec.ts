@@ -333,6 +333,37 @@ describe('FollowUpProcessor', () => {
     expect(touchLedger.markSent).not.toHaveBeenCalled();
   });
 
+  it('does not turn a cancelled acknowledged plan into sent history or frequency', async () => {
+    const key = 'sess-1:opening_no_reply:evt-1';
+    touchLedger.listUnknownSlots.mockResolvedValue([{ key, state: 'unknown' }]);
+    touchLedger.getRecovery.mockResolvedValue({
+      jobData: {
+        sessionRef,
+        scenarioCode: 'opening_no_reply',
+        anchorAt: 1782266400000,
+        anchorEventId: 'evt-1',
+      },
+      sentAt: 1782266400000,
+      batchId: 'original-trace',
+    });
+    delivery.beginReply.mockResolvedValue({
+      logicalTurnId: 'stable-turn',
+      status: 'acked',
+      plan: { text: 'cancelled text', segments: [] },
+    });
+    delivery.completeConfirmedReply.mockResolvedValue(false);
+    await buildProcessor().recoverUnknownTouches();
+    expect(delivery.completeConfirmedReply).toHaveBeenCalled();
+    expect(touchLedger.markSent).not.toHaveBeenCalled();
+    expect(tracking.trackSent).not.toHaveBeenCalled();
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(failures.report).toHaveBeenCalledWith(
+      'reengagement.touch_manual_review',
+      key,
+      expect.any(String),
+    );
+  });
+
   it('does not regenerate or send an unknown plan after the scenario rollout closes', async () => {
     const now = Date.UTC(2026, 5, 24, 2);
     jest.spyOn(Date, 'now').mockReturnValue(now);
