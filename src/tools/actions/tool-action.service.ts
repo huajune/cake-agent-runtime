@@ -94,9 +94,26 @@ export class ToolActionService implements OnModuleInit {
     const intent = toolActionIntent(context, input);
     return this.executor.execute(intent, {
       authorize: () => this.authorized(context),
-      dispatch: async () => {
+      dispatch: async (_requestId, mode) => {
         try {
-          return spongeActionCompletion(await dispatch());
+          const result = await dispatch();
+          if (
+            mode === 'execute' &&
+            input.kind === 'sponge.booking' &&
+            result.success &&
+            !('workOrderId' in result && result.workOrderId)
+          ) {
+            return {
+              status: 'unknown',
+              result,
+              evidence: {
+                kind: 'indeterminate',
+                requestTerminated: true,
+                detail: 'booking_accepted_without_work_order_identity',
+              },
+            };
+          }
+          return spongeActionCompletion(result);
         } catch {
           return {
             status: 'unknown',

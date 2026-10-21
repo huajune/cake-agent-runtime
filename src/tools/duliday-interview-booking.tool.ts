@@ -815,7 +815,7 @@ export function buildInterviewBookingTool(
             return toolResult;
           }
 
-          if (!deps.actions) {
+          if (!deps.actions || result.workOrderId == null) {
             let submitted: BookingCollectionForm;
             if (result.workOrderId != null) {
               submitted = markSubmitted(form, result.workOrderId);

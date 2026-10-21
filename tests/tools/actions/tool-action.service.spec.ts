@@ -167,6 +167,23 @@ describe('ToolActionService actual external boundary', () => {
     expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
   });
 
+  it('keeps accepted booking without an order identity unresolved in execute mode', async () => {
+    const result = await service.executeSponge(context, input, async () => ({
+      success: true,
+      code: 0,
+    }));
+    expect(result.status).toBe('unknown');
+    expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+    expect(settled).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'unknown',
+        evidence: expect.objectContaining({
+          detail: 'booking_accepted_without_work_order_identity',
+        }),
+      }),
+    );
+  });
+
   it('rechecks the actual tool permission before a provider request', async () => {
     permits.evaluate.mockResolvedValue({ allowed: false, reason: 'hosting_paused' });
     const dispatch = jest.fn();
