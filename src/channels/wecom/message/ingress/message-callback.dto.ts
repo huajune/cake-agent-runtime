@@ -216,6 +216,8 @@ export class EnterpriseMessageCallbackDto {
   @IsNumber()
   @IsNotEmpty()
   source: MessageSource; // 消息来源（0-15）
+  /** Set by the adapter, never trusted as authentication. */
+  _sourceInferred?: boolean;
 
   @IsNumber()
   @IsNotEmpty()

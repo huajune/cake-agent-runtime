@@ -74,6 +74,7 @@ describe('ReplyWorkflowService', () => {
     sendFallbackAlert: jest.fn(),
   };
   const simpleMergeService = {
+    addMessage: jest.fn().mockResolvedValue(undefined),
     claimPendingSnapshot: jest.fn(),
     ackPendingMessages: jest.fn().mockResolvedValue(undefined),
     ackPendingMessageIds: jest.fn(),
@@ -2230,6 +2231,13 @@ describe('ReplyWorkflowService', () => {
 
       expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
     });
+  });
+  it('queues a direct input when durable membership cannot be acquired', async () => {
+    replyTurns.open.mockRejectedValue(new ReplyDeferredError('membership_unconfirmed'));
+    const message = createMessage();
+    await service.processSingleMessage(message);
+    expect(simpleMergeService.addMessage).toHaveBeenCalledWith(message);
+    expect(replyTurns.acked).not.toHaveBeenCalled();
   });
 });
 

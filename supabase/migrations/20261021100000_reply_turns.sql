@@ -53,12 +53,11 @@ begin
     if r.logical_turn_id is null then
       select * into r from public.agent_reply_turns where corp_id=v_corp and account_id=v_account and chat_id=v_chat
         and mode='execute' and status<>'acked' order by created_at limit 1 for update;
-      if r.logical_turn_id is not null and not (r.input_ids&&v_ids)
-        and (r.recovery?'task' or p_input->'recovery'?'task' or v_ids[1] like 'task:%' or r.input_ids[1] like 'task:%') then
+      if r.logical_turn_id is not null and not (r.input_ids&&v_ids) then
         return jsonb_build_object('conflict','different_reply_intent_pending');
       end if;
     end if;
-    if r.logical_turn_id is null and v_mode<>'off' then
+    if r.logical_turn_id is null and v_mode='execute' then
       insert into public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,owner,generation_until,recovery,next_check_at,projection_status,projection_next_check_at)
         values(v_corp,v_account,v_chat,p_input->>'logicalTurnId',v_ids,(p_input->>'inputOccurredAt')::timestamptz,v_mode,p_input->>'owner',now()+interval '10 minutes',coalesce(p_input->'recovery','{}'),now()+interval '10 minutes',
           case when p_input->'recovery'->'task'->>'kind'='reengagement' then 'pending' else 'none' end,
@@ -112,9 +111,11 @@ begin
         where corp_id=v_corp and logical_turn_id=r.logical_turn_id and projection_status='pending' returning * into r;
       if r.logical_turn_id is null then select * into r from public.agent_reply_turns where corp_id=v_corp and logical_turn_id=p_input->>'logicalTurnId'; end if;
     elsif p_operation='defer' then
+      if r.status in ('preparing','planned','settled') then
       update public.agent_reply_turns set review_required=(status='preparing' or (status='planned' and input_occurred_at<now()-interval '1 day')),
         next_check_at=case when status='preparing' or (status='planned' and input_occurred_at<now()-interval '1 day') then null else now()+interval '1 minute' end
         where corp_id=v_corp and logical_turn_id=r.logical_turn_id and status in ('preparing','planned','settled') returning * into r;
+      end if;
     else raise exception 'unknown reply transition'; end if;
   end if;
   return jsonb_build_object('turn',case when r.logical_turn_id is null then null else to_jsonb(r) end);

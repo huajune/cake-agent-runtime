@@ -118,7 +118,10 @@ export class ReengagementAnchorService {
         await context.assertOwned?.();
         return this.session
           .saveTerminalState(context.corpId, context.userId, context.chatId, 'booked')
-          .catch((error) => this.logFailure('save booked terminal', context, error));
+          .catch((error) => {
+            this.logFailure('save booked terminal', context, error);
+            throw error;
+          });
       });
     }
     // Observe a rejected durable write immediately, before awaiting any other

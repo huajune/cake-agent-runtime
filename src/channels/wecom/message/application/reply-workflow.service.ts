@@ -145,6 +145,9 @@ export class ReplyWorkflowService {
     } catch (error) {
       if (error instanceof ReplyDeferredError) {
         this.logger.warn(error.message);
+        // Direct mode has no pending input/job. Retain the exact new message for
+        // retry instead of silently dropping it while an earlier turn is unresolved.
+        await this.simpleMergeService.addMessage(messageData);
         return;
       }
       const errorType = this.processingFailureService.inferErrorType(error, 'message');

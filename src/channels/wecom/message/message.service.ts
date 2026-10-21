@@ -76,7 +76,9 @@ export class MessageService implements OnModuleInit {
     if (
       this.replyRecords &&
       messageData.isSelf === true &&
-      messageData.source === MessageSource.API_SEND &&
+      (messageData.source === MessageSource.API_SEND ||
+        (messageData._sourceInferred === true &&
+          messageData.source === MessageSource.AGGREGATED_CHAT_MANUAL)) &&
       messageData.externalRequestId?.startsWith('cake_') &&
       messageData.orgId &&
       messageData.imBotId &&
