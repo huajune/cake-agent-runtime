@@ -283,6 +283,14 @@ describe('SimpleMergeService', () => {
     });
   });
 
+  it('does not report durable input acknowledgement when Redis gives no confirmation', async () => {
+    mockRedisService.eval.mockResolvedValue(null);
+    await expect(service.ackPendingMessageIds('chat-123', ['msg-123'])).rejects.toThrow(
+      'reply_pending_ack_unconfirmed',
+    );
+    expect(mockRedisService.ltrim).not.toHaveBeenCalled();
+  });
+
   describe('processing lock heartbeat', () => {
     it('should renew the processing lock only for the current owner via Lua', async () => {
       mockRedisService.eval.mockResolvedValue(1);

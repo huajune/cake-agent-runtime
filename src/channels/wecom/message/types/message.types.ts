@@ -1,3 +1,4 @@
+import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import type {
   ActionDenialReason,
   PermittedAction,
@@ -77,6 +78,10 @@ export interface AgentInvokeResult {
 }
 
 export interface DeliveryContext {
+  corpId?: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
+  replyTurn?: ReplyTurn;
   action?: PermittedAction;
   groupId?: string;
   token: string;

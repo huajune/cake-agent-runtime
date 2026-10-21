@@ -119,6 +119,7 @@ type TurnEndLifecycleContext = Pick<
   | 'userId'
   | 'sessionId'
   | 'messageId'
+  | 'logicalTurnId'
   | 'botUserId'
   | 'botImId'
   | 'normalizedMessages'
@@ -387,6 +388,7 @@ export class GeneratorAgent {
         userId: ctx.userId,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        logicalTurnId: ctx.logicalTurnId,
         botUserId: ctx.botUserId,
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,

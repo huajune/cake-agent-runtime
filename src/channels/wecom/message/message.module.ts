@@ -1,3 +1,6 @@
+import { ReplyExecutionModule } from '@biz/reply-execution/reply-execution.module';
+import { DurableReplyDeliveryService } from './delivery/durable-reply-delivery.service';
+import { ReplyRecoveryService } from './delivery/reply-recovery.service';
 import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { MESSAGE_MERGE_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { Module, forwardRef } from '@nestjs/common';
@@ -57,6 +60,7 @@ import {
 @Module({
   imports: [
     ActionPermitModule,
+    ReplyExecutionModule,
     ConfigModule,
     LlmModule,
     forwardRef(() => AgentModule),
@@ -97,6 +101,8 @@ import {
     SupportedMessageTypeFilterRule,
     EmptyContentFilterRule,
     SimpleMergeService, // 简化版消息聚合（使用 Bull Queue 原生能力）
+    DurableReplyDeliveryService,
+    ReplyRecoveryService,
     MessageDeliveryService, // 消息发送（统一分段发送和监控）
     TypingPolicyService, // 发送策略（分段/打字延迟）
     MessageCallbackAdapterService, // 消息回调适配器（支持小组级和企业级格式）

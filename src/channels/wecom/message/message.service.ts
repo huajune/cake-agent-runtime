@@ -1,5 +1,8 @@
+import { ReplyTurnsRepository } from '@biz/reply-execution/reply-turns.repository';
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { timingSafeEqual } from 'crypto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
 // 导入子服务
@@ -13,7 +16,7 @@ import { MessageRuntimeConfigService } from './runtime/message-runtime-config.se
 import { MessageParser } from './utils/message-parser.util';
 import { LogSanitizer } from './utils/log-sanitizer.util';
 import { EnterpriseMessageCallbackDto } from './ingress/message-callback.dto';
-import { getMessageSourceDescription } from '@enums/message-callback.enum';
+import { getMessageSourceDescription, MessageSource } from '@enums/message-callback.enum';
 
 /**
  * 消息处理服务（重构版 v4 - 协调器模式）
@@ -42,6 +45,8 @@ export class MessageService implements OnModuleInit {
     // 监控
     private readonly monitoringService: MessageTrackingService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
+    @Optional() private readonly replyRecords?: ReplyTurnsRepository,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   /**
@@ -62,11 +67,56 @@ export class MessageService implements OnModuleInit {
    * 立即 ACK 语义：托管平台若 callback 未尽快返回 200，会按"超时"规则补发同内容消息
    * （此前出现过同一"六姐"被补发 3 次的流水）。为避免补发，本方法只做同步打点，
    * 随后把 runtimeConfig.syncSnapshot → pipeline 过滤 → 分派 全部放到微任务队列里执行，
-   * HTTP 响应永远在 ms 级返回。
+   * 普通消息立即 ACK；纳管发送回调须先验证来源并持久化证据。
    */
   handleMessage(messageData: EnterpriseMessageCallbackDto) {
     messageData._receivedAtMs = messageData._receivedAtMs ?? Date.now();
+    // Managed API callbacks must durably append evidence before HTTP ACK. On store
+    // failure return an error so callback retry can repair evidence; never resend a message.
+    if (
+      this.replyRecords &&
+      messageData.isSelf === true &&
+      messageData.source === MessageSource.API_SEND &&
+      messageData.externalRequestId?.startsWith('cake_') &&
+      messageData.orgId &&
+      messageData.imBotId &&
+      this.hasTrustedCallbackCredential(messageData)
+    ) {
+      return this.replyRecords
+        .appendCallback({
+          corpId: messageData.orgId,
+          accountId: messageData.imBotId,
+          chatId: messageData.chatId,
+          requestId: messageData.externalRequestId,
+          messageId: messageData.messageId,
+          text: String(
+            (messageData.payload as Record<string, unknown>)?.pureText ??
+              (messageData.payload as Record<string, unknown>)?.text ??
+              '',
+          ),
+          messageType: messageData.messageType,
+          payload: messageData.payload as Record<string, unknown>,
+        })
+        .then(() => this.acceptMessageAsync(messageData));
+    }
+    return this.acceptMessageAsync(messageData);
+  }
 
+  private hasTrustedCallbackCredential(messageData: EnterpriseMessageCallbackDto): boolean {
+    // This endpoint is public. Body identity alone is not authoritative evidence.
+    // No verified group credential resolver exists yet; those actions remain unknown.
+    if (messageData._apiType === 'group') return false;
+    const expected = this.config?.get<string>('STRIDE_ENTERPRISE_TOKEN');
+    const supplied = messageData.token;
+    if (!expected || typeof supplied !== 'string' || !supplied) return false;
+    const expectedBytes = Buffer.from(expected);
+    const suppliedBytes = Buffer.from(supplied);
+    return (
+      expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes)
+    );
+  }
+
+  private acceptMessageAsync(messageData: EnterpriseMessageCallbackDto) {
     void this.processMessageAsync(messageData).catch((error) => {
       const errorMessage = toErrorMessage(error);
       this.logger.error(`[异步消息处理] messageId=${messageData.messageId} 失败: ${errorMessage}`);

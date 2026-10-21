@@ -1,3 +1,4 @@
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { ReplyWorkflowService } from '@channels/wecom/message/application/reply-workflow.service';
 import { EnterpriseMessageCallbackDto } from '@channels/wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
@@ -17,6 +18,7 @@ describe('ReplyWorkflowService', () => {
   };
   const deliveryService = {
     deliverReply: jest.fn(),
+    prepareReplyPlan: jest.fn(),
   };
   const runner = {
     invoke: jest.fn(),
@@ -74,6 +76,7 @@ describe('ReplyWorkflowService', () => {
   const simpleMergeService = {
     claimPendingSnapshot: jest.fn(),
     ackPendingMessages: jest.fn().mockResolvedValue(undefined),
+    ackPendingMessageIds: jest.fn(),
   };
   const imageDescription = {
     describeAndUpdateAsync: jest.fn(),
@@ -117,10 +120,16 @@ describe('ReplyWorkflowService', () => {
   };
   const oobReconcile = { reconcileAfterTurn: jest.fn() };
 
+  const replyTurns = { open: jest.fn(), settle: jest.fn(), acked: jest.fn() };
   let service: ReplyWorkflowService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    replyTurns.open.mockReset().mockResolvedValue(undefined);
+    replyTurns.settle.mockReset();
+    replyTurns.acked.mockReset().mockResolvedValue(undefined);
+    simpleMergeService.ackPendingMessageIds.mockReset().mockResolvedValue(undefined);
+    deliveryService.prepareReplyPlan.mockReset();
     oobReconcile.reconcileAfterTurn.mockReset().mockResolvedValue(undefined);
     // invokeReviewedTurn 委托给 invoke（保留既有 runner.invoke 断言），并叠加统一 outcome/finalizer。
     currentOutputDecision = passOutputDecision;
@@ -325,7 +334,105 @@ describe('ReplyWorkflowService', () => {
       llm as never,
       botService as never,
       oobReconcile as never,
+      replyTurns as never,
     );
+  });
+
+  function persistedTurn(status: ReplyTurn['status'] = 'planned'): ReplyTurn {
+    return {
+      corpId: 'corp-1',
+      accountId: 'im-bot-1',
+      chatId: 'chat-1',
+      logicalTurnId: 'stable-turn',
+      inputIds: ['msg-1', 'msg-2'],
+      inputOccurredAt: new Date().toISOString(),
+      mode: 'execute',
+      status,
+      owner: 'owner',
+      fence: 1,
+      recovery: { userMessage: 'old input', primary: createMessage() },
+      plan: {
+        version: 1,
+        text: 'frozen reply',
+        segments: [],
+        resume: {
+          agentResult: {
+            reply: { content: 'frozen reply' },
+            isFallback: false,
+            processingTime: 0,
+            outcome: { kind: 'reply', toolCalls: [], reply: { text: 'frozen reply' } },
+            toolCalls: [],
+          },
+        },
+      },
+    };
+  }
+
+  it('repairs ack only after a completed reply, even if the retried batch has new input', async () => {
+    const turn = persistedTurn();
+    replyTurns.open.mockResolvedValueOnce(turn).mockResolvedValue({ ...turn, status: 'settled' });
+    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
+    replyTurns.settle.mockResolvedValue({ ...turn, status: 'settled' });
+    simpleMergeService.ackPendingMessageIds.mockRejectedValueOnce(new Error('redis response lost'));
+    await service.processMergedMessages(
+      [createMessage(), createMessage({ messageId: 'msg-2' })],
+      'attempt1',
+      2,
+    );
+    await service.processMergedMessages(
+      [createMessage({ messageId: 'msg-2' }), createMessage({ messageId: 'new-input' })],
+      'attempt2',
+      2,
+    );
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+    expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+    expect(simpleMergeService.ackPendingMessageIds).toHaveBeenLastCalledWith('chat-1', [
+      'msg-1',
+      'msg-2',
+    ]);
+    expect(simpleMergeService.ackPendingMessages).not.toHaveBeenCalled();
+  });
+
+  it('recovers the original reply without model generation and does not ack unknown delivery', async () => {
+    const turn = persistedTurn();
+    replyTurns.open.mockResolvedValue(turn);
+    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
+    deliveryService.deliverReply.mockRejectedValueOnce(new ReplyDeferredError('segment_1_unknown'));
+    await service.processMergedMessages(
+      [createMessage({ messageId: 'msg-2' }), createMessage({ messageId: 'new-input' })],
+      'new-batch',
+      2,
+    );
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+      { content: 'frozen reply' },
+      expect.objectContaining({ logicalTurnId: 'stable-turn' }),
+      true,
+    );
+    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(simpleMergeService.ackPendingMessages).not.toHaveBeenCalled();
+  });
+
+  it('keeps a settled turn pending until failed local dedup acknowledgement is repaired', async () => {
+    replyTurns.open.mockResolvedValue(persistedTurn('settled'));
+    deduplicationService.markMessageAsProcessedAsync.mockRejectedValueOnce(new Error('redis down'));
+    await service.processSingleMessage(createMessage());
+    expect(replyTurns.acked).not.toHaveBeenCalled();
+    await service.processSingleMessage(createMessage());
+    expect(replyTurns.acked).toHaveBeenCalledTimes(1);
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+  });
+
+  it('blocks generation and fallback when input membership cannot be confirmed', async () => {
+    replyTurns.open.mockRejectedValue(new ReplyDeferredError('membership_unconfirmed'));
+    await service.processSingleMessage(createMessage());
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
   });
 
   it('should execute the direct reply workflow and mark the message as processed', async () => {

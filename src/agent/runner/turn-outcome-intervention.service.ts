@@ -12,6 +12,7 @@ import type {
 
 export interface TurnOutcomeCommitContext {
   traceId: string;
+  logicalTurnId?: string;
   chatId: string;
   userId: string;
   corpId: string;
@@ -115,7 +116,7 @@ export class TurnOutcomeInterventionService {
       context,
       buildHandoffIdempotencyKey({
         chatId: context.chatId,
-        turnId: context.traceId,
+        turnId: context.logicalTurnId ?? context.traceId,
         scope: 'input_risk',
       }),
       new Date(occurredAt),
@@ -164,7 +165,10 @@ export class TurnOutcomeInterventionService {
     const occurredAt = new Date();
     const idempotencyKey =
       intent.idempotencyKey ||
-      buildHandoffIdempotencyKey({ chatId: context.chatId, turnId: context.traceId });
+      buildHandoffIdempotencyKey({
+        chatId: context.chatId,
+        turnId: context.logicalTurnId ?? context.traceId,
+      });
     const shouldRecord = intent.recordHandoff !== false;
 
     if (shouldRecord) {

@@ -1,5 +1,7 @@
+import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -55,6 +57,8 @@ const MAX_REPLAY_ATTEMPTS = 3;
 type VisualMessageTypes = Record<string, MessageType.IMAGE | MessageType.EMOTION>;
 
 interface AgentCallParams {
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
   sessionId: string;
   userMessage: string;
   scenario?: string;
@@ -105,6 +109,7 @@ export class ReplyWorkflowService {
     private readonly llm: LlmExecutorService,
     private readonly botService: BotService,
     private readonly oobReconcile: OobReconcileService,
+    @Optional() private readonly replyTurns?: ReplyTurnsService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -137,6 +142,10 @@ export class ReplyWorkflowService {
         isSingleMessage: true,
       });
     } catch (error) {
+      if (error instanceof ReplyDeferredError) {
+        this.logger.warn(error.message);
+        return;
+      }
       const errorType = this.processingFailureService.inferErrorType(error, 'message');
       await this.processingFailureService.handleProcessingError(error, parsed, {
         errorType,
@@ -194,6 +203,10 @@ export class ReplyWorkflowService {
         pendingAckSize: initialSnapshotSize,
       });
     } catch (error) {
+      if (error instanceof ReplyDeferredError) {
+        this.logger.warn(error.message);
+        return;
+      }
       const errorMessage = toErrorMessage(error);
       this.logger.error(`聚合消息处理失败:`, errorMessage);
 
@@ -231,6 +244,7 @@ export class ReplyWorkflowService {
      * 单消息直发路径不走 pending 队列，传 undefined。
      */
     pendingAckSize?: number;
+    resumeTurn?: ReplyTurn;
   }): Promise<void> {
     const { traceId, chatId, contactName, scenario, parsed, isSingleMessage, batchContext } =
       params;
@@ -241,7 +255,31 @@ export class ReplyWorkflowService {
     let allMessages: EnterpriseMessageCallbackDto[] = batchContext?.allMessages ?? [
       params.primaryMessage,
     ];
-    let content = params.content;
+    let durableTurn =
+      params.resumeTurn ??
+      (await this.replyTurns?.open(
+        { corpId: this.resolveCorpId(params.primaryMessage), accountId: parsed.imBotId, chatId },
+        allMessages.map((message) => message.messageId),
+        this.inputOccurredAt(allMessages),
+        this.replyRecoveryContext(params.primaryMessage, params.content),
+      ));
+    if (durableTurn?.status === 'settled' || durableTurn?.status === 'acked') {
+      await this.ackDurableTurn(durableTurn);
+      return;
+    }
+    if (durableTurn) {
+      const members = new Set(durableTurn.inputIds);
+      allMessages = allMessages.filter((message) => members.has(message.messageId));
+      if (!allMessages.length)
+        allMessages = durableTurn.inputIds.map((messageId) => ({
+          ...(durableTurn.recovery.primary as EnterpriseMessageCallbackDto),
+          token: parsed.token,
+          messageId,
+        }));
+    }
+    let content = durableTurn
+      ? String(durableTurn.recovery.userMessage ?? params.content)
+      : params.content;
     let imageUrls = this.collectImageUrls(allMessages);
     let imageMessageIds = this.collectImageMessageIds(allMessages);
     let visualMessageTypes = this.buildVisualMessageTypes(allMessages);
@@ -254,6 +292,8 @@ export class ReplyWorkflowService {
 
     const agentCallParams = {
       sessionId: chatId,
+      logicalTurnId: durableTurn?.logicalTurnId,
+      inputOccurredAt: durableTurn?.inputOccurredAt,
       scenario,
       messageId: traceId,
       recordMonitoring: true,
@@ -285,15 +325,38 @@ export class ReplyWorkflowService {
 
     // 每次运行都返回独立的 turn-end 闭包；先由 TurnFinalizer 持有，不在生成结束时执行。
     // 若随后 replay，丢弃本版 finalizer，避免把「未发出的回复」污染到 session 记忆里。
-    let agentResult = await this.callAgentWithVisualCompatibilityFallback({
-      ...agentCallParams,
-      userMessage: content,
-      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-      imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
-      visualMessageTypes:
-        Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
-      shortTermEndTimeInclusive,
-    });
+    let agentResult: AgentInvokeResult;
+    if (durableTurn?.plan) {
+      agentResult = this.restoreReplyResult(durableTurn);
+    } else {
+      try {
+        agentResult = await this.callAgentWithVisualCompatibilityFallback({
+          ...agentCallParams,
+          userMessage: content,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+          visualMessageTypes:
+            Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+          shortTermEndTimeInclusive,
+        });
+      } catch (error) {
+        if (!durableTurn || !this.replyTurns || error instanceof ReplyDeferredError) throw error;
+        await this.processingFailureService.handleProcessingError(error, parsed, {
+          scenario,
+          traceId,
+          processedMessageIds: durableTurn.inputIds,
+          deliveryContext: {
+            ...this.buildDeliveryContext(parsed, traceId),
+            corpId: durableTurn.corpId,
+            logicalTurnId: durableTurn.logicalTurnId,
+            inputOccurredAt: durableTurn.inputOccurredAt,
+            replyTurn: durableTurn,
+          },
+        });
+        await this.ackDurableTurn(await this.replyTurns.settle(durableTurn));
+        return;
+      }
+    }
 
     this.logger.log(
       `${logPrefix}[${contactName}] Agent 处理完成，耗时 ${agentResult.processingTime}ms，` +
@@ -311,7 +374,7 @@ export class ReplyWorkflowService {
       // 合并重跑。只检查首次生成不够：候选人在第一次 replay 期间继续补充时会被拆成
       // follow-up，导致两批高度相似的回复紧挨着投递。
       let replayAttempt = 0;
-      while (replayAttempt < MAX_REPLAY_ATTEMPTS) {
+      while (!durableTurn && replayAttempt < MAX_REPLAY_ATTEMPTS) {
         // 非 reply outcome（skipped/handoff）与已固化副作用工具均是
         // agent/outcome 层给出的终态：不再拿通道 pending 变化重写这类结果。未抓取的新消息
         // 仍留在 Redis pending list，由 MessageProcessor 末尾补建 follow-up job 处理。
@@ -407,8 +470,30 @@ export class ReplyWorkflowService {
         });
       }
 
-      const processedMessageIds = allMessages.map((message) => message.messageId);
+      if (durableTurn) {
+        const outbound =
+          agentResult.outcome?.kind === 'handoff'
+            ? (agentResult.outcome.preHandoffReceipt?.text ?? '')
+            : agentResult.outcome?.kind === 'reply'
+              ? agentResult.reply.content
+              : '';
+        durableTurn =
+          (await this.deliveryService.prepareReplyPlan(
+            { content: outbound },
+            {
+              ...this.buildDeliveryContext(parsed, traceId),
+              corpId: durableTurn.corpId,
+              logicalTurnId: durableTurn.logicalTurnId,
+              inputOccurredAt: durableTurn.inputOccurredAt,
+              replyTurn: durableTurn,
+            },
+            { agentResult: this.persistableReplyResult(agentResult) },
+          )) ?? durableTurn;
+      }
+      const processedMessageIds =
+        durableTurn?.inputIds ?? allMessages.map((message) => message.messageId);
       const sideEffectContext = {
+        logicalTurnId: durableTurn?.logicalTurnId,
         traceId,
         chatId,
         userId: agentCallParams.userId,
@@ -421,8 +506,21 @@ export class ReplyWorkflowService {
       if (agentResult.outcome?.kind !== 'reply') {
         // 同轮已提交的报名/改约/取消结果：先把确定性回执发给候选人，再提交暂停/告警
         // （PRD R5.1 第 3 条）。顺序不能反：暂停后 deliverReply 会因托管暂停被跳过。
-        await this.deliverPreHandoffReceipt(agentResult.outcome, parsed, traceId, contactName);
+        let receiptPending: unknown;
+        try {
+          await this.deliverPreHandoffReceipt(
+            agentResult.outcome,
+            parsed,
+            traceId,
+            contactName,
+            durableTurn,
+          );
+        } catch (error) {
+          receiptPending = error;
+        }
+        // Safety pause/notification still happen even when the receipt is unresolved.
         await this.outcomeFinalizer.commit(agentResult.outcome, sideEffectContext);
+        if (receiptPending) throw receiptPending;
       }
       const reengagementChannelIdentity = this.buildReengagementChannelIdentity(
         parsed,
@@ -430,7 +528,11 @@ export class ReplyWorkflowService {
         stableBotUserId,
       );
       const terminalSettled = this.reengagementAnchors.handleToolAnchors(agentResult, {
-        traceId,
+        traceId: durableTurn?.logicalTurnId ?? traceId,
+        ...{
+          logicalTurnId: durableTurn?.logicalTurnId,
+          inputOccurredAt: durableTurn?.inputOccurredAt,
+        },
         chatId,
         userId: agentCallParams.userId,
         corpId: agentCallParams.corpId,
@@ -494,12 +596,22 @@ export class ReplyWorkflowService {
           agentCallParams,
           allMessages,
         );
-        await this.markMessagesAsProcessed(processedMessageIds);
-        await this.ackPendingIfMerged(chatId, consumedPending);
+        if (durableTurn && this.replyTurns)
+          await this.ackDurableTurn(await this.replyTurns.settle(durableTurn));
+        else {
+          await this.markMessagesAsProcessed(processedMessageIds);
+          await this.ackPendingIfMerged(chatId, consumedPending);
+        }
         return;
       }
 
-      const deliveryContext = this.buildDeliveryContext(parsed, traceId);
+      const deliveryContext = {
+        ...this.buildDeliveryContext(parsed, traceId),
+        corpId: durableTurn?.corpId,
+        logicalTurnId: durableTurn?.logicalTurnId,
+        inputOccurredAt: durableTurn?.inputOccurredAt,
+        replyTurn: durableTurn,
+      };
       const deliveryResult = await this.deliveryService.deliverReply(
         agentResult.reply,
         deliveryContext,
@@ -515,7 +627,11 @@ export class ReplyWorkflowService {
       // Agent 回复真实投递 → agent.replied（仅个人单聊；锚点读取必须先于回合 settle）。
       if (replyDelivered) {
         const reengagementAnchorContext = {
-          traceId,
+          traceId: durableTurn?.logicalTurnId ?? traceId,
+          ...{
+            logicalTurnId: durableTurn?.logicalTurnId,
+            inputOccurredAt: durableTurn?.inputOccurredAt,
+          },
           chatId,
           userId: agentCallParams.userId,
           corpId: agentCallParams.corpId,
@@ -531,7 +647,7 @@ export class ReplyWorkflowService {
         const replyKind = await this.recordAgentReplied(
           params.primaryMessage,
           parsed,
-          traceId,
+          durableTurn?.logicalTurnId ?? traceId,
           stableBotUserId,
         );
         // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
@@ -556,8 +672,12 @@ export class ReplyWorkflowService {
 
       this.monitoringService.recordSuccess(traceId, successMetadata);
       this.advanceProcessedCandidateWatermark(params.primaryMessage, agentCallParams, allMessages);
-      await this.markMessagesAsProcessed(processedMessageIds);
-      await this.ackPendingIfMerged(chatId, consumedPending);
+      if (durableTurn && this.replyTurns)
+        await this.ackDurableTurn(await this.replyTurns.settle(durableTurn));
+      else {
+        await this.markMessagesAsProcessed(processedMessageIds);
+        await this.ackPendingIfMerged(chatId, consumedPending);
+      }
 
       if (!batchContext) {
         this.logger.debug(`[${contactName}] 请求流水 [${traceId}] 已标记为已处理`);
@@ -599,6 +719,127 @@ export class ReplyWorkflowService {
     }
   }
 
+  /** Repair uses saved output and IDs even after Redis pending expires; never calls the model. */
+  async resumePersistedReply(turn: ReplyTurn, token: string): Promise<void> {
+    if (turn.status === 'settled' || turn.status === 'acked') {
+      await this.ackDurableTurn(turn);
+      return;
+    }
+    if (!turn.plan) throw new ReplyDeferredError('no_recoverable_reply_plan');
+    const primary = { ...(turn.recovery.primary as EnterpriseMessageCallbackDto), token };
+    const parsed = MessageParser.parse(primary);
+    await this.processMessageCore({
+      primaryMessage: primary,
+      traceId: turn.logicalTurnId,
+      chatId: turn.chatId,
+      content: String(turn.recovery.userMessage ?? ''),
+      contactName: parsed.contactName,
+      scenario: MessageParser.determineScenario(),
+      parsed,
+      isSingleMessage: true,
+      resumeTurn: turn,
+    });
+  }
+
+  private async ackDurableTurn(turn: ReplyTurn): Promise<void> {
+    try {
+      await this.simpleMergeService.ackPendingMessageIds(turn.chatId, turn.inputIds);
+      await Promise.all(
+        turn.inputIds.map((id) => this.deduplicationService.markMessageAsProcessedAsync(id)),
+      );
+      await this.replyTurns?.acked(turn);
+    } catch {
+      throw new ReplyDeferredError('ack_repair_pending');
+    }
+  }
+
+  private inputOccurredAt(messages: EnterpriseMessageCallbackDto[]): string {
+    const times = messages
+      .map((message) => this.resolveStoredMessageTimestamp(message))
+      .filter((value): value is number => Number.isFinite(value) && (value ?? 0) > 0);
+    return times.length ? new Date(Math.min(...times)).toISOString() : '';
+  }
+
+  private replyRecoveryContext(
+    message: EnterpriseMessageCallbackDto,
+    userMessage: string,
+  ): Record<string, unknown> {
+    const {
+      orgId,
+      imBotId,
+      imContactId,
+      imRoomId,
+      contactName,
+      botUserId,
+      externalUserId,
+      groupId,
+      timestamp,
+      messageId,
+      chatId,
+      source,
+      _apiType,
+    } = message;
+    return {
+      userMessage,
+      primary: {
+        orgId,
+        imBotId,
+        imContactId,
+        imRoomId,
+        contactName,
+        botUserId,
+        externalUserId,
+        groupId,
+        timestamp,
+        messageId,
+        chatId,
+        source,
+        _apiType,
+        messageType: MessageType.TEXT,
+        isSelf: false,
+        payload: { text: userMessage },
+      },
+    };
+  }
+
+  private persistableReplyResult(result: AgentInvokeResult): Record<string, unknown> {
+    // Keep outcome/anchor repair input, omit full memory/model response/telemetry snapshots.
+    const source = result.outcome;
+    const outcome = source
+      ? {
+          kind: source.kind,
+          reply: source.reply,
+          preHandoffReceipt: source.preHandoffReceipt,
+          toolCalls: source.toolCalls,
+          disposition: source.disposition,
+          guardrail: source.guardrail,
+          sideEffects: source.sideEffects,
+          handoff: source.handoff,
+        }
+      : { kind: 'reply', toolCalls: [] };
+    return {
+      reply: { content: result.reply.content },
+      outcome,
+      isFallback: result.isFallback,
+      isSkipped: result.isSkipped,
+      guardrail: result.guardrail,
+      toolCalls: result.toolCalls,
+      processingTime: 0,
+    };
+  }
+
+  private restoreReplyResult(turn: ReplyTurn): AgentInvokeResult {
+    const saved = turn.plan?.resume?.agentResult;
+    return saved
+      ? (saved as AgentInvokeResult)
+      : {
+          reply: { content: turn.plan?.text ?? '' },
+          outcome: { kind: 'reply', reply: { text: turn.plan?.text ?? '' }, toolCalls: [] },
+          isFallback: true,
+          processingTime: 0,
+        };
+  }
+
   private async commitReplyOutcomeSideEffects(
     outcome: AgentInvokeResult['outcome'],
     context: Parameters<TurnOutcomeInterventionService['commit']>[1],
@@ -637,19 +878,27 @@ export class ReplyWorkflowService {
     parsed: ReturnType<typeof MessageParser.parse>,
     traceId: string,
     contactName: string,
+    durableTurn?: ReplyTurn,
   ): Promise<void> {
     if (outcome?.kind !== 'handoff' || !outcome.preHandoffReceipt?.text.trim()) return;
     const receipt = outcome.preHandoffReceipt;
     try {
       const result = await this.deliveryService.deliverReply(
         { content: receipt.text },
-        this.buildDeliveryContext(parsed, traceId),
+        {
+          ...this.buildDeliveryContext(parsed, traceId),
+          corpId: durableTurn?.corpId,
+          logicalTurnId: durableTurn?.logicalTurnId,
+          inputOccurredAt: durableTurn?.inputOccurredAt,
+          replyTurn: durableTurn,
+        },
         false,
       );
       this.logger.warn(
         `[${contactName}] 转人工前先投递已提交动作回执: sources=${receipt.sources.join(',')}, delivered=${this.wasReplyActuallyDelivered(result)}`,
       );
     } catch (error) {
+      if (error instanceof ReplyDeferredError) throw error;
       this.logger.error(
         `[${contactName}] 转人工前回执投递失败（继续提交介入）: ${toErrorMessage(error)}`,
       );
@@ -917,6 +1166,8 @@ export class ReplyWorkflowService {
         sessionRef: { corpId, userId, sessionId: params.sessionId },
         context: {
           callerKind: CallerKind.WECOM,
+          logicalTurnId: params.logicalTurnId,
+          inputOccurredAt: params.inputOccurredAt,
           messageId,
           scenario,
           contactName: params.contactName,

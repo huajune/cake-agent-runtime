@@ -1,6 +1,8 @@
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import {
   ActionPermitService,
   type ActionDenialReason,
@@ -38,6 +40,7 @@ export class MessageDeliveryService implements OnModuleInit {
     private readonly typingPolicy: TypingPolicyService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly actionPermit: ActionPermitService,
+    @Optional() private readonly durable?: DurableReplyDeliveryService,
   ) {}
 
   async onModuleInit() {
@@ -56,6 +59,18 @@ export class MessageDeliveryService implements OnModuleInit {
     context: DeliveryContext,
     recordMonitoring: boolean = true,
   ): Promise<DeliveryResult> {
+    // Resolve/freeze before any provider call. A stored plan is always authoritative.
+    const turn = await this.prepareReplyPlan(reply, context);
+    if (turn && this.durable) {
+      if (recordMonitoring) await this.wecomObservability.markDeliveryStart(context.messageId);
+      const result = await this.durable.deliver(turn, context);
+      if (recordMonitoring)
+        await this.wecomObservability.markDeliveryEnd(context.messageId, result);
+      // Task memberships have no inbound Redis messages. Their domain repairs touch/events separately.
+      if (!turn.recovery.primary)
+        await this.durable.turns.acked(await this.durable.turns.settle(turn));
+      return result;
+    }
     const startTime = Date.now();
     const { messageId, contactName } = context;
 
@@ -105,6 +120,7 @@ export class MessageDeliveryService implements OnModuleInit {
 
       return { ...result, totalTime };
     } catch (error) {
+      if (error instanceof ReplyDeferredError) throw error;
       const totalTime = Date.now() - startTime;
       const errorMessage = toErrorMessage(error);
       const failureResult =
@@ -126,6 +142,33 @@ export class MessageDeliveryService implements OnModuleInit {
       this.logger.error(`[${contactName}] 消息发送失败: ${errorMessage}`);
       throw new DeliveryFailureError(errorMessage, failureResult);
     }
+  }
+
+  async beginReply(context: DeliveryContext): Promise<ReplyTurn | undefined> {
+    return this.durable?.resolveTurn(context);
+  }
+
+  /** Proactive local repair after callbacks; permission changes do not undo delivery evidence. */
+  async completeConfirmedReply(turn: ReplyTurn): Promise<boolean> {
+    if (!this.durable || turn.recovery.primary) return false;
+    if (!(await this.durable.turns.repository.confirmed(turn))) return false;
+    await this.durable.turns.acked(await this.durable.turns.settle(turn));
+    return true;
+  }
+
+  async prepareReplyPlan(
+    reply: AgentReply,
+    context: DeliveryContext,
+    resume?: Record<string, unknown>,
+  ): Promise<ReplyTurn | undefined> {
+    const turn = await this.durable?.resolveTurn(context);
+    if (!turn || !this.durable) return undefined;
+    const segments = !reply.content.trim()
+      ? []
+      : this.typingPolicy.shouldSplit(reply.content)
+        ? MessageSplitter.split(reply.content, MESSAGE_SPLIT_MAX_SEGMENTS)
+        : [MessageSplitter.stripTrailingPunctuation(reply.content) || reply.content.trim()];
+    return this.durable.prepare(turn, reply.content, segments, resume);
   }
 
   private async deliverSingle(content: string, context: DeliveryContext): Promise<DeliveryResult> {
@@ -203,6 +246,7 @@ export class MessageDeliveryService implements OnModuleInit {
           context,
           segment,
           this.segmentExternalRequestId(context, i, segments.length),
+          i,
         );
         successCount++;
         if (!firstSegmentSent) {
@@ -275,6 +319,19 @@ export class MessageDeliveryService implements OnModuleInit {
    * failedCount,交后续 fallback / 告警链路兜底。
    */
   private async sendTextSegment(
+    context: DeliveryContext,
+    text: string,
+    externalRequestId?: string,
+    segmentIndex = 0,
+  ): Promise<void> {
+    if (this.durable)
+      return this.durable.observeLegacy(context, text, segmentIndex, () =>
+        this.sendLegacySegment(context, text, externalRequestId),
+      );
+    return this.sendLegacySegment(context, text, externalRequestId);
+  }
+
+  private async sendLegacySegment(
     context: DeliveryContext,
     text: string,
     externalRequestId?: string,

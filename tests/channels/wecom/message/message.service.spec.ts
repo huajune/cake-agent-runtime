@@ -1,4 +1,6 @@
+import { ReplyTurnsRepository } from '@biz/reply-execution/reply-turns.repository';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { MessageService } from '@wecom/message/message.service';
 import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service';
 import { MessageDeduplicationService } from '@wecom/message/runtime/deduplication.service';
@@ -11,6 +13,8 @@ import { MessageRuntimeConfigService } from '@wecom/message/runtime/message-runt
 
 describe('MessageService', () => {
   let service: MessageService;
+  const replyRecords = { appendCallback: jest.fn() };
+  const config = { get: jest.fn() };
 
   const mockSimpleMergeService = {
     addMessage: jest.fn(),
@@ -69,6 +73,8 @@ describe('MessageService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageService,
+        { provide: ReplyTurnsRepository, useValue: replyRecords },
+        { provide: ConfigService, useValue: config },
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
         { provide: MessagePipelineService, useValue: mockPipelineService },
@@ -80,6 +86,8 @@ describe('MessageService', () => {
 
     service = module.get<MessageService>(MessageService);
     jest.clearAllMocks();
+    replyRecords.appendCallback.mockReset().mockResolvedValue(true);
+    config.get.mockReturnValue('token-123');
 
     mockRuntimeConfigService.isAiReplyEnabled.mockReturnValue(true);
     mockRuntimeConfigService.isMessageMergeEnabled.mockReturnValue(true);
@@ -115,6 +123,77 @@ describe('MessageService', () => {
   });
 
   describe('handleMessage', () => {
+    it.each([{ token: 'token-456' }, { token: '' }, { _apiType: 'group' as const }])(
+      'does not treat an unverified callback as terminal evidence: %j',
+      async (override) => {
+        await service.handleMessage({
+          ...validMessageData,
+          isSelf: true,
+          source: MessageSource.API_SEND,
+          externalRequestId: 'cake_registered_request',
+          ...override,
+        });
+        expect(replyRecords.appendCallback).not.toHaveBeenCalled();
+      },
+    );
+
+    it('keeps callbacks unknown when the enterprise credential is unavailable', async () => {
+      config.get.mockReturnValue(undefined);
+      await service.handleMessage({
+        ...validMessageData,
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        externalRequestId: 'cake_registered_request',
+      });
+      expect(replyRecords.appendCallback).not.toHaveBeenCalled();
+    });
+
+    it('persists managed callback evidence before acknowledging it', async () => {
+      let release!: (value: boolean) => void;
+      replyRecords.appendCallback.mockImplementation(
+        () =>
+          new Promise<boolean>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const response = service.handleMessage({
+        ...validMessageData,
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        externalRequestId: 'cake_registered_request',
+        payload: { text: 'exact original' },
+      });
+      expect(response).toBeInstanceOf(Promise);
+      expect(mockPipelineService.execute).not.toHaveBeenCalled();
+      expect(replyRecords.appendCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          corpId: 'org-123',
+          accountId: 'wxid-bot-123',
+          chatId: 'chat-123',
+          requestId: 'cake_registered_request',
+          text: 'exact original',
+          messageType: MessageType.TEXT,
+        }),
+      );
+      release(true);
+      await expect(response).resolves.toEqual({ success: true, message: 'Message received' });
+      await flushAsync();
+    });
+
+    it('does not acknowledge a managed callback when evidence persistence is uncertain', async () => {
+      replyRecords.appendCallback.mockRejectedValue(new Error('evidence write timeout'));
+      await expect(
+        service.handleMessage({
+          ...validMessageData,
+          isSelf: true,
+          source: MessageSource.API_SEND,
+          externalRequestId: 'cake_registered_request',
+        }),
+      ).rejects.toThrow('evidence write timeout');
+      expect(mockPipelineService.execute).not.toHaveBeenCalled();
+      expect(mockSimpleMergeService.addMessage).not.toHaveBeenCalled();
+    });
+
     beforeEach(async () => {
       await service.onModuleInit();
     });

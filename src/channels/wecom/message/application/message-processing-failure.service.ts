@@ -1,3 +1,4 @@
+import { ReplyDeferredError } from '@biz/reply-execution/reply-execution.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -64,8 +65,10 @@ export class MessageProcessingFailureService {
       batchId?: string;
       dispatchMode?: 'direct' | 'merged';
       processedMessageIds?: string[];
+      deliveryContext?: DeliveryContext;
     },
   ): Promise<void> {
+    if (error instanceof ReplyDeferredError) throw error;
     const {
       chatId,
       content,
@@ -178,7 +181,7 @@ export class MessageProcessingFailureService {
     }
 
     try {
-      const deliveryContext: DeliveryContext = {
+      const deliveryContext: DeliveryContext = options?.deliveryContext ?? {
         token,
         imBotId,
         imContactId,
@@ -212,6 +215,7 @@ export class MessageProcessingFailureService {
       });
       this.monitoringService.recordFailure(traceId, errorMessage, failureMetadata);
     } catch (sendError) {
+      if (sendError instanceof ReplyDeferredError) throw sendError;
       const sendErrorMessage = toErrorMessage(sendError);
       let diagnosticSendError: Error;
       if (sendError instanceof Error) {
