@@ -536,10 +536,16 @@ export class ReplyWorkflowService {
         );
         // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
         // storePresentationRounds，否则第一轮可能被误判为升档。
-        await this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
-          ...reengagementAnchorContext,
-          suppressAddressMissing: replyKind !== 'reply',
-        });
+        await this.reengagementAnchors
+          .handleDeliveredReplyAnchors(agentResult, {
+            ...reengagementAnchorContext,
+            suppressAddressMissing: replyKind !== 'reply',
+          })
+          .catch((error: unknown) => {
+            // Delivery is already confirmed. An auxiliary queue outage must not send
+            // a second, contradictory fallback reply through the generic error path.
+            this.logger.error(`已投递回复的复聊排程失败: ${toErrorMessage(error)}`);
+          });
       }
 
       // 投递结局已知：仅当回复真实送达才把助手轮次投影进记忆；托管暂停/失败丢弃时

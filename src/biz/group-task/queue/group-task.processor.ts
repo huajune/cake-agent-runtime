@@ -500,12 +500,19 @@ export class GroupTaskProcessor implements OnModuleInit {
     lockOwner: string,
     groupName: string,
   ): Promise<void> {
-    const lease = await this.leases.acquire(lockKey, BOT_DISPATCH_LOCK_TTL_SECONDS, {
-      owner: lockOwner,
-      waitMs: 30_000,
-      pollMs: BOT_DISPATCH_LOCK_POLL_MS,
-    });
-    if (!lease) throw new Error(`同 bot 发送锁不可用，已停止本次发送: ${groupName}`);
+    // Cover the healthy holder's full lease without exhausting Bull send attempts.
+    // Each shared lease wait remains bounded to one minute.
+    const deadline = Date.now() + BOT_DISPATCH_LOCK_TTL_SECONDS * 1_000;
+    while (Date.now() < deadline) {
+      const lease = await this.leases.acquire(lockKey, BOT_DISPATCH_LOCK_TTL_SECONDS, {
+        owner: lockOwner,
+        waitMs: Math.min(60_000, Math.max(0, deadline - Date.now())),
+        pollMs: BOT_DISPATCH_LOCK_POLL_MS,
+      });
+      if (lease) return;
+      await this.delay(BOT_DISPATCH_LOCK_POLL_MS);
+    }
+    throw new Error(`同 bot 发送锁不可用，已停止本次发送: ${groupName}`);
   }
 
   private async waitForBotDispatchWindow(

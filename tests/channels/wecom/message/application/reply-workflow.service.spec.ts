@@ -2011,6 +2011,20 @@ describe('ReplyWorkflowService', () => {
       expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
     });
   });
+  it('does not send fallback after delivered-reply scheduling fails', async () => {
+    opsEventsRecorder.recordEventDetailed.mockResolvedValueOnce('duplicate');
+    followUpScheduler.removeSupersededPendingJobs.mockRejectedValueOnce(
+      new Error('queue unavailable'),
+    );
+    runner.invoke.mockResolvedValueOnce({
+      text: '你可以发个位置，我帮你看附近合适的门店。',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [],
+    });
+    await service.processSingleMessage(createMessage());
+    expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+  });
 });
 
 function createMessage(
