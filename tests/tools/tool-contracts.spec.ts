@@ -7,7 +7,7 @@ import {
 } from '@agent/generator/tool-call-analysis';
 
 describe('tool action contracts', () => {
-  it('preserves the deployed side-effect and replay policies', () => {
+  it('keeps the approved side-effect and replay policies in the contracts', () => {
     expect([...SIDE_EFFECT_TOOLS].sort()).toEqual([
       'duliday_cancel_work_order',
       'duliday_interview_booking',
@@ -22,6 +22,7 @@ describe('tool action contracts', () => {
       'duliday_interview_booking',
       'duliday_modify_interview_time',
       'invite_to_group',
+      'send_store_location',
     ]);
   });
 
