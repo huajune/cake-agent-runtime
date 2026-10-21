@@ -9,6 +9,7 @@ import { type ReengagementChannelIdentity } from './follow-up-scheduler.service'
 import { type FollowUpScenarioCode } from './scenario-registry';
 
 interface AnchorContext {
+  assertOwned?: () => Promise<void>;
   traceId: string;
   logicalTurnId?: string;
   inputOccurredAt?: string;
@@ -93,6 +94,7 @@ export class ReengagementAnchorService {
     const booking = toolCalls.find((call) => this.isBookingSucceeded(call));
     const groupInvited = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
     if (groupInvited) {
+      await context.assertOwned?.();
       await this.scheduler.stopPendingJobsForSessionScenario({
         commandId: `${context.logicalTurnId ?? context.traceId}:stop-store-follow-up`,
         sessionRef: {
@@ -112,11 +114,12 @@ export class ReengagementAnchorService {
       terminalChain = terminalChain.then(() => this.clearBookedTerminal(context));
     }
     if (booking) {
-      terminalChain = terminalChain.then(() =>
-        this.session
+      terminalChain = terminalChain.then(async () => {
+        await context.assertOwned?.();
+        return this.session
           .saveTerminalState(context.corpId, context.userId, context.chatId, 'booked')
-          .catch((error) => this.logFailure('save booked terminal', context, error)),
-      );
+          .catch((error) => this.logFailure('save booked terminal', context, error));
+      });
     }
     // Observe a rejected durable write immediately, before awaiting any other
     // admission. The caller must keep the original turn pending for recovery.
@@ -159,6 +162,7 @@ export class ReengagementAnchorService {
     const workOrderId = this.extractWorkOrderId(call);
     if (workOrderId == null) return;
     for (const scenarioCode of ['interview_reminder', 'post_interview_followup'] as const) {
+      await context.assertOwned?.();
       await this.scheduler.scheduleBookingResolution({
         sessionRef: {
           corpId: context.corpId,
@@ -184,6 +188,7 @@ export class ReengagementAnchorService {
       const state = await this.loadState(context);
       if (state.terminal !== 'booked') return;
       // saveTerminalState 内部 `terminal ?? null`：传 undefined 即清空落库
+      await context.assertOwned?.();
       await this.session.saveTerminalState(
         context.corpId,
         context.userId,
@@ -238,6 +243,7 @@ export class ReengagementAnchorService {
       await this.scheduleRecalledPoolPresentation(reply, context);
     }
     if (!context.suppressAddressMissing && this.asksForLocation(reply)) {
+      await context.assertOwned?.();
       await this.scheduler.removeSupersededPendingJobs({
         commandId: `${context.logicalTurnId ?? context.traceId}:supersede-opening-follow-up`,
         sessionRef: {
@@ -279,6 +285,7 @@ export class ReengagementAnchorService {
   ): Promise<void> {
     try {
       const state = await this.loadState(context);
+      await context.assertOwned?.();
       await this.scheduler.scheduleFollowUp({
         sessionRef: {
           corpId: context.corpId,
@@ -306,6 +313,7 @@ export class ReengagementAnchorService {
   ): Promise<void> {
     try {
       const state = await this.loadState(context);
+      await context.assertOwned?.();
       await this.scheduler.scheduleFollowUp({
         sessionRef: {
           corpId: context.corpId,

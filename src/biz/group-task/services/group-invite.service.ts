@@ -622,12 +622,18 @@ export class GroupInviteService implements OnModuleInit {
     )
       throw new Error('Invite repair data unavailable');
     await context?.assertOwned();
-    await this.memoryService.saveInvitedGroup(intent.corpId, data.userId, data.sessionId, {
-      groupName: data.groupName,
-      city: data.city,
-      ...(typeof data.industry === 'string' ? { industry: data.industry } : {}),
-      invitedAt: intent.occurredAt,
-    });
+    await this.memoryService.saveInvitedGroup(
+      intent.corpId,
+      data.userId,
+      data.sessionId,
+      {
+        groupName: data.groupName,
+        city: data.city,
+        ...(typeof data.industry === 'string' ? { industry: data.industry } : {}),
+        invitedAt: intent.occurredAt,
+      },
+      ...(context ? ([{ requireExisting: true }] as const) : ([] as const)),
+    );
   }
 
   private async maybeAddChatBotToGroupAndRetryInvite(params: {

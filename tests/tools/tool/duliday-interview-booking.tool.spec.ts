@@ -251,6 +251,19 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result).toMatchObject({ success: true, localSync: 'pending' });
     expect(sponge.bookInterview).not.toHaveBeenCalled();
     expect(collectionForms.persist).not.toHaveBeenCalled();
+    expect(actions.executeSponge).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          opsEventPayload: expect.objectContaining({
+            job_id: 100,
+            candidate_name: expect.any(String),
+            phone: expect.any(String),
+          }),
+        }),
+      }),
+      expect.any(Function),
+    );
   });
 
   it('本轮没有 ready_to_book 凭据时，在任何外部请求前拒绝', async () => {

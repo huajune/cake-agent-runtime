@@ -72,6 +72,11 @@ export class ActionExecutorService {
     const occurredAt = Date.parse(intent.occurredAt);
     if (occurredAt < Date.now() - RETENTION_MS || occurredAt > Date.now() + 60_000)
       return blocked('expired_or_invalid_input');
+    if (
+      intent.recoveryWindowStartedAt !== undefined &&
+      Date.parse(intent.recoveryWindowStartedAt) > Date.now() + 60_000
+    )
+      return blocked('invalid_recovery_window');
     if (this.mode === 'execute' && (!intent.identityReliable || occurredAt < this.cutoverAt!))
       return blocked('input_before_cutover_or_identity_not_persisted');
 

@@ -82,6 +82,9 @@ export interface DeliveryContext {
   logicalTurnId?: string;
   inputOccurredAt?: string;
   replyTurn?: ReplyTurn;
+  /** Whitelisted task metadata only; never credentials or message history. */
+  taskRecovery?: { kind: 'reengagement'; data: Record<string, unknown> };
+  assertOwned?: () => Promise<void>;
   action?: PermittedAction;
   groupId?: string;
   token: string;

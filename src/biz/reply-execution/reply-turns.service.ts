@@ -98,6 +98,12 @@ export class ReplyTurnsService {
   async defer(turn: ReplyTurn): Promise<void> {
     await this.update(turn, 'defer');
   }
+  async completeProjection(turn: ReplyTurn): Promise<void> {
+    await this.update(turn, 'project');
+  }
+  async deferProjection(turn: ReplyTurn): Promise<void> {
+    await this.update(turn, 'defer_projection');
+  }
   private async update(
     turn: ReplyTurn,
     operation: string,

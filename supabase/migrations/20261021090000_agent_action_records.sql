@@ -2,6 +2,7 @@
 create table public.agent_action_records (
   corp_id text not null,
   action_id text not null,
+  previous_action_id text,
   account_id text not null,
   chat_id text not null,
   logical_turn_id text not null,
@@ -27,8 +28,12 @@ create table public.agent_action_records (
   review_required boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  primary key (corp_id, action_id)
+  primary key (corp_id, action_id),
+  foreign key (corp_id, previous_action_id) references public.agent_action_records(corp_id, action_id)
 );
+
+-- Audit ancestry uses the same enterprise/resource scope as conflict serialization.
+create index agent_action_resource_history_idx on public.agent_action_records(corp_id,resource_hash,created_at desc,action_id desc);
 
 create index agent_action_due_idx on public.agent_action_records(next_check_at, corp_id, action_id)
   where mode='execute' and next_check_at is not null and (status in ('executing','unknown') or (status='succeeded' and local_sync='pending'));
@@ -63,6 +68,7 @@ declare
   v_id text := p_input->>'actionId';
   v_resource text;
   v_conflict text;
+  v_previous text;
   v_status text;
   v_evidence jsonb;
 begin
@@ -78,11 +84,15 @@ begin
       where corp_id=v_corp and resource_hash=v_resource and action_id<>v_id
         and mode='execute' and status in ('executing','unknown') limit 1;
     if r.action_id is null and p_input->>'mode'<>'off' then
+      -- Freeze audit ancestry once, under the resource lock. Never use it as dispatch permission.
+      select action_id into v_previous from public.agent_action_records
+        where corp_id=v_corp and resource_hash=v_resource
+        order by created_at desc,action_id desc limit 1;
       insert into public.agent_action_records(corp_id,action_id,account_id,chat_id,logical_turn_id,kind,
-        resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,recovery_deadline)
+        resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,recovery_deadline,previous_action_id,created_at)
       values(v_corp,v_id,p_input->'intent'->>'accountId',p_input->'intent'->>'chatId',
         p_input->'intent'->>'logicalTurnId',p_input->'intent'->>'kind',v_resource,p_input->>'payloadHash',
-        p_input->>'requestId',p_input->'intent',(p_input->'intent'->>'occurredAt')::timestamptz,p_input->>'mode',(p_input->>'recoveryDeadline')::timestamptz)
+        p_input->>'requestId',p_input->'intent',(p_input->'intent'->>'occurredAt')::timestamptz,p_input->>'mode',(p_input->>'recoveryDeadline')::timestamptz,v_previous,clock_timestamp())
       returning * into r;
     end if;
     if r.action_id is not null and (r.payload_hash<>p_input->>'payloadHash'
@@ -235,7 +245,7 @@ revoke all on function public.review_agent_action(jsonb) from public,anon,authen
 grant execute on function public.review_agent_action(jsonb) to service_role;
 
 -- Terminal records retain a minimal tombstone. Unresolved actions and pending local
--- repair are never removed by retention. Executors reject input older than 90 days.
+-- repair are never removed by retention. The previous_action_id chain is retained. Executors reject input older than 90 days.
 create or replace function public.redact_completed_agent_actions(p_limit integer default 100)
 returns integer language plpgsql security definer set search_path=public,pg_temp as $$
 declare n integer;

@@ -9,6 +9,7 @@ import type {
 export interface ActionDbRecord {
   corp_id: string;
   action_id: string;
+  previous_action_id?: string | null;
   request_id: string;
   resource_hash: string;
   intent: ActionIntent;

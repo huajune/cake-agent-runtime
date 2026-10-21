@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
-import type { ActionRecordsRepository } from '@biz/action-execution/action-records.repository';
+import { ActionRecordsRepository } from '@biz/action-execution/action-records.repository';
+import type { SupabaseService } from '@infra/supabase/supabase.service';
 import type {
   ActionCompletion,
   ActionIntent,
@@ -252,5 +253,64 @@ describe('external action failure boundaries', () => {
     await service.execute(intent, { dispatch });
     expect(dispatch).toHaveBeenCalledTimes(2);
     expect(dispatch.mock.calls[0]).toEqual([identifyAction(intent).requestId, 'observe']);
+  });
+
+  it('gives a delayed reminder its frozen dispatch window while retaining the original input', async () => {
+    const scheduled = {
+      ...intent,
+      occurredAt: '2026-10-14T04:00:00Z',
+      recoveryWindowStartedAt: now,
+    };
+    const rpc = jest.fn(() => ({
+      abortSignal: jest.fn().mockResolvedValue({ data: { record: null }, error: null }),
+    }));
+    const records = new ActionRecordsRepository({
+      getSupabaseClient: () => ({ rpc }),
+    } as unknown as SupabaseService);
+    await records.prepare(scheduled, 'execute');
+    expect(rpc).toHaveBeenCalledWith('transition_agent_action', {
+      p_operation: 'prepare',
+      p_input: expect.objectContaining({
+        intent: scheduled,
+        recoveryDeadline: '2026-10-22T04:00:00.000Z',
+      }),
+    });
+    const { service } = setup('execute', '2026-10-01T00:00:00Z');
+    expect((await service.execute(scheduled, { dispatch: async () => completion })).status).toBe(
+      'succeeded',
+    );
+  });
+
+  it('cannot reopen an unknown action by advancing its frozen window', async () => {
+    const { service } = setup();
+    const scheduled = { ...intent, recoveryWindowStartedAt: now };
+    const dispatch = jest.fn().mockRejectedValue(new Error('ambiguous transport'));
+    expect((await service.execute(scheduled, { dispatch })).status).toBe('unknown');
+    jest.setSystemTime(new Date('2026-10-22T04:00:00Z'));
+    expect(
+      (
+        await service.execute(
+          { ...scheduled, recoveryWindowStartedAt: '2026-10-22T04:00:00Z' },
+          { dispatch },
+        )
+      ).reason,
+    ).toBe('identity_payload_mismatch');
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid scheduled windows and preserves original cutover and retention checks', async () => {
+    const { service, repository } = setup();
+    const dispatch = jest.fn();
+    for (const input of [
+      { ...intent, recoveryWindowStartedAt: 'invalid' },
+      { ...intent, recoveryWindowStartedAt: '2026-10-20T04:00:00Z' },
+      { ...intent, recoveryWindowStartedAt: '2026-10-22T04:00:00Z' },
+      { ...intent, occurredAt: '2026-10-19T04:00:00Z', recoveryWindowStartedAt: now },
+      { ...intent, occurredAt: '2026-01-01T04:00:00Z', recoveryWindowStartedAt: now },
+    ]) {
+      expect((await service.execute(input, { dispatch })).status).toBe('blocked');
+    }
+    expect(repository.prepare).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });

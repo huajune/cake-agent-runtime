@@ -52,6 +52,75 @@ describe('reply segment external-result boundaries', () => {
     jest.resetAllMocks();
     permit.evaluate.mockResolvedValue({ allowed: true });
     sender.sendMessage.mockResolvedValue({ errcode: 0 });
+    turns.mode = 'execute';
+  });
+
+  it('accepts an old booking anchor with a fresh frozen schedule and preserves the same action fingerprint', async () => {
+    const due = Date.now() - 1000;
+    const oldAnchor = new Date(due - 7 * 86400_000).toISOString();
+    const taskRecovery = {
+      kind: 'reengagement' as const,
+      data: { jobData: { dispatchDueAt: due } },
+    };
+    const persisted = {
+      ...turn,
+      inputOccurredAt: oldAnchor,
+      recovery: { task: taskRecovery },
+      plan: null,
+    };
+    turns.open.mockResolvedValue(persisted);
+    expect(
+      await service.resolveTurn({
+        ...context,
+        replyTurn: undefined,
+        corpId: 'corp',
+        logicalTurnId: 'task-key',
+        inputOccurredAt: oldAnchor,
+        taskRecovery,
+      }),
+    ).toEqual(persisted);
+    turns.savePlan.mockImplementation(async (value, plan) => ({ ...value, plan }));
+    const frozen = await service.prepare(persisted, 'same text', ['same text']);
+    executor.execute.mockImplementation(async (intent: ActionIntent) => {
+      expect(intent.occurredAt).toBe(oldAnchor);
+      expect(intent.recoveryWindowStartedAt).toBe(new Date(due).toISOString());
+      const { identifyAction } = await import('@biz/action-execution/action-identity');
+      expect(identifyAction(intent).actionId).toBe(frozen.plan!.segments[0].actionId);
+      return { status: 'succeeded' };
+    });
+    await service.deliver(frozen, context);
+    expect(sender.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, Date.now() - 25 * 3600_000, Date.now() + 120_000])(
+    'refuses to create a new execute plan without a current original due time (%s)',
+    async (due) => {
+      await expect(
+        service.resolveTurn({
+          ...context,
+          replyTurn: undefined,
+          corpId: 'corp',
+          logicalTurnId: 'task-key',
+          inputOccurredAt: new Date(Date.now() - 7 * 86400_000).toISOString(),
+          taskRecovery: { kind: 'reengagement', data: { jobData: { dispatchDueAt: due } } },
+        }),
+      ).rejects.toThrow('task_dispatch_window_unconfirmed_or_expired');
+      expect(turns.open).not.toHaveBeenCalled();
+      expect(sender.sendMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('observation preserves old admission when legacy jobs lack the frozen schedule', async () => {
+    turns.mode = 'observe';
+    await service.resolveTurn({
+      ...context,
+      replyTurn: undefined,
+      corpId: 'corp',
+      logicalTurnId: 'task-key',
+      inputOccurredAt: turn.inputOccurredAt,
+      taskRecovery: { kind: 'reengagement', data: { jobData: {} } },
+    });
+    expect(turns.open).toHaveBeenCalled();
   });
 
   it('retains a successful first segment and stops at unknown second without reaching third', async () => {

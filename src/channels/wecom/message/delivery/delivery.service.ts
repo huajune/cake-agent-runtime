@@ -1,6 +1,7 @@
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
+import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
@@ -42,6 +43,7 @@ export class MessageDeliveryService implements OnModuleInit {
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly actionPermit: ActionPermitService,
     @Optional() private readonly durable?: DurableReplyDeliveryService,
+    @Optional() private readonly recoveryLease?: ReplyRecoveryLeaseService,
   ) {}
 
   async onModuleInit() {
@@ -68,8 +70,12 @@ export class MessageDeliveryService implements OnModuleInit {
       if (recordMonitoring)
         await this.wecomObservability.markDeliveryEnd(context.messageId, result);
       // Task memberships have no inbound Redis messages. Their domain repairs touch/events separately.
-      if (!turn.recovery.primary)
-        await this.durable.turns.acked(await this.durable.turns.settle(turn));
+      if (!turn.recovery.primary) {
+        await context.assertOwned?.();
+        const settled = await this.durable.turns.settle(turn);
+        await context.assertOwned?.();
+        await this.durable.turns.acked(settled);
+      }
       return result;
     }
     const startTime = Date.now();
@@ -150,11 +156,34 @@ export class MessageDeliveryService implements OnModuleInit {
   }
 
   /** Proactive local repair after callbacks; permission changes do not undo delivery evidence. */
-  async completeConfirmedReply(turn: ReplyTurn): Promise<boolean> {
+  async completeConfirmedReply(
+    turn: ReplyTurn,
+    assertOwned?: () => Promise<void>,
+  ): Promise<boolean> {
     if (!this.durable || turn.recovery.primary) return false;
     if (!(await this.durable.turns.repository.confirmed(turn))) return false;
-    await this.durable.turns.acked(await this.durable.turns.settle(turn));
+    await assertOwned?.();
+    const settled = await this.durable.turns.settle(turn);
+    await assertOwned?.();
+    await this.durable.turns.acked(settled);
     return true;
+  }
+
+  async pendingReplyTasks(): Promise<ReplyTurn[]> {
+    return this.durable?.turns.repository.dueTaskProjections() ?? [];
+  }
+  async finishReplyTask(turn: ReplyTurn): Promise<void> {
+    await this.durable?.turns.completeProjection(turn);
+  }
+  async deferReplyTask(turn: ReplyTurn): Promise<void> {
+    await this.durable?.turns.deferProjection(turn);
+  }
+  async withReplyRecovery<T>(
+    turn: ReplyTurn,
+    task: (assertOwned: () => Promise<void>) => Promise<T>,
+  ): Promise<T | undefined> {
+    if (!this.recoveryLease) throw new ReplyDeferredError('reply_recovery_lease_unavailable');
+    return this.recoveryLease.run(turn.chatId, task);
   }
 
   async prepareReplyPlan(

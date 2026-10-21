@@ -93,6 +93,8 @@ describe('ReplyWorkflowService', () => {
   const opsEventsRecorder = {
     recordEvent: jest.fn(),
     recordEventDetailed: jest.fn(),
+    recordOpeningDurably: jest.fn(),
+    recordEventDurably: jest.fn(),
   };
   const interventionService = {
     dispatch: jest.fn(),
@@ -290,6 +292,8 @@ describe('ReplyWorkflowService', () => {
 
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
+    opsEventsRecorder.recordOpeningDurably.mockResolvedValue(true);
+    opsEventsRecorder.recordEventDurably.mockResolvedValue(undefined);
     followUpScheduler.scheduleFollowUp.mockResolvedValue({ scheduled: true });
     followUpScheduler.scheduleBookingResolution.mockResolvedValue({ scheduled: true });
     followUpScheduler.removePendingJob.mockResolvedValue(true);
@@ -492,12 +496,56 @@ describe('ReplyWorkflowService', () => {
     },
   );
 
+  it('awaits opening queue admission before acknowledgement and retries its original stable anchor', async () => {
+    const turn = persistedTurn();
+    replyTurns.open.mockResolvedValue(turn);
+    replyTurns.settle.mockResolvedValue({ ...turn, status: 'settled' });
+    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
+    deliveryService.deliverReply.mockResolvedValue({
+      success: true,
+      segmentCount: 1,
+      deliveredSegments: 1,
+    });
+    followUpScheduler.scheduleFollowUp.mockResolvedValueOnce({
+      reason: 'enqueue_error',
+      scheduled: false,
+    });
+    await service.processSingleMessage(createMessage());
+    expect(replyTurns.settle).not.toHaveBeenCalled();
+    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    followUpScheduler.scheduleFollowUp.mockResolvedValue({ scheduled: true });
+    await service.resumePersistedReply(turn, 'fresh-token');
+    expect(replyTurns.acked).toHaveBeenCalledTimes(1);
+    expect(opsEventsRecorder.recordOpeningDurably).toHaveBeenCalledTimes(2);
+    expect(followUpScheduler.scheduleFollowUp.mock.calls.map(([input]) => input.anchorAt)).toEqual([
+      Date.parse(turn.inputOccurredAt),
+      Date.parse(turn.inputOccurredAt),
+    ]);
+    expect(opsEventsRecorder.recordEventDurably).not.toHaveBeenCalled();
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+  });
+
   it('blocks generation and fallback when input membership cannot be confirmed', async () => {
     replyTurns.open.mockRejectedValue(new ReplyDeferredError('membership_unconfirmed'));
     await service.processSingleMessage(createMessage());
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
     expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+  });
+
+  it('stops ack repair immediately when the recovery lease is lost after pending removal', async () => {
+    const turn = persistedTurn('settled');
+    const owned = jest.fn().mockResolvedValue(undefined);
+    simpleMergeService.ackPendingMessageIds.mockImplementationOnce(async () => {
+      owned.mockRejectedValue(new ReplyDeferredError('lease_lost'));
+    });
+    await expect(service.resumePersistedReply(turn, 'fresh-token', owned)).rejects.toThrow(
+      'ack_repair_pending',
+    );
+    expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', turn.inputIds);
+    expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+    expect(replyTurns.acked).not.toHaveBeenCalled();
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
   });
 
   it('should execute the direct reply workflow and mark the message as processed', async () => {

@@ -41,11 +41,26 @@ export class DurableReplyDeliveryService implements OnModuleInit {
         throw new ReplyDeferredError('delivery_identity_not_persisted');
       return undefined;
     }
+    if (this.turns.mode === 'execute' && context.taskRecovery?.kind === 'reengagement') {
+      const data = context.taskRecovery.data as { jobData?: { dispatchDueAt?: number } };
+      const due = data.jobData?.dispatchDueAt;
+      if (
+        typeof due !== 'number' ||
+        !Number.isFinite(due) ||
+        due < Date.parse(context.inputOccurredAt) ||
+        due > Date.now() + 60_000 ||
+        due <= Date.now() - 24 * 3600_000
+      )
+        throw new ReplyDeferredError('task_dispatch_window_unconfirmed_or_expired');
+    }
     return this.turns.open(
       { corpId: context.corpId, accountId: context.imBotId, chatId: context.chatId },
       [`task:${context.logicalTurnId}`],
       context.inputOccurredAt,
-      { action: context.action ?? 'reply' },
+      {
+        action: context.action ?? 'reply',
+        ...(context.taskRecovery ? { task: context.taskRecovery } : {}),
+      },
     );
   }
 
@@ -76,17 +91,21 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       const execution = await this.executor.execute(
         this.intent(turn, segment.text, segment.index),
         {
-          authorize: async () =>
-            !cancelled &&
-            (
-              await this.permit.evaluate({
-                chatId: turn.chatId,
-                action: context.action ?? 'reply',
-                botImId: turn.accountId,
-                groupId: context.groupId,
-                candidateIds: [context.imContactId],
-              })
-            ).allowed,
+          authorize: async () => {
+            await context.assertOwned?.();
+            return (
+              !cancelled &&
+              (
+                await this.permit.evaluate({
+                  chatId: turn.chatId,
+                  action: context.action ?? 'reply',
+                  botImId: turn.accountId,
+                  groupId: context.groupId,
+                  candidateIds: [context.imContactId],
+                })
+              ).allowed
+            );
+          },
           dispatch: async (requestId, mode) => {
             await this.sender.sendMessage({
               token: context.token,
@@ -181,6 +200,13 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   }
 
   private intent(turn: ReplyTurn, text: string, index: number): ActionIntent {
+    const task = turn.recovery.task as
+      | {
+          kind?: string;
+          data?: { jobData?: { dispatchDueAt?: number } };
+        }
+      | undefined;
+    const due = task?.kind === 'reengagement' ? task.data?.jobData?.dispatchDueAt : undefined;
     return {
       corpId: turn.corpId,
       accountId: turn.accountId,
@@ -191,6 +217,9 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       target: `chat:${turn.chatId}:reply:${turn.logicalTurnId}:segment:${index}`,
       parameters: { text, index, version: 1 },
       occurredAt: turn.inputOccurredAt,
+      ...(typeof due === 'number' && Number.isFinite(due)
+        ? { recoveryWindowStartedAt: new Date(due).toISOString() }
+        : {}),
       identityReliable: true,
       recovery: { logicalTurnId: turn.logicalTurnId, index },
     };

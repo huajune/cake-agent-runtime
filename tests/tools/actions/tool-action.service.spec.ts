@@ -59,6 +59,7 @@ describe('ToolActionService actual external boundary', () => {
   const forms = { markSubmittedIfUnchanged: jest.fn(), readPrimaryCandidateRef: jest.fn() };
   const snapshots = { invalidate: jest.fn() };
   const permits = { evaluate: jest.fn() };
+  const actionOpsEvents = { sync: jest.fn() };
   let registry: ActionRecoveryRegistry;
   const settled = jest.fn();
   const execute = jest.fn(
@@ -107,6 +108,7 @@ describe('ToolActionService actual external boundary', () => {
     jest.clearAllMocks();
     mode = 'execute';
     permits.evaluate.mockResolvedValue({ allowed: true });
+    actionOpsEvents.sync.mockResolvedValue(undefined);
     registry = new ActionRecoveryRegistry();
     sponge.fetchSignupWorkOrders.mockResolvedValue({
       workOrders: [
@@ -138,6 +140,7 @@ describe('ToolActionService actual external boundary', () => {
       forms as never,
       snapshots as never,
       permits as never,
+      actionOpsEvents as never,
     );
     service.onModuleInit();
   });
@@ -151,7 +154,19 @@ describe('ToolActionService actual external boundary', () => {
     expect(settled).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded' }));
     expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
     expect(snapshots.invalidate).toHaveBeenCalled();
+    expect(actionOpsEvents.sync).toHaveBeenCalledWith(savedIntent, booking, undefined);
   });
+  it('keeps external success pending when neither durable event write nor its recovery queue succeeds', async () => {
+    actionOpsEvents.sync.mockRejectedValueOnce(new Error('event_not_durable'));
+    const dispatch = jest.fn().mockResolvedValue(booking);
+    expect(await service.executeSponge(context, input, dispatch)).toMatchObject({
+      status: 'succeeded',
+      localSync: 'pending',
+    });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+  });
+
   it('rechecks the actual tool permission before a provider request', async () => {
     permits.evaluate.mockResolvedValue({ allowed: false, reason: 'hosting_paused' });
     const dispatch = jest.fn();
@@ -243,6 +258,7 @@ describe('ToolActionService actual external boundary', () => {
     });
     expect(forms.markSubmittedIfUnchanged).not.toHaveBeenCalled();
     expect(session.saveCompletedCollectionFacts).not.toHaveBeenCalled();
+    expect(actionOpsEvents.sync).toHaveBeenCalledWith(savedIntent, booking, undefined);
   });
 
   it('does not restore an older person after the primary locator changed', async () => {
