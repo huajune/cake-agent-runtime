@@ -41,6 +41,8 @@ import {
 } from '@tools/booking/booking-reply-format.util';
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
 import { projectBookingModelOutput } from '@tools/booking/booking-model-output.util';
+import { buildDuplicateBookingReceipt } from '@tools/booking/duplicate-booking-receipt.util';
+import { recoverDuplicateSignup } from '@tools/booking/duplicate-signup-recovery.util';
 import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
 import type { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import {
@@ -77,7 +79,7 @@ const DESCRIPTION = `提交面试报名。候选人资料全部来自已授权�
 - wait_notice 岗位：不要传 interviewTime。
 - 不得传姓名、手机号、年龄、性别或补充标签；这些值只能由持久表单生成 labelList。
 - 同一会话代多人报名时必须严格串行：当前人的 precheck ready_to_book 后立即调用本工具，成功后才能 precheck 下一人；不得并行办理多人。
-- booking success=true 前禁止声称已报名。`;
+- 只有 booking success=true 或 booking.already_booked 回执才可如实告知已报名；后者须按回执区分已核实预约与待人工核实的已有报名。`;
 
 const inputSchema = z.object({
   jobId: z.coerce.number().int().positive().describe('本轮 precheck 已确认可提交的岗位 ID'),
@@ -184,8 +186,9 @@ export function buildInterviewBookingTool(
   opsEventsRecorder: OpsEventsRecorderService,
   deps?: BookingAdjudicationDeps,
 ): ToolBuilder {
-  return (context) =>
-    tool({
+  return (context) => {
+    const duplicateReceipts = new Map<string, Record<string, unknown>>();
+    return tool({
       description: DESCRIPTION,
       inputSchema,
       toModelOutput: ({ output }) => ({ type: 'json', value: projectBookingModelOutput(output) }),
@@ -280,6 +283,9 @@ export function buildInterviewBookingTool(
               }),
             );
           }
+          const duplicateReceiptKey = `${jobId}:${form.candidateRef}`;
+          const recoveredReceipt = duplicateReceipts.get(duplicateReceiptKey);
+          if (recoveredReceipt) return recoveredReceipt;
           const isAdditionalCandidate = form.candidateScope === 'additional';
           const verdict = verdictOf(form);
           if (
@@ -503,36 +509,11 @@ export function buildInterviewBookingTool(
                 ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), jobId]),
               ];
             }
-            const existingInterviewTimeHuman = duplicate.interview_time
-              ? formatInterviewTimeForReply(duplicate.interview_time)
-              : undefined;
-            const scopeText = duplicate.matchedBy === 'brand' ? '同品牌' : '该岗位';
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
-              outcome: `${scopeText}已有在途预约工单，本次未重复提交；预约已存在，不是失败`,
-              replyInstruction:
-                (duplicate.crossAccount
-                  ? `候选人在${scopeText}的面试预约已经存在（由其它托管账号/渠道提交），如实告诉候选人「你之前已经报过这个岗位/品牌」、不用再提交；`
-                  : `${scopeText}的面试预约已经存在，如实告诉候选人已经约上、不用再提交；`) +
-                (existingInterviewTimeHuman
-                  ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
-                  : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
-                '禁止把已有预约描述为系统故障、提交失败或尚待再次提交。' +
-                (duplicate.crossAccount
-                  ? '本账号无法操作该工单，随后调用 request_handoff(reasonCode="duplicate_signup") 转人工核实。'
-                  : '改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。'),
-              details: {
-                existingWorkOrderId: duplicate.work_order_id,
-                alreadyBookedSource: 'active_booking_dedup',
-                matchedBy: duplicate.matchedBy,
-                crossAccount: duplicate.crossAccount,
-                ...(duplicate.interview_time
-                  ? { existingInterviewTime: duplicate.interview_time }
-                  : {}),
-                ...(existingInterviewTimeHuman
-                  ? { _existingInterviewTimeHuman: existingInterviewTimeHuman }
-                  : {}),
-              },
+            return buildDuplicateBookingReceipt({
+              workOrderId: duplicate.work_order_id,
+              interviewTime: duplicate.interview_time,
+              matchedBy: duplicate.matchedBy,
+              crossAccount: duplicate.crossAccount,
             });
           }
 
@@ -589,6 +570,85 @@ export function buildInterviewBookingTool(
             { jobId, interviewTime, labelList: payload.labelList },
             tokenContext,
           );
+          if (!result.success && result.duplicateSignupReason) {
+            // 海绵已确认“报过”，后续读写失败不能把事实降级成预约失败或再次提交。
+            const spongeRejection = { context, jobId, message: result.message ?? '已报名' };
+            committedBookingFallback = {
+              ...buildDuplicateBookingReceipt({ crossAccount: true, spongeRejection }),
+              candidateScope: isAdditionalCandidate ? 'additional' : 'primary',
+            };
+            duplicateReceipts.set(duplicateReceiptKey, committedBookingFallback);
+            context.ledger.jobs.bookingSucceeded = true;
+            const recovered = await recoverDuplicateSignup({
+              spongeService,
+              phone: identity.phone,
+              tokenContext,
+              target: { jobId, brandName: job.basicInfo.brandName },
+              reason: result.duplicateSignupReason,
+              onFailure: (message) =>
+                logger.warn(`[booking] 重复报名工单核实失败，转人工: ${message}`),
+            });
+            const ownedOrder = recovered.ownedOrder;
+            committedBookingFallback = {
+              ...buildDuplicateBookingReceipt({
+                workOrderId: recovered.match?.workOrderId,
+                interviewTime: ownedOrder?.interviewTime,
+                matchedBy: recovered.match?.matchedBy,
+                crossAccount: !ownedOrder,
+                spongeRejection,
+              }),
+              candidateScope: isAdditionalCandidate ? 'additional' : 'primary',
+            };
+            duplicateReceipts.set(duplicateReceiptKey, committedBookingFallback);
+            if (!ownedOrder) return committedBookingFallback;
+            // 只采用已有工单的真实岗位和时间；同品牌另一岗位不得伪装成当前请求已约上。
+            const existingJobId = ownedOrder.jobId ?? null;
+            if (!isAdditionalCandidate && existingJobId != null) {
+              context.ledger.jobs.confirmedBookingJobIds = [
+                ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), existingJobId]),
+              ];
+              await runPostBookingWrite('重复报名 active booking 指针写入', () =>
+                longTermService.setActiveBooking(
+                  scope.corpId,
+                  scope.userId,
+                  ownedOrder.workOrderId,
+                  {
+                    job_id: existingJobId,
+                    interview_time: ownedOrder.interviewTime ?? null,
+                  },
+                ),
+              );
+            }
+            await runPostBookingWrite('重复报名收资表单办结', () =>
+              deps.collectionForms!.persist(
+                scope,
+                markSubmitted({ ...form, scheduleDraft: undefined }, ownedOrder.workOrderId),
+              ),
+            );
+            await runPostBookingWrite('重复报名预约快照失效', async () => {
+              await deps.bookingSnapshot?.invalidate({
+                phone: identity.phone,
+                botImId: context.session.botImId,
+                corpId: scope.corpId,
+                userId: scope.userId,
+              });
+            });
+            const groupInvite = await runPostBookingGroupInvite({
+              context,
+              groupInviteService: deps.groupInvite,
+              sessionService: deps.sessionFacts,
+              logger,
+              isAdditionalCandidate,
+              hasOtherActiveBookings: otherActiveBookings.length > 0,
+            });
+            const receipt = {
+              ...committedBookingFallback,
+              groupInvite,
+              _groupInviteGuide: buildPostBookingGroupInviteGuide(groupInvite),
+            };
+            duplicateReceipts.set(duplicateReceiptKey, receipt);
+            return receipt;
+          }
           context.ledger.jobs.bookingSucceeded = result.success;
           if (result.success && !isAdditionalCandidate) {
             context.ledger.jobs.confirmedBookingJobIds = [
@@ -891,7 +951,7 @@ export function buildInterviewBookingTool(
         } catch (error) {
           if (committedBookingFallback) {
             logger.error(
-              `[booking] 外部预约已成功，回执后处理异常（保持成功口径）: ${toErrorMessage(error)}`,
+              `[booking] 外部已确认报名状态，回执后处理异常（保留已报名口径）: ${toErrorMessage(error)}`,
             );
             context.ledger.jobs.bookingSucceeded = true;
             return committedBookingFallback;
@@ -922,6 +982,7 @@ export function buildInterviewBookingTool(
         }
       },
     });
+  };
 }
 
 function readIdentity(
