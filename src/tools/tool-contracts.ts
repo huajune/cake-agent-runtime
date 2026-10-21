@@ -1,6 +1,7 @@
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import type { ToolActionContract } from '@shared-types/tool-action.contract';
 
-export const DEFAULT_TOOL_CALL_LIMIT = 3;
+export const DEFAULT_TOOL_CALL_LIMIT = RUNTIME_RETRY_LIMITS.sameToolCalls;
 
 function contract(
   effect: ToolActionContract['effect'],
@@ -25,7 +26,7 @@ export const BUILT_IN_TOOL_CONTRACTS = {
     gates: ['job_list_brand_provenance', 'job_list_schedule_constraint_provenance'],
   }),
   duliday_interview_precheck: contract('local_state', {
-    maxCallsPerTurn: 2,
+    maxCallsPerTurn: RUNTIME_RETRY_LIMITS.precheckCalls,
     gates: ['booking_jobid_provenance'],
   }),
   duliday_interview_booking: contract('external_action', {
@@ -51,6 +52,7 @@ export const BUILT_IN_TOOL_CONTRACTS = {
   }),
   geocode: contract('readonly', { gates: ['invite_city_provenance'] }),
   send_store_location: contract('external_action', {
+    replay: 'block_on_success',
     idempotency: { scope: 'turn', target: ['storeId'] },
   }),
   invite_to_group: contract('external_action', {

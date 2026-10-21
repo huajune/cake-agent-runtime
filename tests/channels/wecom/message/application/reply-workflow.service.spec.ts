@@ -549,6 +549,50 @@ describe('ReplyWorkflowService', () => {
     expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
   });
 
+  it.each(['unknown', 'executing', 'blocked', 'succeeded'])(
+    'does not image-fallback after %s action evidence',
+    async (status) => {
+      const error = Object.assign(new Error('provider timeout after tool'), {
+        agentMeta: {
+          replayBlockedBy: [{ toolName: 'send_store_location', toolCallId: 't1', status }],
+        },
+      });
+      runner.invoke.mockRejectedValueOnce(error);
+      await service.processSingleMessage(
+        createMessage({
+          messageType: MessageType.IMAGE,
+          payload: { imageUrl: 'https://example.com/job-card.jpg' },
+        }),
+      );
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retains action evidence when empty response and telemetry both fail after successful location send', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '',
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'send_store_location',
+          args: {},
+          result: { actionStatus: 'succeeded', localSync: 'pending' },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    });
+    wecomObservability.markAiEnd.mockRejectedValueOnce(new Error('telemetry offline'));
+    await service.processSingleMessage(
+      createMessage({
+        messageType: MessageType.IMAGE,
+        payload: { imageUrl: 'https://example.com/job-card.jpg' },
+      }),
+    );
+    expect(runner.invoke).toHaveBeenCalledTimes(1);
+    expect(imageDescription.describeAndUpdateAsync).not.toHaveBeenCalled();
+  });
+
   it('should describe images and retry text-only when multimodal Agent call fails', async () => {
     const message = createMessage({
       messageType: MessageType.IMAGE,
@@ -1710,6 +1754,7 @@ describe('ReplyWorkflowService', () => {
       ['duliday_interview_booking'],
       ['duliday_cancel_work_order'],
       ['duliday_modify_interview_time'],
+      ['send_store_location'],
     ])(
       'Case E: 首次成功提交不可逆工具 [%s] 时跳过 replay，不 drain pending，直接投递首次回复',
       async (blockingToolName) => {
@@ -1757,6 +1802,24 @@ describe('ReplyWorkflowService', () => {
         );
       },
     );
+
+    it.each([
+      { actionStatus: 'unknown', success: false },
+      { actionStatus: 'executing', success: false },
+      { actionStatus: 'blocked', actionDispatched: false },
+      { actionStatus: 'succeeded', localSync: 'pending', success: false },
+      { success: false, groupInvite: { actionStatus: 'unknown' } },
+    ])('keeps the first turn when its action cannot be replayed: %j', async (result) => {
+      runner.invoke.mockResolvedValueOnce({
+        text: '结果还在核实',
+        responseMessages: [],
+        toolCalls: [{ toolName: 'duliday_interview_booking', args: {}, result }],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      });
+      await service.processSingleMessage(createMessage());
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(simpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
+    });
 
     it('拉群失败后候选人补充城市时，吸收 pending 并 replay 过期追问', async () => {
       const primary = createMessage({

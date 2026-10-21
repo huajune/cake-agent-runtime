@@ -71,7 +71,7 @@ describe('ReliableService', () => {
           baseBackoffMs: 250,
         }),
       ).toEqual({
-        maxRetries: 5,
+        maxRetries: 3,
         baseBackoffMs: 250,
         maxBackoffMs: 10_000,
       });

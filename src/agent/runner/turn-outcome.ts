@@ -93,8 +93,10 @@ export function resolveReplaySkipDecision(
   toolCalls: AgentToolCall[] | undefined,
 ): ReplaySkipDecision {
   // 不可逆工具在提交前发现候选人有新消息时会主动短路旧回合。这个 skipped outcome
-  // 与普通 skip_reply 相反：必须继续读取 pending 并 replay，不能被 outcome/tool 阻断。
-  if (hasStaleInputAbort(toolCalls)) {
+  // 与普通 skip_reply 相反：没有先前动作围栏时继续读取 pending 并 replay；
+  // 后续 stale-input 拒绝不能抹掉前面已成功/未知的动作证据。
+  const blockingTools = collectReplayBlockingTools(toolCalls);
+  if (blockingTools.length === 0 && hasStaleInputAbort(toolCalls)) {
     return { skip: false, reasons: [], blockingTools: [] };
   }
 
@@ -106,7 +108,6 @@ export function resolveReplaySkipDecision(
     reasons.push('side_effect');
   }
 
-  const blockingTools = collectReplayBlockingTools(toolCalls);
   for (const toolName of blockingTools) {
     reasons.push(`tool:${toolName}`);
   }

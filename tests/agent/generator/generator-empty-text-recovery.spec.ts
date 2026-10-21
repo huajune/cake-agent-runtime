@@ -67,6 +67,20 @@ describe('GeneratorAgent 空响应恢复', () => {
       sessionId: 's1',
     });
 
+  it('does not restore the zero-tool result after the retry already started an external action', async () => {
+    const failure = Object.assign(new Error('timeout after booking'), {
+      agentMeta: {
+        replayBlockedBy: [{ toolName: 'duliday_interview_booking', status: 'unknown' }],
+      },
+    });
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce(emptyFirstStep())
+      .mockRejectedValueOnce(failure);
+    await expect(invoke(buildService(generate))).rejects.toBe(failure);
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
   it('零工具空响应 → 带工具重试一次，重试真实查岗后定稿，不再进无工具恢复', async () => {
     const generate = jest
       .fn()

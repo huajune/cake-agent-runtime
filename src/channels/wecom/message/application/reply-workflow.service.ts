@@ -1,5 +1,8 @@
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
+import { hasReplayEvidence, attachReplayEvidence } from '@infra/utils/action-receipt.util';
+import type { ToolReplayEvidence } from '@shared-types/tool-replay.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
@@ -10,7 +13,10 @@ import { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
-import { isShortCircuitedToolCall } from '@agent/generator/tool-call-analysis';
+import {
+  isShortCircuitedToolCall,
+  collectToolReplayEvidence,
+} from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import {
@@ -52,7 +58,7 @@ const VISION_AWAIT_TIMEOUT_MS = 15_000;
  * follow-up，旧回复和新回复紧挨着投递，语义上很像重复发送。三次足以覆盖常见的连续补充，
  * 同时保留硬上限，避免候选人持续输入时一个 worker 永不结束。
  */
-const MAX_REPLAY_ATTEMPTS = 3;
+const MAX_REPLAY_ATTEMPTS = RUNTIME_RETRY_LIMITS.pendingInputReplays;
 
 type VisualMessageTypes = Record<string, MessageType.IMAGE | MessageType.EMOTION>;
 
@@ -1032,6 +1038,12 @@ export class ReplyWorkflowService {
     try {
       return await this.callAgent(params);
     } catch (error) {
+      if (hasReplayEvidence(error) || RUNTIME_RETRY_LIMITS.imageCompatibilityRetries < 1) {
+        this.logger.warn(
+          `[${params.contactName ?? params.sessionId}] 图片兼容重跑已阻断：本轮存在禁止重做的动作证据`,
+        );
+        throw error;
+      }
       const imageUrls = params.imageUrls ?? [];
       const imageMessageIds = params.imageMessageIds ?? [];
       if (imageUrls.length === 0 || imageMessageIds.length === 0) {
@@ -1154,6 +1166,7 @@ export class ReplyWorkflowService {
 
     const startTime = Date.now();
     let shouldRecordAiEnd = false;
+    let replayBlockedBy: ToolReplayEvidence[] = [];
 
     try {
       if (recordMonitoring && messageId) {
@@ -1193,6 +1206,7 @@ export class ReplyWorkflowService {
         modelId: params.modelId,
       });
 
+      replayBlockedBy = collectToolReplayEvidence(outcome.toolCalls ?? []);
       const processingTime = Date.now() - startTime;
       const content = outcome.reply?.text ?? outcome.generatedText ?? '';
       const isSkipped = outcome.kind !== 'reply';
@@ -1245,10 +1259,17 @@ export class ReplyWorkflowService {
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.error(`Agent 调用异常: ${errorMessage}`);
-      throw error;
+      if (hasReplayEvidence(error)) {
+        replayBlockedBy = (error as AgentError).agentMeta.replayBlockedBy;
+      }
+      throw attachReplayEvidence(error, replayBlockedBy);
     } finally {
       if (shouldRecordAiEnd && messageId) {
-        await this.wecomObservability.markAiEnd(messageId);
+        try {
+          await this.wecomObservability.markAiEnd(messageId);
+        } catch (error) {
+          throw attachReplayEvidence(error, replayBlockedBy);
+        }
       }
     }
   }

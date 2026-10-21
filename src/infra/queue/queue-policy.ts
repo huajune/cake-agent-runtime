@@ -1,3 +1,4 @@
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import type { JobOptions, QueueOptions } from 'bull';
 
 /** Defaults apply to every Redis connection. Individual jobs may narrow retry behavior. */
@@ -12,7 +13,7 @@ export const QUEUE_WORKER_SETTINGS: QueueOptions['settings'] = {
   stalledInterval: 30000,
   lockDuration: 60000,
   lockRenewTime: 15000,
-  maxStalledCount: 2,
+  maxStalledCount: RUNTIME_RETRY_LIMITS.crashStalledRecoveries,
   guardInterval: 1000,
 };
 
@@ -37,7 +38,7 @@ export function retainedJobs(
 }
 
 export const MESSAGE_MERGE_JOB_OPTIONS: JobOptions = {
-  attempts: 3,
+  attempts: RUNTIME_RETRY_LIMITS.crashJobAttempts,
   backoff: { type: 'exponential', delay: 2000 },
   removeOnComplete: true,
   removeOnFail: false,

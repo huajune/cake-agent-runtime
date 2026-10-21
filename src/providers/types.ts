@@ -5,6 +5,7 @@
  * OpenAI-compatible 厂商使用 @ai-sdk/openai-compatible 接入。
  */
 
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import { ModelRole } from '@/llm/llm.types';
 
 // ==================== 模型角色 ====================
@@ -36,7 +37,7 @@ export type ErrorCategory = 'retryable' | 'non_retryable' | 'rate_limited';
 
 /** 容错配置 */
 export interface ReliableConfig {
-  /** 最大重试次数 */
+  /** 最大尝试次数（含首次），不能超过统一上限 */
   maxRetries: number;
   /** 基础退避时间 (ms) */
   baseBackoffMs: number;
@@ -45,7 +46,7 @@ export interface ReliableConfig {
 }
 
 export const DEFAULT_RELIABLE_CONFIG: ReliableConfig = {
-  maxRetries: 3,
+  maxRetries: RUNTIME_RETRY_LIMITS.modelAttempts,
   baseBackoffMs: 100,
   maxBackoffMs: 10_000,
 };

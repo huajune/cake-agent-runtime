@@ -1,3 +1,4 @@
+import { boundedModelAttempts } from '@infra/config/constants/runtime-retry.constants';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
@@ -20,8 +21,12 @@ import { z } from 'zod';
 import { type LlmThinkingConfig, ModelRole } from './llm.types';
 import { ROLE_MODEL_OVERRIDES, type RoleModelOverridesProvider } from './role-model-overrides';
 import { snapshotToolDefinitions } from './tool-definition-snapshot';
+import { ToolReplayFence, type ToolReplayPolicy } from './tool-replay-fence';
+import type { ToolReplayEvidence } from '@shared-types/tool-replay.types';
 
 export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>[0], 'model'> {
+  /** Caller-declared external action fence, retained through every provider attempt. */
+  toolReplayPolicy?: ToolReplayPolicy;
   role?: ModelRole | string;
   modelId?: string;
   fallbacks?: string[];
@@ -59,6 +64,7 @@ export interface LlmGenerateStructuredOptions<TSchema extends z.ZodTypeAny>
 }
 
 export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0], 'model'> {
+  toolReplayPolicy?: ToolReplayPolicy;
   role?: ModelRole | string;
   modelId?: string;
   fallbacks?: string[];
@@ -131,6 +137,7 @@ export class LlmExecutorService {
       thinking,
       validateResult,
       purpose,
+      toolReplayPolicy,
       ...routeOptions
     } = options;
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
@@ -146,6 +153,8 @@ export class LlmExecutorService {
     // 上次失败尝试留下的已完成步骤：下次尝试（同模型重试或降级）从这里续接，不从 step 0 重放。
     let carried: ResumableSteps | null = null;
     let attemptOrdinal = 0;
+    const toolFence = new ToolReplayFence(toolReplayPolicy);
+    const fencedTools = toolFence.wrap(routeOptions.tools);
     for (const modelId of this.iterateCandidateModels(plan)) {
       if (requiresVisionInput && !supportsVision(modelId)) {
         trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '模型不支持图片输入'));
@@ -159,8 +168,12 @@ export class LlmExecutorService {
       const model = this.registry.resolve(modelId);
       const effectiveThinking = this.resolveRequestThinking(modelId, thinking, requiresVisionInput);
       const providerOptions = this.buildProviderOptions(modelId, effectiveThinking);
-      const params = this.buildGenerateParams(routeOptions, providerOptions);
+      const params = this.buildGenerateParams(
+        { ...routeOptions, tools: fencedTools },
+        providerOptions,
+      );
       const retryConfig = this.reliable.getRetryConfig(config);
+      retryConfig.maxRetries = boundedModelAttempts(retryConfig.maxRetries);
 
       this.emitModelAttempt(plan, modelId, previousModelId, this.formatAttempt(trail.at(-1)));
       previousModelId = modelId;
@@ -216,6 +229,7 @@ export class LlmExecutorService {
             attempts: [...resumed.attempts, ...completedSteps.map(() => attemptOrdinal)],
             modelId,
           };
+          toolFence.observe(carried.steps);
           const category = this.reliable.classifyError(err);
           const message = toErrorMessage(err);
           const entry: LlmAttemptTrace = {
@@ -229,6 +243,13 @@ export class LlmExecutorService {
             ...(resumed.steps.length > 0 ? { resumedSteps: resumed.steps.length } : {}),
           };
           trail.push(entry);
+
+          if (toolFence.hasUnresumableAction(this.selectResumableSteps(carried).steps)) {
+            this.emitLlmExecution(plan, 'generate', null, trail, executionStartMs, backoffTotalMs, {
+              purpose,
+            });
+            throw this.buildExhaustedError(plan, trail, lastRawError, toolFence.snapshot());
+          }
 
           if (!this.reliable.shouldRetry(category, attempt, retryConfig)) {
             break;
@@ -249,7 +270,7 @@ export class LlmExecutorService {
     this.emitLlmExecution(plan, 'generate', null, trail, executionStartMs, backoffTotalMs, {
       purpose,
     });
-    throw this.buildExhaustedError(plan, trail, lastRawError);
+    throw this.buildExhaustedError(plan, trail, lastRawError, toolFence.snapshot());
   }
 
   async generateStructured<TSchema extends z.ZodTypeAny>(
@@ -274,7 +295,9 @@ export class LlmExecutorService {
   }
 
   async stream(options: LlmStreamOptions): Promise<ReturnType<typeof streamText>> {
-    const { onPreparedRequest, thinking, purpose, ...routeOptions } = options;
+    const { onPreparedRequest, thinking, purpose, toolReplayPolicy, ...routeOptions } = options;
+    const toolFence = new ToolReplayFence(toolReplayPolicy);
+    routeOptions.tools = toolFence.wrap(routeOptions.tools);
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
     const executionStartMs = Date.now();
     const trail: LlmAttemptTrace[] = [];
@@ -310,6 +333,7 @@ export class LlmExecutorService {
             this.buildProviderOptions(modelId, effectiveThinking),
           ),
           model: this.registry.resolve(modelId),
+          maxRetries: boundedModelAttempts((routeOptions.maxRetries ?? 2) + 1) - 1,
         } as Parameters<typeof streamText>[0]);
         trail.push({
           modelId,
@@ -337,6 +361,9 @@ export class LlmExecutorService {
           errorCategory: this.reliable.classifyError(err),
           error: this.truncateErrorForTrace(err.message),
         });
+        if (toolFence.snapshot().length > 0) {
+          throw this.buildExhaustedError(plan, trail, lastError, toolFence.snapshot());
+        }
         this.logger.warn(`流式初始化失败，尝试下一个模型: ${modelId}; ${err.message}`);
       }
     }
@@ -847,6 +874,7 @@ export class LlmExecutorService {
     plan: ExecutionPlan,
     attempts: LlmAttemptTrace[],
     lastRawError: unknown,
+    replayBlockedBy: ToolReplayEvidence[] = [],
   ): AgentError {
     const lines = attempts
       .map((entry) => this.formatAttempt(entry))
@@ -860,6 +888,7 @@ export class LlmExecutorService {
       modelsAttempted: this.iterateCandidateModels(plan),
       totalAttempts: attempts.length,
       lastCategory,
+      ...(replayBlockedBy.length > 0 ? { replayBlockedBy } : {}),
     };
     error.apiKey = this.getApiKey(lastRawError);
     return error;

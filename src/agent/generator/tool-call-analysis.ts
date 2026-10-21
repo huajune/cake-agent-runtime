@@ -5,6 +5,8 @@
  * 保证 tool_calls jsonb 的 resultCount / status 语义一致。
  */
 
+import { actionReceiptStatuses, actionReplayStatus } from '@infra/utils/action-receipt.util';
+import type { ToolReplayEvidence, ToolReplayStatus } from '@shared-types/tool-replay.types';
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
 import { TOOL_ERROR_TYPES, type ToolErrorType } from '@tools/shared/tool-error-types';
 import { asRecord } from '@infra/utils/object.util';
@@ -108,6 +110,10 @@ export function computeToolCallStatus(
   state?: string,
   toolName?: string,
 ): AgentToolCallStatus {
+  const statuses = actionReceiptStatuses(result);
+  if (statuses.some((status) => status !== 'failed' && status !== 'succeeded')) return 'unknown';
+  if (statuses.includes('succeeded')) return 'ok';
+  if (statuses.includes('failed')) return 'error';
   if (errorText && errorText.trim().length > 0) return 'error';
   if (state && /error|fail/i.test(state)) return 'error';
 
@@ -204,12 +210,14 @@ export function isSideEffectTool(toolName: string): boolean {
  * 对成功也为 true，会把成功预约误判成"无副作用"→ prepareStep 不屏蔽副作用工具、
  * replay 不跳过 → 重复 booking。
  *
- * 正向信号：success/accepted/dispatched===true，或带 workOrderId（booking 成功回执）。
- * 其余（含 buildToolError 的 `typeof errorType === 'string'`）一律非成功。
+ * actionStatus（含 groupInvite）优先：只有明确 succeeded 才算已发生成功动作；
+ * 没有机器状态的旧回执才回退到 success/accepted/dispatched/workOrderId 正向证据。
  */
 export function isToolSuccess(result: unknown): boolean {
   const r = asRecord(result);
   if (!r) return false;
+  const statuses = actionReceiptStatuses(r);
+  if (statuses.length > 0) return statuses.includes('succeeded');
   if (typeof r.errorType === 'string') return false;
   if (r.success === false || r.accepted === false || r.dispatched === false) return false;
   if (r.sideEffectCommitted === true) return true;
@@ -224,10 +232,39 @@ export function isSideEffectCommitted(result: unknown): boolean {
   return isToolSuccess(result);
 }
 
+/** A fence is distinct from success: uncertain or unauthorized actions cannot be blindly replayed. */
+export function replayBlockingStatus(result: unknown): ToolReplayStatus | undefined {
+  const status = actionReplayStatus(result);
+  if (status) return status;
+  if (actionReceiptStatuses(result).length > 0) return undefined; // definite failure
+  if (isToolSuccess(result)) return 'succeeded';
+  const record = asRecord(result);
+  // Existing validation/business rejections may still be corrected within the old call cap.
+  if (
+    record &&
+    (typeof record.errorType === 'string' ||
+      record.success === false ||
+      record.accepted === false ||
+      record.dispatched === false)
+  )
+    return undefined;
+  return 'unknown';
+}
+
+export function collectToolReplayEvidence(
+  calls: Array<{ toolName: string; toolCallId?: string; result?: unknown }>,
+): ToolReplayEvidence[] {
+  return calls.flatMap((call) => {
+    if (!isSideEffectTool(call.toolName)) return [];
+    const status = replayBlockingStatus(call.result);
+    return status ? [{ toolName: call.toolName, toolCallId: call.toolCallId, status }] : [];
+  });
+}
+
 /**
  * HC-1：本轮（扁平化 toolCalls）是否已提交过任一副作用工具且成功。
  *
- * 与 `findSucceededSideEffectTools`（基于 steps，prepareStep 内屏蔽用）区别：本函数
+ * 与 `findReplayBlockedSideEffectTools`（基于 steps，含未知/阻断，prepareStep 内屏蔽用）区别：本函数
  * 作用于 runner/turn 层的 `AgentToolCall[]`（含 `.result`），供出站守卫
  * resolveHighRiskTrigger 判定本轮是否已有既成副作用（决定高风险强制审查档）。
  */
@@ -343,12 +380,12 @@ export function isGuardrailRejected(result: unknown): boolean {
 /**
  * 归一后的 AgentToolCall 是否会阻断 replay。
  *
- * 只有已确认提交的不可逆副作用才能阻断重跑；失败的拉群/预约没有改变
- * 外部状态，若此时候选人又补充了消息，应吸收 pending 并 replay 旧回合。
+ * 明确成功、在途/未知、未获授权的阻断结果都不能借通用 fallback 重做。
+ * 只有明确无副作用的失败仍沿用原有自纠机会；blocked 绝不当作成功。
  */
 export function blocksReplay(call: Pick<AgentToolCall, 'toolName' | 'result'>): boolean {
   if (!REPLAY_BLOCKING_TOOLS.has(call.toolName)) return false;
-  return isSideEffectCommitted(call.result);
+  return replayBlockingStatus(call.result) !== undefined;
 }
 
 /** prepareStep 入参中 step 的最小子集；这里只关心 toolCalls 的 toolName。 */
@@ -390,11 +427,8 @@ export function countToolCallsByName(steps: StepLike[]): Map<string, number> {
 /**
  * 找出本轮已**成功**执行过的副作用工具。
  *
- * 判定口径与 computeToolCallStatus 一致：仅明确成功（ok/narrow，工具的
- * success/accepted 标记为 true 都会映射到 ok）才视为副作用已生效。
- * 失败（buildToolError 形态）与不可判定（unknown/empty）均不屏蔽——
- * 允许模型修正参数后重试；真实工具的成功返回都带显式成功标记，
- * unknown 只会出现在结构不可识别的边缘形态，保守放行。
+ * 仅用于成功事实统计，不代表失败/未知动作可以重做。运行时屏蔽统一使用
+ * findReplayBlockedSideEffectTools；两者分开，避免把 unknown/blocked 教成成功。
  */
 export function findSucceededSideEffectTools(steps: StepLike[]): string[] {
   const succeeded = new Set<string>();
@@ -408,6 +442,7 @@ export function findSucceededSideEffectTools(steps: StepLike[]): string[] {
         succeeded.add(name);
         continue;
       }
+      if (actionReceiptStatuses(tr.output).length > 0) continue;
       const status = computeToolCallStatus(tr.output, computeResultCount(tr.output));
       if (status === 'ok' || status === 'narrow') succeeded.add(name);
     }
@@ -415,16 +450,46 @@ export function findSucceededSideEffectTools(steps: StepLike[]): string[] {
   return [...succeeded];
 }
 
+/** Names whose previous action cannot be executed again in this turn. */
+export function findReplayBlockedSideEffectTools(steps: StepLike[]): string[] {
+  const blocked = new Set<string>();
+  for (const step of steps) {
+    for (const result of step.toolResults ?? []) {
+      if (
+        result.toolName &&
+        isSideEffectTool(result.toolName) &&
+        replayBlockingStatus(result.output)
+      ) {
+        blocked.add(result.toolName);
+      }
+    }
+  }
+  return [...blocked];
+}
+
 /**
  * 构造副作用工具的拦截提示（拼到 system prompt 末尾）。
  */
-export function buildSideEffectBlockNotice(blockedTools: string[]): string {
+export function buildSideEffectBlockNotice(blockedTools: string[], steps?: StepLike[]): string {
   if (blockedTools.length === 0) return '';
   return blockedTools
-    .map(
-      (name) =>
-        `⚠️ 系统拦截：工具 \`${name}\` 本轮已成功执行（副作用已生效），不可重复调用。请基于已有结果直接收敛回复；如需对其他岗位/群执行同类操作，等候选人下一轮消息再进行。`,
-    )
+    .map((name) => {
+      const outputs = steps?.flatMap((step) =>
+        (step.toolResults ?? [])
+          .filter((result) => result.toolName === name)
+          .map((result) => result.output),
+      );
+      const unresolved = outputs
+        ?.map(replayBlockingStatus)
+        .find((status) => status && status !== 'succeeded');
+      const reason =
+        unresolved === 'blocked' || unresolved === 'cancelled'
+          ? '本轮动作未获执行许可或已取消，不能通过换参数/工具兜底绕过'
+          : unresolved
+            ? '本轮动作仍在执行或结果未知，不能认定失败，也不能再次提交'
+            : '本轮已成功执行（副作用已生效）';
+      return `⚠️ 系统拦截：工具 \`${name}\` ${reason}，不可重复调用。请按已有业务证据如实收敛回复；未知结果交统一核实恢复，不能宣称成功或提示用户重新提交。`;
+    })
     .join('\n');
 }
 

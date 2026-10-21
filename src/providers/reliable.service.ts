@@ -1,3 +1,4 @@
+import { boundedModelAttempts } from '@infra/config/constants/runtime-retry.constants';
 import { Injectable, Logger } from '@nestjs/common';
 import { exponentialBackoffMs } from '@infra/utils/async.util';
 import { RegistryService } from './registry.service';
@@ -71,7 +72,11 @@ export class ReliableService {
   }
 
   getRetryConfig(config?: Partial<ReliableConfig>): ReliableConfig {
-    return { ...DEFAULT_RELIABLE_CONFIG, ...config };
+    return {
+      ...DEFAULT_RELIABLE_CONFIG,
+      ...config,
+      maxRetries: boundedModelAttempts(config?.maxRetries),
+    };
   }
 
   shouldRetry(category: ErrorCategory, attempt: number, config?: Partial<ReliableConfig>): boolean {
