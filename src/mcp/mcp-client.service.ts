@@ -5,6 +5,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { tool, jsonSchema } from 'ai';
 import { ToolRegistryService } from '@tools/tool-registry.service';
+import { validateToolContract } from '@tools/tool-contracts';
 import { AiTool } from '@shared-types/tool.types';
 import { McpServerConfig, McpConnectedServer } from './mcp.types';
 
@@ -20,24 +21,37 @@ export class McpClientService implements OnModuleDestroy {
     const client = new Client({ name: 'cake-agent-runtime', version: '1.0.0' });
     await client.connect(this.createTransport(config));
     this.clients.set(config.name, client);
-    const { tools: ts } = await client.listTools();
-    const names = [];
-    for (const t of ts) {
-      const n = t.name,
-        c = client;
-      const mcpTool = (tool as (...args: unknown[]) => unknown)({
-        description: t.description ?? '',
-        parameters: jsonSchema(t.inputSchema as Record<string, unknown>),
-        execute: async (args) =>
-          c.callTool({ name: n, arguments: args as Record<string, unknown> }),
-      }) as AiTool;
-      this.toolRegistry.registerMcpTool(n, mcpTool, config.name);
-      names.push(n);
+    try {
+      const { tools: ts } = await client.listTools();
+      // Validate the full listing before publishing any tool.
+      for (const t of ts) {
+        const contract = config.toolContracts?.[t.name];
+        if (!contract) throw new Error(`MCP tool ${t.name} has no action contract`);
+        validateToolContract(contract);
+      }
+      const names = [];
+      for (const t of ts) {
+        const n = t.name,
+          c = client;
+        const mcpTool = (tool as (...args: unknown[]) => unknown)({
+          description: t.description ?? '',
+          inputSchema: jsonSchema(t.inputSchema as Record<string, unknown>),
+          execute: async (args) =>
+            c.callTool({ name: n, arguments: args as Record<string, unknown> }),
+        }) as AiTool;
+        this.toolRegistry.registerMcpTool(n, mcpTool, config.name, config.toolContracts?.[n]);
+        names.push(n);
+      }
+      const s = { name: config.name, config, toolNames: names, connectedAt: new Date() };
+      this.connected.set(config.name, s);
+      this.logger.log('MCP已连接: ' + config.name + ', 工具: ' + names.length);
+      return s;
+    } catch (error) {
+      this.toolRegistry.removeByMcpServer(config.name);
+      this.clients.delete(config.name);
+      await client.close().catch((closeError) => this.logger.warn(String(closeError)));
+      throw error;
     }
-    const s = { name: config.name, config, toolNames: names, connectedAt: new Date() };
-    this.connected.set(config.name, s);
-    this.logger.log('MCP已连接: ' + config.name + ', 工具: ' + names.length);
-    return s;
   }
   async disconnect(name: string): Promise<void> {
     const c = this.clients.get(name);

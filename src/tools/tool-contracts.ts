@@ -69,14 +69,48 @@ export function getBuiltInToolContract(name: string): ToolActionContract | undef
   return (BUILT_IN_TOOL_CONTRACTS as Readonly<Record<string, ToolActionContract>>)[name];
 }
 
+// A published name keeps its policy for the process lifetime: disconnect must not
+// erase replay protection for turns that already executed that tool.
+const dynamicContracts = new Map<string, ToolActionContract>();
+const policySets: Array<{ predicate: (value: ToolActionContract) => boolean; names: Set<string> }> =
+  [];
+
+export function getToolContract(name: string): ToolActionContract | undefined {
+  return getBuiltInToolContract(name) ?? dynamicContracts.get(name);
+}
+
+export function publishToolContract(name: string, value: ToolActionContract): ToolActionContract {
+  validateToolContract(value);
+  const previous = getToolContract(name);
+  if (previous && JSON.stringify(previous) !== JSON.stringify(value)) {
+    throw new Error(`Tool ${name} cannot change its published action contract`);
+  }
+  if (previous) return previous;
+  const frozen = Object.freeze({
+    ...value,
+    gates: Object.freeze([...value.gates]),
+    idempotency: value.idempotency
+      ? Object.freeze({
+          ...value.idempotency,
+          target: Object.freeze([...value.idempotency.target]),
+        })
+      : null,
+  });
+  dynamicContracts.set(name, frozen);
+  for (const { predicate, names } of policySets) if (predicate(frozen)) names.add(name);
+  return frozen;
+}
+
 export function toolNamesMatching(
   predicate: (value: ToolActionContract) => boolean,
 ): ReadonlySet<string> {
-  return new Set(
-    Object.entries(BUILT_IN_TOOL_CONTRACTS)
+  const names = new Set(
+    [...Object.entries(BUILT_IN_TOOL_CONTRACTS), ...dynamicContracts.entries()]
       .filter(([, value]) => predicate(value))
       .map(([name]) => name),
   );
+  policySets.push({ predicate, names });
+  return names;
 }
 
 export function validateToolContract(value: ToolActionContract): void {

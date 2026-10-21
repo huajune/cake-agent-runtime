@@ -11,7 +11,7 @@ import { asRecord } from '@infra/utils/object.util';
 import {
   BUILT_IN_TOOL_CONTRACTS,
   DEFAULT_TOOL_CALL_LIMIT,
-  getBuiltInToolContract,
+  getToolContract,
   toolNamesMatching,
 } from '@tools/tool-contracts';
 import type { AgentToolCall } from './generator.types';
@@ -437,10 +437,7 @@ export function findToolsExceedingLimit(steps: StepLike[], limit?: number): stri
   const counts = countToolCallsByName(steps);
   const exceeded: string[] = [];
   for (const [name, count] of counts.entries()) {
-    if (
-      count >=
-      (limit ?? getBuiltInToolContract(name)?.maxCallsPerTurn ?? MAX_SAME_TOOL_CALLS_PER_TURN)
-    )
+    if (count >= (limit ?? getToolContract(name)?.maxCallsPerTurn ?? MAX_SAME_TOOL_CALLS_PER_TURN))
       exceeded.push(name);
   }
   return exceeded;
