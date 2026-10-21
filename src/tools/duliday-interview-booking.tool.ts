@@ -581,6 +581,7 @@ export function buildInterviewBookingTool(
             context.ledger.jobs.bookingSucceeded = true;
             const recovered = await recoverDuplicateSignup({
               spongeService,
+              candidateName: identity.name,
               phone: identity.phone,
               tokenContext,
               target: { jobId, brandName: job.basicInfo.brandName },
@@ -619,12 +620,13 @@ export function buildInterviewBookingTool(
                 ),
               );
             }
-            await runPostBookingWrite('重复报名收资表单办结', () =>
-              deps.collectionForms!.persist(
-                scope,
-                markSubmitted({ ...form, scheduleDraft: undefined }, ownedOrder.workOrderId),
-              ),
-            );
+            if (existingJobId === jobId)
+              await runPostBookingWrite('重复报名收资表单办结', () =>
+                deps.collectionForms!.persist(
+                  scope,
+                  markSubmitted({ ...form, scheduleDraft: undefined }, ownedOrder.workOrderId),
+                ),
+              );
             await runPostBookingWrite('重复报名预约快照失效', async () => {
               await deps.bookingSnapshot?.invalidate({
                 phone: identity.phone,

@@ -6,6 +6,7 @@ import {
   BOOKING_SNAPSHOT_FETCH_TIMEOUT_MS,
   findCrossAccountDuplicate,
   isSnapshotEligibleWorkOrder,
+  isWorkOrderOwnedByCandidate,
   type SnapshotDuplicateMatch,
 } from './booking-snapshot.util';
 
@@ -13,6 +14,7 @@ import {
 export async function recoverDuplicateSignup(params: {
   spongeService: Pick<SpongeService, 'fetchSignupWorkOrders'>;
   phone: string;
+  candidateName: string;
   tokenContext: SpongeTokenResolveContext | undefined;
   target: { jobId: number; brandName?: string | null };
   reason: DuplicateSignupReason;
@@ -30,7 +32,12 @@ export async function recoverDuplicateSignup(params: {
       match,
       ownedOrder: current.workOrders.find(
         (order) =>
-          order.workOrderId === match.workOrderId && isSnapshotEligibleWorkOrder(order, Date.now()),
+          order.workOrderId === match.workOrderId &&
+          isSnapshotEligibleWorkOrder(order, Date.now()) &&
+          isWorkOrderOwnedByCandidate(
+            { rowCandidateName: order.candidateName, topCandidateName: current.candidateName },
+            [params.candidateName],
+          ),
       ),
     };
   } catch (error) {

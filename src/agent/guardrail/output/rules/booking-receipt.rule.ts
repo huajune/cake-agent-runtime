@@ -272,10 +272,17 @@ function describeAlreadyBookedDenial(
     SYSTEM_FAULT_CLAIM_PATTERN.test(replyText) ||
     RESUBMIT_PROMISE_PATTERN.test(replyText);
   const asksDateAgain = DATE_ASK_PATTERN.test(replyText) && !CONFIRMATION_PATTERN.test(replyText);
-  if (!deniesBooking && !asksDateAgain) return null;
+  const result = asRecord(alreadyBooked.result);
+  const unverifiedConfirmation =
+    result?.alreadyBookedSource === 'sponge_duplicate_signup' &&
+    result.crossAccount !== false &&
+    !BOOKING_FAILURE_ACKNOWLEDGED_PATTERN.test(replyText) &&
+    (CONFIRMATION_PATTERN.test(replyText) ||
+      BOOKING_SETTLED_CLAIM_PATTERN.test(replyText) ||
+      TIME_CONFIRMATION_PATTERN.test(replyText));
+  if (!deniesBooking && !asksDateAgain && !unverifiedConfirmation) return null;
 
   const existingTime = readExistingInterviewTimeHuman(alreadyBooked);
-  const result = asRecord(alreadyBooked.result);
   if (result?.alreadyBookedSource === 'sponge_duplicate_signup') {
     return {
       label: '海绵已确认候选人报过该岗位或品牌，回复不得改写为报名失败或要求重新提交。',
