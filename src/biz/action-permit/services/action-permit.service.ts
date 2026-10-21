@@ -45,6 +45,10 @@ export class ActionPermitService {
 
   async evaluate(input: ActionPermitInput): Promise<ActionPermit> {
     try {
+      // 接管作用域是聊天，A bot 对话接管不得暂停同一候选人的 B bot 对话。
+      const pause = await this.hosting.getChatPause(input.chatId);
+      if (pause.paused)
+        return { allowed: false, reason: 'hosting_paused', pauseExpiresAt: pause.expiresAt };
       if (await this.blacklist.matchBlacklisted([input.chatId, ...(input.candidateIds ?? [])])) {
         return { allowed: false, reason: 'candidate_blacklisted' };
       }
@@ -53,10 +57,6 @@ export class ActionPermitService {
           ? (await this.systemConfig.getAgentReplyConfig()).reengagementEnabled
           : await this.systemConfig.getAiReplyEnabled();
       if (!enabled) return { allowed: false, reason: 'global_disabled' };
-      // 接管作用域是聊天，A bot 对话接管不得暂停同一候选人的 B bot 对话。
-      const pause = await this.hosting.getChatPause(input.chatId);
-      if (pause.paused)
-        return { allowed: false, reason: 'hosting_paused', pauseExpiresAt: pause.expiresAt };
       if (!input.botImId?.trim()) return { allowed: false, reason: 'receiving_bot_not_hosted' };
       const botId = input.botImId.trim();
       const bots = await this.getRoster();

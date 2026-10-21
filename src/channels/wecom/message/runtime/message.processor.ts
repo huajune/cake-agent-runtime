@@ -1,3 +1,4 @@
+import { CandidateBlacklistFilterRule } from '../application/filter-rules/message-filter.rules';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
@@ -38,6 +39,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly messageTracking: MessageTrackingService,
     private readonly configService: ConfigService,
     private readonly chatSession: ChatSessionService,
+    private readonly blacklistFilter: CandidateBlacklistFilterRule,
   ) {
     this.drainTimeoutMs = parseInt(
       this.configService.get('SHUTDOWN_DRAIN_TIMEOUT_MS', '60000'),
@@ -318,6 +320,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
       candidateIds: [primary.imContactId, primary.externalUserId],
     });
     if (hit.allowed) return false;
+    if (hit.reason === 'candidate_blacklisted') await this.blacklistFilter.evaluate(primary);
 
     this.logger.log(
       `[Bull][已暂停托管] 任务 ${jobId} 丢弃 ${messages.length} 条消息 (chatId=${chatId}, reason=${hit.reason})`,

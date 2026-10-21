@@ -105,4 +105,10 @@ describe('ActionPermitService', () => {
       now.mockRestore();
     }
   });
+  it('does not repeat blacklist enforcement on an already paused chat', async () => {
+    hosting.getChatPause.mockResolvedValue({ paused: true, expiresAt: null });
+    blacklist.matchBlacklisted.mockResolvedValue({ target_id: 'candidate' });
+    expect(await service.evaluate(input)).toMatchObject({ reason: 'hosting_paused' });
+    expect(blacklist.matchBlacklisted).not.toHaveBeenCalled();
+  });
 });
