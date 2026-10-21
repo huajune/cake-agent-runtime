@@ -77,7 +77,10 @@ begin
       if r.status='planned' then
         if exists(select 1 from jsonb_array_elements(r.plan->'segments') s left join public.agent_action_records a
           on a.corp_id=v_corp and a.action_id=s->>'actionId' and a.account_id=r.account_id and a.chat_id=r.chat_id and a.logical_turn_id=r.logical_turn_id
-          where a.action_id is null or a.status not in ('succeeded','cancelled','failed') or (a.status='failed' and a.retryable)) then
+          where a.action_id is null or not (a.status in ('succeeded','cancelled') or
+            (a.status='failed' and not a.retryable and coalesce(a.evidence->>'kind','')='definitive_no_effect'
+              and coalesce(a.evidence->>'requestTerminated','')='true'
+              and coalesce(a.evidence->>'detail','')='permission_changed_before_dispatch'))) then
           return jsonb_build_object('conflict','unresolved_reply_segments');
         end if;
         update public.agent_reply_turns set status='settled',next_check_at=now(),updated_at=now()

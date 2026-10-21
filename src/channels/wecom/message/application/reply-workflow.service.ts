@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
@@ -545,6 +546,9 @@ export class ReplyWorkflowService {
         isGroupChat: Boolean(params.primaryMessage.imRoomId),
         channelIdentity: reengagementChannelIdentity,
       });
+      // A durable plan must remain recoverable until its local facts and follow-up jobs persist.
+      // Recovery reuses this plan and logical identity; it never regenerates or resubmits tools.
+      if (durableTurn) await terminalSettled;
       // 带外工单对账副作用（PRD R2）：只在企微生产回合、渠道层、异步不阻塞回复；
       // 回归测试/调试也走 prepare 且连生产海绵，副作用不能放进 prepare。
       // 必须排在锚点链的终态写入 settle 之后：两条链路并发读-判-写同一会话终态时，
@@ -693,6 +697,8 @@ export class ReplyWorkflowService {
       // 否则候选人已提供的姓名/手机号/意向在重试外的路径上永久丢失。只记用户侧，不投影助手轮次。
       // settle 幂等：若前面已按投递结局触发过，这里是 no-op。
       agentResult.turnFinalizer?.settle({ delivered: false });
+      if (durableTurn && !(error instanceof ReplyDeferredError))
+        throw new ReplyDeferredError('reply_local_repair_pending');
       throw error;
     } finally {
       // 在方法返回（→ MessageProcessor 释放 chat 处理锁）前等待回合收尾落盘，
@@ -734,13 +740,24 @@ export class ReplyWorkflowService {
     if (!turn.plan) throw new ReplyDeferredError('no_recoverable_reply_plan');
     const primary = { ...(turn.recovery.primary as EnterpriseMessageCallbackDto), token };
     const parsed = MessageParser.parse(primary);
+    const traceId = `reply-recovery_${randomUUID()}`;
+    const scenario = MessageParser.determineScenario();
+    const content = String(turn.recovery.userMessage ?? '');
+    await this.wecomObservability.startRequestTrace({
+      traceId,
+      primaryMessage: primary,
+      scenario,
+      content,
+    });
+    await this.wecomObservability.updateDispatch(traceId, 'direct');
+    await this.wecomObservability.markWorkerStart(traceId);
     await this.processMessageCore({
       primaryMessage: primary,
-      traceId: turn.logicalTurnId,
+      traceId,
       chatId: turn.chatId,
-      content: String(turn.recovery.userMessage ?? ''),
+      content,
       contactName: parsed.contactName,
-      scenario: MessageParser.determineScenario(),
+      scenario,
       parsed,
       isSingleMessage: true,
       resumeTurn: turn,

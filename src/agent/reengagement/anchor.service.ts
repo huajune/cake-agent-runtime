@@ -10,6 +10,8 @@ import { type FollowUpScenarioCode } from './scenario-registry';
 
 interface AnchorContext {
   traceId: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
   chatId: string;
   userId: string;
   corpId: string;
@@ -61,7 +63,11 @@ export class ReengagementAnchorService {
     const toolCalls = result.toolCalls ?? [];
     const deliverable = this.isDeliverable(result);
     if (deliverable && toolCalls.some((call) => this.isCollectionStarted(call))) {
-      await this.schedule('booking_incomplete', `${context.traceId}:collection_started`, context);
+      await this.schedule(
+        'booking_incomplete',
+        `${context.logicalTurnId ?? context.traceId}:collection_started`,
+        context,
+      );
     } else if (
       deliverable &&
       toolCalls.some((call) => this.isCollectionAwaitingConfirmation(call))
@@ -71,7 +77,7 @@ export class ReengagementAnchorService {
       // 需要再补充"，候选人反问"还要补什么"，随后又被完整复述一遍）。
       await this.schedule(
         'booking_incomplete',
-        `${context.traceId}:collection_awaiting_confirmation`,
+        `${context.logicalTurnId ?? context.traceId}:collection_awaiting_confirmation`,
         context,
         undefined,
         undefined,
@@ -88,7 +94,7 @@ export class ReengagementAnchorService {
     const groupInvited = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
     if (groupInvited) {
       await this.scheduler.stopPendingJobsForSessionScenario({
-        commandId: `${context.traceId}:stop-store-follow-up`,
+        commandId: `${context.logicalTurnId ?? context.traceId}:stop-store-follow-up`,
         sessionRef: {
           corpId: context.corpId,
           userId: context.userId,
@@ -112,6 +118,9 @@ export class ReengagementAnchorService {
           .catch((error) => this.logFailure('save booked terminal', context, error)),
       );
     }
+    // Observe a rejected durable write immediately, before awaiting any other
+    // admission. The caller must keep the original turn pending for recovery.
+    await terminalChain;
 
     // 改约成功：新锚点只触发面试排程解析；正式提醒/回访按海绵返回的新时间重排。
     // 旧任务到点也会重新查同一工单，并因实时触发时间变化而停止或替换。
@@ -123,13 +132,17 @@ export class ReengagementAnchorService {
     if (modified) {
       await this.scheduleBookingFollowUps(
         modified,
-        `${context.traceId}:interview_modified`,
+        `${context.logicalTurnId ?? context.traceId}:interview_modified`,
         context,
       );
     }
 
     if (booking) {
-      await this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
+      await this.scheduleBookingFollowUps(
+        booking,
+        `${context.logicalTurnId ?? context.traceId}:booking_succeeded`,
+        context,
+      );
     }
     return terminalChain;
   }
@@ -155,7 +168,7 @@ export class ReengagementAnchorService {
         scenarioCode,
         workOrderId,
         anchorEventId: `${anchorEventBase}:${scenarioCode}`,
-        anchorAt: Date.now(),
+        anchorAt: this.anchorTime(context),
         channelIdentity: context.channelIdentity,
       });
     }
@@ -197,7 +210,11 @@ export class ReengagementAnchorService {
     const collectionContinued = !collectionStartedThisTurn && this.asksForCollectionDetails(reply);
     const groupInvitedThisTurn = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
     if (collectionContinued) {
-      await this.schedule('booking_incomplete', `${context.traceId}:collection_continued`, context);
+      await this.schedule(
+        'booking_incomplete',
+        `${context.logicalTurnId ?? context.traceId}:collection_continued`,
+        context,
+      );
     }
 
     const presentedStoreCalls =
@@ -206,7 +223,7 @@ export class ReengagementAnchorService {
         : toolCalls.filter((call) => this.presentedStore(call, reply));
     if (presentedStoreCalls.length > 0) {
       await this.scheduleStorePresentation(
-        `${context.traceId}:store_presented`,
+        `${context.logicalTurnId ?? context.traceId}:store_presented`,
         context,
         this.extractPresentedStores(presentedStoreCalls),
       );
@@ -222,7 +239,7 @@ export class ReengagementAnchorService {
     }
     if (!context.suppressAddressMissing && this.asksForLocation(reply)) {
       await this.scheduler.removeSupersededPendingJobs({
-        commandId: `${context.traceId}:supersede-opening-follow-up`,
+        commandId: `${context.logicalTurnId ?? context.traceId}:supersede-opening-follow-up`,
         sessionRef: {
           corpId: context.corpId,
           userId: context.userId,
@@ -231,8 +248,18 @@ export class ReengagementAnchorService {
         scenarioCode: 'address_missing',
         reason: 'address_missing_supersedes_opening_no_reply',
       });
-      await this.schedule('address_missing', `${context.traceId}:address_missing`, context);
+      await this.schedule(
+        'address_missing',
+        `${context.logicalTurnId ?? context.traceId}:address_missing`,
+        context,
+      );
     }
+  }
+
+  private anchorTime(context: AnchorContext): number {
+    const time = context.inputOccurredAt ? Date.parse(context.inputOccurredAt) : Date.now();
+    if (!Number.isFinite(time)) throw new Error('Invalid original anchor input time');
+    return time;
   }
 
   private isDeliverable(result: AnchorAgentResult): boolean {
@@ -260,7 +287,7 @@ export class ReengagementAnchorService {
         },
         scenarioCode,
         anchorEventId,
-        anchorAt: Date.now(),
+        anchorAt: this.anchorTime(context),
         state: { ...state, ...stateOverride },
         workOrderId: verification?.workOrderId,
         expectedInterviewAt: verification?.expectedInterviewAt,
@@ -287,7 +314,7 @@ export class ReengagementAnchorService {
         },
         scenarioCode: 'store_presented_no_reply',
         anchorEventId,
-        anchorAt: Date.now(),
+        anchorAt: this.anchorTime(context),
         state: { ...state, presentedStores },
         channelIdentity: context.channelIdentity,
         ...(state.storePresentationRounds != null && state.storePresentationRounds >= 1
@@ -405,7 +432,7 @@ export class ReengagementAnchorService {
       if (presentedJobs.length === 0) return;
 
       await this.scheduleStorePresentation(
-        `${context.traceId}:store_presented`,
+        `${context.logicalTurnId ?? context.traceId}:store_presented`,
         context,
         presentedJobs.map((job) => ({ jobId: job.jobId })),
       );
@@ -505,9 +532,10 @@ export class ReengagementAnchorService {
 
   private logFailure(action: string, context: AnchorContext, error: unknown): void {
     this.logger.warn(
-      `[reengagement] ${action} failed: chatId=${context.chatId}, traceId=${context.traceId}, error=${toErrorMessage(
+      `[reengagement] ${action} failed: chatId=${context.chatId}, traceId=${context.logicalTurnId ?? context.traceId}, error=${toErrorMessage(
         error,
       )}`,
     );
+    if (context.logicalTurnId) throw error;
   }
 }

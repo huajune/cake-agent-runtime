@@ -2,6 +2,10 @@ import { isHumanHandledHistoryReason } from '@enums/message-filter.enum';
 import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { toErrorMessage } from '@infra/utils/error.util';
+import { Cron } from '@nestjs/schedule';
+import { CronRunnerService } from '@infra/queue/cron-runner.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
@@ -51,7 +55,7 @@ import {
   resolveVariantConfigKey,
   shouldStop,
 } from './scenario-registry';
-import { TouchLedgerService } from './touch-ledger.service';
+import { TouchLedgerService, type TouchRecovery } from './touch-ledger.service';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ChatInterviewTimeMismatch, ReengagementAgentExecution } from './reengagement.agent';
 import {
@@ -65,6 +69,8 @@ import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.u
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
 export interface ReengagementDeliveryPort<TOutcome = unknown, TResult = unknown> {
+  completeConfirmedReply?(turn: ReplyTurn): Promise<boolean>;
+  beginReply?(context: DeliveryContext): Promise<ReplyTurn | undefined>;
   deliver(
     outcome: TOutcome,
     options?: { idempotencyKey?: string; context?: unknown },
@@ -79,6 +85,14 @@ export class ReengagementDeliveryService
     private readonly delivery: MessageDeliveryService,
     private readonly actionPermit: ActionPermitService,
   ) {}
+
+  beginReply(context: DeliveryContext): Promise<ReplyTurn | undefined> {
+    return this.delivery.beginReply(context);
+  }
+
+  completeConfirmedReply(turn: ReplyTurn): Promise<boolean> {
+    return this.delivery.completeConfirmedReply(turn);
+  }
 
   async deliver(
     outcome: TurnOutcome,
@@ -171,6 +185,8 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
     @Optional()
     private readonly requestContext?: RequestContextService,
+    @Optional() private readonly cronRunner?: CronRunnerService,
+    @Optional() private readonly queueFailures?: QueueFailureService,
   ) {}
 
   onModuleInit(): void {
@@ -180,7 +196,93 @@ export class FollowUpProcessor implements OnModuleInit {
     );
   }
 
-  async process(job: Job<FollowUpJob>): Promise<void> {
+  /** Bounded local projection/plan recovery. Provider evidence is reconciled by the shared action handler. */
+  @Cron('*/1 * * * *')
+  async recoverUnknownTouches(): Promise<void> {
+    if (!this.cronRunner || !this.delivery?.beginReply) return;
+    await this.cronRunner.run(
+      'reengagement-touch-recovery',
+      { timeMs: 25_000, maxRows: 25 },
+      async (budget) => {
+        for (const slot of await this.touchLedger.listUnknownSlots(25)) {
+          await budget.checkpoint(1);
+          const recovery = await this.touchLedger.getRecovery(slot.key);
+          if (!recovery) {
+            await this.queueFailures?.report(
+              'reengagement.touch_manual_review',
+              slot.key,
+              'Legacy unknown touch has no immutable reply plan',
+            );
+            continue;
+          }
+          const { jobData, sentAt } = recovery;
+          const identity: ReengagementTouchIdentity = {
+            sessionId: jobData.sessionRef.sessionId,
+            corpId: jobData.sessionRef.corpId,
+            userId: jobData.sessionRef.userId,
+            scenarioCode: jobData.scenarioCode,
+            anchorAt: jobData.anchorAt,
+            anchorEventId: jobData.anchorEventId,
+            ...jobData.channelIdentity,
+          };
+          try {
+            const turn = await this.delivery!.beginReply!(
+              this.buildDeliveryContext(identity, identity.sessionId, recovery.batchId),
+            );
+            if (!turn?.plan) {
+              await this.queueFailures?.report(
+                'reengagement.touch_manual_review',
+                slot.key,
+                'No authoritative stored plan; no resend',
+              );
+              continue;
+            }
+            const confirmed =
+              turn.status === 'settled' ||
+              turn.status === 'acked' ||
+              (await this.delivery!.completeConfirmedReply?.(turn));
+            if (confirmed) {
+              await this.completeTouch(
+                jobData,
+                identity,
+                slot.key,
+                sentAt,
+                turn.logicalTurnId,
+                turn.plan.text,
+                false,
+              );
+              continue;
+            }
+            if (Date.now() - jobData.anchorAt >= 24 * 3600_000) {
+              await this.queueFailures?.report(
+                'reengagement.touch_manual_review',
+                slot.key,
+                'Original touch is stale; reconcile confirmed segments only',
+              );
+              continue;
+            }
+            // Re-run the same current permissions, authoritative work-order,
+            // candidate-reply, timing and frequency gates as the original job.
+            // The immutable plan bypasses generation, never the business gates.
+            await this.process({ data: jobData } as Job<FollowUpJob>, { ...recovery, turn });
+          } catch (error) {
+            await this.touchLedger.markFailedOrUnknown(slot.key, 'unknown').catch(() => undefined);
+            if (!(error instanceof ReplyDeferredError))
+              await this.queueFailures?.report(
+                'reengagement.touch_recovery_failed',
+                slot.key,
+                error,
+              );
+          }
+        }
+      },
+    );
+  }
+
+  async process(
+    job: Job<FollowUpJob>,
+    recovery?: TouchRecovery & { turn: ReplyTurn },
+  ): Promise<void> {
     const { sessionRef, scenarioCode, anchorAt, anchorEventId } = job.data;
     const scenario = getScenario(scenarioCode);
     if (!scenario) {
@@ -556,6 +658,7 @@ export class FollowUpProcessor implements OnModuleInit {
       : { ...job.data, escalateToGroupInvite: false };
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
+      if (recovery) return;
       const batchId = `batch_${sessionRef.sessionId}_${now}`;
       const execution = await this.runProactiveTurn(
         effectiveJobData,
@@ -613,6 +716,8 @@ export class FollowUpProcessor implements OnModuleInit {
     // 与 Bull job / 追踪底账共用稳定锚点。anchorAt 可能在两个并发工单解析时落在同一
     // 毫秒，不能作为多面试场景的幂等身份，否则第二场提醒会被误判成重复触达。
     const key = ReengagementTrackingService.touchKey(identity);
+    const deliveryContext = this.buildDeliveryContext(identity, sessionRef.sessionId, key);
+    const replyTurn = recovery?.turn ?? (await this.delivery.beginReply?.(deliveryContext));
     const slot = await this.touchLedger.reserve(key);
     if (slot === 'duplicate_sent') {
       // 之前那次触达已送达，但**本次生成的文本**没发出去——不投影本次文本。
@@ -620,7 +725,7 @@ export class FollowUpProcessor implements OnModuleInit {
       this.tracking.trackDuplicate(identity, slot);
       return;
     }
-    if (slot === 'duplicate_inflight') {
+    if (slot === 'duplicate_inflight' && !replyTurn?.plan && replyTurn?.status !== 'preparing') {
       this.logger.warn(`[reengagement] 触达已在途/状态不明，跳过重投 key=${key}`);
       this.tracking.trackDuplicate(identity, slot);
       return;
@@ -629,15 +734,26 @@ export class FollowUpProcessor implements OnModuleInit {
 
     // 投递路径的主动回合在消息处理流水落一行（message_id = batchId），
     // 追溯页凭触达记录上的 batch_id 直接跳到该回合的完整生成轨迹。
-    const batchId = `batch_${sessionRef.sessionId}_${now}`;
-    const execution = await this.runProactiveTurn(
-      effectiveJobData,
-      state,
-      scenario,
-      batchId,
-      { rolloutEnabled, shadow },
-      bookingContext,
-    );
+    const batchId = replyTurn?.logicalTurnId ?? `batch_${sessionRef.sessionId}_${now}`;
+    const execution = replyTurn?.plan
+      ? {
+          outcome: {
+            kind: 'reply',
+            reply: { text: replyTurn.plan.text },
+            toolCalls: [],
+            scenarioCode,
+          } as TurnOutcome,
+          aiStartAt: now,
+          aiEndAt: now,
+        }
+      : await this.runProactiveTurn(
+          effectiveJobData,
+          state,
+          scenario,
+          batchId,
+          { rolloutEnabled, shadow },
+          bookingContext,
+        );
     const { outcome } = execution;
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
@@ -687,10 +803,11 @@ export class FollowUpProcessor implements OnModuleInit {
       execution,
       key,
       sessionRef.sessionId,
-      now,
+      recovery?.sentAt ?? now,
       identity,
       batchId,
       effectiveJobData,
+      replyTurn,
     );
   }
 
@@ -1069,6 +1186,7 @@ export class FollowUpProcessor implements OnModuleInit {
     identity: ReengagementTouchIdentity,
     batchId: string,
     jobData: FollowUpJob,
+    replyTurn?: ReplyTurn,
   ): Promise<void> {
     const { outcome } = execution;
     const sessionRef = { sessionId, userId: identity.userId ?? '', corpId: identity.corpId ?? '' };
@@ -1081,13 +1199,20 @@ export class FollowUpProcessor implements OnModuleInit {
       externalUserId: identity.externalUserId,
     };
     let deliveryStartAt = 0;
+    let externallyConfirmed = false;
     try {
+      await this.touchLedger.saveRecovery(key, {
+        jobData: { ...jobData, channelIdentity },
+        replyText: outcome.reply?.text ?? '',
+        batchId,
+        sentAt: now,
+      });
       await this.touchLedger.markDeliveryAttempted(key);
       this.tracking.trackDeliveryAttempted(identity);
       deliveryStartAt = Date.now();
       const deliveryResult = (await this.delivery!.deliver(outcome, {
         idempotencyKey: key,
-        context: this.buildDeliveryContext(identity, sessionId, batchId),
+        context: { ...this.buildDeliveryContext(identity, sessionId, batchId), replyTurn },
       })) as ProactiveDeliveryResult;
       const deliveryEndAt = Date.now();
       const deliveredSegments = deliveryResult.deliveredSegments ?? deliveryResult.segmentCount;
@@ -1096,7 +1221,7 @@ export class FollowUpProcessor implements OnModuleInit {
           ? `delivery_skipped:${deliveryResult.skipReason}`
           : 'delivery_skipped';
         this.tracking.trackOutcomeNotReply(identity, 'delivery_skipped', batchId, reason);
-        await this.touchLedger.markFailedOrUnknown(key, 'failed');
+        await this.touchLedger.markFailedOrUnknown(key, replyTurn?.plan ? 'unknown' : 'failed');
         if (scenario) {
           this.messageTracking.recordProactiveTurn(
             this.buildProactiveTurnRecord({
@@ -1116,19 +1241,8 @@ export class FollowUpProcessor implements OnModuleInit {
         }
         return;
       }
-      await this.touchLedger.markSent(key, sessionId, now);
-      this.tracking.trackSent(identity, outcome.reply?.text, batchId);
-      if (scenario?.code === 'post_interview_onboarding' && jobData.workOrderId != null) {
-        await this.scheduler.scheduleOnboardingCheck({
-          sessionRef: jobData.sessionRef,
-          workOrderId: jobData.workOrderId,
-          anchorAt: Date.now(),
-          channelIdentity: jobData.channelIdentity,
-        });
-      }
-      if (jobData.escalateToGroupInvite === true) {
-        await this.handleEscalatedGroupInvite(jobData, identity, batchId);
-      }
+      externallyConfirmed = true;
+      await this.completeTouch(jobData, identity, key, now, batchId, outcome.reply?.text);
       if (scenario) {
         this.messageTracking.recordProactiveTurn(
           this.buildProactiveTurnRecord({
@@ -1150,6 +1264,16 @@ export class FollowUpProcessor implements OnModuleInit {
         );
       }
     } catch (error) {
+      if (error instanceof ReplyDeferredError || externallyConfirmed) {
+        // Known external success with pending projection is not a new failed send.
+        await this.touchLedger.markFailedOrUnknown(key, 'unknown').catch(() => undefined);
+        this.tracking.trackDeliveryUnknown(
+          identity,
+          externallyConfirmed ? 'local_sync_pending' : (error as ReplyDeferredError).reason,
+          batchId,
+        );
+        return;
+      }
       const deliveryEndAt = Date.now();
       // deliver 后状态不明 → unknown，交补偿，不盲重投。送达与否未知时按未送达处理：
       // 宁可下一轮重复跟进语气，也不能让记忆引用候选人可能没收到的文本（HC-4）。
@@ -1184,6 +1308,38 @@ export class FollowUpProcessor implements OnModuleInit {
       throw error;
     }
     this.logger.log(`[reengagement] 已投递 key=${key}`);
+  }
+
+  private async completeTouch(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    key: string,
+    sentAt: number,
+    batchId: string,
+    text?: string,
+    allowGroupInvite = true,
+  ): Promise<void> {
+    await this.touchLedger.markSent(key, identity.sessionId, sentAt);
+    this.tracking.trackSent(identity, text, batchId);
+    if (jobData.scenarioCode === 'post_interview_onboarding' && jobData.workOrderId != null) {
+      const result = await this.scheduler.scheduleOnboardingCheck({
+        sessionRef: jobData.sessionRef,
+        workOrderId: jobData.workOrderId,
+        anchorAt: sentAt,
+        channelIdentity: jobData.channelIdentity,
+      });
+      if (result.reason === 'enqueue_error')
+        throw new Error('Onboarding follow-up scheduling not persisted');
+    }
+    if (jobData.escalateToGroupInvite === true) {
+      if (allowGroupInvite) await this.handleEscalatedGroupInvite(jobData, identity, batchId);
+      else
+        await this.queueFailures?.report(
+          'reengagement.invite_manual_review',
+          key,
+          'Touch confirmed; local repair cannot authorize a new group invitation',
+        );
+    }
   }
 
   private async handleEscalatedGroupInvite(
@@ -1541,8 +1697,11 @@ export class FollowUpProcessor implements OnModuleInit {
       messageId: batchId,
       chatId: sessionId,
       externalRequestId: batchId,
-      action: 'proactive',
+      corpId: identity.corpId,
+      logicalTurnId: ReengagementTrackingService.touchKey(identity),
+      inputOccurredAt: new Date(identity.anchorAt).toISOString(),
       _apiType: 'enterprise',
+      action: 'proactive',
     };
   }
 

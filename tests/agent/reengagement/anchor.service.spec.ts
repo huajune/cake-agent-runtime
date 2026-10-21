@@ -62,6 +62,58 @@ describe('ReengagementAnchorService', () => {
     },
   };
 
+  it('uses the persisted logical turn and original input time across recovery traces', async () => {
+    const service = buildService();
+    const original = '2026-06-24T02:00:00.000Z';
+    for (const traceId of ['first-attempt', 'recovery-attempt']) {
+      service.handleToolAnchors(
+        { toolCalls: [bookingCall] },
+        {
+          ...context,
+          traceId,
+          logicalTurnId: 'durable-turn',
+          inputOccurredAt: original,
+        },
+      );
+      await flush();
+    }
+    const plans = scheduler.scheduleBookingResolution.mock.calls.map(([input]) => input);
+    expect(plans.length).toBeGreaterThan(1);
+    for (const plan of plans) {
+      expect(plan.anchorEventId).toMatch(/^durable-turn:booking_succeeded:/);
+      expect(plan.anchorAt).toBe(Date.parse(original));
+    }
+  });
+
+  it('does not acknowledge a durable turn when its local terminal write fails', async () => {
+    session.saveTerminalState.mockRejectedValue(new Error('redis down'));
+    await expect(
+      buildService().handleToolAnchors(
+        { toolCalls: [bookingCall] },
+        {
+          ...context,
+          logicalTurnId: 'durable-turn',
+          inputOccurredAt: '2026-06-24T02:00:00.000Z',
+        },
+      ),
+    ).rejects.toThrow('redis down');
+    expect(scheduler.scheduleBookingResolution).not.toHaveBeenCalled();
+  });
+
+  it('propagates failed admission of a delivered durable reply anchor for same-turn repair', async () => {
+    scheduler.scheduleFollowUp.mockRejectedValue(new Error('queue unavailable'));
+    await expect(
+      buildService().handleDeliveredReplyAnchors(
+        { reply: { content: '把你的位置发我一下' } },
+        {
+          ...context,
+          logicalTurnId: 'durable-turn',
+          inputOccurredAt: '2026-06-24T02:00:00.000Z',
+        },
+      ),
+    ).rejects.toThrow('queue unavailable');
+  });
+
   it('stops pending store follow-ups immediately after a successful group invite', async () => {
     buildService().handleToolAnchors(
       {

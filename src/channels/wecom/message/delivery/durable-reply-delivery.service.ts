@@ -117,7 +117,11 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       }
       if (
         execution.status === 'cancelled' ||
-        execution.reason === 'permission_or_freshness_changed'
+        execution.reason === 'permission_or_freshness_changed' ||
+        (execution.status === 'failed' &&
+          execution.evidence?.kind === 'definitive_no_effect' &&
+          execution.evidence.requestTerminated &&
+          execution.evidence.detail === 'permission_changed_before_dispatch')
       ) {
         cancelled = true;
         continue;

@@ -29,6 +29,13 @@ begin
   assert not public.agent_reply_plan_confirmed('d-test','turn-1'),'one confirmed does not imply complete reply';
   response:=public.transition_agent_reply_turn('settle',base);
   assert response->>'conflict'='unresolved_reply_segments','unknown second segment cannot ack whole input';
+  update public.agent_action_records set status='failed',retryable=false,
+    evidence='{"kind":"definitive_no_effect","requestTerminated":true,"detail":"provider_rejected"}'
+    where corp_id='d-test' and action_id='segment-2';
+  response:=public.transition_agent_reply_turn('settle',base);
+  assert response->>'conflict'='unresolved_reply_segments','provider definitive failure is not a completed reply';
+  assert not public.agent_reply_plan_confirmed('d-test','turn-1'),'provider failure is not delivered';
+  update public.agent_action_records set status='unknown',evidence=null where corp_id='d-test' and action_id='segment-2';
   callback:='{"corpId":"d-test","accountId":"bot","chatId":"chat","requestId":"request-2","messageId":"provider-msg-2","text":"two","messageType":7,"payload":{"text":"two"}}';
   assert not public.append_agent_reply_callback(callback||'{"accountId":"other-bot"}'),'account scope';
   assert not public.append_agent_reply_callback(callback||'{"corpId":"other-corp"}'),'corp scope';
@@ -61,6 +68,14 @@ begin
   assert response->'turn'->>'status'='acked','ack is repeatable';
   response:=public.transition_agent_reply_turn('open',base||'{"inputIds":["new-input"],"logicalTurnId":"turn-2"}');
   assert response->'turn'->>'logical_turn_id'='turn-2','new input gets a new plan';
+  response:=public.transition_agent_reply_turn('plan',base||jsonb_build_object('logicalTurnId','turn-2','fence',1,'plan',plan));
+  update public.agent_action_records set logical_turn_id='turn-2',status='cancelled' where corp_id='d-test' and action_id='segment-1';
+  update public.agent_action_records set logical_turn_id='turn-2',status='failed',retryable=false,
+    evidence='{"kind":"definitive_no_effect","requestTerminated":true,"detail":"permission_changed_before_dispatch"}'
+    where corp_id='d-test' and action_id='segment-2';
+  assert not public.agent_reply_plan_confirmed('d-test','turn-2'),'local cancellation is not delivered';
+  response:=public.transition_agent_reply_turn('settle',base||'{"logicalTurnId":"turn-2"}');
+  assert response->'turn'->>'status'='settled','confirmed local no-dispatch permission cancellation completes input only';
   update public.agent_reply_turns set updated_at=now()-interval '91 days' where corp_id='d-test' and logical_turn_id='turn-1';
   perform public.redact_completed_agent_reply_turns(100);
   assert exists(select 1 from public.agent_reply_turns t where t.corp_id='d-test' and t.logical_turn_id='turn-1' and t.plan is null),'completed payload redacted';

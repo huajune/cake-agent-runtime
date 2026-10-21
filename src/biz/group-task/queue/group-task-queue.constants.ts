@@ -83,6 +83,7 @@ export interface SendTarget {
 }
 
 export interface PrepareJobData {
+  startedAt?: number;
   execId: string;
   type: GroupTaskType;
   timeSlot?: TimeSlot;
@@ -100,6 +101,8 @@ export interface PrepareJobData {
 }
 
 export interface SendJobData {
+  startedAt?: number;
+  dispatchPlan?: GroupTaskDispatchPlan;
   execId: string;
   type: GroupTaskType;
   timeSlot?: TimeSlot;
@@ -117,6 +120,18 @@ export interface SendJobData {
   sendDelayMs: number;
 }
 
+export interface GroupTaskDispatchPlan {
+  corpId: string;
+  logicalTurnId: string;
+  occurredAt: string;
+  parts: Array<{
+    id: string;
+    messageType: number;
+    payload: Record<string, unknown>;
+    delayMs: number;
+  }>;
+}
+
 export interface SummarizeJobData {
   execId: string;
   type: GroupTaskType;
@@ -132,7 +147,7 @@ export interface SummarizeJobData {
 export interface GroupTaskResultSnapshot {
   groupKey: string;
   groupName: string;
-  status: 'sent' | 'failed' | 'skipped';
+  status: 'sent' | 'failed' | 'skipped' | 'pending';
   summary: string;
   error?: string;
   updatedAt: number;

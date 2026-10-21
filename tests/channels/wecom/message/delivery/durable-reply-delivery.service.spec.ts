@@ -123,4 +123,36 @@ describe('reply segment external-result boundaries', () => {
     expect(legacy).toHaveBeenCalledWith();
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
+
+  it('repairs a confirmed permission cancellation after an interrupted claim and cancels later segments', async () => {
+    executor.execute
+      .mockResolvedValueOnce({
+        status: 'failed',
+        evidence: {
+          kind: 'definitive_no_effect',
+          requestTerminated: true,
+          detail: 'permission_changed_before_dispatch',
+        },
+      })
+      .mockImplementation(async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => ({
+        status: (await handlers.authorize!()) ? 'succeeded' : 'cancelled',
+      }));
+    expect(await service.deliver(turn, context)).toMatchObject({
+      skipped: true,
+      deliveredSegments: 0,
+    });
+    expect(executor.execute).toHaveBeenCalledTimes(3);
+    expect(permit.evaluate).not.toHaveBeenCalled();
+    expect(sender.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { kind: 'indeterminate', requestTerminated: false },
+    { kind: 'definitive_no_effect', requestTerminated: true, detail: 'provider_rejected' },
+  ])('does not treat other failed evidence as a local cancellation: %j', async (evidence) => {
+    executor.execute.mockResolvedValue({ status: 'failed', evidence });
+    await expect(service.deliver(turn, context)).rejects.toThrow('segment_0_failed');
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+    expect(sender.sendMessage).not.toHaveBeenCalled();
+  });
 });

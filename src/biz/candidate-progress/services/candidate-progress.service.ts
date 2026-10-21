@@ -168,7 +168,8 @@ export class CandidateProgressService {
         brandName: order.brandName ?? null,
         status: order.currentStatus ?? null,
         interviewTime: order.interviewTime ?? null,
-        ownedByCurrentAccount: mode === 'cached' ? 'yes' : 'unknown',
+        // The legacy snapshot omits onlyCurrentAccount; its cache key proves lookup scope, not ownership.
+        ownedByCurrentAccount: 'unknown',
         source: mode === 'cached' ? 'snapshot' : 'sponge_cross_account',
       })),
       workOrders,
