@@ -198,6 +198,7 @@ export class ActionRecordsRepository extends BaseRepository {
   private fromDb(row: ActionDbRecord): ActionRecord {
     return {
       actionId: row.action_id,
+      previousActionId: row.previous_action_id ?? null,
       requestId: row.request_id,
       intent: row.intent,
       payloadHash: row.payload_hash,

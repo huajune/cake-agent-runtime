@@ -63,4 +63,65 @@ begin
   assert not has_table_privilege('anon','public.agent_action_records','select');
   assert not has_function_privilege('authenticated','public.transition_agent_action(text,jsonb)','execute');
 end $$;
+-- New lawful intents form an audit chain; this is never a substitute for business permission.
+do $$
+declare
+  p jsonb := jsonb_build_object('corpId','lineage-corp','resourceHash','work-order-42',
+    'mode','execute','recoveryDeadline',now()+interval '1 day',
+    'intent',jsonb_build_object('corpId','lineage-corp','accountId','account','chatId','chat',
+      'kind','sponge.modify','target','work-order-42','occurredAt',now()));
+  r jsonb;
+  replay jsonb;
+  i integer;
+begin
+  -- A -> B -> A are different validated intentions, with distinct identities.
+  for i in 1..3 loop
+    p:=p||jsonb_build_object('actionId','lineage-'||i,'requestId','req-'||i,'payloadHash',case when i=2 then 'B' else 'A' end);
+    p:=jsonb_set(p,'{intent,logicalTurnId}',to_jsonb('turn-'||i));
+    p:=jsonb_set(p,'{intent,parameters}',jsonb_build_object('newInterviewTime',case when i=2 then 'B' else 'A' end));
+    r:=public.transition_agent_action('prepare',p);
+    assert (r->>'conflict') is null;
+    assert r->'record'->>'previous_action_id' is not distinct from case when i=1 then null else 'lineage-'||(i-1) end;
+    if i=2 then replay:=p; end if;
+    perform public.transition_agent_action('claim',jsonb_build_object('corpId','lineage-corp','actionId','lineage-'||i,'owner','attempt-'||i));
+    perform public.transition_agent_action('settle',jsonb_build_object('corpId','lineage-corp','actionId','lineage-'||i,'owner','attempt-'||i,'fence',1,'evidenceHash','done',
+      'completion',jsonb_build_object('status','succeeded','result',jsonb_build_object('workOrderId',42),
+        'evidence',jsonb_build_object('kind','completed','requestTerminated',true))));
+    perform public.transition_agent_action('synced',jsonb_build_object('corpId','lineage-corp','actionId','lineage-'||i,'owner','attempt-'||i,'fence',1));
+  end loop;
+  -- Neither replay nor a mismatching request may rewrite immutable ancestry or create a cycle.
+  r:=public.transition_agent_action('prepare',replay);
+  assert r->'record'->>'previous_action_id'='lineage-1';
+  r:=public.transition_agent_action('prepare',replay||'{"payloadHash":"mismatch"}'::jsonb);
+  assert r->>'conflict'='identity_payload_mismatch' and r->'record'->>'previous_action_id'='lineage-1';
+  -- Even identical synthetic resource/action IDs cannot cross the enterprise boundary.
+  r:=public.transition_agent_action('prepare',jsonb_set(p||'{"corpId":"lineage-other-corp"}'::jsonb,'{intent,corpId}','"lineage-other-corp"'));
+  assert (r->'record'->>'previous_action_id') is null;
+  -- Cancellation shares the same work-order resource across kinds and actual accounts.
+  p:=p||'{"actionId":"lineage-4","requestId":"req-4","payloadHash":"cancel"}'::jsonb;
+  p:=jsonb_set(jsonb_set(p,'{intent,kind}','"sponge.cancel"'),'{intent,accountId}','"other-account"');
+  r:=public.transition_agent_action('prepare',p);
+  assert r->'record'->>'previous_action_id'='lineage-3' and (r->>'conflict') is null;
+  perform public.transition_agent_action('claim','{"corpId":"lineage-corp","actionId":"lineage-4","owner":"unresolved"}');
+  r:=public.transition_agent_action('prepare',p||'{"actionId":"lineage-5","requestId":"req-5"}'::jsonb);
+  assert r->'record'->>'previous_action_id'='lineage-4' and r->>'conflict'='lineage-4';
+  r:=public.transition_agent_action('claim','{"corpId":"lineage-corp","actionId":"lineage-5","owner":"must-not-dispatch"}');
+  assert r->>'conflict'='lineage-4' and r->'record'->>'status'='registered';
+  -- Rebooking follows the phone/job booking chain, not unrelated work-order mutations.
+  p:=p||'{"actionId":"booking-old","requestId":"book-old","resourceHash":"booking-phone-job","payloadHash":"book"}'::jsonb;
+  p:=jsonb_set(jsonb_set(p,'{intent,kind}','"sponge.booking"'),'{intent,target}','"booking-phone-job"');
+  r:=public.transition_agent_action('prepare',p);
+  assert (r->'record'->>'previous_action_id') is null;
+  perform public.transition_agent_action('cancel','{"corpId":"lineage-corp","actionId":"booking-old"}');
+  r:=public.transition_agent_action('prepare',p||'{"actionId":"booking-new","requestId":"book-new"}'::jsonb);
+  assert r->'record'->>'previous_action_id'='booking-old' and (r->>'conflict') is null;
+  -- Redaction preserves the complete ancestry even after the predecessor result/body is gone.
+  update public.agent_action_records set updated_at=now()-interval '91 days'
+    where corp_id='lineage-corp' and action_id in ('lineage-1','lineage-2','lineage-3');
+  perform public.redact_completed_agent_actions(100);
+  assert (select previous_action_id='lineage-2' and retention_redacted and result is null
+    from public.agent_action_records where corp_id='lineage-corp' and action_id='lineage-3');
+  r:=public.transition_agent_action('prepare',replay);
+  assert r->'record'->>'previous_action_id'='lineage-1';
+end $$;
 rollback;

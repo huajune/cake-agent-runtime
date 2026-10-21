@@ -66,6 +66,8 @@ export interface ActionCallbacks<T> {
 
 export interface ActionRecord {
   actionId: string;
+  /** Immutable audit predecessor in the same enterprise/resource, not dispatch permission. */
+  previousActionId?: string | null;
   requestId: string;
   intent: ActionIntent;
   payloadHash: string;
