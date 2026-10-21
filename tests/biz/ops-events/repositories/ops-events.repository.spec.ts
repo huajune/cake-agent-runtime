@@ -8,6 +8,43 @@ describe('OpsEventsRepository', () => {
       isClientInitialized: jest.fn().mockReturnValue(true),
     } as unknown as SupabaseService);
 
+  it('fills invitation metadata only after duplicate historical booking and retries uncertain enrichment', async () => {
+    const client = {
+      rpc: jest
+        .fn()
+        .mockResolvedValueOnce({ data: { inserted: false }, error: null })
+        .mockResolvedValueOnce({ data: true, error: null }),
+    };
+    const repo = makeRepository(client);
+    const input = {
+      corpId: 'corp',
+      eventName: 'booking.succeeded' as const,
+      idempotencyKey: '91',
+      occurredAt: '2026-10-19T15:59:00.000Z',
+      payload: { group_invite: { outcome: 'invited', success: true } },
+    };
+    await expect(repo.upsertOpsEvent(input)).resolves.toBe('duplicate');
+    expect(client.rpc).toHaveBeenNthCalledWith(2, 'enrich_booking_invite_event', {
+      p_corp_id: 'corp',
+      p_idempotency_key: '91',
+      p_group_invite: input.payload.group_invite,
+    });
+    client.rpc
+      .mockResolvedValueOnce({ data: { inserted: false }, error: null })
+      .mockResolvedValueOnce({ data: null, error: null });
+    await expect(repo.upsertOpsEvent(input)).resolves.toBe('failed');
+    client.rpc.mockResolvedValueOnce({ data: { inserted: false }, error: null });
+    const callsBeforeLeaseLoss = client.rpc.mock.calls.length;
+    await expect(
+      repo.upsertOpsEvent(input, {
+        assertOwned: async () => {
+          throw new Error('lease lost');
+        },
+      }),
+    ).rejects.toThrow('lease lost');
+    expect(client.rpc.mock.calls.length).toBe(callsBeforeLeaseLoss + 1);
+  });
+
   function makeClient(pagesByEvent: Record<string, unknown[][]>) {
     return {
       from: jest.fn(() => {
