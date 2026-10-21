@@ -237,10 +237,9 @@ export class FollowUpProcessor implements OnModuleInit {
               );
               continue;
             }
-            const confirmed =
-              turn.status === 'settled' ||
-              turn.status === 'acked' ||
-              (await this.delivery!.completeConfirmedReply?.(turn));
+            // Settled/acked also covers cancellation. Only authoritative
+            // success of every original segment proves a completed touch.
+            const confirmed = await this.delivery!.completeConfirmedReply?.(turn);
             if (confirmed) {
               await this.completeTouch(
                 jobData,
@@ -250,6 +249,14 @@ export class FollowUpProcessor implements OnModuleInit {
                 turn.logicalTurnId,
                 turn.plan.text,
                 false,
+              );
+              continue;
+            }
+            if (turn.status === 'settled' || turn.status === 'acked') {
+              await this.queueFailures?.report(
+                'reengagement.touch_manual_review',
+                slot.key,
+                'Finalized reply was not fully delivered; do not count a successful touch',
               );
               continue;
             }

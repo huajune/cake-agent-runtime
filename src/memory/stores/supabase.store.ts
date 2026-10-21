@@ -31,6 +31,12 @@ import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';
 
+export interface BookingProjectionOptions {
+  strict?: boolean;
+  occurredAt?: string;
+  assertOwned?: () => Promise<void>;
+}
+
 /** Supabase 存储适配层的行投影；数据库行不是 LongTermMemory 召回契约。 */
 interface AgentLongTermMemoryRow {
   id: string;
@@ -211,19 +217,6 @@ function normalizeActiveBookings(value: unknown): ActiveBookingEntry[] {
 }
 
 /**
- * 组装 active_booking 列：顶层是最近一笔的镜像（老行 JSONB 形态兼容），bookings 是全量列表。
- *
- * 入参恒为 normalizeActiveBookingEntry 产出的三字段对象，原实现里那次
- * `.map(({ bookings: _bookings, ...b }) => b)` 剥离在运行时必然是恒等映射；
- * `ActiveBookingEntry` 已不含 bookings，因此不需要再剥离递归字段；落库 JSONB 形态不变。
- */
-function buildActiveBookingState(bookings: ActiveBookingEntry[]): ActiveBookingState | null {
-  const [latest, ...rest] = bookings;
-  if (!latest) return null;
-  return { ...latest, bookings: [latest, ...rest] };
-}
-
-/**
  * Supabase 存储后端 — 长期记忆（候选人 × 托管账号关系一行）
  *
  * 表结构：semantic_profile / semantic_job_intent / episodic_session_summaries /
@@ -290,14 +283,20 @@ export class SupabaseStore implements MemoryStore {
     const hasPreferences = Boolean(jobIntentFacts && Object.keys(jobIntentFacts).length > 0);
     if (Object.keys(profileFactsJson).length === 0 && !metadata && !hasPreferences) return;
 
-    const { data, error } = await client.rpc('upsert_long_term_profile_facts', {
-      p_corp_id: corpId,
-      p_user_id: userId,
-      p_bot_user_id: botUserId,
-      p_profile_facts: profileFactsJson,
-      p_message_metadata: metadata ?? null,
-      p_preference_facts: hasPreferences ? jobIntentFacts : null,
-    });
+    const request = client.rpc(
+      options?.strict ? 'upsert_booking_profile_facts' : 'upsert_long_term_profile_facts',
+      {
+        p_corp_id: corpId,
+        p_user_id: userId,
+        p_bot_user_id: botUserId,
+        p_profile_facts: profileFactsJson,
+        p_message_metadata: metadata ?? null,
+        p_preference_facts: hasPreferences ? jobIntentFacts : null,
+      },
+    );
+    const { data, error } = await (options?.strict
+      ? request.abortSignal(AbortSignal.timeout(5000))
+      : request);
 
     if (error) {
       this.logger.warn('[upsertProfileFacts] RPC 失败', error.message);
@@ -420,70 +419,63 @@ export class SupabaseStore implements MemoryStore {
     return normalizeActiveBookings(row?.active_booking ?? null);
   }
 
-  /** 写入候选人当前有效/待处理预约工单指针（同候选人可保留多岗位工单）。 */
+  /** Atomic event-versioned projection; false means a later local fact already superseded this event. */
   async setActiveBooking(
     corpId: string,
     userId: string,
     workOrderId: number,
     metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
-    options?: { strict?: boolean; occurredAt?: string },
-  ): Promise<void> {
-    const existing = await this.getActiveBookings(corpId, userId, options);
-    const occurredAt = options?.occurredAt ?? new Date().toISOString();
-    const previousAt = existing.find((booking) => booking.work_order_id === workOrderId)?.linked_at;
-    const activeBooking: ActiveBookingEntry = {
-      work_order_id: workOrderId,
-      linked_at:
-        previousAt && Date.parse(previousAt) > Date.parse(occurredAt) ? previousAt : occurredAt,
-      job_id: metadata?.job_id ?? null,
-      ...(metadata?.interview_time ? { interview_time: metadata.interview_time } : {}),
-    };
-    const bookings = [
-      activeBooking,
-      ...existing.filter((booking) => booking.work_order_id !== workOrderId),
-    ]
-      .sort((a, b) => Date.parse(b.linked_at) - Date.parse(a.linked_at))
-      .slice(0, 10);
-    await this.upsertActiveBookingRow(
-      corpId,
-      userId,
-      {
-        active_booking: buildActiveBookingState(bookings),
-      },
-      options,
-    );
+    options?: BookingProjectionOptions,
+  ): Promise<boolean> {
+    return this.applyBookingProjection(corpId, userId, 'set', workOrderId, metadata, options);
   }
 
-  /**
-   * 清空当前有效预约工单指针。
-   *
-   * expectedWorkOrderId 存在时只清匹配的当前工单，避免并发新预约刚写入后被旧取消回调误清。
-   */
   async clearActiveBooking(
     corpId: string,
     userId: string,
     expectedWorkOrderId?: number,
-    options?: { strict?: boolean },
-  ): Promise<void> {
-    if (expectedWorkOrderId != null) {
-      const bookings = await this.getActiveBookings(corpId, userId, options);
-      const remaining = bookings.filter((booking) => booking.work_order_id !== expectedWorkOrderId);
-      if (remaining.length === bookings.length) {
-        if (options?.strict) await this.redis.del(`active-booking:${corpId}:${userId}`);
-        return;
-      }
-      await this.upsertActiveBookingRow(
-        corpId,
-        userId,
-        {
-          active_booking: buildActiveBookingState(remaining),
-        },
-        options,
-      );
-      return;
-    }
+    options?: BookingProjectionOptions,
+  ): Promise<boolean> {
+    return this.applyBookingProjection(
+      corpId,
+      userId,
+      'clear',
+      expectedWorkOrderId,
+      undefined,
+      options,
+    );
+  }
 
-    await this.upsertActiveBookingRow(corpId, userId, { active_booking: null }, options);
+  private async applyBookingProjection(
+    corpId: string,
+    userId: string,
+    operation: 'set' | 'clear',
+    workOrderId?: number,
+    metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
+    options?: BookingProjectionOptions,
+  ): Promise<boolean> {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) throw new Error('active_booking_store_unavailable');
+    // Check as close to dispatch as possible. The SQL version fence, not this Redis check,
+    // protects against a request completing after its caller lost the conversation lease.
+    await options?.assertOwned?.();
+    const { data, error } = await client
+      .rpc('apply_active_booking_projection', {
+        p_corp_id: corpId,
+        p_user_id: userId,
+        p_operation: operation,
+        p_work_order_id: workOrderId ?? null,
+        p_occurred_at: options?.occurredAt ?? new Date().toISOString(),
+        p_job_id: metadata?.job_id ?? null,
+        p_interview_time: metadata?.interview_time ?? null,
+      })
+      .abortSignal(AbortSignal.timeout(5000));
+    if (error) throw error;
+    if (options?.strict) await this.redis.del(`active-booking:${corpId}:${userId}`);
+    else await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
+    if (!data || typeof (data as { superseded?: unknown }).superseded !== 'boolean')
+      throw new Error('active_booking_projection_result_unavailable');
+    return (data as { superseded: boolean }).superseded === false;
   }
 
   // ==================== MemoryStore 通用接口适配 ====================
@@ -626,13 +618,15 @@ export class SupabaseStore implements MemoryStore {
 
     const client = this.supabase.getSupabaseClient();
     if (!client) throw new Error('active_booking_store_unavailable');
-    const { data, error } = await client
+    const request = client
       .from(TABLE)
       .select('*')
       .eq('corp_id', corpId)
       .eq('user_id', userId)
-      .is('bot_user_id', null)
-      .maybeSingle();
+      .is('bot_user_id', null);
+    const { data, error } = await (
+      options?.strict ? request.abortSignal(AbortSignal.timeout(5000)) : request
+    ).maybeSingle();
     if (error) {
       throw new Error(`active_booking_read_failed: ${error.message}`);
     }
@@ -643,49 +637,6 @@ export class SupabaseStore implements MemoryStore {
       .setex(cacheKey, this.config.longTermCacheTtl, row)
       .catch((error_) => this.logger.warn('active_booking 缓存回填失败', error_));
     return row;
-  }
-
-  private async upsertActiveBookingRow(
-    corpId: string,
-    userId: string,
-    fields: Record<string, unknown>,
-    options?: { strict?: boolean },
-  ): Promise<void> {
-    const client = this.supabase.getSupabaseClient();
-    if (!client) {
-      if (options?.strict) throw new Error('memory_booking_store_unavailable');
-      return;
-    }
-
-    const existing = await this.getActiveBookingRow(corpId, userId, options);
-    const payload = { ...fields, updated_at: new Date().toISOString() };
-    let error: { code?: string; message: string } | null = null;
-
-    if (existing) {
-      ({ error } = await client.from(TABLE).update(payload).eq('id', existing.id));
-    } else {
-      ({ error } = await client.from(TABLE).insert({
-        corp_id: corpId,
-        user_id: userId,
-        bot_user_id: null,
-        ...payload,
-      }));
-      if (error?.code === '23505') {
-        ({ error } = await client
-          .from(TABLE)
-          .update(payload)
-          .eq('corp_id', corpId)
-          .eq('user_id', userId)
-          .is('bot_user_id', null));
-      }
-    }
-
-    if (error) {
-      if (options?.strict) throw error;
-      this.logger.warn('upsert active_booking 失败', error.message);
-    }
-    if (options?.strict) await this.redis.del(`active-booking:${corpId}:${userId}`);
-    else await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
   }
 
   private async invalidateCache(corpId: string, userId: string, botUserId: string): Promise<void> {

@@ -1,3 +1,4 @@
+import type { BookingProjectionOptions } from '../stores/supabase.store';
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStore } from '../stores/supabase.store';
 import type { CandidateFactProducer } from '@resolution/candidate/types';
@@ -336,15 +337,20 @@ export class LongTermService {
     userId: string,
     workOrderId: number,
     metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
-    options?: { strict?: boolean; occurredAt?: string },
-  ): Promise<void> {
+    options?: BookingProjectionOptions,
+  ): Promise<boolean> {
     try {
-      if (options?.strict)
-        await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, metadata, options);
-      else await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, metadata);
+      return await this.supabaseStore.setActiveBooking(
+        corpId,
+        userId,
+        workOrderId,
+        metadata,
+        options,
+      );
     } catch (error) {
       this.logger.warn('写入 active_booking 失败', error);
       if (options?.strict) throw error;
+      return false;
     }
   }
 
@@ -355,15 +361,19 @@ export class LongTermService {
     corpId: string,
     userId: string,
     expectedWorkOrderId?: number,
-    options?: { strict?: boolean },
-  ): Promise<void> {
+    options?: BookingProjectionOptions,
+  ): Promise<boolean> {
     try {
-      if (options?.strict)
-        await this.supabaseStore.clearActiveBooking(corpId, userId, expectedWorkOrderId, options);
-      else await this.supabaseStore.clearActiveBooking(corpId, userId, expectedWorkOrderId);
+      return await this.supabaseStore.clearActiveBooking(
+        corpId,
+        userId,
+        expectedWorkOrderId,
+        options,
+      );
     } catch (error) {
       this.logger.warn('清空 active_booking 失败', error);
       if (options?.strict) throw error;
+      return false;
     }
   }
 

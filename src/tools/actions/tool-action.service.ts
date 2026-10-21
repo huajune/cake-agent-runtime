@@ -176,8 +176,33 @@ export class ToolActionService implements OnModuleInit {
     if (!result.success) return;
     const workOrderId = result.workOrderId ?? data.workOrderId;
     if (!workOrderId) throw new Error('Successful action has no recoverable work order ID');
+    if (intent.kind === 'sponge.cancel' && !data.additional) {
+      // Terminal cancellation evidence establishes a tombstone even while the list projection lags.
+      // Its original event version prevents an old booking repair from resurrecting this work order.
+      const current = await this.longTerm.clearActiveBooking(
+        intent.corpId,
+        data.userId,
+        workOrderId,
+        {
+          strict: true,
+          occurredAt: intent.occurredAt,
+          ...(context ? { assertOwned: context.assertOwned } : {}),
+        },
+      );
+      if (current === false) return;
+    }
     await context?.assertOwned();
     await this.sponge.invalidateWorkOrderCache(workOrderId, { strict: true });
+    await context?.assertOwned();
+    await this.snapshots.invalidate(
+      {
+        phone: data.phone,
+        botImId: data.botImId,
+        corpId: intent.corpId,
+        userId: data.userId,
+      },
+      { strict: true },
+    );
     // Read the current provider projection before applying historical success. Missing/failed reads
     // leave local_sync pending; they never prove cancellation or permit a repeated write request.
     const current = await this.sponge.fetchSignupWorkOrders(
@@ -189,33 +214,33 @@ export class ToolActionService implements OnModuleInit {
     if (!order?.currentStatus)
       throw new Error('Current work order state unavailable for local repair');
     const active = ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(order.currentStatus);
-    if (intent.kind === 'sponge.cancel' && active)
-      throw new Error('Cancellation projection has not converged; keep local sync pending');
+    if (intent.kind === 'sponge.cancel') {
+      if (active)
+        throw new Error('Cancellation projection has not converged; keep local sync pending');
+      return;
+    }
     await context?.assertOwned();
     if (!data.additional) {
-      if (active && order.jobId != null)
-        await this.longTerm.setActiveBooking(
+      if (active && order.jobId != null) {
+        const current = await this.longTerm.setActiveBooking(
           intent.corpId,
           data.userId,
           workOrderId,
           { job_id: order.jobId, interview_time: order.interviewTime ?? null },
-          { strict: true, occurredAt: intent.occurredAt },
+          {
+            strict: true,
+            occurredAt: intent.occurredAt,
+            ...(context ? { assertOwned: context.assertOwned } : {}),
+          },
         );
-      else if (!active)
+        if (current === false) return; // Historical success cannot overwrite newer local business facts.
+      } else if (!active)
         await this.longTerm.clearActiveBooking(intent.corpId, data.userId, workOrderId, {
           strict: true,
+          occurredAt: intent.occurredAt,
+          ...(context ? { assertOwned: context.assertOwned } : {}),
         });
     }
-    await context?.assertOwned();
-    await this.snapshots.invalidate(
-      {
-        phone: data.phone,
-        botImId: data.botImId,
-        corpId: intent.corpId,
-        userId: data.userId,
-      },
-      { strict: true },
-    );
     if (
       intent.kind !== 'sponge.booking' ||
       !active ||
