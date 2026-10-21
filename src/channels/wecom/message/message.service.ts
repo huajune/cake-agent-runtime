@@ -92,8 +92,8 @@ export class MessageService implements OnModuleInit {
           requestId: messageData.externalRequestId,
           messageId: messageData.messageId,
           text: String(
-            (messageData.payload as Record<string, unknown>)?.pureText ??
-              (messageData.payload as Record<string, unknown>)?.text ??
+            (messageData.payload as Record<string, unknown>)?.pureText ||
+              (messageData.payload as Record<string, unknown>)?.text ||
               '',
           ),
           messageType: messageData.messageType,

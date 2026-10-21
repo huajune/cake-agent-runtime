@@ -466,7 +466,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         );
       }
       if (!dryRun && job.data.dispatchPlan) {
-        await this.notificationSender.previewPrepared(group, cache.message, type);
+        await this.previewPreparedOnce(job, cache.message, type);
         for (const part of job.data.dispatchPlan.parts) {
           await this.scheduledActions.executePart(
             job,
@@ -542,6 +542,24 @@ export class GroupTaskProcessor implements OnModuleInit {
         // 时间戳写入失败也必须释放锁，避免后续群只能等锁 TTL 自然过期。
         await this.releaseBotDispatchLock(lockKey, lockOwner);
       }
+    }
+  }
+
+  private async previewPreparedOnce(
+    job: Job<SendJobData>,
+    message: string,
+    type: GroupTaskType,
+  ): Promise<void> {
+    if (job.data.previewAttempted) return;
+    try {
+      // This is auxiliary monitoring: prefer a missing preview after a crash to
+      // repeated webhook sends while business segments await callbacks.
+      const data = { ...job.data, previewAttempted: true };
+      await job.update(data);
+      job.data = data;
+      await this.notificationSender.previewPrepared(data.group, message, type);
+    } catch (error) {
+      this.logger.warn(`群任务预览未确认，继续原发送计划: ${toErrorMessage(error)}`);
     }
   }
 
