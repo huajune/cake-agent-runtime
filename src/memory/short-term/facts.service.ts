@@ -247,6 +247,7 @@ export class SessionFactsService {
       buildSessionFactsHashKey(corpId, userId, sessionId),
       validated,
       this.config.sessionFactsTtl,
+      [`stage:${corpId}:${userId}:${sessionId}`],
     );
   }
 
@@ -631,7 +632,7 @@ export class SessionFactsService {
     corpId: string,
     userId: string,
     sessionId: string,
-    terminal: ReengagementSessionState['terminal'],
+    terminal: 'booked' | undefined,
   ): Promise<void> {
     await this.patchSessionState(corpId, userId, sessionId, { terminal: terminal ?? null });
     this.logger.log(

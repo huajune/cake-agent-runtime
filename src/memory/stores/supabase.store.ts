@@ -408,8 +408,12 @@ export class SupabaseStore implements MemoryStore {
    *
    * 单数关系由 `bookings[0] ?? null` 派生；需要“最近一笔”的调用方直接取 `[0]`。
    */
-  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
-    const row = await this.getActiveBookingRow(corpId, userId);
+  async getActiveBookings(
+    corpId: string,
+    userId: string,
+    options?: { bypassCache?: boolean },
+  ): Promise<ActiveBookingEntry[]> {
+    const row = await this.getActiveBookingRow(corpId, userId, options);
     return normalizeActiveBookings(row?.active_booking ?? null);
   }
 
@@ -588,13 +592,16 @@ export class SupabaseStore implements MemoryStore {
   private async getActiveBookingRow(
     corpId: string,
     userId: string,
+    options?: { bypassCache?: boolean },
   ): Promise<AgentLongTermMemoryRow | null> {
     const cacheKey = `active-booking:${corpId}:${userId}`;
-    const cached = await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
+    const cached = options?.bypassCache
+      ? null
+      : await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
     if (cached) return cached;
 
     const client = this.supabase.getSupabaseClient();
-    if (!client) return null;
+    if (!client) throw new Error('active_booking_store_unavailable');
     const { data, error } = await client
       .from(TABLE)
       .select('*')
@@ -603,8 +610,7 @@ export class SupabaseStore implements MemoryStore {
       .is('bot_user_id', null)
       .maybeSingle();
     if (error) {
-      this.logger.warn('查询 active_booking 兼容行失败', error.message);
-      return null;
+      throw new Error(`active_booking_read_failed: ${error.message}`);
     }
     if (!data) return null;
 

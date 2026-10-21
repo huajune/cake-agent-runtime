@@ -1,10 +1,11 @@
+import { hasLegacyOpenWorkOrders } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { SpongeService } from '@sponge/sponge.service';
-import { OPEN_RESULT_WORK_ORDER_STATUSES, type SignupWorkOrdersResult } from '@sponge/sponge.types';
+import { type SignupWorkOrdersResult } from '@sponge/sponge.types';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import type {
   BookingSnapshotCacheRecord,
@@ -167,6 +168,7 @@ export class BookingSnapshotService {
         }),
       );
     const record: BookingSnapshotCacheRecord = {
+      allWorkOrders: result.workOrders ?? [],
       entries,
       candidateName: topCandidateName,
       fetchedAt: now,
@@ -221,9 +223,7 @@ export class BookingSnapshotService {
         { timeoutMs: BOOKING_SNAPSHOT_FETCH_TIMEOUT_MS, allowDefaultToken: false },
       );
       this.circuits.delete(botImId);
-      return (result.workOrders ?? []).some((order) =>
-        OPEN_RESULT_WORK_ORDER_STATUSES.has(order.currentStatus?.trim() ?? ''),
-      );
+      return hasLegacyOpenWorkOrders(result.workOrders ?? []);
     } catch (error) {
       this.recordFailure(botImId, now);
       this.logger.warn(

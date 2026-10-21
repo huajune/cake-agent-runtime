@@ -1,8 +1,4 @@
-import {
-  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
-  type SignupWorkOrderItem,
-  type SignupWorkOrdersResult,
-} from '@sponge/sponge.types';
+import { type SignupWorkOrderItem, type SignupWorkOrdersResult } from '@sponge/sponge.types';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { SpongeTokenResolveContext } from '@sponge/sponge-token.config';
 import { parseLocalDateTime } from '@infra/utils/date.util';
@@ -13,7 +9,11 @@ import type { BookingSnapshotEntry, BookingSnapshotSignupSource } from './bookin
 import { isInterviewDayPassed } from './active-booking-dedup.util';
 
 /** 快照本地时间窗：报名近 15 天，或面试时间在未来（服务端按报名时间过滤会漏掉老报名新面试）。 */
-export const BOOKING_SNAPSHOT_SIGNUP_WINDOW_MS = 15 * 24 * 60 * 60 * 1000;
+export {
+  BOOKING_SNAPSHOT_SIGNUP_WINDOW_MS,
+  isSnapshotEligibleWorkOrder,
+} from '@biz/candidate-progress/policies/legacy-progress.policies';
+import { isSnapshotEligibleWorkOrder } from '@biz/candidate-progress/policies/legacy-progress.policies';
 
 /** 快照缓存 TTL（秒）。 */
 export const BOOKING_SNAPSHOT_CACHE_TTL_SECONDS = 5 * 60;
@@ -50,17 +50,6 @@ function parseSpongeTime(value: string | null | undefined): number | null {
   if (!trimmed) return null;
   const parsed = parseLocalDateTime(trimmed);
   return parsed ? parsed.getTime() : null;
-}
-
-/** 状态在途，且（报名近 15 天 或 面试时间在未来）。 */
-export function isSnapshotEligibleWorkOrder(order: SignupWorkOrderItem, now: number): boolean {
-  const status = order.currentStatus?.trim() ?? '';
-  if (!ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(status)) return false;
-  const signUpAt = parseSpongeTime(order.signUpTime);
-  const interviewAt = parseSpongeTime(order.interviewTime);
-  const recentSignup = signUpAt != null && now - signUpAt <= BOOKING_SNAPSHOT_SIGNUP_WINDOW_MS;
-  const futureInterview = interviewAt != null && interviewAt > now;
-  return recentSignup || futureInterview;
 }
 
 export function toBookingSnapshotEntry(
@@ -111,49 +100,14 @@ export function buildReconcileAnchorKey(
   return `reconcile:wo${entry.workOrderId}:iv${iv}${suffix ? `:${suffix}` : ''}`;
 }
 
-export interface SnapshotDuplicateMatch {
-  workOrderId: number;
-  interviewTime: string | null;
-  matchedBy: 'job' | 'brand';
-  brandName: string | null;
-}
-
-/** 同岗位或同品牌在途即视为重复报名（品牌比较忽略大小写与空白）。 */
-export function findSnapshotDuplicate<
-  T extends {
-    jobId: number | null;
-    brandName?: string | null;
-    workOrderId: number;
-    interviewTime?: string | null;
-  },
->(
-  entries: readonly T[],
-  target: { jobId: number; brandName?: string | null },
-): SnapshotDuplicateMatch | undefined {
-  const targetBrand = normalizeCandidateName(target.brandName).toLowerCase();
-  for (const entry of entries) {
-    if (entry.jobId != null && entry.jobId === target.jobId) {
-      return {
-        workOrderId: entry.workOrderId,
-        interviewTime: entry.interviewTime ?? null,
-        matchedBy: 'job',
-        brandName: entry.brandName ?? null,
-      };
-    }
-  }
-  if (!targetBrand) return undefined;
-  for (const entry of entries) {
-    if (normalizeCandidateName(entry.brandName).toLowerCase() === targetBrand) {
-      return {
-        workOrderId: entry.workOrderId,
-        interviewTime: entry.interviewTime ?? null,
-        matchedBy: 'brand',
-        brandName: entry.brandName ?? null,
-      };
-    }
-  }
-  return undefined;
-}
+export {
+  findSnapshotDuplicate,
+  type SnapshotDuplicateMatch,
+} from '@biz/candidate-progress/policies/legacy-progress.policies';
+import {
+  findSnapshotDuplicate,
+  type SnapshotDuplicateMatch,
+} from '@biz/candidate-progress/policies/legacy-progress.policies';
 
 /**
  * 本轮预约快照里候选人本人在该岗位的在途预约（只认同岗位，不按品牌）。

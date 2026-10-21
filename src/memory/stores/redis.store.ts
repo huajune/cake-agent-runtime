@@ -83,7 +83,12 @@ export class RedisStore implements MemoryStore {
   }
 
   /** 原子写入 patch 中的字段（其余字段不受影响），并续期 TTL。 */
-  async patchHash(key: string, patch: Record<string, unknown>, ttl?: number): Promise<void> {
+  async patchHash(
+    key: string,
+    patch: Record<string, unknown>,
+    ttl?: number,
+    renewKeys: readonly string[] = [],
+  ): Promise<void> {
     const args = this.toHashEvalArgs(patch, ttl);
     if (args.length <= 1) return;
 
@@ -94,11 +99,11 @@ export class RedisStore implements MemoryStore {
           changed = changed + redis.call("hset", KEYS[1], ARGV[i], ARGV[i + 1])
         end
         if tonumber(ARGV[1]) > 0 then
-          redis.call("expire", KEYS[1], ARGV[1])
+          for _, key in ipairs(KEYS) do redis.call("expire", key, ARGV[1]) end
         end
         return changed
       `,
-      [key],
+      [key, ...renewKeys],
       args,
     );
     this.logger.debug(`记忆已按字段更新: ${key} [${Object.keys(patch).join(',')}]`);

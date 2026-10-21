@@ -153,6 +153,16 @@ describe('RedisStore', () => {
       );
     });
 
+    it('renews an existing stage in the same atomic call without recreating missing stages', async () => {
+      await store.patchHash('facts', { terminal: 'booked' }, 648000, ['stage']);
+      expect(mockRedis.eval).toHaveBeenCalledWith(
+        expect.stringContaining('ipairs(KEYS)'),
+        ['facts', 'stage'],
+        [648000, 'terminal', 'booked'],
+      );
+      expect(mockRedis.eval.mock.calls[0][0]).not.toContain('setex');
+    });
+
     it('should skip empty patches', async () => {
       await store.patchHash('session:hash', {}, 172800);
 

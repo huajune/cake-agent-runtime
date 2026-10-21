@@ -1,3 +1,5 @@
+import { CandidateProgressModule } from '@biz/candidate-progress/candidate-progress.module';
+import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 import { ConfigModule } from '@nestjs/config';
@@ -48,6 +50,8 @@ import {
 
 @Module({
   imports: [
+    CandidateProgressModule,
+    ActionPermitModule,
     ConfigModule,
     GeocodingModule,
     BizModule,

@@ -1,3 +1,4 @@
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { EnterpriseMessageCallbackDto } from '../../ingress/message-callback.dto';
 import {
@@ -90,29 +91,32 @@ export class ContactTypeFilterRule implements MessageFilterRule {
 
 @Injectable()
 export class PausedUserFilterRule implements MessageFilterRule {
-  private readonly logger = new Logger(PausedUserFilterRule.name);
-
-  constructor(private readonly userHostingService: UserHostingService) {}
+  constructor(private readonly actionPermit: ActionPermitService) {}
 
   async evaluate(messageData: EnterpriseMessageCallbackDto): Promise<FilterResult | null> {
-    const hit = await this.userHostingService.isAnyPaused([
-      messageData.chatId,
-      messageData.imContactId,
-      messageData.externalUserId,
-    ]);
-    if (!hit.paused) return null;
-
-    const content = MessageParser.extractContent(messageData);
-    this.logger.log(
-      `[过滤-暂停托管] 暂停托管用户消息仅记录历史 [${messageData.messageId}], matchedId=${hit.matchedId}`,
-    );
+    const permit = await this.actionPermit.evaluate({
+      chatId: messageData.chatId,
+      action: 'reply',
+      botImId: messageData.imBotId,
+      groupId: messageData.groupId,
+      candidateIds: [messageData.imContactId, messageData.externalUserId],
+    });
+    // 保留黑名单专用处置（暂停、回溯、告警），其余拒绝都只记录历史。
+    if (permit.allowed || permit.reason === 'candidate_blacklisted') return null;
     return {
       pass: true,
-      content,
+      content: MessageParser.extractContent(messageData),
       historyOnly: true,
-      reason: FilterReason.USER_PAUSED,
+      reason:
+        permit.reason === 'group_blacklisted'
+          ? FilterReason.GROUP_BLACKLISTED
+          : permit.reason === 'hosting_paused'
+            ? FilterReason.USER_PAUSED
+            : FilterReason.ACTION_NOT_PERMITTED,
       details: {
-        userId: hit.matchedId!,
+        chatId: messageData.chatId,
+        actionPermitReason: permit.reason,
+        pauseExpiresAt: permit.pauseExpiresAt,
       },
     };
   }

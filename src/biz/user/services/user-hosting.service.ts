@@ -118,6 +118,14 @@ export class UserHostingService {
     return entry.expiresAt > Date.now();
   }
 
+  /** 聊天级许可读视图；不匹配候选人/联系人别名，避免跨 bot 接管传播。 */
+  async getChatPause(chatId: string): Promise<{ paused: boolean; expiresAt?: number | null }> {
+    await this.ensureFreshPausedUsers();
+    const entry = this.pausedUsersCache.get(chatId);
+    if (!entry?.isPaused || entry.expiresAt <= Date.now()) return { paused: false };
+    return { paused: true, expiresAt: entry.permanent ? null : entry.expiresAt };
+  }
+
   /**
    * 获取指定用户的托管状态摘要
    */

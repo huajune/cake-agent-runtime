@@ -1,3 +1,4 @@
+import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
@@ -54,6 +55,7 @@ import {
  */
 @Module({
   imports: [
+    ActionPermitModule,
     ConfigModule,
     LlmModule,
     forwardRef(() => AgentModule),
