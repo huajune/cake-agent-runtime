@@ -46,7 +46,10 @@ export function attachReplayEvidence(error: unknown, evidence: ToolReplayEvidenc
   else enriched = new Error(toErrorMessage(error));
   const combined = [...(enriched.agentMeta?.replayBlockedBy ?? []), ...evidence];
   const unique = new Map(
-    combined.map((item) => [`${item.toolName}:${item.toolCallId ?? ''}:${item.status}`, item]),
+    combined.map((item) => [
+      `${item.toolName}:${item.toolCallId ?? ''}:${item.component ?? ''}:${item.status}`,
+      item,
+    ]),
   );
   enriched.isAgentError = true;
   enriched.agentMeta = { ...enriched.agentMeta, replayBlockedBy: [...unique.values()] };

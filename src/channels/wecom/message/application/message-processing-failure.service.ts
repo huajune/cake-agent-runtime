@@ -365,14 +365,28 @@ export class MessageProcessingFailureService {
   private getActionAwareFallback(error: unknown): string | undefined {
     const evidence = (error as AgentError | null)?.agentMeta?.replayBlockedBy;
     if (!evidence?.length) return undefined;
-    if (evidence.some((item) => ['unknown', 'executing', 'pending'].includes(item.status))) {
-      return '刚才的操作结果暂时还不能确认，先不用重复提交，请等核实后的结果。';
+    const bookingSucceeded = evidence.some(
+      (item) =>
+        item.toolName === 'duliday_interview_booking' &&
+        !item.component &&
+        item.status === 'succeeded',
+    );
+    const invitePending = evidence.some(
+      (item) =>
+        item.component === 'groupInvite' &&
+        ['unknown', 'executing', 'pending'].includes(item.status),
+    );
+    if (bookingSucceeded && invitePending) {
+      return '报名已有成功回执，进群邀请的结果还需要核实，先不用重复报名或重复邀请。';
     }
     if (evidence.every((item) => item.status === 'succeeded')) {
       return '刚才的操作已有成功回执，详细情况还需要确认，先不用重复提交。';
     }
     if (evidence.some((item) => item.status === 'succeeded')) {
       return '部分操作已有成功回执，其余还需要确认，先不用重复提交。';
+    }
+    if (evidence.some((item) => ['unknown', 'executing', 'pending'].includes(item.status))) {
+      return '刚才的操作结果暂时还不能确认，先不用重复提交，请等核实后的结果。';
     }
     return '这次操作暂时没有执行，请等确认后再处理。';
   }

@@ -1,11 +1,19 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolReplayFence } from '@/llm/tool-replay-fence';
-import { replayBlockingStatus } from '@agent/generator/tool-call-analysis';
+import {
+  replayBlockingStatus,
+  replayBlockingComponents,
+  collectToolReplayEvidence,
+} from '@agent/generator/tool-call-analysis';
 
 const name = 'duliday_interview_booking';
 const options = (toolCallId: string) => ({ toolCallId, messages: [], context: undefined });
-const policy = { toolNames: [name], classify: replayBlockingStatus };
+const policy = {
+  toolNames: [name],
+  classify: replayBlockingStatus,
+  classifyAll: replayBlockingComponents,
+};
 
 describe('SDK execution fence', () => {
   it('concurrent same-step calls cannot both enter the actual tool', async () => {
@@ -75,5 +83,31 @@ describe('SDK execution fence', () => {
     await wrapped[name].execute({}, options('second'));
     await wrapped[name].execute({}, options('third'));
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('mixed action receipts', () => {
+  it('preserves booking success and unknown invite through SDK and collector', async () => {
+    const result = {
+      success: true,
+      actionStatus: 'succeeded',
+      groupInvite: { actionStatus: 'unknown' },
+    };
+    const fence = new ToolReplayFence(policy);
+    const wrapped = fence.wrap({
+      [name]: tool({ inputSchema: z.object({}), execute: async () => result }),
+    });
+    await wrapped[name].execute({}, options('mixed'));
+    const expected = [
+      { toolName: name, toolCallId: 'mixed', status: 'succeeded' },
+      { toolName: name, toolCallId: 'mixed', status: 'unknown', component: 'groupInvite' },
+    ];
+    expect(fence.snapshot()).toEqual(expected);
+    expect(collectToolReplayEvidence([{ toolName: name, toolCallId: 'mixed', result }])).toEqual(
+      expected,
+    );
+    const observed = new ToolReplayFence(policy);
+    observed.observe([{ toolResults: [{ toolName: name, toolCallId: 'mixed', output: result }] }]);
+    expect(observed.snapshot()).toEqual(expected);
   });
 });

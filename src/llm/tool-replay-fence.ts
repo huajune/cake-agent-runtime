@@ -5,6 +5,7 @@ import type { ToolReplayEvidence, ToolReplayStatus } from '@shared-types/tool-re
 export interface ToolReplayPolicy {
   toolNames: readonly string[];
   classify: (result: unknown) => ToolReplayStatus | undefined;
+  classifyAll?: (result: unknown) => Array<Pick<ToolReplayEvidence, 'status' | 'component'>>;
 }
 
 type CompletedStep = {
@@ -13,7 +14,7 @@ type CompletedStep = {
 
 /** Per generate() scope, shared across model attempts and parallel calls in one SDK step. */
 export class ToolReplayFence {
-  private readonly evidenceByCall = new Map<string, ToolReplayEvidence>();
+  private readonly evidenceByCall = new Map<string, ToolReplayEvidence[]>();
   private readonly blockedNames = new Set<string>();
   private anonymousCall = 0;
 
@@ -49,11 +50,15 @@ export class ToolReplayFence {
                 toolCallId,
                 status: 'executing',
               };
-              this.evidenceByCall.set(key, evidence);
+              this.evidenceByCall.set(key, [evidence]);
               try {
                 const result = await execute(...args);
-                const status = this.policy.classify(result);
-                if (status) evidence.status = status;
+                const components = this.classify(result);
+                if (components.length)
+                  this.evidenceByCall.set(
+                    key,
+                    components.map((item) => ({ toolName: name, toolCallId, ...item })),
+                  );
                 else {
                   this.evidenceByCall.delete(key);
                   this.blockedNames.delete(name); // explicit no-effect failure; existing self-correction only
@@ -76,24 +81,33 @@ export class ToolReplayFence {
     for (const step of steps) {
       for (const result of step.toolResults ?? []) {
         if (!result.toolName || !this.policy.toolNames.includes(result.toolName)) continue;
-        const status = this.policy.classify(result.output);
-        if (!status) continue;
+        const components = this.classify(result.output);
+        if (!components.length) continue;
         const key = JSON.stringify([result.toolName, result.toolCallId ?? 'completed']);
         // A provider can reuse a toolCallId. A synthetic blocked duplicate must not erase
         // the original execution's success/unknown evidence.
         if (this.evidenceByCall.has(key)) continue;
-        this.evidenceByCall.set(key, {
-          toolName: result.toolName,
-          toolCallId: result.toolCallId,
-          status,
-        });
+        this.evidenceByCall.set(
+          key,
+          components.map((item) => ({
+            toolName: result.toolName!,
+            toolCallId: result.toolCallId,
+            ...item,
+          })),
+        );
         this.blockedNames.add(result.toolName);
       }
     }
   }
 
+  private classify(result: unknown): Array<Pick<ToolReplayEvidence, 'status' | 'component'>> {
+    if (this.policy?.classifyAll) return this.policy.classifyAll(result);
+    const status = this.policy?.classify(result);
+    return status ? [{ status }] : [];
+  }
+
   snapshot(): ToolReplayEvidence[] {
-    return [...this.evidenceByCall.values()].map((item) => ({ ...item }));
+    return [...this.evidenceByCall.values()].flat().map((item) => ({ ...item }));
   }
 
   /** A started action without a complete tool response cannot be recovered by model retry. */

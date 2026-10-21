@@ -10,4 +10,5 @@ export interface ToolReplayEvidence {
   toolName: string;
   toolCallId?: string;
   status: ToolReplayStatus;
+  component?: string;
 }

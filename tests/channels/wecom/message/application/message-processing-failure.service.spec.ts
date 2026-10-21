@@ -101,6 +101,22 @@ describe('MessageProcessingFailureService', () => {
     );
   });
 
+  it('states booking success separately from an unresolved invitation', async () => {
+    const error = Object.assign(new Error('local review failed'), {
+      agentMeta: {
+        replayBlockedBy: [
+          { toolName: 'duliday_interview_booking', status: 'succeeded' },
+          { toolName: 'duliday_interview_booking', status: 'unknown', component: 'groupInvite' },
+        ],
+      },
+    });
+    await service.handleProcessingError(error, createParsedMessage(), { errorType: 'agent' });
+    const text = deliveryService.deliverReply.mock.calls[0][0].content as string;
+    expect(text).toContain('报名已有成功回执');
+    expect(text).toContain('进群邀请的结果还需要核实');
+    expect(text).not.toContain('刚才的操作结果暂时还不能确认');
+  });
+
   it('should skip fallback delivery when part of the reply was already delivered', async () => {
     const error = new DeliveryFailureError('partial delivery', {
       success: false,

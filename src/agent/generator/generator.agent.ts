@@ -32,6 +32,7 @@ import {
   computeToolCallStatus,
   findReplayBlockedSideEffectTools,
   replayBlockingStatus,
+  replayBlockingComponents,
   SIDE_EFFECT_TOOLS,
   findToolsExceedingLimit,
   buildSkipReplyRejectedNotice,
@@ -290,7 +291,11 @@ export class GeneratorAgent {
       instructions: ctx.finalPrompt,
       messages: ctx.normalizedMessages,
       tools: ctx.tools,
-      toolReplayPolicy: { toolNames: [...SIDE_EFFECT_TOOLS], classify: replayBlockingStatus },
+      toolReplayPolicy: {
+        toolNames: [...SIDE_EFFECT_TOOLS],
+        classify: replayBlockingStatus,
+        classifyAll: replayBlockingComponents,
+      },
       maxOutputTokens: this.maxOutputTokens,
       stopWhen: [
         stepCountIs(ctx.maxSteps),

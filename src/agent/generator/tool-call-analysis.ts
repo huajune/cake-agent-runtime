@@ -251,13 +251,36 @@ export function replayBlockingStatus(result: unknown): ToolReplayStatus | undefi
   return 'unknown';
 }
 
+/** Keep parent and nested action facts separately; an unknown invitation cannot erase booking success. */
+export function replayBlockingComponents(
+  result: unknown,
+): Array<Pick<ToolReplayEvidence, 'status' | 'component'>> {
+  const root = asRecord(result);
+  if (!root) {
+    const status = replayBlockingStatus(result);
+    return status ? [{ status }] : [];
+  }
+  const { groupInvite, ...parent } = root;
+  const parentStatus = replayBlockingStatus(parent);
+  const child = asRecord(groupInvite);
+  const childStatus =
+    child && actionReceiptStatuses(child).length ? actionReplayStatus(child) : undefined;
+  return [
+    ...(parentStatus ? [{ status: parentStatus }] : []),
+    ...(childStatus ? [{ status: childStatus, component: 'groupInvite' }] : []),
+  ];
+}
+
 export function collectToolReplayEvidence(
   calls: Array<{ toolName: string; toolCallId?: string; result?: unknown }>,
 ): ToolReplayEvidence[] {
   return calls.flatMap((call) => {
     if (!isSideEffectTool(call.toolName)) return [];
-    const status = replayBlockingStatus(call.result);
-    return status ? [{ toolName: call.toolName, toolCallId: call.toolCallId, status }] : [];
+    return replayBlockingComponents(call.result).map((item) => ({
+      toolName: call.toolName,
+      toolCallId: call.toolCallId,
+      ...item,
+    }));
   });
 }
 
