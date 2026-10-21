@@ -292,17 +292,23 @@ export class ToolActionService implements OnModuleInit {
         extractedAt: intent.occurredAt,
       });
     await context?.assertOwned();
-    await this.session.saveCompletedCollectionFacts(intent.corpId, data.userId, data.sessionId, {
-      name: fact(identity.name, '姓名'),
-      phone: fact(identity.phone, '手机号'),
-      age: fact(identity.age, '年龄'),
-      gender: sessionFactValue(identity.gender, {
-        confidence: 'high',
-        source: 'system',
-        evidence: '收资表单办结：性别',
-        extractedAt: intent.occurredAt,
-      }),
-    });
+    await this.session.saveCompletedCollectionFacts(
+      intent.corpId,
+      data.userId,
+      data.sessionId,
+      {
+        name: fact(identity.name, '姓名'),
+        phone: fact(identity.phone, '手机号'),
+        age: fact(identity.age, '年龄'),
+        gender: sessionFactValue(identity.gender, {
+          confidence: 'high',
+          source: 'system',
+          evidence: '收资表单办结：性别',
+          extractedAt: intent.occurredAt,
+        }),
+      },
+      ...(context ? ([{ requireExisting: true }] as const) : ([] as const)),
+    );
     await context?.assertOwned();
     if (!data.testing)
       await this.phoneIndex.record(
