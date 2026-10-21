@@ -84,6 +84,19 @@ describe('buildCancelWorkOrderTool', () => {
         errorType: 'action.result_unresolved',
         sideEffect: { kind: 'general_handoff' },
       });
+      expect(actions.executeSponge).toHaveBeenCalledWith(
+        mockContext,
+        expect.objectContaining({
+          recovery: expect.objectContaining({
+            opsEventPayload: expect.objectContaining({
+              work_order_id: 123,
+              cancel_reason_id: 12010,
+              cancel_reason: '候选人主动取消',
+            }),
+          }),
+        }),
+        expect.any(Function),
+      );
       expect(result.success).toBeUndefined();
       expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
       expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();

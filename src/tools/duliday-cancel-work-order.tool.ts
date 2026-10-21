@@ -296,6 +296,20 @@ export function buildCancelWorkOrderTool(
             cancelReasonId: matched.id,
             cancelReasonDesc: cancelReasonDesc?.trim() || undefined,
           };
+          const opsEventPayload = {
+            work_order_id: workOrderId,
+            // 带外工单（供应商后台建单）的后续取消按来源单列统计。
+            source: bookingEventSource(snapshotRef),
+            cancel_reason_id: matched.id,
+            cancel_reason: matched.info || null,
+            cancel_reason_desc: cancelReasonDesc?.trim() || null,
+            candidate_name: normalizeOptionalText(candidateName),
+            phone: normalizeOptionalText(phone),
+            brand_name: normalizeOptionalText(brandName),
+            store_name: normalizeOptionalText(storeName),
+            job_name: normalizeOptionalText(jobName),
+            interview_time: normalizeOptionalText(interviewTime),
+          };
           const action = deps?.actions
             ? await deps.actions.executeSponge(
                 context,
@@ -309,6 +323,7 @@ export function buildCancelWorkOrderTool(
                     botUserId: context.session.botUserId ?? '',
                     botImId: context.session.botImId ?? '',
                     workOrderId,
+                    opsEventPayload,
                     phone:
                       context.archive.bookingCandidateFacts?.phone ??
                       context.archive.profile?.phone ??
@@ -354,22 +369,12 @@ export function buildCancelWorkOrderTool(
             idempotencyKey: `${workOrderId}:canceled`,
             botImId: context.session.botImId,
             managerName: context.session.botUserId,
+            ...(context.session.inputOccurredAt
+              ? { occurredAt: context.session.inputOccurredAt }
+              : {}),
             userId: context.session.userId,
             chatId: context.session.sessionId,
-            payload: {
-              work_order_id: workOrderId,
-              // 带外工单（供应商后台建单）的后续取消按来源单列统计。
-              source: bookingEventSource(snapshotRef),
-              cancel_reason_id: matched.id,
-              cancel_reason: matched.info || null,
-              cancel_reason_desc: cancelReasonDesc?.trim() || null,
-              candidate_name: normalizeOptionalText(candidateName),
-              phone: normalizeOptionalText(phone),
-              brand_name: normalizeOptionalText(brandName),
-              store_name: normalizeOptionalText(storeName),
-              job_name: normalizeOptionalText(jobName),
-              interview_time: normalizeOptionalText(interviewTime),
-            },
+            payload: opsEventPayload,
           });
 
           if (!deps?.actions) {
