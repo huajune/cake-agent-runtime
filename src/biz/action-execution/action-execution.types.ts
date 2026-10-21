@@ -21,6 +21,8 @@ export interface ActionIntent {
   parameters: Record<string, unknown>;
   /** Original input/task time. Never replace with retry time. */
   occurredAt: string;
+  /** Frozen scheduled dispatch window; retries must reuse it, never move it to now. */
+  recoveryWindowStartedAt?: string;
   /** Only true after the input membership / task identity has been durably established. */
   identityReliable?: boolean;
   /** Minimal local repair input; credentials must be resolved at recovery time. */
