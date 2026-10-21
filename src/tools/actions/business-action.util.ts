@@ -92,12 +92,13 @@ export function unresolvedActionReceipt(
     ...actionReceiptFields(action),
     errorType: 'action.result_unresolved',
     _outcome: notDispatched
-      ? `本次${label}尚未执行，已暂停自动操作并转人工核实`
-      : `${label}结果暂未确认，已停止自动重试并转人工核实`,
+      ? `本次${label}尚未执行，需要人工核实`
+      : `${label}结果暂未确认，已停止自动重试，需要人工核实`,
     _replyInstruction:
       (notDispatched
-        ? `如实告诉候选人这次${label}尚未执行，已交同事核实。`
-        : `如实告诉候选人这次${label}的结果还需要核实，已交同事跟进。`) +
+        ? `如实告诉候选人这次${label}尚未执行，会请同事核实。`
+        : `如实告诉候选人这次${label}的结果还需要核实，会请同事跟进。`) +
+      '人工意图尚不代表通知或暂停已经完成，不要声称已同步同事或已暂停托管。' +
       '禁止声称已经成功或失败，禁止重试或换参数重做；本轮已携带人工意图，不要再调用 request_handoff。',
     sideEffect: {
       kind: 'general_handoff',
