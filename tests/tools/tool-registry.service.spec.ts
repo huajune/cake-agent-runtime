@@ -38,6 +38,7 @@ function buildRegistry(
     { invalidate: jest.fn(), load: jest.fn(), peekForCandidate: jest.fn() } as never,
     // phoneSessionIndexService（手机号→会话索引：报名成功写入）
     { record: jest.fn() } as never,
+    {} as never,
   );
 }
 

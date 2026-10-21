@@ -91,4 +91,13 @@ describe('SessionStateService reengagement store presentation state', () => {
     expect(hashState.presentedJobs).toEqual([]);
     expect(hashState.storePresentationRounds).toBe(2);
   });
+  it('late invite repair preserves the newer same-group observation', async () => {
+    const newer = { groupName: '上海兼职群', city: '上海', invitedAt: '2026-10-21T02:00:00Z' };
+    hashState.invitedGroups = [newer];
+    await service.saveInvitedGroup('corp-1', 'user-1', 'sess-1', {
+      ...newer,
+      invitedAt: '2026-10-20T02:00:00Z',
+    });
+    expect(hashState.invitedGroups).toEqual([newer]);
+  });
 });

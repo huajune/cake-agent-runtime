@@ -57,6 +57,39 @@ describe('buildCancelWorkOrderTool', () => {
     privateChatNotifier.notifyInterviewCancellation.mockResolvedValue(true);
   });
 
+  it.each(['unknown', 'executing', 'blocked'])(
+    'action %s does not become a failure or repeat external mutation',
+    async (status) => {
+      const actions = {
+        executeSponge: jest.fn().mockResolvedValue({
+          status,
+          actionId: 'action',
+          requestId: 'request',
+          localSync: 'complete',
+          dispatched: false,
+        }),
+      };
+      const result = await exec(
+        buildCancelWorkOrderTool(
+          spongeService as never,
+          opsEventsRecorder as never,
+          longTermService as never,
+          privateChatNotifier as never,
+          { actions: actions as never },
+        )(mockContext),
+        { workOrderId: 123, cancelReasonId: 12010 },
+      );
+      expect(result).toMatchObject({
+        actionStatus: status,
+        errorType: 'action.result_unresolved',
+        sideEffect: { kind: 'general_handoff' },
+      });
+      expect(result.success).toBeUndefined();
+      expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+      expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
+    },
+  );
+
   describe('B5 取消前置核验', () => {
     const snapshotRef = (over: Record<string, unknown> = {}) => ({
       workOrderId: 464227,
@@ -258,6 +291,7 @@ describe('buildCancelWorkOrderTool', () => {
         jobName: '店员',
         interviewTime: '2026-07-02 14:00',
       }),
+      mockContext.session,
     );
   });
 

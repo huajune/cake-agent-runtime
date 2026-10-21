@@ -1,4 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
+import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
+import type { ActionExecution, ActionIntent } from '@biz/action-execution/action-execution.types';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
@@ -24,6 +27,10 @@ export interface GroupInviteInput {
   city: string;
   industry?: string;
   turnKey: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
+  /** Live dispatch guard only; never stored in the action record. */
+  authorize?: () => Promise<boolean>;
   messageId?: string;
   contactName?: string;
   chatId?: string;
@@ -47,10 +54,17 @@ export type GroupInviteFailureReason =
   | 'group_full'
   | 'candidate_not_friend'
   | 'api_rejected'
-  | 'api_failed';
+  | 'api_failed'
+  | 'result_unknown';
 
 export interface GroupInviteResult {
   success: boolean;
+  actionStatus?: string;
+  actionId?: string;
+  requestId?: string;
+  actionDispatched?: boolean;
+  actionReason?: string;
+  localSync?: 'pending' | 'complete';
   groupName?: string;
   alreadyInGroup?: boolean;
   reason?: GroupInviteFailureReason;
@@ -68,6 +82,8 @@ interface InviteApiResult {
   accepted: boolean;
   code: number | null;
   error?: string;
+  action?: ActionExecution<InviteApiResult>;
+  unresolved?: boolean;
 }
 
 interface CompatibilityRetryOutcome {
@@ -77,7 +93,7 @@ interface CompatibilityRetryOutcome {
 }
 
 @Injectable()
-export class GroupInviteService {
+export class GroupInviteService implements OnModuleInit {
   private readonly logger = new Logger(GroupInviteService.name);
 
   private readonly memberLimit: number;
@@ -91,9 +107,25 @@ export class GroupInviteService {
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly opsNotifier: OpsNotifierService,
     configService: ConfigService,
+    private readonly actions: ActionExecutorService,
+    private readonly recoveryRegistry: ActionRecoveryRegistry,
   ) {
     this.memberLimit = Number.parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     this.enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || null;
+  }
+
+  onModuleInit(): void {
+    this.recoveryRegistry.register('wecom.group_add_member', {
+      reconcile: async () => ({
+        status: 'unknown',
+        evidence: {
+          kind: 'indeterminate',
+          requestTerminated: false,
+          detail: 'membership_is_not_request_completion_evidence',
+        },
+      }),
+      sync: (record) => this.syncInviteAction(record.intent, record.result as InviteApiResult),
+    });
   }
 
   async preflightExistingMembership(input: GroupInviteInput): Promise<GroupInviteResult | null> {
@@ -184,14 +216,24 @@ export class GroupInviteService {
 
       for (const targetGroup of availableCandidates) {
         let inviteApiResult = await this.invokeAddMember({
+          input,
+          targetGroup,
           token: this.enterpriseToken,
           imBotId: input.botImId,
           botUserId: input.botUserId,
           contactWxid: input.contactWxid,
           roomWxid: targetGroup.imRoomId,
         });
+        if (inviteApiResult.unresolved)
+          return {
+            success: false,
+            reason: 'result_unknown',
+            groupName: targetGroup.groupName,
+            ...this.actionReceipt(inviteApiResult.action),
+          };
         const initialInviteApiResult = inviteApiResult;
         const compatibilityRetryOutcome = await this.maybeAddChatBotToGroupAndRetryInvite({
+          input,
           token: this.enterpriseToken,
           initialResult: inviteApiResult,
           targetGroup,
@@ -203,11 +245,23 @@ export class GroupInviteService {
           inviteApiResult = compatibilityRetryOutcome.inviteResult;
         }
 
+        if (inviteApiResult.unresolved)
+          return {
+            success: false,
+            reason: 'result_unknown',
+            groupName: targetGroup.groupName,
+            ...this.actionReceipt(inviteApiResult.action),
+          };
         const inviteCardSentPendingConsent =
           !inviteApiResult.accepted && this.isInviteCardSentPendingConsent(inviteApiResult);
         if (!inviteApiResult.accepted && !inviteCardSentPendingConsent) {
           if (inviteApiResult.code === -9) {
-            return this.respondAlreadyInGroup(input, targetGroup.groupName, '接口返回已在群');
+            return this.respondAlreadyInGroup(
+              input,
+              targetGroup.groupName,
+              '接口返回已在群',
+              inviteApiResult.action,
+            );
           }
           if (inviteApiResult.code === -10) {
             this.logger.warn(
@@ -235,13 +289,6 @@ export class GroupInviteService {
           continue;
         }
 
-        await this.memoryService.saveInvitedGroup(input.corpId, input.userId, input.sessionId, {
-          groupName: targetGroup.groupName,
-          city: input.city,
-          industry: input.industry,
-          invitedAt: new Date().toISOString(),
-        });
-
         const isDirectAdd = !inviteCardSentPendingConsent && (targetGroup.memberCount ?? 0) < 40;
         this.logger.log(
           `拉群成功: ${targetGroup.groupName} (user=${input.userId}, city=${input.city}, industry=${input.industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed}, pendingConsent=${inviteCardSentPendingConsent})`,
@@ -249,6 +296,7 @@ export class GroupInviteService {
         this.recordGroupInvited(input, targetGroup.groupName);
         return {
           success: true,
+          ...this.actionReceipt(inviteApiResult.action),
           groupName: targetGroup.groupName,
           inviteDelivery: isDirectAdd ? 'direct_add' : 'invite_card',
           inviteCardPendingConsent: inviteCardSentPendingConsent,
@@ -323,20 +371,40 @@ export class GroupInviteService {
     input: GroupInviteInput,
     groupName: string,
     via: string,
+    action?: ActionExecution<InviteApiResult>,
   ): Promise<GroupInviteResult> {
-    await this.memoryService
-      .saveInvitedGroup(input.corpId, input.userId, input.sessionId, {
-        groupName,
-        city: input.city,
-        industry: input.industry,
-        invitedAt: new Date().toISOString(),
-      })
-      .catch((error: unknown) => {
-        this.logger.warn(`写入 invitedGroups 失败（忽略）: ${toErrorMessage(error)}`);
-      });
+    if (!action)
+      await this.memoryService
+        .saveInvitedGroup(input.corpId, input.userId, input.sessionId, {
+          groupName,
+          city: input.city,
+          industry: input.industry,
+          invitedAt: new Date().toISOString(),
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(`写入 invitedGroups 失败（忽略）: ${toErrorMessage(error)}`);
+        });
     this.logger.log(`${via}：候选人已在群 ${groupName}，跳过拉群 (user=${input.userId})`);
-    this.recordGroupInvited(input, groupName);
-    return { success: true, alreadyInGroup: true, groupName };
+    // Existing membership is an observed goal, not a newly completed invitation.
+    return {
+      success: true,
+      alreadyInGroup: true,
+      groupName,
+      ...this.actionReceipt(action),
+    };
+  }
+
+  private actionReceipt(action?: ActionExecution<InviteApiResult>) {
+    return action
+      ? {
+          actionStatus: action.status,
+          actionId: action.actionId,
+          requestId: action.requestId,
+          localSync: action.localSync,
+          actionDispatched: action.dispatched,
+          actionReason: action.reason,
+        }
+      : {};
   }
 
   private recordGroupInvited(input: GroupInviteInput, groupName: string): void {
@@ -447,12 +515,101 @@ export class GroupInviteService {
     botUserId: string;
     contactWxid: string;
     roomWxid: string;
+    input: GroupInviteInput;
+    targetGroup: GroupContext;
+    intentStep?: string;
   }): Promise<InviteApiResult> {
-    const result = await this.roomService.addMemberEnterprise(params);
-    return this.parseInviteApiResult(result);
+    const { input, targetGroup, intentStep, ...external } = params;
+    const logicalTurnId = input.logicalTurnId ?? input.turnKey;
+    const intent: ActionIntent = {
+      corpId: input.corpId,
+      accountId: external.imBotId,
+      chatId: input.chatId ?? input.sessionId,
+      logicalTurnId,
+      intentId: `${logicalTurnId}:${intentStep ?? 'initial'}`,
+      kind: 'wecom.group_add_member',
+      target: `group:${external.roomWxid}:member:${external.contactWxid}`,
+      parameters: {
+        imBotId: external.imBotId,
+        botUserId: external.botUserId,
+        contactWxid: external.contactWxid,
+        roomWxid: external.roomWxid,
+      },
+      occurredAt: input.inputOccurredAt ?? new Date().toISOString(),
+      identityReliable: Boolean(input.logicalTurnId && input.inputOccurredAt),
+      recovery: {
+        userId: input.userId,
+        sessionId: input.sessionId,
+        groupName: targetGroup.groupName,
+        city: input.city,
+        industry: input.industry ?? null,
+        candidate: external.contactWxid === input.contactWxid,
+      },
+    };
+    const action = await this.actions.execute<InviteApiResult>(intent, {
+      authorize: input.authorize,
+      dispatch: async () => {
+        const result = this.parseInviteApiResult(
+          await this.roomService.addMemberEnterprise(external),
+        );
+        if (result.code === 0 || this.isInviteCardSentPendingConsent(result) || result.code === -9)
+          return {
+            status: 'succeeded',
+            result,
+            evidence: {
+              kind: result.code === -9 ? 'already_satisfied' : 'accepted',
+              requestTerminated: true,
+              goalSatisfied: result.code === -9,
+              detail:
+                result.code === -9
+                  ? 'already_in_group'
+                  : 'invitation_accepted_membership_not_verified',
+            },
+          };
+        if (result.code != null && [-8, -10, 400400].includes(result.code))
+          return {
+            status: 'failed',
+            result,
+            retryable: false,
+            evidence: { kind: 'definitive_no_effect', requestTerminated: true },
+          };
+        return {
+          status: 'unknown',
+          result,
+          evidence: { kind: 'indeterminate', requestTerminated: false },
+        };
+      },
+      sync: (result) => this.syncInviteAction(intent, result),
+    });
+    if (!['succeeded', 'failed'].includes(action.status) || !action.result)
+      return { accepted: false, code: null, unresolved: true, action };
+    return { ...action.result, action };
+  }
+
+  private async syncInviteAction(intent: ActionIntent, result: InviteApiResult): Promise<void> {
+    const data = intent.recovery;
+    if (
+      !data?.candidate ||
+      !(result.code === 0 || result.code === -9 || this.isInviteCardSentPendingConsent(result))
+    )
+      return;
+    if (
+      typeof data.userId !== 'string' ||
+      typeof data.sessionId !== 'string' ||
+      typeof data.groupName !== 'string' ||
+      typeof data.city !== 'string'
+    )
+      throw new Error('Invite repair data unavailable');
+    await this.memoryService.saveInvitedGroup(intent.corpId, data.userId, data.sessionId, {
+      groupName: data.groupName,
+      city: data.city,
+      ...(typeof data.industry === 'string' ? { industry: data.industry } : {}),
+      invitedAt: intent.occurredAt,
+    });
   }
 
   private async maybeAddChatBotToGroupAndRetryInvite(params: {
+    input: GroupInviteInput;
     token: string;
     initialResult: InviteApiResult;
     targetGroup: GroupContext;
@@ -470,12 +627,16 @@ export class GroupInviteService {
 
     try {
       const addBotResult = await this.invokeAddMember({
+        input: params.input,
+        targetGroup: params.targetGroup,
+        intentStep: 'add_chat_bot',
         token: params.token,
         imBotId: params.targetGroup.imBotId,
         botUserId: ownerBotUserId,
         contactWxid: params.chatBotImId,
         roomWxid: params.targetGroup.imRoomId,
       });
+      if (addBotResult.unresolved) return { inviteResult: addBotResult, addBotResult };
       if (!addBotResult.accepted && addBotResult.code !== -9) {
         this.logger.warn(
           `接客 bot 入群补偿失败: ${params.targetGroup.groupName} ` +
@@ -496,8 +657,12 @@ export class GroupInviteService {
           this.logger.warn(`syncRoom 失败（忽略，继续重试拉人）: ${toErrorMessage(error)}`);
         }
       };
+      let compatibilityAttempt = 0;
       const retryInviteCandidate = (): Promise<InviteApiResult> =>
         this.invokeAddMember({
+          input: params.input,
+          targetGroup: params.targetGroup,
+          intentStep: `after_bot_join:${compatibilityAttempt++}`,
           token: params.token,
           imBotId: params.chatBotImId,
           botUserId: params.chatBotUserId,
@@ -509,7 +674,12 @@ export class GroupInviteService {
       let retryInviteResult = await retryInviteCandidate();
       let retryAttempts = 1;
       for (const delayMs of COMPAT_RETRY_DELAYS_MS) {
-        if (retryInviteResult.accepted || !this.isRoomNotFoundError(retryInviteResult)) break;
+        if (
+          retryInviteResult.unresolved ||
+          retryInviteResult.accepted ||
+          !this.isRoomNotFoundError(retryInviteResult)
+        )
+          break;
         this.logger.log(
           `接客 bot 入群可能尚未生效，${delayMs}ms 后重试拉候选人: ${params.targetGroup.groupName} ` +
             `(chatBot=${params.chatBotImId}, attempt=${retryAttempts})`,

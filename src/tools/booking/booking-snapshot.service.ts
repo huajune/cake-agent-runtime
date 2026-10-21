@@ -234,12 +234,15 @@ export class BookingSnapshotService {
   }
 
   /** 取消、改约、报名成功后失效该手机号的快照（否则 5 分钟内仍显示在途）。 */
-  async invalidate(input: {
-    phone: string | null | undefined;
-    botImId: string | null | undefined;
-    corpId?: string;
-    userId?: string;
-  }): Promise<void> {
+  async invalidate(
+    input: {
+      phone: string | null | undefined;
+      botImId: string | null | undefined;
+      corpId?: string;
+      userId?: string;
+    },
+    options?: { strict?: boolean },
+  ): Promise<void> {
     const keys: string[] = [];
     const phone = input.phone?.trim() ?? '';
     const botImId = input.botImId?.trim() ?? '';
@@ -249,6 +252,7 @@ export class BookingSnapshotService {
     try {
       await this.redisService.del(...keys);
     } catch (error) {
+      if (options?.strict) throw error;
       this.logger.warn(`预约快照缓存失效失败: ${toErrorMessage(error)}`);
     }
   }

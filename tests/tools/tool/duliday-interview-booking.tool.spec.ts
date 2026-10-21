@@ -1,3 +1,4 @@
+import type { ToolActionService } from '@tools/actions/tool-action.service';
 import {
   createForm,
   verdictOf,
@@ -180,7 +181,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     longTerm.getActiveBookings.mockResolvedValue([]);
   });
 
-  function buildTool() {
+  function buildTool(actions?: ToolActionService) {
     return buildInterviewBookingTool(
       sponge as never,
       notifier as never,
@@ -188,6 +189,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
       longTerm as never,
       ops as never,
       {
+        actions,
         collectionForms: collectionForms as never,
         sessionFacts: sessionFacts as never,
         bookingSnapshot: bookingSnapshot as never,
@@ -196,8 +198,8 @@ describe('duliday_interview_booking（form → labelList）', () => {
     )(context);
   }
 
-  async function execute(input: Record<string, unknown>) {
-    const built = buildTool();
+  async function execute(input: Record<string, unknown>, actions?: ToolActionService) {
+    const built = buildTool(actions);
     return built.execute!(input as never, {
       toolCallId: 'booking-test',
       context: {},
@@ -205,6 +207,55 @@ describe('duliday_interview_booking（form → labelList）', () => {
       abortSignal: undefined as never,
     }) as Promise<Record<string, unknown>>;
   }
+
+  it.each(['unknown', 'executing', 'blocked'])(
+    'action %s never triggers booking failure, pause, red card or a direct second request',
+    async (status) => {
+      const actions = {
+        executeSponge: jest
+          .fn()
+          .mockResolvedValue({
+            status,
+            actionId: 'action',
+            requestId: 'request',
+            localSync: 'complete',
+            dispatched: false,
+          }),
+      };
+      const result = await execute({ jobId: 100 }, actions as never);
+      expect(result).toMatchObject({
+        actionStatus: status,
+        errorType: 'action.result_unresolved',
+        sideEffect: { kind: 'general_handoff' },
+      });
+      expect(result.success).toBeUndefined();
+      expect(sponge.bookInterview).not.toHaveBeenCalled();
+      expect(hosting.pauseUser).not.toHaveBeenCalled();
+      expect(notifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+      expect(ops.recordEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: 'booking.failed' }),
+      );
+    },
+  );
+
+  it('success with pending local sync is still a successful booking receipt', async () => {
+    const actions = {
+      executeSponge: jest
+        .fn()
+        .mockResolvedValue({
+          status: 'succeeded',
+          actionId: 'action',
+          requestId: 'request',
+          localSync: 'pending',
+          dispatched: true,
+          result: { success: true, code: 0, workOrderId: 9001 },
+        }),
+    };
+    const result = await execute({ jobId: 100 }, actions as never);
+    expect(result).toMatchObject({ success: true, localSync: 'pending' });
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+    expect(collectionForms.persist).not.toHaveBeenCalled();
+  });
 
   it('本轮没有 ready_to_book 凭据时，在任何外部请求前拒绝', async () => {
     context.ledger.jobs.collectionReadyJobId = undefined;

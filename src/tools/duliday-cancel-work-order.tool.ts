@@ -1,3 +1,9 @@
+import type { ToolActionService } from './actions/tool-action.service';
+import {
+  actionReceiptFields,
+  isUnresolvedAction,
+  unresolvedActionReceipt,
+} from './actions/business-action.util';
 /**
  * DuLiDay 取消工单工具
  *
@@ -130,6 +136,7 @@ const inputSchema = z.object({
  * workOrderId 由 LLM 从 [当前预约信息] 显式传入。成功后写入 booking.canceled 运营事件。
  */
 export interface CancelWorkOrderToolDeps {
+  actions?: ToolActionService;
   /** 取消成功后失效该手机号的预约快照缓存（否则 5 分钟内仍显示在途）。 */
   bookingSnapshot?: Pick<BookingSnapshotService, 'invalidate'>;
 }
@@ -284,14 +291,38 @@ export function buildCancelWorkOrderTool(
         }
 
         try {
-          const result = await spongeService.cancelWorkOrder(
-            {
-              workOrderId,
-              cancelReasonId: matched.id,
-              cancelReasonDesc: cancelReasonDesc?.trim() || undefined,
-            },
-            tokenContext,
-          );
+          const parameters = {
+            workOrderId,
+            cancelReasonId: matched.id,
+            cancelReasonDesc: cancelReasonDesc?.trim() || undefined,
+          };
+          const action = deps?.actions
+            ? await deps.actions.executeSponge(
+                context,
+                {
+                  kind: 'sponge.cancel',
+                  target: `work-order:${workOrderId}`,
+                  parameters,
+                  recovery: {
+                    userId: context.session.userId,
+                    sessionId: context.session.sessionId,
+                    botUserId: context.session.botUserId ?? '',
+                    botImId: context.session.botImId ?? '',
+                    workOrderId,
+                    phone:
+                      context.archive.bookingCandidateFacts?.phone ??
+                      context.archive.profile?.phone ??
+                      null,
+                  },
+                },
+                () => spongeService.cancelWorkOrder(parameters, tokenContext),
+              )
+            : undefined;
+          if (action && (isUnresolvedAction(action) || !action.result))
+            return unresolvedActionReceipt(context, action, '取消', undefined, workOrderId);
+          const result = action
+            ? action.result!
+            : await spongeService.cancelWorkOrder(parameters, tokenContext);
 
           if (!result.success) {
             logger.warn(
@@ -338,40 +369,44 @@ export function buildCancelWorkOrderTool(
             },
           });
 
-          await longTermService.clearActiveBooking(
-            context.session.corpId,
-            context.session.userId,
-            workOrderId,
-          );
-          // 预约快照按手机号缓存 5 分钟；不失效会让刚取消的工单在后续回合仍显示在途。
-          await deps?.bookingSnapshot?.invalidate({
-            phone:
-              normalizeOptionalText(phone) ??
-              context.archive.bookingCandidateFacts?.phone ??
-              context.archive.profile?.phone ??
-              null,
-            botImId: context.session.botImId,
-            corpId: context.session.corpId,
-            userId: context.session.userId,
-          });
+          if (!deps?.actions) {
+            await longTermService.clearActiveBooking(
+              context.session.corpId,
+              context.session.userId,
+              workOrderId,
+            );
+            // 预约快照按手机号缓存 5 分钟；不失效会让刚取消的工单在后续回合仍显示在途。
+            await deps?.bookingSnapshot?.invalidate({
+              phone:
+                normalizeOptionalText(phone) ??
+                context.archive.bookingCandidateFacts?.phone ??
+                context.archive.profile?.phone ??
+                null,
+              botImId: context.session.botImId,
+              corpId: context.session.corpId,
+              userId: context.session.userId,
+            });
+          }
 
-          void sendCancelWorkOrderNotification({
-            privateChatNotifier,
-            context,
-            workOrderId,
-            cancelReasonId: matched.id,
-            cancelReason: matched.info,
-            cancelReasonDesc,
-            candidateName,
-            phone,
-            brandName,
-            storeName,
-            jobName,
-            interviewTime,
-          });
+          if (action?.dispatched !== false)
+            void sendCancelWorkOrderNotification({
+              privateChatNotifier,
+              context,
+              workOrderId,
+              cancelReasonId: matched.id,
+              cancelReason: matched.info,
+              cancelReasonDesc,
+              candidateName,
+              phone,
+              brandName,
+              storeName,
+              jobName,
+              interviewTime,
+            });
 
           return {
             success: true,
+            ...(action ? actionReceiptFields(action) : {}),
             errorType: null,
             workOrderId,
             cancelReasonId: matched.id,
@@ -466,22 +501,25 @@ async function sendCancelWorkOrderNotification(params: {
 }): Promise<void> {
   const { privateChatNotifier, context } = params;
   try {
-    await privateChatNotifier.notifyInterviewCancellation({
-      botImId: context.session.botImId,
-      contactName: normalizeOptionalText(context.session.contactName) ?? undefined,
-      candidateName: normalizeOptionalText(params.candidateName) ?? undefined,
-      phone: normalizeOptionalText(params.phone) ?? undefined,
-      botUserName: normalizeOptionalText(context.session.botUserId) ?? undefined,
-      brandName: normalizeOptionalText(params.brandName) ?? undefined,
-      storeName: normalizeOptionalText(params.storeName) ?? undefined,
-      jobName: normalizeOptionalText(params.jobName) ?? undefined,
-      interviewTime: normalizeOptionalText(params.interviewTime) ?? undefined,
-      workOrderId: params.workOrderId,
-      cancelReason: normalizeOptionalText(params.cancelReason) ?? undefined,
-      cancelReasonDesc: normalizeOptionalText(params.cancelReasonDesc) ?? undefined,
-      userMessage:
-        normalizeOptionalText(extractLatestUserMessage(context.turnInput.messages)) ?? undefined,
-    });
+    await privateChatNotifier.notifyInterviewCancellation(
+      {
+        botImId: context.session.botImId,
+        contactName: normalizeOptionalText(context.session.contactName) ?? undefined,
+        candidateName: normalizeOptionalText(params.candidateName) ?? undefined,
+        phone: normalizeOptionalText(params.phone) ?? undefined,
+        botUserName: normalizeOptionalText(context.session.botUserId) ?? undefined,
+        brandName: normalizeOptionalText(params.brandName) ?? undefined,
+        storeName: normalizeOptionalText(params.storeName) ?? undefined,
+        jobName: normalizeOptionalText(params.jobName) ?? undefined,
+        interviewTime: normalizeOptionalText(params.interviewTime) ?? undefined,
+        workOrderId: params.workOrderId,
+        cancelReason: normalizeOptionalText(params.cancelReason) ?? undefined,
+        cancelReasonDesc: normalizeOptionalText(params.cancelReasonDesc) ?? undefined,
+        userMessage:
+          normalizeOptionalText(extractLatestUserMessage(context.turnInput.messages)) ?? undefined,
+      },
+      context.session,
+    );
   } catch (error) {
     logger.error(
       `取消工单通知发送异常: workOrderId=${params.workOrderId}, error=${toErrorMessage(error)}`,

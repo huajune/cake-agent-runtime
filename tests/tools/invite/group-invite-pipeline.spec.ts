@@ -1,3 +1,6 @@
+import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
+import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
+import { createActionExecutorFixture } from '../../helpers/action-executor.fixture';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -320,6 +323,9 @@ describe('runGroupInvitePipeline', () => {
         city: '上海',
         industry: '餐饮',
         turnKey: 'turn-1',
+        logicalTurnId: undefined,
+        inputOccurredAt: undefined,
+        authorize: expect.any(Function),
         messageId: 'turn-1',
         contactName: '兮兮',
         chatId: 'chat-1',
@@ -383,6 +389,8 @@ describe('runGroupInvitePipeline', () => {
       const moduleRef = await Test.createTestingModule({
         providers: [
           GroupInviteService,
+          { provide: ActionExecutorService, useValue: createActionExecutorFixture() },
+          { provide: ActionRecoveryRegistry, useValue: new ActionRecoveryRegistry() },
           { provide: GroupResolverService, useValue: mockGroupResolver },
           {
             provide: GroupMembershipService,
@@ -477,6 +485,9 @@ describe('buildGroupInviteInput', () => {
         city: '上海',
         industry: undefined,
         turnKey: '1700000000000',
+        logicalTurnId: undefined,
+        inputOccurredAt: undefined,
+        authorize: expect.any(Function),
         messageId: undefined,
         contactName: undefined,
         chatId: 'session-1',

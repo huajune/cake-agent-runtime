@@ -618,6 +618,8 @@ export class SessionFactsService {
     // "已邀入群"段，正常会话个位数，cap 只是防单调增长的安全阀）。
     const MAX_INVITED_GROUPS = 20;
     const merged = [validated, ...existing]
+      // 后台恢复旧邀请只补历史，不能把同群较新的邀请时间回退。
+      .sort((left, right) => Date.parse(right.invitedAt) - Date.parse(left.invitedAt))
       .filter((g, i, arr) => arr.findIndex((item) => item.groupName === g.groupName) === i)
       .slice(0, MAX_INVITED_GROUPS);
 

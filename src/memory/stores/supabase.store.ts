@@ -271,9 +271,11 @@ export class SupabaseStore implements MemoryStore {
     profileFacts: Partial<UserProfileFacts>,
     metadata?: MessageMetadata,
     jobIntentFacts?: JobIntentFacts,
+    options?: { strict?: boolean },
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
     if (!client) {
+      if (options?.strict) throw new Error('memory_profile_store_unavailable');
       this.logger.warn('Supabase 不可用，长期记忆未持久化');
       return;
     }
@@ -309,7 +311,8 @@ export class SupabaseStore implements MemoryStore {
       );
     }
 
-    await this.invalidateCache(corpId, userId, botUserId);
+    if (options?.strict) await this.redis.del(this.cacheKey(corpId, userId, botUserId));
+    else await this.invalidateCache(corpId, userId, botUserId);
   }
 
   // ==================== Preference 操作 ====================
@@ -411,7 +414,7 @@ export class SupabaseStore implements MemoryStore {
   async getActiveBookings(
     corpId: string,
     userId: string,
-    options?: { bypassCache?: boolean },
+    options?: { bypassCache?: boolean; strict?: boolean },
   ): Promise<ActiveBookingEntry[]> {
     const row = await this.getActiveBookingRow(corpId, userId, options);
     return normalizeActiveBookings(row?.active_booking ?? null);
@@ -423,21 +426,32 @@ export class SupabaseStore implements MemoryStore {
     userId: string,
     workOrderId: number,
     metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
+    options?: { strict?: boolean; occurredAt?: string },
   ): Promise<void> {
-    const existing = await this.getActiveBookings(corpId, userId);
+    const existing = await this.getActiveBookings(corpId, userId, options);
+    const occurredAt = options?.occurredAt ?? new Date().toISOString();
+    const previousAt = existing.find((booking) => booking.work_order_id === workOrderId)?.linked_at;
     const activeBooking: ActiveBookingEntry = {
       work_order_id: workOrderId,
-      linked_at: new Date().toISOString(),
+      linked_at:
+        previousAt && Date.parse(previousAt) > Date.parse(occurredAt) ? previousAt : occurredAt,
       job_id: metadata?.job_id ?? null,
       ...(metadata?.interview_time ? { interview_time: metadata.interview_time } : {}),
     };
     const bookings = [
       activeBooking,
       ...existing.filter((booking) => booking.work_order_id !== workOrderId),
-    ].slice(0, 10);
-    await this.upsertActiveBookingRow(corpId, userId, {
-      active_booking: buildActiveBookingState(bookings),
-    });
+    ]
+      .sort((a, b) => Date.parse(b.linked_at) - Date.parse(a.linked_at))
+      .slice(0, 10);
+    await this.upsertActiveBookingRow(
+      corpId,
+      userId,
+      {
+        active_booking: buildActiveBookingState(bookings),
+      },
+      options,
+    );
   }
 
   /**
@@ -449,18 +463,27 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     expectedWorkOrderId?: number,
+    options?: { strict?: boolean },
   ): Promise<void> {
     if (expectedWorkOrderId != null) {
-      const bookings = await this.getActiveBookings(corpId, userId);
+      const bookings = await this.getActiveBookings(corpId, userId, options);
       const remaining = bookings.filter((booking) => booking.work_order_id !== expectedWorkOrderId);
-      if (remaining.length === bookings.length) return;
-      await this.upsertActiveBookingRow(corpId, userId, {
-        active_booking: buildActiveBookingState(remaining),
-      });
+      if (remaining.length === bookings.length) {
+        if (options?.strict) await this.redis.del(`active-booking:${corpId}:${userId}`);
+        return;
+      }
+      await this.upsertActiveBookingRow(
+        corpId,
+        userId,
+        {
+          active_booking: buildActiveBookingState(remaining),
+        },
+        options,
+      );
       return;
     }
 
-    await this.upsertActiveBookingRow(corpId, userId, { active_booking: null });
+    await this.upsertActiveBookingRow(corpId, userId, { active_booking: null }, options);
   }
 
   // ==================== MemoryStore 通用接口适配 ====================
@@ -592,12 +615,13 @@ export class SupabaseStore implements MemoryStore {
   private async getActiveBookingRow(
     corpId: string,
     userId: string,
-    options?: { bypassCache?: boolean },
+    options?: { bypassCache?: boolean; strict?: boolean },
   ): Promise<AgentLongTermMemoryRow | null> {
     const cacheKey = `active-booking:${corpId}:${userId}`;
-    const cached = options?.bypassCache
-      ? null
-      : await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
+    const cached =
+      options?.bypassCache || options?.strict
+        ? null
+        : await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
     if (cached) return cached;
 
     const client = this.supabase.getSupabaseClient();
@@ -625,11 +649,15 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     fields: Record<string, unknown>,
+    options?: { strict?: boolean },
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
-    if (!client) return;
+    if (!client) {
+      if (options?.strict) throw new Error('memory_booking_store_unavailable');
+      return;
+    }
 
-    const existing = await this.getActiveBookingRow(corpId, userId);
+    const existing = await this.getActiveBookingRow(corpId, userId, options);
     const payload = { ...fields, updated_at: new Date().toISOString() };
     let error: { code?: string; message: string } | null = null;
 
@@ -652,8 +680,12 @@ export class SupabaseStore implements MemoryStore {
       }
     }
 
-    if (error) this.logger.warn('upsert active_booking 失败', error.message);
-    await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
+    if (error) {
+      if (options?.strict) throw error;
+      this.logger.warn('upsert active_booking 失败', error.message);
+    }
+    if (options?.strict) await this.redis.del(`active-booking:${corpId}:${userId}`);
+    else await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
   }
 
   private async invalidateCache(corpId: string, userId: string, botUserId: string): Promise<void> {

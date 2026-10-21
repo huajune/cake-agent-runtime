@@ -3,6 +3,7 @@ import type { GroupInviteService } from '@biz/group-task/services/group-invite.s
 import type { SessionStateService } from '@memory/short-term/session-state.service';
 import {
   buildPostBookingGroupInviteGuide,
+  buildPostBookingUnknownInviteHandoff,
   describePostBookingGroupInviteForEvent,
   runPostBookingGroupInvite,
 } from '@tools/invite/post-booking-group-invite';
@@ -248,5 +249,30 @@ describe('runPostBookingGroupInvite', () => {
         failureReason: 'group_full',
       }).outcome,
     ).toBe('failed:group_full');
+  });
+  it('invitation unknown preserves booking success instruction and carries a verification handoff', async () => {
+    groupInviteService.invite.mockResolvedValue({
+      success: false,
+      reason: 'result_unknown',
+      actionStatus: 'unknown',
+      actionId: 'invite-1',
+      requestId: 'request-1',
+      actionDispatched: true,
+      localSync: 'complete',
+    });
+    const { outcome, context } = await run();
+    expect(outcome).toMatchObject({
+      actionStatus: 'unknown',
+      actionId: 'invite-1',
+      requestId: 'request-1',
+      actionDispatched: true,
+    });
+    expect(buildPostBookingGroupInviteGuide(outcome)).toContain('报名已成功');
+    expect(buildPostBookingUnknownInviteHandoff(context, outcome, 100, 42)).toMatchObject({
+      kind: 'general_handoff',
+      reasonCode: 'group_invite_failed',
+      workOrderId: 42,
+    });
+    expect(describePostBookingGroupInviteForEvent(outcome)).toMatchObject({ outcome: 'unknown' });
   });
 });

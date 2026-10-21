@@ -630,4 +630,79 @@ describe('SupabaseStore', () => {
       });
     });
   });
+  it('strict repair never reports persistence complete when Supabase is unavailable', async () => {
+    mockSupabaseService.getSupabaseClient.mockReturnValue(null);
+    await expect(store.setActiveBooking('corp', 'user', 42, {}, { strict: true })).rejects.toThrow(
+      'memory_booking_store_unavailable',
+    );
+    await expect(store.clearActiveBooking('corp', 'user', 42, { strict: true })).rejects.toThrow(
+      'memory_booking_store_unavailable',
+    );
+    await expect(
+      store.upsertProfileFacts(
+        'corp',
+        'user',
+        'bot',
+        { name: profileFact('张三') },
+        undefined,
+        undefined,
+        { strict: true },
+      ),
+    ).rejects.toThrow('memory_profile_store_unavailable');
+  });
+
+  it('strict booking repair bypasses stale local cache and does not treat query failure as an empty booking list', async () => {
+    mockRedis.get.mockResolvedValue({ active_booking: null });
+    mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'read timeout' } });
+    await expect(
+      store.setActiveBooking('corp', 'user', 42, {}, { strict: true }),
+    ).rejects.toMatchObject({ message: 'read timeout' });
+    expect(mockRedis.get).not.toHaveBeenCalled();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+  it('strict booking persistence errors remain pending instead of being swallowed', async () => {
+    const update = jest
+      .fn()
+      .mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: { message: 'write failed' } }) });
+    mockSupabaseClient.from.mockReturnValue({ select: mockSelect, update } as never);
+    mockMaybeSingle.mockResolvedValue({ data: { id: 'row', active_booking: null }, error: null });
+    await expect(
+      store.setActiveBooking('corp', 'user', 42, {}, { strict: true }),
+    ).rejects.toMatchObject({ message: 'write failed' });
+  });
+
+  it('historical repair preserves a newer booking as the current pointer and never backdates the same order', async () => {
+    const existing = [
+      { work_order_id: 99, linked_at: '2026-10-22T00:00:00Z', job_id: 200 },
+      { work_order_id: 42, linked_at: '2026-10-21T00:00:00Z', job_id: 100 },
+    ];
+    const update = jest.fn().mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: null }) });
+    mockSupabaseClient.from.mockReturnValue({ select: mockSelect, update } as never);
+    mockMaybeSingle.mockResolvedValue({
+      data: { id: 'row', active_booking: { ...existing[0], bookings: existing } },
+      error: null,
+    });
+    await store.setActiveBooking(
+      'corp',
+      'user',
+      42,
+      { job_id: 100, interview_time: '2026-10-23 14:00' },
+      { strict: true, occurredAt: '2026-10-20T00:00:00Z' },
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        active_booking: expect.objectContaining({
+          work_order_id: 99,
+          bookings: [
+            existing[0],
+            expect.objectContaining({
+              work_order_id: 42,
+              linked_at: '2026-10-21T00:00:00Z',
+              interview_time: '2026-10-23 14:00',
+            }),
+          ],
+        }),
+      }),
+    );
+  });
 });

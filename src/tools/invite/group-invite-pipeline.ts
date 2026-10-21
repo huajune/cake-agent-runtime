@@ -52,7 +52,11 @@ export function buildGroupInviteInput(
     contactWxid: context.session.userId,
     city,
     industry,
-    turnKey: context.session.turnId ?? Date.now().toString(),
+    turnKey: context.session.logicalTurnId ?? context.session.turnId ?? Date.now().toString(),
+    logicalTurnId: context.session.logicalTurnId,
+    inputOccurredAt: context.session.inputOccurredAt,
+    authorize: async () =>
+      !context.runtime.hasNewerUserInput || !(await context.runtime.hasNewerUserInput()),
     messageId: context.session.turnId,
     contactName: context.session.contactName,
     chatId: context.session.chatId ?? context.session.sessionId,

@@ -21,7 +21,7 @@ export class PhoneSessionIndexService {
 
   constructor(private readonly redis: RedisService) {}
 
-  async record(phone: string, ref: PhoneSessionRef): Promise<void> {
+  async record(phone: string, ref: PhoneSessionRef, options?: { strict?: boolean }): Promise<void> {
     const normalized = phone.trim();
     if (!isStorableCandidatePhone(normalized)) return;
     // 兜底：测试/调试链路的会话一律不进索引（上游已按 callerKind / strategySource 拦，这里按身份再挡一道）。
@@ -41,6 +41,7 @@ export class PhoneSessionIndexService {
       ]);
     } catch (error) {
       this.recentWrites.delete(dedupeKey);
+      if (options?.strict) throw error;
       this.logger.warn(
         `手机号→会话索引写入失败 phoneTail=${normalized.slice(-4)}: ${toErrorMessage(error)}`,
       );

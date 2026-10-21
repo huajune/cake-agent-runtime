@@ -39,6 +39,40 @@ describe('buildModifyInterviewTimeTool', () => {
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
   });
 
+  it.each(['unknown', 'executing', 'blocked'])(
+    'action %s does not become a failure or repeat external mutation',
+    async (status) => {
+      const actions = {
+        executeSponge: jest
+          .fn()
+          .mockResolvedValue({
+            status,
+            actionId: 'action',
+            requestId: 'request',
+            localSync: 'complete',
+            dispatched: false,
+          }),
+      };
+      const result = await exec(
+        buildModifyInterviewTimeTool(
+          spongeService as never,
+          opsEventsRecorder as never,
+          longTermService as never,
+          { actions: actions as never },
+        )(mockContext),
+        { workOrderId: 123, newInterviewTime: '2026-06-20 14:00' },
+      );
+      expect(result).toMatchObject({
+        actionStatus: status,
+        errorType: 'action.result_unresolved',
+        sideEffect: { kind: 'general_handoff' },
+      });
+      expect(result.success).toBeUndefined();
+      expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
+      expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
+    },
+  );
+
   it('modifies interview time, returns success and records booking.interview_modified', async () => {
     const tool = buildTool();
     const result = await exec(tool, { workOrderId: 123, newInterviewTime: '2026-06-20 14:00' });

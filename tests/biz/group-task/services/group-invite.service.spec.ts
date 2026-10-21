@@ -1,3 +1,6 @@
+import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
+import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
+import { createActionExecutorFixture } from '../../../helpers/action-executor.fixture';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
@@ -65,6 +68,8 @@ describe('GroupInviteService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         GroupInviteService,
+        { provide: ActionExecutorService, useValue: createActionExecutorFixture() },
+        { provide: ActionRecoveryRegistry, useValue: new ActionRecoveryRegistry() },
         { provide: GroupResolverService, useValue: groupResolver },
         { provide: GroupMembershipService, useValue: groupMembership },
         { provide: RoomService, useValue: roomService },
@@ -212,5 +217,87 @@ describe('GroupInviteService', () => {
         idempotencyKey: 'session-1:group:上海餐饮兼职群:turn-1',
       }),
     );
+  });
+  it('external success plus local memory failure remains succeeded with pending sync', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    roomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
+    memoryService.saveInvitedGroup.mockRejectedValue(new Error('Redis unavailable'));
+    expect(await service.invite(input)).toMatchObject({
+      success: true,
+      actionStatus: 'succeeded',
+      localSync: 'pending',
+    });
+    expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([{ errcode: 500 }, {}])(
+    'unknown response %p never tries another group',
+    async (response) => {
+      groupResolver.resolveGroups.mockResolvedValue([
+        makeGroup(),
+        makeGroup({ imRoomId: 'room-2' }),
+      ]);
+      roomService.addMemberEnterprise.mockResolvedValue(response);
+      expect(await service.invite(input)).toMatchObject({
+        reason: 'result_unknown',
+        actionStatus: 'unknown',
+      });
+      expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+      expect(memoryService.saveInvitedGroup).not.toHaveBeenCalled();
+      expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it('transport timeout never invokes the compatibility or next-group path', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imBotId: 'owner-bot', botUserId: 'owner-user' }),
+      makeGroup({ imRoomId: 'room-2' }),
+    ]);
+    roomService.addMemberEnterprise.mockRejectedValue(new Error('timeout'));
+    expect(await service.invite(input)).toMatchObject({
+      reason: 'result_unknown',
+      actionStatus: 'unknown',
+    });
+    expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+  });
+
+  it('unknown compatibility bot-add stops before candidate retry', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imBotId: 'owner-bot', botUserId: 'owner-user' }),
+    ]);
+    roomService.addMemberEnterprise
+      .mockReset()
+      .mockResolvedValueOnce({ code: 400400 })
+      .mockRejectedValueOnce(new Error('timeout'));
+    expect(await service.invite(input)).toMatchObject({
+      reason: 'result_unknown',
+      actionStatus: 'unknown',
+    });
+    expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(2);
+    expect(roomService.syncRoom).not.toHaveBeenCalledWith('enterprise-token', 'chat-bot-im');
+  });
+
+  it('unknown compatibility candidate result stops further attempts', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imBotId: 'owner-bot', botUserId: 'owner-user' }),
+    ]);
+    roomService.addMemberEnterprise
+      .mockReset()
+      .mockResolvedValueOnce({ code: 400400 })
+      .mockResolvedValueOnce({ errcode: 0 })
+      .mockRejectedValueOnce(new Error('timeout'));
+    expect(await service.invite(input)).toMatchObject({
+      reason: 'result_unknown',
+      actionStatus: 'unknown',
+    });
+    expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(3);
+  });
+
+  it('observed membership does not count as a newly executed invitation', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    groupMembership.listUserRooms.mockResolvedValue(['room-1']);
+    expect(await service.invite(input)).toMatchObject({ success: true, alreadyInGroup: true });
+    expect(roomService.addMemberEnterprise).not.toHaveBeenCalled();
+    expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
   });
 });

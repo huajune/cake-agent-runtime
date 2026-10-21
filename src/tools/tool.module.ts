@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ToolActionService } from './actions/tool-action.service';
 import { MemoryModule } from '@memory/memory.module';
 import { SpongeModule } from '@sponge/sponge.module';
 import { BrandResolutionModule } from '@resolution/brand/brand-resolution.module';
@@ -30,6 +31,7 @@ import { BookingSnapshotService } from './booking/booking-snapshot.service';
     LlmModule,
   ],
   providers: [
+    ToolActionService,
     CollectionFormStore,
     CollectionFormService,
     BookingSnapshotService,
