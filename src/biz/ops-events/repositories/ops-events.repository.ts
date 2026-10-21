@@ -10,6 +10,20 @@ import type {
   RecordOpsEventInput,
 } from '../types/ops-events.types';
 
+export interface OpsBookingPollCursor {
+  reportDate: string;
+  id: string;
+}
+interface BookingPollRow {
+  id: number | string;
+  report_date: string;
+  corp_id: string;
+  user_id?: string | null;
+  chat_id?: string | null;
+  bot_im_id?: string | null;
+  payload?: { work_order_id?: unknown } | null;
+}
+
 /**
  * ops_events 写入侧仓储：只调两个 RPC，写底账 + 投影日报全在 PG 内原子完成。
  *
@@ -98,25 +112,38 @@ export class OpsEventsRepository extends BaseRepository {
    */
   async findWorkOrdersPendingPass(
     sinceReportDate: string,
-    offset = 0,
-  ): Promise<{ pending: PendingHireWorkOrder[]; nextOffset: number }> {
+    cursor?: OpsBookingPollCursor | null,
+  ): Promise<{ pending: PendingHireWorkOrder[]; nextCursor: OpsBookingPollCursor | null }> {
     if (!this.isAvailable()) throw new Error('Ops events store unavailable');
     const pageSize = 100;
-    // Bound returned rows to one date-ordered page; query-plan validation guards scan cost.
-    const bookingRows = await this.selectFrom<{
-      corp_id: string;
-      user_id?: string | null;
-      chat_id?: string | null;
-      bot_im_id?: string | null;
-      payload?: { work_order_id?: unknown } | null;
-    }>(this.tableName, 'corp_id,user_id,chat_id,bot_im_id,payload', (q) =>
-      q
-        .eq('event_name', 'booking.succeeded')
-        .gte('report_date', sinceReportDate)
-        .order('report_date', { ascending: true })
-        .order('id', { ascending: true })
-        .range(offset, offset + pageSize - 1),
-    );
+    const columns = 'id,report_date,corp_id,user_id,chat_id,bot_im_id,payload';
+    if (cursor && (!/^\d{4}-\d{2}-\d{2}$/.test(cursor.reportDate) || !/^\d+$/.test(cursor.id))) {
+      throw new Error('Invalid booking poll cursor');
+    }
+    const seek = cursor && cursor.reportDate >= sinceReportDate ? cursor : null;
+    // Two index ranges express tuple seek without a REST OR filter that scans old pages.
+    const bookingRows: BookingPollRow[] = seek
+      ? await this.selectFrom<BookingPollRow>(this.tableName, columns, (q) =>
+          q
+            .eq('event_name', 'booking.succeeded')
+            .eq('report_date', seek.reportDate)
+            .gt('id', seek.id)
+            .order('id', { ascending: true })
+            .limit(pageSize),
+        )
+      : [];
+    if (bookingRows.length < pageSize) {
+      bookingRows.push(
+        ...(await this.selectFrom<BookingPollRow>(this.tableName, columns, (q) => {
+          let query = q.eq('event_name', 'booking.succeeded').gte('report_date', sinceReportDate);
+          if (seek) query = query.gt('report_date', seek.reportDate);
+          return query
+            .order('report_date', { ascending: true })
+            .order('id', { ascending: true })
+            .limit(pageSize - bookingRows.length);
+        })),
+      );
+    }
     const keysByCorp = new Map<string, Set<string>>();
     for (const row of bookingRows) {
       const id = Number(row.payload?.work_order_id);
@@ -161,7 +188,14 @@ export class OpsEventsRepository extends BaseRepository {
         botImId: row.bot_im_id ?? null,
       });
     }
-    return { pending, nextOffset: bookingRows.length === pageSize ? offset + pageSize : 0 };
+    const last = bookingRows.at(-1);
+    return {
+      pending,
+      nextCursor:
+        bookingRows.length === pageSize && last
+          ? { reportDate: last.report_date, id: String(last.id) }
+          : null,
+    };
   }
 
   /**
