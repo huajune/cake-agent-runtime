@@ -30,6 +30,8 @@ describe('GroupInviteService', () => {
   };
 
   let service: GroupInviteService;
+  const permits = { evaluate: jest.fn() };
+  let actions: ReturnType<typeof createActionExecutorFixture>;
 
   const input = {
     corpId: 'corp-1',
@@ -58,6 +60,8 @@ describe('GroupInviteService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    permits.evaluate.mockResolvedValue({ allowed: true });
+    actions = createActionExecutorFixture();
     groupMembership.listUserRooms.mockResolvedValue([]);
     roomService.getEnterpriseGroupChatList.mockResolvedValue({ data: [] });
     roomService.syncRoom.mockResolvedValue({ errcode: 0 });
@@ -71,9 +75,9 @@ describe('GroupInviteService', () => {
         GroupInviteService,
         {
           provide: ActionPermitService,
-          useValue: { evaluate: jest.fn().mockResolvedValue({ allowed: true }) },
+          useValue: permits,
         },
-        { provide: ActionExecutorService, useValue: createActionExecutorFixture() },
+        { provide: ActionExecutorService, useValue: actions },
         { provide: ActionRecoveryRegistry, useValue: new ActionRecoveryRegistry() },
         { provide: GroupResolverService, useValue: groupResolver },
         { provide: GroupMembershipService, useValue: groupMembership },
@@ -304,5 +308,23 @@ describe('GroupInviteService', () => {
     expect(await service.invite(input)).toMatchObject({ success: true, alreadyInGroup: true });
     expect(roomService.addMemberEnterprise).not.toHaveBeenCalled();
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
+  });
+  it('checks the actual executing owner bot before compatibility mutation', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imBotId: 'owner-bot-im', botUserId: 'owner-bot-user' }),
+    ]);
+    roomService.addMemberEnterprise
+      .mockResolvedValueOnce({ code: 400400, message: 'room not found' })
+      .mockResolvedValue({ errcode: 0 });
+    await service.invite(input);
+    const ownerCall = actions.execute.mock.calls.find(
+      ([intent]) => intent.accountId === 'owner-bot-im',
+    );
+    expect(ownerCall).toBeDefined();
+    permits.evaluate.mockResolvedValue({ allowed: false });
+    expect(await ownerCall![1].authorize!()).toBe(false);
+    expect(permits.evaluate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ botImId: 'owner-bot-im' }),
+    );
   });
 });

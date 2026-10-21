@@ -81,7 +81,8 @@ begin
 
   if p_operation='prepare' then
     select action_id into v_conflict from public.agent_action_records
-      where corp_id=v_corp and resource_hash=v_resource and action_id<>v_id
+      where (r.action_id is null or r.status='registered' or (r.status='failed' and r.retryable))
+        and corp_id=v_corp and resource_hash=v_resource and action_id<>v_id
         and mode='execute' and status in ('executing','unknown') limit 1;
     if r.action_id is null and p_input->>'mode'<>'off' then
       -- Freeze audit ancestry once, under the resource lock. Never use it as dispatch permission.

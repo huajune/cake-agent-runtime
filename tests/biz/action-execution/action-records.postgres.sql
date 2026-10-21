@@ -103,6 +103,11 @@ begin
   r:=public.transition_agent_action('prepare',p);
   assert r->'record'->>'previous_action_id'='lineage-3' and (r->>'conflict') is null;
   perform public.transition_agent_action('claim','{"corpId":"lineage-corp","actionId":"lineage-4","owner":"unresolved"}');
+  -- An unresolved successor must not hide the immutable result of a completed predecessor.
+  r:=public.transition_agent_action('prepare',replay);
+  assert r->'record'->>'status'='succeeded' and (r->>'conflict') is null;
+  r:=public.transition_agent_action('prepare',replay||'{"payloadHash":"mismatch"}'::jsonb);
+  assert r->>'conflict'='identity_payload_mismatch';
   r:=public.transition_agent_action('prepare',p||'{"actionId":"lineage-5","requestId":"req-5"}'::jsonb);
   assert r->'record'->>'previous_action_id'='lineage-4' and r->>'conflict'='lineage-4';
   r:=public.transition_agent_action('claim','{"corpId":"lineage-corp","actionId":"lineage-5","owner":"must-not-dispatch"}');

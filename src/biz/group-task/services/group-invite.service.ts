@@ -560,7 +560,7 @@ export class GroupInviteService implements OnModuleInit {
           await this.permits.evaluate({
             chatId: input.chatId ?? input.sessionId,
             action: 'tool',
-            botImId: input.botImId,
+            botImId: external.imBotId,
             candidateIds: [input.userId, input.contactWxid],
           })
         ).allowed;

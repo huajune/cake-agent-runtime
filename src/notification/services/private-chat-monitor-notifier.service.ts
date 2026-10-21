@@ -1,3 +1,4 @@
+import { actionDigest } from '@biz/action-execution/action-identity';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
@@ -108,7 +109,7 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
         logicalTurnId: turn,
         intentId: turn,
         kind,
-        target: `${kind}:${session.chatId ?? session.sessionId}`,
+        target: `${kind}:${session.chatId ?? session.sessionId}:${actionDigest(card)}`,
         parameters: { card },
         occurredAt: session.inputOccurredAt ?? new Date().toISOString(),
         identityReliable: Boolean(session.logicalTurnId && session.inputOccurredAt),
