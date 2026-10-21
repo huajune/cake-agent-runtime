@@ -246,6 +246,7 @@ export class ReplyWorkflowService {
      */
     pendingAckSize?: number;
     resumeTurn?: ReplyTurn;
+    assertOwned?: () => Promise<void>;
   }): Promise<void> {
     const { traceId, chatId, contactName, scenario, parsed, isSingleMessage, batchContext } =
       params;
@@ -265,7 +266,7 @@ export class ReplyWorkflowService {
         this.replyRecoveryContext(params.primaryMessage, params.content),
       ));
     if (durableTurn?.status === 'settled' || durableTurn?.status === 'acked') {
-      await this.ackDurableTurn(durableTurn);
+      await this.ackDurableTurn(durableTurn, params.assertOwned);
       return;
     }
     if (durableTurn) {
@@ -472,6 +473,7 @@ export class ReplyWorkflowService {
       }
 
       if (durableTurn) {
+        await params.assertOwned?.();
         const outbound =
           agentResult.outcome?.kind === 'handoff'
             ? (agentResult.outcome.preHandoffReceipt?.text ?? '')
@@ -487,6 +489,7 @@ export class ReplyWorkflowService {
               logicalTurnId: durableTurn.logicalTurnId,
               inputOccurredAt: durableTurn.inputOccurredAt,
               replyTurn: durableTurn,
+              assertOwned: params.assertOwned,
             },
             { agentResult: this.persistableReplyResult(agentResult) },
           )) ?? durableTurn;
@@ -515,11 +518,13 @@ export class ReplyWorkflowService {
             traceId,
             contactName,
             durableTurn,
+            params.assertOwned,
           );
         } catch (error) {
           receiptPending = error;
         }
         // Safety pause/notification still happen even when the receipt is unresolved.
+        await params.assertOwned?.();
         await this.outcomeFinalizer.commit(agentResult.outcome, sideEffectContext);
         if (receiptPending) throw receiptPending;
       }
@@ -529,6 +534,7 @@ export class ReplyWorkflowService {
         stableBotUserId,
       );
       const terminalSettled = this.reengagementAnchors.handleToolAnchors(agentResult, {
+        assertOwned: params.assertOwned,
         traceId: durableTurn?.logicalTurnId ?? traceId,
         ...{
           logicalTurnId: durableTurn?.logicalTurnId,
@@ -547,7 +553,7 @@ export class ReplyWorkflowService {
       // 回归测试/调试也走 prepare 且连生产海绵，副作用不能放进 prepare。
       // 必须排在锚点链的终态写入 settle 之后：两条链路并发读-判-写同一会话终态时，
       // 对账按「快照为空」清 booked 可能落在锚点刚写的 booked 之后把它抹掉。
-      if (!params.primaryMessage.imRoomId) {
+      if (!params.primaryMessage.imRoomId && !params.resumeTurn) {
         const bookingSucceededThisTurn = (agentResult.toolCalls ?? []).some((call) =>
           isBookingSucceededCall(call),
         );
@@ -595,13 +601,15 @@ export class ReplyWorkflowService {
         // 回复未送达给候选人：记用户侧记忆但不投影助手轮次，避免下一轮幽灵复聊。
         agentResult.turnFinalizer?.settle({ delivered: false });
         // 转人工或有意沉默也是成功处理：推进复聊「已处理」水位，与旧的回话即停行为保持一致。
-        this.advanceProcessedCandidateWatermark(
+        await params.assertOwned?.();
+        await this.advanceProcessedCandidateWatermark(
           params.primaryMessage,
           agentCallParams,
           allMessages,
+          Boolean(durableTurn),
         );
         if (durableTurn && this.replyTurns)
-          await this.ackDurableTurn(await this.replyTurns.settle(durableTurn));
+          await this.settleAndAckTurn(durableTurn, params.assertOwned);
         else {
           await this.markMessagesAsProcessed(processedMessageIds);
           await this.ackPendingIfMerged(chatId, consumedPending);
@@ -615,6 +623,7 @@ export class ReplyWorkflowService {
         logicalTurnId: durableTurn?.logicalTurnId,
         inputOccurredAt: durableTurn?.inputOccurredAt,
         replyTurn: durableTurn,
+        assertOwned: params.assertOwned,
       };
       const deliveryResult = await this.deliveryService.deliverReply(
         agentResult.reply,
@@ -624,6 +633,7 @@ export class ReplyWorkflowService {
       // deliverReply 可能因托管暂停/内部泄漏保护返回 skipped=true，此时不能生成
       // delivered-reply 锚点，否则会排出候选人没收到上一条时的幽灵复聊。
       const replyDelivered = this.wasReplyActuallyDelivered(deliveryResult);
+      await params.assertOwned?.();
       await this.commitReplyOutcomeSideEffects(agentResult.outcome, sideEffectContext, {
         replyDelivered,
       });
@@ -631,6 +641,7 @@ export class ReplyWorkflowService {
       // Agent 回复真实投递 → agent.replied（仅个人单聊；锚点读取必须先于回合 settle）。
       if (replyDelivered) {
         const reengagementAnchorContext = {
+          assertOwned: params.assertOwned,
           traceId: durableTurn?.logicalTurnId ?? traceId,
           ...{
             logicalTurnId: durableTurn?.logicalTurnId,
@@ -648,11 +659,13 @@ export class ReplyWorkflowService {
         };
         // 先确认这是不是本会话首条开场回复。开场本身即使询问了位置，也只排
         // opening_no_reply；不能同时排 address_missing，否则候选人持续沉默时会被连追两次。
+        await params.assertOwned?.();
         const replyKind = await this.recordAgentReplied(
           params.primaryMessage,
           parsed,
           durableTurn?.logicalTurnId ?? traceId,
           stableBotUserId,
+          durableTurn ? { turn: durableTurn, assertOwned: params.assertOwned } : undefined,
         );
         // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
         // storePresentationRounds，否则第一轮可能被误判为升档。
@@ -675,9 +688,15 @@ export class ReplyWorkflowService {
       );
 
       this.monitoringService.recordSuccess(traceId, successMetadata);
-      this.advanceProcessedCandidateWatermark(params.primaryMessage, agentCallParams, allMessages);
+      await params.assertOwned?.();
+      await this.advanceProcessedCandidateWatermark(
+        params.primaryMessage,
+        agentCallParams,
+        allMessages,
+        Boolean(durableTurn),
+      );
       if (durableTurn && this.replyTurns)
-        await this.ackDurableTurn(await this.replyTurns.settle(durableTurn));
+        await this.settleAndAckTurn(durableTurn, params.assertOwned);
       else {
         await this.markMessagesAsProcessed(processedMessageIds);
         await this.ackPendingIfMerged(chatId, consumedPending);
@@ -726,9 +745,14 @@ export class ReplyWorkflowService {
   }
 
   /** Repair uses saved output and IDs even after Redis pending expires; never calls the model. */
-  async resumePersistedReply(turn: ReplyTurn, token: string): Promise<void> {
+  async resumePersistedReply(
+    turn: ReplyTurn,
+    token: string,
+    assertOwned?: () => Promise<void>,
+  ): Promise<void> {
+    await assertOwned?.();
     if (turn.status === 'settled' || turn.status === 'acked') {
-      await this.ackDurableTurn(turn);
+      await this.ackDurableTurn(turn, assertOwned);
       return;
     }
     if (!turn.plan) throw new ReplyDeferredError('no_recoverable_reply_plan');
@@ -755,15 +779,28 @@ export class ReplyWorkflowService {
       parsed,
       isSingleMessage: true,
       resumeTurn: turn,
+      assertOwned,
     });
   }
 
-  private async ackDurableTurn(turn: ReplyTurn): Promise<void> {
+  private async settleAndAckTurn(
+    turn: ReplyTurn,
+    assertOwned?: () => Promise<void>,
+  ): Promise<void> {
+    await assertOwned?.();
+    const settled = await this.replyTurns!.settle(turn);
+    await this.ackDurableTurn(settled, assertOwned);
+  }
+
+  private async ackDurableTurn(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<void> {
     try {
+      await assertOwned?.();
       await this.simpleMergeService.ackPendingMessageIds(turn.chatId, turn.inputIds);
-      await Promise.all(
-        turn.inputIds.map((id) => this.deduplicationService.markMessageAsProcessedAsync(id)),
-      );
+      for (const id of turn.inputIds) {
+        await assertOwned?.();
+        await this.deduplicationService.markMessageAsProcessedAsync(id);
+      }
+      await assertOwned?.();
       await this.replyTurns?.acked(turn);
     } catch {
       throw new ReplyDeferredError('ack_repair_pending');
@@ -896,6 +933,7 @@ export class ReplyWorkflowService {
     traceId: string,
     contactName: string,
     durableTurn?: ReplyTurn,
+    assertOwned?: () => Promise<void>,
   ): Promise<void> {
     if (outcome?.kind !== 'handoff' || !outcome.preHandoffReceipt?.text.trim()) return;
     const receipt = outcome.preHandoffReceipt;
@@ -908,6 +946,7 @@ export class ReplyWorkflowService {
           logicalTurnId: durableTurn?.logicalTurnId,
           inputOccurredAt: durableTurn?.inputOccurredAt,
           replyTurn: durableTurn,
+          assertOwned,
         },
         false,
       );
@@ -1303,18 +1342,19 @@ export class ReplyWorkflowService {
    * timeout 静默丢弃的消息永远不会走到这里，复聊 shouldStop 据此识别无人搭理的回话。
    * 仅个人单聊（与 lastCandidateMessageAt 口径对齐）；fire-and-forget，失败不影响主流程。
    */
-  private advanceProcessedCandidateWatermark(
+  private async advanceProcessedCandidateWatermark(
     primaryMessage: EnterpriseMessageCallbackDto,
     sessionRef: { corpId: string; userId: string; sessionId: string },
     allMessages: EnterpriseMessageCallbackDto[],
-  ): void {
+    strict = false,
+  ): Promise<void> {
     if (primaryMessage.imRoomId) return;
     const maxTimestamp = allMessages.reduce((max, message) => {
       const timestamp = Number(message.timestamp);
       return Number.isFinite(timestamp) && timestamp > max ? timestamp : max;
     }, 0);
     if (maxTimestamp <= 0) return;
-    void this.session
+    await this.session
       .recordCandidateMessagesProcessed(
         sessionRef.corpId,
         sessionRef.userId,
@@ -1322,6 +1362,7 @@ export class ReplyWorkflowService {
         new Date(maxTimestamp),
       )
       .catch((error: unknown) => {
+        if (strict) throw error;
         this.logger.warn(
           `[reengagement] lastProcessedCandidateMessageAt 写入失败 [${sessionRef.sessionId}]: ${toErrorMessage(
             error,
@@ -1350,14 +1391,15 @@ export class ReplyWorkflowService {
    *
    * 线上未配平台 SOP，开场白就是 Agent 回候选人首条消息（多为微信加好友握手语「我是xx」）。
    * 用「首条」判定开场白：以 `chatId:opening` 幂等插入的返回值为准——首次插入成功即开场白，
-   * 之后插入冲突即普通回复。agent.replied 幂等键用 traceId（每轮一次，Bull retry 不重复计数）。
-   * 调用方等待分类完成；内部开场复聊排程保持 fire-and-forget。
+   * 执行档用原逻辑回合绑定开场事件并等待排程；恢复重复插入仍识别同一开场回合。
+   * 兼容路径保留旧 trace 幂等与非阻断行为。
    */
   private async recordAgentReplied(
     primaryMessage: EnterpriseMessageCallbackDto,
     parsed: ReturnType<typeof MessageParser.parse>,
     traceId: string,
     stableBotUserId?: string,
+    durable?: { turn: ReplyTurn; assertOwned?: () => Promise<void> },
   ): Promise<'opening' | 'reply' | 'unknown'> {
     if (primaryMessage.imRoomId) return 'unknown'; // 群聊不计入候选人漏斗
     const botImId = primaryMessage.imBotId;
@@ -1366,16 +1408,28 @@ export class ReplyWorkflowService {
     const chatId = parsed.chatId;
 
     try {
-      const openingResult = await this.opsEventsRecorder.recordEventDetailed({
+      const openingInput = {
         corpId,
-        eventName: 'agent.opening_sent',
+        eventName: 'agent.opening_sent' as const,
         idempotencyKey: `${chatId}:opening`,
         botImId,
         managerName: primaryMessage.botUserId,
         sourceChannel: 'unknown',
         userId,
         chatId,
-      });
+        ...(durable ? { occurredAt: durable.turn.inputOccurredAt } : {}),
+      };
+      const owned = durable?.assertOwned ? { assertOwned: durable.assertOwned } : undefined;
+      await durable?.assertOwned?.();
+      const openingResult = durable
+        ? (await this.opsEventsRecorder.recordOpeningDurably(
+            openingInput,
+            durable.turn.logicalTurnId,
+            owned,
+          ))
+          ? 'inserted'
+          : 'duplicate'
+        : await this.opsEventsRecorder.recordEventDetailed(openingInput);
 
       // 写入失败（DB 不可用 / 熔断 OPEN / RPC 异常）时，无法判定本条是否开场白：
       // 不能据此误记为 agent.replied（否则开场白行永远缺失且不可恢复）。
@@ -1392,19 +1446,23 @@ export class ReplyWorkflowService {
         // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
         // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态
         // 做 shouldStop——候选人已回则丢弃）。fire-and-forget，失败不影响主漏斗。
-        void this.followUpScheduler
-          .scheduleFollowUp({
-            sessionRef: { corpId, userId, sessionId: chatId },
-            scenarioCode: 'opening_no_reply',
-            anchorEventId: 'opening',
-            anchorAt: Date.now(),
-            channelIdentity: this.buildReengagementChannelIdentity(
-              parsed,
-              primaryMessage,
-              stableBotUserId,
-            ),
-          })
-          .catch((error: unknown) => {
+        await durable?.assertOwned?.();
+        const scheduled = this.followUpScheduler.scheduleFollowUp({
+          sessionRef: { corpId, userId, sessionId: chatId },
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'opening',
+          anchorAt: durable ? Date.parse(durable.turn.inputOccurredAt) : Date.now(),
+          channelIdentity: this.buildReengagementChannelIdentity(
+            parsed,
+            primaryMessage,
+            stableBotUserId,
+          ),
+        });
+        if (durable) {
+          const result = await scheduled;
+          if (result?.reason === 'enqueue_error') throw new Error('Opening schedule not persisted');
+        } else
+          void scheduled.catch((error: unknown) => {
             this.logger.warn(
               `[reengagement] opening 锚点排程失败 [${traceId}]: ${toErrorMessage(error)}`,
             );
@@ -1413,20 +1471,25 @@ export class ReplyWorkflowService {
         return 'opening';
       }
 
-      await this.opsEventsRecorder.recordEvent({
+      const repliedInput = {
         corpId,
-        eventName: 'agent.replied',
+        eventName: 'agent.replied' as const,
         idempotencyKey: `${traceId}:replied`,
         botImId,
         managerName: primaryMessage.botUserId,
         sourceChannel: 'unknown',
         userId,
         chatId,
-      });
+        ...(durable ? { occurredAt: durable.turn.inputOccurredAt } : {}),
+      };
+      await durable?.assertOwned?.();
+      if (durable) await this.opsEventsRecorder.recordEventDurably(repliedInput, owned);
+      else await this.opsEventsRecorder.recordEvent(repliedInput);
       return 'reply';
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);
+      if (durable) throw error;
       return 'unknown';
     }
   }

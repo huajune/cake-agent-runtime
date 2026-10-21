@@ -68,6 +68,28 @@ export class OpsEventsRecorderService {
     await this.persistEvent(input, true, context);
   }
 
+  /** Preserve opening classification when its event committed before follow-up scheduling failed. */
+  async recordOpeningDurably(
+    input: RecordOpsEventInput,
+    logicalTurnId: string,
+    context?: { assertOwned(): Promise<void> },
+  ): Promise<boolean> {
+    if (input.eventName !== 'agent.opening_sent' || !input.chatId || !input.occurredAt)
+      throw new Error('Invalid durable opening identity');
+    const result = await this.persistEvent(
+      {
+        ...input,
+        payload: { ...input.payload, logical_turn_id: logicalTurnId },
+      },
+      true,
+      context,
+    );
+    return (
+      result === 'inserted' ||
+      (await this.repository.openingLogicalTurn(input.corpId, input.chatId)) === logicalTurnId
+    );
+  }
+
   private async persistEvent(
     input: RecordOpsEventInput,
     requireDurable: boolean,

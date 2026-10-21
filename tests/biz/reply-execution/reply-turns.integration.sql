@@ -21,6 +21,8 @@ begin
   assert not exists(select 1 from public.agent_reply_inputs where corp_id='d-test' and message_id='new-input'),'new input not swallowed by old plan';
   response:=public.transition_agent_reply_turn('settle',base);
   assert response->>'conflict'='unresolved_reply_segments','cannot ack missing segments';
+  response:=public.transition_agent_reply_turn('open',base||'{"inputIds":["task:follow-up"],"logicalTurnId":"task-new","recovery":{"task":{"kind":"reengagement"}}}');
+  assert response->>'conflict'='different_reply_intent_pending','proactive task cannot borrow an ordinary reply plan';
 
   insert into public.agent_action_records(corp_id,action_id,account_id,chat_id,logical_turn_id,kind,resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,status,owner,dispatch_attempt_id,fence,attempts,recovery_deadline,review_required)
     select 'd-test','segment-'||n,'bot','chat','turn-1','wecom.reply_segment','resource-'||n,'hash-'||n,'request-'||n,
@@ -80,5 +82,24 @@ begin
   perform public.redact_completed_agent_reply_turns(100);
   assert exists(select 1 from public.agent_reply_turns t where t.corp_id='d-test' and t.logical_turn_id='turn-1' and t.plan is null),'completed payload redacted';
   assert (select count(*) from public.agent_reply_inputs where corp_id='d-test' and logical_turn_id='turn-1')=2,'membership tombstone remains';
+
+  base:=base||jsonb_build_object('chatId','task-chat','logicalTurnId','task-turn','inputIds',jsonb_build_array('task:old-touch'),
+    'inputOccurredAt',now()-interval '4 days','recovery','{"task":{"kind":"reengagement","data":{"jobData":{"workOrderId":42},"batchId":"original-trace","sentAt":1782266400000}}}'::jsonb);
+  response:=public.transition_agent_reply_turn('open',base);
+  assert response->'turn'->>'projection_status'='pending','task repair admitted durably before any send';
+  plan:='{"version":1,"text":"original task text","segments":[{"index":0,"text":"original task text","actionId":"task-segment","requestId":"task-request"}]}';
+  response:=public.transition_agent_reply_turn('plan',base||jsonb_build_object('fence',1,'plan',plan));
+  insert into public.agent_action_records(corp_id,action_id,account_id,chat_id,logical_turn_id,kind,resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,status,recovery_deadline)
+    values('d-test','task-segment','bot','task-chat','task-turn','wecom.reply_segment','task-resource','task-hash','task-request','{"parameters":{"text":"original task text"}}',now()-interval '4 days','execute','succeeded',now()-interval '3 days');
+  response:=public.transition_agent_reply_turn('settle',base);
+  response:=public.transition_agent_reply_turn('ack',base);
+  update public.agent_reply_turns set updated_at=now()-interval '91 days',projection_next_check_at=now()-interval '1 minute' where corp_id='d-test' and logical_turn_id='task-turn';
+  perform public.redact_completed_agent_reply_turns(100);
+  assert exists(select 1 from public.agent_reply_turns t where t.logical_turn_id='task-turn' and t.recovery->'task' is not null and t.plan is not null),'pending local repair is never redacted after ack or Redis expiry';
+  assert exists(select 1 from public.agent_reply_turns where logical_turn_id='task-turn' and projection_status='pending' and projection_next_check_at<=now()),'confirmed task remains indexed until projection completes';
+  response:=public.transition_agent_reply_turn('project',base);
+  assert response->'turn'->>'projection_status'='complete','projection completion is separate from delivery ack';
+  response:=public.transition_agent_reply_turn('project',base);
+  assert response->'turn'->>'projection_status'='complete','projection completion is idempotent';
 end $$;
 rollback;

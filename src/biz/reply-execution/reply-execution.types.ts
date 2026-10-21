@@ -31,6 +31,7 @@ export interface ReplyTurn extends ReplyTurnScope {
   fence: number;
   plan: ReplyPlan | null;
   recovery: Record<string, unknown>;
+  projectionStatus?: 'none' | 'pending' | 'complete';
 }
 
 /** Deliberate suspension, never a reason to generate/send a fallback. */

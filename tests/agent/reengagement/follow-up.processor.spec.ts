@@ -72,7 +72,15 @@ describe('FollowUpProcessor', () => {
   let configService: { get: jest.Mock };
   let actionPermit: { evaluate: jest.Mock };
   let candidateProgress: { read: jest.Mock };
-  let delivery: { deliver: jest.Mock; beginReply: jest.Mock; completeConfirmedReply: jest.Mock };
+  let delivery: {
+    deliver: jest.Mock;
+    beginReply: jest.Mock;
+    completeConfirmedReply: jest.Mock;
+    pendingReplyTasks: jest.Mock;
+    finishReplyTask: jest.Mock;
+    deferReplyTask: jest.Mock;
+    withReplyRecovery: jest.Mock;
+  };
   const failures = { report: jest.fn() };
   let requestContext: { get: jest.Mock; run: jest.Mock };
 
@@ -188,6 +196,12 @@ describe('FollowUpProcessor', () => {
     delivery = {
       beginReply: jest.fn().mockResolvedValue(undefined),
       completeConfirmedReply: jest.fn().mockResolvedValue(false),
+      pendingReplyTasks: jest.fn().mockResolvedValue([]),
+      finishReplyTask: jest.fn().mockResolvedValue(undefined),
+      deferReplyTask: jest.fn().mockResolvedValue(undefined),
+      withReplyRecovery: jest.fn(async (_turn, task) =>
+        task(jest.fn().mockResolvedValue(undefined)),
+      ),
       deliver: jest.fn().mockResolvedValue({
         success: true,
         segmentCount: 1,
@@ -331,6 +345,85 @@ describe('FollowUpProcessor', () => {
     expect(delivery.deliver).not.toHaveBeenCalled();
     expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(touchLedger.markSent).not.toHaveBeenCalled();
+  });
+
+  const pendingTask = (over: Record<string, unknown> = {}) => ({
+    corpId: 'corp-1',
+    accountId: 'bot-1',
+    chatId: 'sess-1',
+    logicalTurnId: 'persistent-task',
+    status: 'planned',
+    projectionStatus: 'pending',
+    inputOccurredAt: new Date(Date.now() - 4 * 86400_000).toISOString(),
+    plan: { text: 'original frozen text', segments: [{ index: 0, actionId: 'a' }] },
+    recovery: {
+      task: {
+        kind: 'reengagement',
+        data: {
+          jobData: {
+            sessionRef,
+            scenarioCode: 'post_interview_onboarding',
+            anchorEventId: 'evt-old',
+            anchorAt: Date.now() - 4 * 86400_000,
+            workOrderId: 42,
+          },
+          sentAt: 1782266400000,
+          batchId: 'original-model-trace',
+        },
+      },
+    },
+    ...over,
+  });
+
+  it('repairs a four-day-old confirmed touch with no Redis recovery and without a new send', async () => {
+    const turn = pendingTask();
+    delivery.pendingReplyTasks.mockResolvedValue([turn]);
+    delivery.completeConfirmedReply.mockResolvedValue(true);
+    touchLedger.getRecovery.mockResolvedValue(null);
+    touchLedger.listUnknownSlots.mockResolvedValue([]);
+    await buildProcessor().recoverUnknownTouches();
+    expect(scheduler.scheduleOnboardingCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ workOrderId: 42, anchorAt: 1782266400000 }),
+    );
+    expect(scheduler.scheduleOnboardingCheck.mock.invocationCallOrder[0]).toBeLessThan(
+      touchLedger.markSent.mock.invocationCallOrder[0],
+    );
+    expect(delivery.finishReplyTask).toHaveBeenCalledWith(turn);
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(delivery.beginReply).not.toHaveBeenCalled();
+  });
+
+  it('does not mark sent or complete the projection when the dependent queue admission fails', async () => {
+    const turn = pendingTask();
+    delivery.pendingReplyTasks.mockResolvedValue([turn]);
+    delivery.completeConfirmedReply.mockResolvedValue(true);
+    scheduler.scheduleOnboardingCheck.mockResolvedValueOnce({
+      scheduled: false,
+      reason: 'enqueue_error',
+    });
+    const processor = buildProcessor();
+    await processor.recoverUnknownTouches();
+    expect(touchLedger.markSent).not.toHaveBeenCalled();
+    expect(delivery.finishReplyTask).not.toHaveBeenCalled();
+    await processor.recoverUnknownTouches();
+    expect(delivery.finishReplyTask).toHaveBeenCalledTimes(1);
+    expect(touchLedger.markSent).toHaveBeenCalledTimes(1);
+    expect(delivery.deliver).not.toHaveBeenCalled();
+  });
+
+  it('never records cancelled terminal plans as a sent touch during durable repair', async () => {
+    const turn = pendingTask({ status: 'acked' });
+    delivery.pendingReplyTasks.mockResolvedValue([turn]);
+    delivery.completeConfirmedReply.mockResolvedValue(false);
+    await buildProcessor().recoverUnknownTouches();
+    expect(touchLedger.markSent).not.toHaveBeenCalled();
+    expect(scheduler.scheduleOnboardingCheck).not.toHaveBeenCalled();
+    expect(delivery.finishReplyTask).toHaveBeenCalledWith(turn);
+    expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+      'sess-1:post_interview_onboarding:evt-old',
+      'failed',
+    );
   });
 
   it('does not turn a cancelled acknowledged plan into sent history or frequency', async () => {

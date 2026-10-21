@@ -7,6 +7,8 @@ create table if not exists public.agent_reply_turns (
   status text not null default 'preparing' check(status in ('preparing','planned','settled','acked')),
   owner text, fence integer not null default 1, generation_until timestamptz,
   plan jsonb, recovery jsonb not null default '{}',
+  projection_status text not null default 'none' check(projection_status in ('none','pending','complete')),
+  projection_next_check_at timestamptz,
   review_required boolean not null default false, next_check_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   primary key(corp_id,logical_turn_id), check(cardinality(input_ids)>0)
 );
@@ -22,6 +24,8 @@ create index agent_reply_turns_pending on public.agent_reply_turns(corp_id,accou
 drop index if exists public.agent_reply_turns_due;
 create index agent_reply_turns_due on public.agent_reply_turns(next_check_at)
   where mode='execute' and status in ('preparing','planned','settled') and (recovery->'primary') is not null;
+create index agent_reply_task_projection_due on public.agent_reply_turns(projection_next_check_at)
+  where mode='execute' and projection_status='pending' and recovery->'task'->>'kind'='reengagement';
 drop index if exists public.agent_reply_turns_retention;
 create index agent_reply_turns_retention on public.agent_reply_turns(updated_at)
   where status='acked' and plan is not null;
@@ -49,10 +53,16 @@ begin
     if r.logical_turn_id is null then
       select * into r from public.agent_reply_turns where corp_id=v_corp and account_id=v_account and chat_id=v_chat
         and mode='execute' and status<>'acked' order by created_at limit 1 for update;
+      if r.logical_turn_id is not null and not (r.input_ids&&v_ids)
+        and (r.recovery?'task' or p_input->'recovery'?'task' or v_ids[1] like 'task:%' or r.input_ids[1] like 'task:%') then
+        return jsonb_build_object('conflict','different_reply_intent_pending');
+      end if;
     end if;
     if r.logical_turn_id is null and v_mode<>'off' then
-      insert into public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,owner,generation_until,recovery,next_check_at)
-        values(v_corp,v_account,v_chat,p_input->>'logicalTurnId',v_ids,(p_input->>'inputOccurredAt')::timestamptz,v_mode,p_input->>'owner',now()+interval '10 minutes',coalesce(p_input->'recovery','{}'),now()+interval '10 minutes') returning * into r;
+      insert into public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,owner,generation_until,recovery,next_check_at,projection_status,projection_next_check_at)
+        values(v_corp,v_account,v_chat,p_input->>'logicalTurnId',v_ids,(p_input->>'inputOccurredAt')::timestamptz,v_mode,p_input->>'owner',now()+interval '10 minutes',coalesce(p_input->'recovery','{}'),now()+interval '10 minutes',
+          case when p_input->'recovery'->'task'->>'kind'='reengagement' then 'pending' else 'none' end,
+          case when p_input->'recovery'->'task'->>'kind'='reengagement' then now()+interval '10 minutes' else null end) returning * into r;
       insert into public.agent_reply_inputs(corp_id,account_id,chat_id,message_id,logical_turn_id)
         select v_corp,v_account,v_chat,unnest(v_ids),r.logical_turn_id;
     elsif r.mode='execute' and r.status='preparing' then
@@ -92,6 +102,15 @@ begin
         update public.agent_reply_turns set status='acked',next_check_at=null,updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       end if;
+    elsif p_operation='project' then
+      if r.status not in ('settled','acked') then return jsonb_build_object('conflict','reply_not_settled'); end if;
+      update public.agent_reply_turns set projection_status='complete',projection_next_check_at=null,updated_at=now()
+        where corp_id=v_corp and logical_turn_id=r.logical_turn_id and projection_status='pending' returning * into r;
+      if r.logical_turn_id is null then select * into r from public.agent_reply_turns where corp_id=v_corp and logical_turn_id=p_input->>'logicalTurnId'; end if;
+    elsif p_operation='defer_projection' then
+      update public.agent_reply_turns set projection_next_check_at=now()+case when input_occurred_at<now()-interval '1 day' then interval '1 hour' else interval '1 minute' end
+        where corp_id=v_corp and logical_turn_id=r.logical_turn_id and projection_status='pending' returning * into r;
+      if r.logical_turn_id is null then select * into r from public.agent_reply_turns where corp_id=v_corp and logical_turn_id=p_input->>'logicalTurnId'; end if;
     elsif p_operation='defer' then
       update public.agent_reply_turns set review_required=(status='preparing' or (status='planned' and input_occurred_at<now()-interval '1 day')),
         next_check_at=case when status='preparing' or (status='planned' and input_occurred_at<now()-interval '1 day') then null else now()+interval '1 minute' end
@@ -145,6 +164,7 @@ begin
     values(r.corp_id,r.action_id,r.dispatch_attempt_id,md5(v_completion::text),v_completion) on conflict do nothing;
   update public.agent_action_records set next_check_at=now() where corp_id=r.corp_id and action_id=r.action_id and status in ('executing','unknown');
   update public.agent_reply_turns set next_check_at=now() where corp_id=r.corp_id and logical_turn_id=r.logical_turn_id and status='planned';
+  update public.agent_reply_turns set projection_next_check_at=now() where corp_id=r.corp_id and logical_turn_id=r.logical_turn_id and projection_status='pending';
   return true;
 end $$;
 revoke all on function public.append_agent_reply_callback(jsonb) from public,anon,authenticated;
@@ -155,7 +175,7 @@ returns integer language plpgsql security definer set search_path=public,pg_temp
 declare n integer;
 begin
   with candidates as (select corp_id,logical_turn_id from public.agent_reply_turns
-    where status='acked' and plan is not null and updated_at<now()-interval '90 days'
+    where status='acked' and projection_status<>'pending' and plan is not null and updated_at<now()-interval '90 days'
     order by updated_at limit least(p_limit,100) for update skip locked)
   update public.agent_reply_turns t set plan=null,recovery='{}' from candidates c
     where t.corp_id=c.corp_id and t.logical_turn_id=c.logical_turn_id;
