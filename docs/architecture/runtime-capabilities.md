@@ -25,9 +25,11 @@
 
 群任务主消息、小程序和附加文本分别记录。主动触达恢复须重新检查业务场景和当前行动许可；已确认触达只补本地结局，不借补账新增外部邀请。
 
+最小复聊任务上下文随回复计划持久保存，Redis 临时记录过期不等于任务可以重新发送。派发窗口采用首次排程的到期时间并冻结，业务锚点仍用于新旧版本和切换边界判断。排程与本地写入完成后才结束任务投影；恢复每次写前复核会话租约和预算，数据库版本条件及精确输入确认仍是跨存储竞争的最终保护。
+
 ## 开关与部署顺序
 
-1. 单独验证并执行动作迁移 `20261021090000_agent_action_records.sql`，随后回复迁移 `20261021100000_reply_turns.sql`；预约轮询索引为 `20261021110000_booking_poll_seek_index.sql`，本地预约版本保护为 `20261021130000_version_booking_projections.sql`。投影迁移依赖原有长期记忆表。不能连带执行其他历史待迁移文件。
+1. 按序单独验证并执行动作迁移 `20261021090000_agent_action_records.sql`、业务事件补账迁移 `20261021093000_action_ops_event_projection.sql`、回复迁移 `20261021100000_reply_turns.sql`、预约轮询索引 `20261021110000_booking_poll_seek_index.sql`、本地预约版本保护 `20261021130000_version_booking_projections.sql`。事件迁移依赖原有 `ops_events`，投影迁移依赖原有长期记忆表。观察档部署同样需要这些 RPC，不能连带执行其他历史待迁移文件。
 2. 应用保持 `ACTION_EXECUTION_MODE=observe`，核对观察数据、账号身份、回调路由及恢复告警。
 3. 用户确认后才设置输入切换边界并启用 execute。回退必须保留边界和已有执行记录的恢复能力。
 4. 进度窗口当前固定 legacy，只记录差异；新统一口径需要另行评审和实现切换，不能随动作开关改变。
@@ -40,5 +42,6 @@
 - [候选人进度与七套窗口](../../src/biz/candidate-progress/README.md)
 - [群任务与复聊恢复](../technical/runtime-scheduled-actions.md)
 - [后台作业](../technical/runtime-background-jobs.md)及[轮询 EXPLAIN 验证](../technical/runtime-background-jobs-explain.md)
+- [本轮实施、PR 与验证记录](../technical/runtime-systematization-validation.md)
 
 确定性测试、隔离 PostgreSQL 事务/竞争验证与真实模型受控回归分别证明不同边界。模型回归使用虚构候选人和本地业务替身，不代表供应商线上幂等能力已经验证，也不代表已发布到生产。

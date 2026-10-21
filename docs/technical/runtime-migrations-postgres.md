@@ -4,6 +4,8 @@
 
 合并后的代码在仓库根目录执行一条命令：
 
+前提是已有上述隔离测试容器。若此前测试容器已清理，可先运行 `docker run -d --name cake-runtime-pg-20261021 --network none -e POSTGRES_HOST_AUTH_METHOD=trust postgres:15-alpine`，再用 `docker exec cake-runtime-pg-20261021 pg_isready -U postgres` 确认就绪；该容器不映射端口，仅保存虚构测试数据。
+
 ```bash
 python3 tests/biz/action-execution/verify-runtime-postgres.py \
   --container cake-runtime-pg-20261021 \
