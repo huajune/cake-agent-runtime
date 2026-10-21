@@ -6,7 +6,10 @@ import type { BrandItem } from '@/sponge/sponge.types';
 import {
   allRejectedAsUnmatched,
   buildBrandQueryPlan,
+  findRejectedIdNeighbors,
   findUnmentionedQueryBrands,
+  findUnprovenancedRejectedBrands,
+  rejectedBrandIds,
   toBrandQueryMeta,
 } from '@tools/job-list/brand-query.util';
 import { normalizeBrandNameForComparison } from '@resolution/brand/brand-normalize';
@@ -29,6 +32,16 @@ const stateWith = (
 ): SessionBrandState => ({ currentBrand: current, excludedBrands: excluded });
 
 describe('品牌提及集合校验', () => {
+  it.each(['100006', '１００００６'])('数字别名 %s 不产生未合作结论', (alias) => {
+    const plan = buildBrandQueryPlan({ brandAliasList: [alias], brandIdList: [], catalog });
+    expect(plan.rejected).toEqual([{ input: '100006', reason: 'unmatched_id' }]);
+    expect(allRejectedAsUnmatched(plan)).toBe(false);
+    expect(rejectedBrandIds(plan)).toEqual(['100006']);
+  });
+  it('数字别名只有目录核验通过才转成品牌', () => {
+    const plan = buildBrandQueryPlan({ brandAliasList: ['10001'], brandIdList: [], catalog });
+    expect(plan.applied).toEqual([{ canonicalName: '肯德基', brandId: 10001 }]);
+  });
   const mentioned = (...names: string[]) => new Set(names.map(normalizeBrandNameForComparison));
   const planFor = (brandAliasList: string[], brandIdList: number[] = []) =>
     buildBrandQueryPlan({ brandAliasList, brandIdList, catalog });
@@ -85,9 +98,24 @@ describe('品牌提及集合校验', () => {
     expect(findUnmentionedQueryBrands(fallback, mentioned(), catalog)).toEqual([]);
   });
 
-  it('不把未知或歧义品牌的原有解析结果改成无出处错误', () => {
-    expect(findUnmentionedQueryBrands(planFor(['小龙']), mentioned(), catalog)).toEqual([]);
-    expect(findUnmentionedQueryBrands(planFor(['未知品牌']), mentioned(), catalog)).toEqual([]);
+  it('未知或歧义品牌同样核对出处，已登记提及和候选人原话均有效', () => {
+    expect(findUnmentionedQueryBrands(planFor(['小龙']), mentioned(), catalog)).toEqual([
+      { canonicalName: '小龙', brandId: null },
+    ]);
+    expect(
+      findUnmentionedQueryBrands(planFor(['未知品牌']), mentioned('未知品牌'), catalog),
+    ).toEqual([]);
+    expect(
+      findUnmentionedQueryBrands(planFor(['小龙']), mentioned(), catalog, ['小龙招人吗']),
+    ).toEqual([]);
+  });
+
+  it('合法品牌与目录外品牌混传时仍拒绝无出处的品牌', () => {
+    expect(
+      findUnmentionedQueryBrands(planFor(['KFC', '星巴克']), mentioned('肯德基'), catalog, [
+        '肯德基有岗吗',
+      ]),
+    ).toEqual([{ canonicalName: '星巴克', brandId: null }]);
   });
 });
 
@@ -335,5 +363,138 @@ describe('allRejectedAsUnmatched', () => {
 
   it('没有被拒品牌时为 false', () => {
     expect(allRejectedAsUnmatched(planWith([]))).toBe(false);
+  });
+});
+
+describe('目录外品牌 ID（badcase 2026-10-16 trace batch_6ad1eb74ce406a6aeec80597_1792142350490：视觉把 10006 读成 100006）', () => {
+  const catalogWithPizzaHut: BrandItem[] = [...catalog, { id: 10006, name: '必胜客', aliases: [] }];
+
+  it('目录带 ID 时，目录外的 ID 进 rejected(unmatched_id)，不再用 String(id) 冒充品牌名', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [100006],
+      sessionBrandState: null,
+      catalog: catalogWithPizzaHut,
+    });
+    expect(plan.allRejected).toBe(true);
+    expect(plan.applied).toEqual([]);
+    expect(plan.queryBrandIdList).toEqual([]);
+    expect(plan.rejected).toEqual([{ input: '100006', reason: 'unmatched_id' }]);
+    expect(toBrandQueryMeta(plan).appliedCanonicalNames).toEqual([]);
+  });
+
+  it('目录内 ID 照常采信，与目录外 ID 混传时只拒目录外那一个', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [10006, 100006],
+      sessionBrandState: null,
+      catalog: catalogWithPizzaHut,
+    });
+    expect(plan.allRejected).toBe(false);
+    expect(plan.queryBrandIdList).toEqual([10006]);
+    expect(plan.applied).toEqual([{ canonicalName: '必胜客', brandId: 10006 }]);
+    expect(plan.rejected).toEqual([{ input: '100006', reason: 'unmatched_id' }]);
+  });
+
+  it('目录整体缺 id 时拒绝无法核验的模型 ID', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [100006],
+      sessionBrandState: null,
+      catalog: [{ name: '必胜客', aliases: [] }],
+    });
+    expect(plan.rejected).toEqual([{ input: '100006', reason: 'unmatched_id' }]);
+    expect(plan.queryBrandIdList).toEqual([]);
+    expect(plan.applied).toEqual([]);
+  });
+
+  it('unmatched_id 不算"没合作"：allRejectedAsUnmatched 为 false', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [100006],
+      sessionBrandState: null,
+      catalog: catalogWithPizzaHut,
+    });
+    expect(allRejectedAsUnmatched(plan)).toBe(false);
+    expect(rejectedBrandIds(plan)).toEqual(['100006']);
+  });
+
+  it('数字近邻只接受单字符插入/删除：100006→10006（多读一位）、1006→10006（少读一位）', () => {
+    const more = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [100006],
+      sessionBrandState: null,
+      catalog: catalogWithPizzaHut,
+    });
+    expect(findRejectedIdNeighbors(more, catalogWithPizzaHut)).toEqual([
+      { inputId: '100006', brandId: 10006, brandName: '必胜客', relation: 'delete_one_digit' },
+    ]);
+    const fewer = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [1006],
+      sessionBrandState: null,
+      catalog: catalogWithPizzaHut,
+    });
+    expect(findRejectedIdNeighbors(fewer, catalogWithPizzaHut).map((item) => item.brandId)).toEqual(
+      [10006],
+    );
+    expect(findRejectedIdNeighbors(fewer, catalogWithPizzaHut)[0].relation).toBe(
+      'insert_one_digit',
+    );
+  });
+
+  it('替换类差异（10007 vs 10006/10008）不是近邻，猜不得', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [10007],
+      sessionBrandState: null,
+      catalog: catalogWithPizzaHut,
+    });
+    expect(findRejectedIdNeighbors(plan, catalogWithPizzaHut)).toEqual([]);
+  });
+});
+
+describe('findUnprovenancedRejectedBrands（badcase 2026-10-13 trace batch_6acda349ce406a6aee8d6641_1791862156121：模型凭空传「星巴克」）', () => {
+  const planFor = (brandAliasList: string[], brandIdList: number[] = []) =>
+    buildBrandQueryPlan({ brandAliasList, brandIdList, catalog });
+
+  it('候选人原话没出现过的目录外品牌名被判为无出处', () => {
+    expect(
+      findUnprovenancedRejectedBrands(planFor(['星巴克']), ['福贤路岭南天地店有岗吗']),
+    ).toEqual([{ input: '星巴克', reason: 'unmatched' }]);
+  });
+
+  it('候选人原话或截图描述里出现过（含全半角/大小写差异）就有出处', () => {
+    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), ['星巴克还招人吗'])).toEqual([]);
+    expect(
+      findUnprovenancedRejectedBrands(planFor(['Blue Bottle']), [
+        '截图：ＢＬＵＥ ｂｏｔｔｌｅ 招聘',
+      ]),
+    ).toEqual([]);
+  });
+
+  it('出处材料不可用时不得断言没合作，已登记提及仍可提供依据', () => {
+    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), null)).toEqual([
+      { input: '星巴克', reason: 'unmatched' },
+    ]);
+    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), null, new Set(['星巴克']))).toEqual(
+      [],
+    );
+  });
+
+  it('目录外 ID 不走原话核对（ID 来自截图读数，另有数字近邻处置）', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [100006],
+      catalog: [...catalog, { id: 10006, name: '必胜客', aliases: [] }],
+    });
+    expect(findUnprovenancedRejectedBrands(plan, ['随便说点什么'])).toEqual([]);
+  });
+
+  it('歧义别名同样要有出处：候选人没说过的「小龙」不得进澄清话术', () => {
+    expect(findUnprovenancedRejectedBrands(planFor(['小龙']), ['我在上海'])).toEqual([
+      expect.objectContaining({ input: '小龙', reason: 'ambiguous' }),
+    ]);
+    expect(findUnprovenancedRejectedBrands(planFor(['小龙']), ['小龙有岗吗'])).toEqual([]);
   });
 });

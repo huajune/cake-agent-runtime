@@ -35,6 +35,7 @@ import {
   detectHumanServicePhraseLeak,
   detectMetaNarrationReply,
   detectInternalOutputLeak,
+  detectUnwrappedMetaNarration,
 } from './internal-info-leaks.rule';
 import { detectBookingReceiptMismatch } from './booking-receipt.rule';
 import { detectSettlementCycleMismatch } from './settlement-cycle-mismatch.rule';
@@ -134,6 +135,8 @@ export class HardRulesService {
      * 本轮焦点岗位时同样升 repair。
      */
     activeBookings?: readonly ActiveBookingEntry[];
+    pendingAdditionalCandidateJobId?: number;
+    submittedAdditionalCandidateBooking?: { jobId: number; workOrderId?: number };
     /**
      * 候选人学生身份（会话事实 + 本轮线索高置信合并）与已展示/焦点岗位的结构化社会身份档位，
      * 供零工具轮“这家接受学生”断言对账。读不到会话记忆时缺省，哨兵不运行。
@@ -185,6 +188,12 @@ export class HardRulesService {
     const metaNarrationReply = detectMetaNarrationReply(text);
     if (metaNarrationReply) {
       contradictions.push(metaNarrationReply);
+    }
+
+    // 无括号第三人称自指旁白：observe 哨兵，只落档量化，不拦截。
+    const unwrappedMetaNarration = detectUnwrappedMetaNarration(text);
+    if (unwrappedMetaNarration) {
+      contradictions.push(unwrappedMetaNarration);
     }
 
     const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(
@@ -298,6 +307,8 @@ export class HardRulesService {
       toolCalls,
       {
         activeBookings: params.activeBookings,
+        pendingAdditionalCandidateJobId: params.pendingAdditionalCandidateJobId,
+        submittedAdditionalCandidateBooking: params.submittedAdditionalCandidateBooking,
         focusJobId: params.memorySnapshot?.currentFocusJob?.jobId,
       },
     );

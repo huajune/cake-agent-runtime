@@ -74,12 +74,18 @@ describe('guardrail aggregate catalog', () => {
     }
   });
 
-  it('does not turn repair into a tool whitelist or introduce new replan rules', () => {
+  it('does not turn repair into a tool whitelist; replan rules stay an explicit closed list', () => {
     for (const rule of OUTPUT_RULE_CATALOG) expect(rule.repairToolNames).toEqual([]);
+    // replan 档只收"该发生的工具调用没发生"的规则：零工具查岗宣称、无出处岗位事实，以及
+    // 2026-10-19 升档的零 booking 假报名回执（文本改写补不回没发生的提交）。
     expect(
       OUTPUT_RULE_CATALOG.filter((rule) => rule.action === 'replan')
         .map((rule) => rule.id)
         .sort(),
-    ).toEqual(['job_fact_without_provenance', 'job_query_claim_without_query']);
+    ).toEqual([
+      'booking_done_claim_no_work_order',
+      'job_fact_without_provenance',
+      'job_query_claim_without_query',
+    ]);
   });
 });

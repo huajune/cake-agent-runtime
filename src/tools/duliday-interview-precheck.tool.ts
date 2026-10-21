@@ -60,7 +60,10 @@ import {
   type SnapshotDuplicateMatch,
 } from '@tools/booking/booking-snapshot.util';
 import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
-import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
+import {
+  describeWaitNoticeForCandidate,
+  formatInterviewTimeForReply,
+} from '@tools/booking/booking-reply-format.util';
 import {
   buildBookableSlots,
   buildScheduleRule,
@@ -108,6 +111,14 @@ const logger = new Logger('duliday_interview_precheck');
 export const COLLECTION_TEMPLATE_SEND_INSTRUCTION =
   '照发 bookingChecklist.templateText：标签逐字用原文，不得增删、重排字段行，不要另起一套收资清单；会话中候选人已明确说过的值可预填。首次收资时把 interview.bookableSlots 作为独立的「可约面试时间」区块一并展示，允许候选人一轮同时回复资料和时间。候选人发来值的**当轮**立即经 fieldValueProposals 提交本工具——提交字段值提案不等于提交预约；**禁止**在提交前自行复述资料向候选人讨确认。';
 
+/**
+ * 代报多人时下一人的入口纪律（2026-10-19，badcase x1soque5）：第一人 booking 成功后，模型曾凭聊天记录
+ * 自行手写第二人的"核对信息"段，候选人一句"好的"就被当成第二人也已报名——第二人从未 precheck、更没 booking。
+ * 每张表单的官方核对文本只能来自本工具（bookingChecklist / recap），下一人没有自己的 precheck 回执就不存在。
+ */
+export const NEXT_CANDIDATE_PRECHECK_FIRST_NOTE =
+  ' 若候选人还要代报下一个人：下一人必须先调用本工具 precheck(candidatePhone=下一人手机号) 拿到官方核对信息（bookingChecklist / recap），禁止自行手写第二人的核对段，也禁止在其 booking success=true 前说他已报名/预约成功。';
+
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
 
@@ -129,11 +140,12 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
-- confirm_collection：返回 recap.candidateMessage 时必须照发；未返回表示当前 KV 已真实送达，只需简短请候选人确认。如尚未选时间，可同时并列展示 interview.bookableSlots。
+- confirm_collection：返回 recap.candidateMessage 时必须照发；未返回表示当前 KV 已真实送达，只需简短请候选人确认。如尚未选时间，仅可展示 bookingAllowed=true 的时段；全部时段需人工确认时，只确认资料，不能让候选人选时间。
 - select_interview_time：资料已授权但尚未选择具体时段；interview.bookableSlots 是按 availabilityAuthority.evaluatedAt 和完整日期时间过滤后的唯一可约事实。只展示 bookingAllowed=true 的时段，不得根据 scheduleRule/processRemark 中“当天、前一天”等相对词二次计算或删减，不再复述资料。
 - screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。被筛掉的字段在本岗是终态：候选人改口也不入账，不要承诺在本岗更新该字段即可继续办理，换岗表单才会重新收这项。
 - handoff：停止收资并转人工。
 - age_boundary_handoff：候选人年龄在岗位要求的弹性带内，报名接口必拒；资料不重问、禁止 booking，调用 request_handoff（identity_age_exception）交人工裁量。
+- interview_time_manual_handoff：岗位近期面试窗口只标日期、没有具体面试时间，系统无可自助提交的时段；资料不重问、禁止 booking、不让候选人挑时间、不承诺"截止前帮你提交/留意来电"，直接调用 request_handoff（interview_slot_coordination）由人工线下提交。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
 - already_submitted：停止重复提交。
 - already_booked：候选人在该岗位已有在途工单（见 duplicateBookingGuard，可能刚由同事/另一账号提交），预约已经存在；禁止 booking、不再收资或征询日期，如实告知已约上并按工单登记的面试时间播报。改时间用 duliday_modify_interview_time（传 duplicateBookingGuard.workOrderId），取消用 duliday_cancel_work_order。`;
@@ -494,6 +506,7 @@ type PrecheckAction =
   | 'screening_rejected'
   | 'handoff'
   | 'age_boundary_handoff'
+  | 'interview_time_manual_handoff'
   | 'ready_to_book'
   | 'already_submitted'
   | 'already_booked';
@@ -690,11 +703,20 @@ export function buildInterviewPrecheckTool(
             jobId,
             windows,
           );
+          // 面试窗口全部只标日期/没有具体开始时间（slot 全部 bookingAllowed=false）：系统没有任何可自助
+          // 提交的时段，资料收齐后只能人工线下提交初筛。此前 nextAction 仍给 select_interview_time，
+          // 回执既禁 booking 又不指示转人工，模型只能向候选人承诺"我会在截止前帮你提交、留意来电"
+          // （2026-10-19 BadCase [13]，trace batch_6aca144ace406a6aeee2726c_1791629394395）。
+          const allSlotsRequireManualConfirmation =
+            !interviewTimeWaitNotice &&
+            bookableSlots.length > 0 &&
+            bookableSlots.every((slot) => !slot.bookingAllowed);
           const nextAction = actionForForm(
             formRun,
             interviewTimeWaitNotice,
             selectedTimeBookingAllowed,
             duplicateBookingGuard,
+            allSlotsRequireManualConfirmation,
           );
           context.ledger.jobs.collectionReadyJobId = undefined;
 
@@ -743,7 +765,12 @@ export function buildInterviewPrecheckTool(
             nextAction,
             collectionVerdict: formRun.verdict,
             candidateScope: formRun.form.candidateScope ?? 'primary',
-            _replyInstruction: replyInstruction(nextAction, formRun, duplicateBookingGuard),
+            _replyInstruction: replyInstruction(
+              nextAction,
+              formRun,
+              duplicateBookingGuard,
+              allSlotsRequireManualConfirmation,
+            ),
             duplicateBookingGuard,
             job: {
               jobId,
@@ -760,7 +787,7 @@ export function buildInterviewPrecheckTool(
               address: analysis.interviewMeta.address,
               interviewTimeMode: interviewTimeWaitNotice ? 'wait_notice' : undefined,
               interviewTimeModeNote: interviewTimeWaitNotice
-                ? '该岗位提交时不选面试时间；资料确认后 booking 不传 interviewTime，面试官会电话联系。'
+                ? `该岗位提交时不选面试时间；资料确认后 booking 不传 interviewTime。候选人口径：${describeWaitNoticeForCandidate(analysis.interviewMeta.method, analysis.normalizedRequirements.interviewRemarkDisplay)}`
                 : undefined,
               scheduleRule: scheduleRule || undefined,
               availabilityAuthority: interviewTimeWaitNotice
@@ -1101,6 +1128,7 @@ function actionForForm(
   waitNotice: boolean,
   selectedTimeBookingAllowed: boolean,
   duplicateBookingGuard?: DuplicateBookingGuard,
+  allSlotsRequireManualConfirmation = false,
 ): PrecheckAction {
   // 本表单自己已提交的工单优先（它知道自己的 workOrderId）；其余任何状态下，候选人名下
   // 查重窗口内的同岗位在途工单都是既成事实——继续收资/筛退/ready_to_book 都会引向一次
@@ -1122,6 +1150,9 @@ function actionForForm(
         return 'age_boundary_handoff';
       }
       if (!isCollectionAuthorized(run.form)) return 'confirm_collection';
+      // 近期窗口无一可自助提交：资料获授权后仍没有 booking 出口，转人工协调。
+      // 这类岗位是直接转人工还是海绵补齐面试时间，待运营裁定；裁定前按转人工实现。
+      if (allSlotsRequireManualConfirmation) return 'interview_time_manual_handoff';
       return isSubmissionAuthorized({
         form: run.form,
         waitNotice,
@@ -1137,6 +1168,7 @@ function replyInstruction(
   action: PrecheckAction,
   run: FormRun,
   duplicateBookingGuard?: DuplicateBookingGuard,
+  allSlotsRequireManualConfirmation = false,
 ): string {
   switch (action) {
     case 'collect_fields': {
@@ -1158,16 +1190,19 @@ function replyInstruction(
       return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。${rejectedNote}${modeNote}`;
     }
     case 'confirm_collection': {
+      const timingInstruction = allSlotsRequireManualConfirmation
+        ? '当前时段全部需人工确认，禁止展示为可选时间或让候选人挑选；先确认资料，确认后重调 precheck 转人工协调。'
+        : '若尚未选时间，可并列展示 interview.bookableSlots 中 bookingAllowed=true 的时段，允许一轮确认资料并选时间。';
       if (run.recapConfirmationRejection === 'recap_snapshot_mismatch' && run.recapText) {
         return '候选人的确认没能入账：此前复述未按官方文本送达（见 rejectedRecapConfirmation）。照发 recap.candidateMessage 重新复述并请候选人确认，确认后带 recapConfirmation 重调本工具。';
       }
       if (run.recapText) {
-        return '资料含外部预填。发送 recap.candidateMessage；若尚未选时间，同时并列展示 interview.bookableSlots，允许候选人一轮确认资料并选时间。确认前禁止 booking。';
+        return `资料含外部预填。发送 recap.candidateMessage；${timingInstruction}确认前禁止 booking。`;
       }
       const rejectionNote = run.recapConfirmationRejection
         ? ' 注意：本轮提交的 recapConfirmation 被公证退回，原因与改法见 rejectedRecapConfirmation。'
         : '';
-      return `已发过提交前复述但尚未得到明确确认。候选人本轮已明确表态确认的，立即带 recapConfirmation 重调本工具登记确认——不登记则确认永不入账；候选人尚未表态的才简短请他确认或指出哪项要改；若尚未选时间可同时给出真实 bookableSlots，禁止重发整张收资表。${rejectionNote}`;
+      return `已发过提交前复述但尚未得到明确确认。候选人本轮已明确表态确认的，立即带 recapConfirmation 重调本工具登记确认——不登记则确认永不入账；候选人尚未表态的才简短请他确认或指出哪项要改；${timingInstruction}禁止重发整张收资表。${rejectionNote}`;
     }
     case 'select_interview_time':
       return '候选人资料已经授权，但尚未选择具体预约时段。interview.bookableSlots 已按 availabilityAuthority.evaluatedAt 和完整报名截止时间过滤；只展示 bookingAllowed=true 的时段，严禁根据“当天”或当前钟点二次计算、删除时段。保留已收资料，不得重新收资或签发 booking。';
@@ -1181,14 +1216,20 @@ function replyInstruction(
     }
     case 'handoff':
       return `表单已转人工：${run.form.escalatedReason ?? 'unknown'}。停止发问并调用 request_handoff。`;
+    case 'interview_time_manual_handoff':
+      return (
+        '该岗位近期的面试窗口只标注日期、没有具体面试时间（interview.bookableSlots 全部 bookingAllowed=false，需门店线下确认提交时间）：' +
+        '系统没有任何可自助提交的时段，禁止调用 duliday_interview_booking，也不要让候选人挑时间、不要承诺"我会在截止前帮你提交 / 留意来电 / 到时候去门店"。' +
+        '资料已收齐，不要重问；直接调用 request_handoff（reasonCode=interview_slot_coordination，reason 写明岗位、候选人资料已收齐、面试窗口无具体时间需人工线下提交初筛），由人工接手提交并答复候选人。'
+      );
     case 'age_boundary_handoff': {
       const signal = ageBoundarySignalOf(run.form, run.contract);
       return `候选人年龄 ${signal?.candidateAge ?? '?'} 岁在岗位年龄要求（${signal?.requiredMin ?? '-'}~${signal?.requiredMax ?? '-'} 岁）的弹性带内：系统报名接口按硬区间会直接拒绝，禁止调用 duliday_interview_booking。资料已收齐，不要重问；调用 request_handoff（reasonCode=identity_age_exception）交人工裁量能否破例，并告知候选人年龄需要门店确认、稍后答复。`;
     }
     case 'ready_to_book':
       return run.form.candidateScope === 'additional'
-        ? '当前这位追加候选人的独立表单已授权。立即调用 duliday_interview_booking 完成这一人；只有 booking success=true 后才能处理下一人，不得并行 precheck/booking。'
-        : '候选人资料已授权，且非 wait_notice 岗位的预约草稿已通过本轮实时复验。可以调用 duliday_interview_booking；只有 booking success=true 后才能说已报名。';
+        ? `当前这位追加候选人的独立表单已授权。立即调用 duliday_interview_booking 完成这一人；只有 booking success=true 后才能处理下一人，不得并行 precheck/booking。${NEXT_CANDIDATE_PRECHECK_FIRST_NOTE}`
+        : `候选人资料已授权，且非 wait_notice 岗位的预约草稿已通过本轮实时复验。可以调用 duliday_interview_booking；只有 booking success=true 后才能说已报名。${NEXT_CANDIDATE_PRECHECK_FIRST_NOTE}`;
     case 'already_submitted':
       return `当前表单已提交（工单 ${run.form.workOrderId ?? 'unknown'}），禁止重复 booking。`;
     case 'already_booked': {

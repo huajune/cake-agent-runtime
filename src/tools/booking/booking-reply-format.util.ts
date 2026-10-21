@@ -10,6 +10,7 @@
  */
 
 import { WEEKDAY_LABELS_SHORT } from '@infra/utils/chinese-numeral.util';
+import { containsSensitiveScreeningText } from '@resolution/collection/sensitive-screening';
 import { requiresStoreVisit, type InterviewMethod } from '@sponge/interview-method';
 
 /**
@@ -45,6 +46,76 @@ export function resolveInterviewReceiptMode(
 ): InterviewReceiptMode {
   if (!interviewMethod) return 'unknown';
   return requiresStoreVisit(interviewMethod) ? 'on_site' : 'remote';
+}
+
+/**
+ * 等通知岗位（提交时不选面试时间）的候选人可见口径，按海绵四值面试方式分支。
+ *
+ * 此前一律「面试官会电话联系你」：AI 面试岗位实际是短信发面试链接，候选人等电话
+ * 等不到就流失（生产 trace batch_6acf1cc3ce406a6aeee8d66c_1791960188741，precheck 已返回
+ * interview.method=AI面试）。措辞草案待运营最终裁定。
+ *
+ * booking 回执、转人工前回执与 precheck 时间模式说明共用本函数，不得各自再写话术。
+ */
+export function describeWaitNoticeForCandidate(
+  interviewMethod: InterviewMethod | null | undefined,
+  processRemark?: string | null,
+): string {
+  switch (interviewMethod) {
+    case 'AI面试': {
+      if (containsSensitiveScreeningText(processRemark)) {
+        return '面试形式为 AI 面试，请留意面试安排通知，保持手机畅通。';
+      }
+      const processLead = firstSentence(processRemark);
+      // 备注可能与枚举冲突；有明确备注时不再叠加默认短信渠道承诺。
+      return processLead
+        ? `请留意面试安排通知，保持手机畅通。流程说明：「${processLead}」。`
+        : '第一轮是 AI 面试，面试链接会短信发到你手机，留意短信并按时完成；通过后店长再联系你。';
+    }
+    case '视频面试':
+      return '面试形式是视频面试，留意视频面试通知，请保持手机畅通。';
+    case '电话面试':
+      return '面试官会电话联系你，请保持电话畅通。';
+    case '线下面试':
+      return '面试形式是线下面试，请等待具体面试安排，保持手机畅通。';
+    default:
+      return '请等待面试安排通知，保持手机畅通。';
+  }
+}
+
+/**
+ * 给模型的等通知回执指引（`_waitNoticeReplyGuide`）：候选人口径 + 面试方式对应的禁令，
+ * AI 面试再并入岗位流程说明第一句（海绵「面试备注」常写明链接发送时间/完成截止）。
+ */
+export function buildWaitNoticeReplyGuide(params: {
+  interviewMethod: InterviewMethod | null | undefined;
+  processRemark?: string | null;
+}): string {
+  const candidateLine = describeWaitNoticeForCandidate(
+    params.interviewMethod,
+    params.processRemark,
+  );
+  const base = `告知候选人资料已提交，并照实说明：${candidateLine}禁止编造时间。`;
+  if (params.interviewMethod === 'AI面试') {
+    if (containsSensitiveScreeningText(params.processRemark)) {
+      return `${base}流程备注含内部筛选信息，不得复述，也不得补充未经确认的通知渠道或安排。`;
+    }
+    if (firstSentence(params.processRemark)) {
+      return `${base}岗位面试方式字段为 AI 面试；通知渠道和安排以流程说明为准，存在冲突时优先采用流程说明，不得补充其未说明的短信或电话承诺。`;
+    }
+    return `${base}这个岗位第一轮是 AI 面试，禁止说"面试官会电话联系"。`;
+  }
+  if (params.interviewMethod === '视频面试') {
+    return `${base}禁止说"面试官会电话联系"或"到店面试"。`;
+  }
+  return base;
+}
+
+function firstSentence(text: string | null | undefined): string | null {
+  const trimmed = text?.trim();
+  if (!trimmed) return null;
+  const lead = trimmed.split(/[。；;！!\n]/u)[0]?.trim();
+  return lead ? lead : null;
 }
 
 export interface ManualInterviewGroupHandling {

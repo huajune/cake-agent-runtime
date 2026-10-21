@@ -203,6 +203,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
           querySignature: jobListQuerySignature,
           invalidatedJobIds: [...invalidatedJobIds],
           bookingSucceeded: ledger.jobs.bookingSucceeded,
+          ...(ledger.jobs.confirmedBookingJobIds === undefined
+            ? {}
+            : { confirmedBookingJobIds: [...ledger.jobs.confirmedBookingJobIds] }),
           ...(ledger.jobs.postBookingGroupInvite === undefined
             ? {}
             : { postBookingGroupInvite: { ...ledger.jobs.postBookingGroupInvite } }),

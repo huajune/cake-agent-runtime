@@ -1,4 +1,5 @@
 import { buildSendStoreLocationTool } from '@tools/send-store-location.tool';
+import type { RecommendedJobSummary } from '@resolution/job';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { SendMessageType } from '@channels/wecom/message-sender/dto/send-message.dto';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
@@ -11,6 +12,9 @@ interface LocationContextOverrides {
   imRoomId?: string;
   chatId?: string;
   activeBookingJobIds?: number[];
+  candidatePool?: RecommendedJobSummary[];
+  fetchedJobs?: RecommendedJobSummary[];
+  confirmedBookingJobIds?: number[];
   currentFocusJob?: ToolBuildContext['archive']['currentFocusJob'];
   currentUserMessage?: string;
   messages?: unknown[];
@@ -67,7 +71,14 @@ describe('buildSendStoreLocationTool', () => {
         ...(has('imRoomId') ? { imRoomId: overrides.imRoomId } : {}),
         ...(has('chatId') ? { chatId: overrides.chatId } : {}),
       },
+      ledger: {
+        jobs: {
+          fetchedJobs: overrides.fetchedJobs ?? [],
+          confirmedBookingJobIds: overrides.confirmedBookingJobIds,
+        },
+      },
       archive: {
+        candidatePool: overrides.candidatePool ?? [],
         ...(overrides.activeBookingJobIds === undefined
           ? {}
           : { activeBookingJobIds: overrides.activeBookingJobIds }),
@@ -87,6 +98,7 @@ describe('buildSendStoreLocationTool', () => {
   const makeJob = (overrides: Record<string, unknown> = {}) => ({
     basicInfo: {
       jobId: 100,
+      brandName: '必胜客',
       jobName: '北京必胜客-青塔-服务员-兼职',
       storeInfo: {
         storeName: '青塔店',
@@ -122,6 +134,239 @@ describe('buildSendStoreLocationTool', () => {
     jest.clearAllMocks();
   });
 
+  const referencedStore: RecommendedJobSummary = {
+    jobId: 200,
+    brandName: '肯德基',
+    jobName: '服务员',
+    storeName: '佛山-李苑雯-幸福里DT-GZ7001',
+    cityName: '佛山市',
+    regionName: null,
+    laborForm: '兼职',
+    salaryDesc: null,
+    jobCategoryName: null,
+  };
+
+  it.each(['candidatePool', 'fetchedJobs'] as const)(
+    'rejects the stale focus when the user names a coded store from %s before sending',
+    async (poolKey) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      const result = await executeTool(
+        {},
+        {
+          [poolKey]: [referencedStore],
+          currentUserMessage: '幸福里那家发个定位',
+        },
+      );
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+      expect(result.referencedJobs).toContainEqual(expect.objectContaining({ jobId: 200 }));
+      expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+      expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['虹桥店', '必胜客虹桥店'])(
+    'rejects an explicitly named store absent from the pool: %s',
+    async (referenceText) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+      const result = await executeTool(
+        { jobId: 100, referenceText },
+        { currentUserMessage: `${referenceText}定位发我` },
+      );
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+      expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('长短店名独立出现时，不向候选人发送被拒绝的长店名定位', async () => {
+    const longer = makeJob({
+      storeInfo: { ...makeJob().basicInfo.storeInfo, storeName: '东方广场店' },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [longer] });
+    const result = await executeTool(
+      { jobId: 100, referenceText: '朝内店' },
+      {
+        candidatePool: [{ ...referencedStore, brandName: '必胜客', storeName: '朝内店' }],
+        currentUserMessage: '不要东方广场店，发朝内店定位',
+      },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+    expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
+  });
+
+  it('accepts an exact named store and rejects a fabricated reference', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const rejected = await executeTool(
+      { jobId: 100, referenceText: '青塔店' },
+      { currentUserMessage: '虹桥店定位发我' },
+    );
+    expect(rejected.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+    const accepted = await executeTool(
+      { jobId: 100, referenceText: '必胜客青塔店' },
+      { currentUserMessage: '必胜客青塔店定位发我' },
+    );
+    expect(accepted.errorType).not.toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+  });
+
+  it('rejects a different store even within the same brand', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        candidatePool: [{ ...referencedStore, brandName: '必胜客' }],
+        currentUserMessage: '幸福里那家在哪',
+      },
+    );
+    expect(result.success).toBe(false);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not choose a location when the named brand has multiple stores', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        candidatePool: [referencedStore, { ...referencedStore, jobId: 201, storeName: '另一门店' }],
+        currentUserMessage: '发一下肯德基定位',
+      },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+    expect(result.referencedJobs).toHaveLength(2);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not send a store that contradicts the explicitly named brand', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const result = await executeTool(
+      { jobId: 100 },
+      { candidatePool: [referencedStore], currentUserMessage: '肯德基青塔店的定位发我' },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('same-turn booking followed by location failure keeps the booked handoff instruction', async () => {
+    mockSpongeService.fetchJobs.mockRejectedValueOnce(new Error('upstream unavailable'));
+    const result = await executeTool(
+      { jobId: 100 },
+      { confirmedBookingJobIds: [100], currentUserMessage: '面试地址发我' },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_SEND_FAILED);
+    expect(result._replyInstruction).toContain('request_handoff(cannot_find_store)');
+    expect(result._replyInstruction).not.toContain('用文字告知');
+  });
+
+  it('allows multiple jobs at the same confirmed physical store', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const target = mockContext.archive.currentFocusJob!;
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        candidatePool: [{ ...target, jobId: 101, cityName: null }],
+        currentUserMessage: '青塔店的位置',
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the correctly referenced coded store and echoes its brand and store', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          jobId: 200,
+          brandName: '肯德基',
+          storeInfo: {
+            storeName: referencedStore.storeName,
+            storeCityName: '佛山市',
+            storeAddress: '佛山市幸福里一楼',
+            latitude: 23,
+            longitude: 113,
+          },
+        }),
+      ],
+    });
+    const result = await executeTool(
+      { jobId: 200 },
+      {
+        candidatePool: [referencedStore],
+        currentUserMessage: '幸福里那家发个定位',
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result._fixedReply).toContain('肯德基·佛山-李苑雯-幸福里DT-GZ7001');
+    expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fall back to an unrelated job returned by the upstream API', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob({ jobId: 200 })] });
+    const result = await executeTool({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_JOB_NOT_FOUND);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [false, '线下面试'],
+    [true, '线下面试'],
+    [false, 'AI面试'],
+    [true, 'AI面试'],
+    [false, '电话面试'],
+    [true, '电话面试'],
+    [false, '视频面试'],
+    [true, '视频面试'],
+    [false, null],
+    [true, null],
+  ] as const)(
+    'uses booking=%s and interview=%s for workplace location wording',
+    async (booked, method) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          {
+            ...makeJob(),
+            interviewProcess: { firstInterview: { firstInterviewWay: method } },
+          },
+        ],
+      });
+      const result = await executeTool(
+        { jobId: 100, destination: 'store' },
+        {
+          activeBookingJobIds: booked ? [100] : [],
+          currentUserMessage: '想看看上班地址',
+        },
+      );
+      expect(result.success).toBe(true);
+      expect(result._fixedReply.includes('别走错')).toBe(booked && method === '线下面试');
+      expect(result._fixedReply.includes('先报名约面')).toBe(!booked);
+      if (method && method !== '线下面试') {
+        expect(result._fixedReply).toContain('这岗是' + method + '，不用到店面试');
+      }
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([[100], [200]])(
+    'uses a same-turn successful booking only for its actual job %j',
+    async (jobId) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          {
+            ...makeJob(),
+            interviewProcess: { firstInterview: { firstInterviewWay: '线下面试' } },
+          },
+        ],
+      });
+      const result = await executeTool(
+        { jobId: 100, destination: 'store' },
+        {
+          confirmedBookingJobIds: [jobId],
+          currentUserMessage: '想看看上班地址',
+        },
+      );
+      expect(result._fixedReply.includes('先报名约面')).toBe(jobId !== 100);
+      expect(result._fixedReply.includes('别走错')).toBe(jobId === 100);
+    },
+  );
+
   it('should send location message for explicit jobId', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJob()],
@@ -131,7 +376,9 @@ describe('buildSendStoreLocationTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     expect(result.success).toBe(true);
-    expect(result._fixedReply).toBe('门店位置我发你了，你点开就能看导航。');
+    expect(result._fixedReply).toBe(
+      '必胜客·青塔店：门店位置发你了，方便看距离；要去门店前得先报名约面，我帮你登记。',
+    );
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       {
         jobIdList: [100],
@@ -219,6 +466,24 @@ describe('buildSendStoreLocationTool', () => {
     );
   });
 
+  it.each(['delivery', 'fetch'])('校验前 %s 失败只能澄清，不能沿用旧岗位地址', async (failure) => {
+    mockSpongeService.fetchJobs.mockRejectedValueOnce(new Error('upstream unavailable'));
+    const result = await executeTool(
+      { jobId: 100, referenceText: '幸福里' },
+      {
+        candidatePool: [referencedStore],
+        currentUserMessage: '幸福里定位发我',
+        ...(failure === 'delivery' ? { token: undefined } : {}),
+      },
+    );
+    expect(result.success).toBe(false);
+    expect(result._replyInstruction).toContain('澄清');
+    expect(result._replyInstruction).toContain('禁止沿用旧焦点');
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+    // 未调用 fetch 的参数分支不能把 once 拒绝泄漏给下一例。
+    mockSpongeService.fetchJobs.mockReset();
+  });
+
   it('should return error when delivery context is missing', async () => {
     const result = await executeTool(
       { jobId: 100 },
@@ -253,8 +518,8 @@ describe('buildSendStoreLocationTool', () => {
     expect(result.success).toBe(true);
     expect(result.floorHint).not.toBeNull();
     expect(result.floorHint).toMatch(/B1\s*层|48-50\s*号/);
-    expect(result._fixedReply).toContain('门店位置我发你了');
-    expect(result._fixedReply).toContain('别走错');
+    expect(result._fixedReply).toContain('门店位置发你了');
+    expect(result._fixedReply).not.toContain('别走错');
   });
 
   it('should fallback to plain reply when address has no floor hint', async () => {
@@ -267,7 +532,9 @@ describe('buildSendStoreLocationTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.floorHint).toBeNull();
-    expect(result._fixedReply).toBe('门店位置我发你了，你点开就能看导航。');
+    expect(result._fixedReply).toBe(
+      '必胜客·青塔店：门店位置发你了，方便看距离；要去门店前得先报名约面，我帮你登记。',
+    );
   });
 
   it('should return fallback info when store coordinates are unavailable', async () => {

@@ -46,8 +46,46 @@ describe('buildPreHandoffReceipt', () => {
       },
     ]);
     expect(receipt?.text).toBe(
-      '报名资料已经提交成功了，这个岗位是等通知的，面试官会电话联系你，请保持电话畅通。',
+      '报名资料已经提交成功了，这个岗位是等通知的，请等待面试安排通知，保持手机畅通。',
     );
+  });
+
+  it('wait-notice booking on an AI-interview job → 短信发链接口径，不说面试官电话联系（badcase 2026-10-14）', () => {
+    const receipt = buildPreHandoffReceipt([
+      {
+        toolName: 'duliday_interview_booking',
+        args: { jobId: 1 },
+        result: {
+          success: true,
+          workOrderId: 1,
+          interviewMethod: 'AI面试',
+          requestInfo: { jobId: 1, interviewTime: null },
+          brandName: '肯德基',
+        },
+      },
+    ]);
+    expect(receipt?.text).toBe(
+      '肯德基 的报名资料已经提交成功了，这个岗位是等通知的，第一轮是 AI 面试，面试链接会短信发到你手机，留意短信并按时完成；通过后店长再联系你。',
+    );
+    expect(receipt?.text).not.toContain('电话联系');
+  });
+
+  it('AI 面试转人工前的固定回执保留流程首句中的完成时限', () => {
+    const receipt = buildPreHandoffReceipt([
+      {
+        toolName: 'duliday_interview_booking',
+        args: { jobId: 1 },
+        result: {
+          success: true,
+          workOrderId: 1,
+          interviewMethod: 'AI面试',
+          interviewProcessRemark: '报名后 24 小时内短信发链接，请在 48 小时内完成。第二句不附加。',
+          requestInfo: { jobId: 1, interviewTime: null },
+        },
+      },
+    ]);
+    expect(receipt?.text).toContain('报名后 24 小时内短信发链接，请在 48 小时内完成');
+    expect(receipt?.text).not.toContain('第二句');
   });
 
   it('modify + cancel successes are described from their structured fields', () => {
@@ -163,6 +201,45 @@ describe('classifyReviewedOutcome — request_handoff 之前的已提交动作�
     ]);
     expect(outcome.kind).toBe('handoff');
     expect(outcome.preHandoffReceipt).toBeUndefined();
+  });
+
+  it('第二人待提交导致空响应转人工时仍先保留第一人的真实回执', () => {
+    const outcome = classifyReviewedOutcome(
+      {
+        text: '',
+        steps: 2,
+        agentSteps: [],
+        toolCalls: [
+          bookingSuccess,
+          {
+            toolName: 'duliday_interview_precheck',
+            args: { jobId: 528546, candidatePhone: '13800000002' },
+            result: {
+              success: true,
+              nextAction: 'confirm_collection',
+              candidateScope: 'additional',
+            },
+          },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        outputDecision: decision,
+        resolution: { outcome: 'handoff', source: 'output_guardrail' },
+        revised: false,
+        recoveryDisposition: {
+          outcome: 'handoff',
+          reasonCode: 'empty_recovery_pending_submission',
+          precheckNextAction: 'confirm_collection',
+          jobId: 528546,
+          reason: '第二人已确认但未提交，生成无回复',
+        },
+      },
+      sessionRef,
+      'msg-multi-candidate',
+    );
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.preHandoffReceipt).toEqual(buildPreHandoffReceipt([bookingSuccess]));
+    expect(outcome.preHandoffReceipt?.text).not.toContain('第二人');
+    expect(outcome.sideEffects).toEqual([expect.objectContaining({ kind: 'general_handoff' })]);
   });
 
   it('gate rejections (booking provenance / modify ownership) never get a receipt', () => {

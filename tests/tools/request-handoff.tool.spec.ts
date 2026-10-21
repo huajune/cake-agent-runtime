@@ -271,6 +271,13 @@ describe('buildRequestHandoffTool', () => {
       expect(tool.description).toContain('包括工资到账、工时核对、补卡');
       expect(tool.description).toContain('残障披露不用此码');
     });
+
+    it('场景 13 收录"面试窗口无具体时间 / 需线下提交初筛"（precheck interview_time_manual_handoff 的唯一出口）', () => {
+      const tool = buildTool() as unknown as { description: string };
+      expect(tool.description).toContain('面试窗口无具体时间 / 需线下提交初筛');
+      expect(tool.description).toContain('nextAction=interview_time_manual_handoff');
+      expect(tool.description).toContain('严禁自行承诺「我会在截止前帮你提交 / 留意来电」');
+    });
   });
 
   it('returns a handoff sideEffect intent for outcome-layer dispatch', async () => {

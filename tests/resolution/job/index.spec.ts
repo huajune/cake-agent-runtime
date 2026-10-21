@@ -1,5 +1,7 @@
 import {
   extractPresentedJobs,
+  findStoreReferencedJobs,
+  pickBestReferencedJob,
   resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
 } from '@resolution/job';
@@ -42,16 +44,108 @@ describe('resolution/job', () => {
     jobCategoryName: '零售/便利店/店员',
   };
 
+  it('matches the actual store name after city, owner and store-code normalization', () => {
+    const coded = { ...chaoneiJob, cityName: '佛山市', storeName: '佛山-李苑雯-幸福里DT-GZ7001' };
+    expect(resolveCurrentFocusJob('幸福里那家', [], [], [coded, dongdanJob])).toEqual(coded);
+    expect(pickBestReferencedJob([coded, dongdanJob], '幸福里发个定位', 'store')).toEqual(coded);
+    expect(findStoreReferencedJobs([coded], '佛山李苑雯GZ7001')).toEqual([]);
+    expect(findStoreReferencedJobs([coded, dongdanJob], '服务员20元每小时')).toEqual([]);
+  });
+
+  it('keeps same-name stores ambiguous and uses an explicit brand to distinguish them', () => {
+    const otherBrand = { ...chaoneiJob, jobId: 200, brandName: '肯德基' };
+    expect(pickBestReferencedJob([chaoneiJob, otherBrand], '朝内店地址', 'store')).toBeNull();
+    expect(pickBestReferencedJob([chaoneiJob, otherBrand], '肯德基朝内店地址', 'store')).toEqual(
+      otherBrand,
+    );
+  });
+
+  it('展示记录剔除仅作为更长店名子串命中的短别名，不挤掉实际展示岗', () => {
+    const shortJobs = [1, 2, 3].map((jobId) => ({ ...chaoneiJob, jobId, storeName: '万达店' }));
+    const fullName = { ...dongdanJob, storeName: '万达广场店' };
+    expect(extractPresentedJobs('万达广场店可以', [...shortJobs, fullName])).toEqual([fullName]);
+    expect(extractPresentedJobs('万达店、万达广场店都可以', [shortJobs[0], fullName])).toEqual([
+      shortJobs[0],
+      fullName,
+    ]);
+  });
+
   it('should extract presented jobs from assistant reply', () => {
     expect(
       extractPresentedJobs('离你最近的是朝内店，东单店也可以。', [chaoneiJob, dongdanJob]),
     ).toEqual([chaoneiJob, dongdanJob]);
   });
 
+  it('keeps conflicting explicit brand and store references ambiguous', () => {
+    const otherBrand = { ...dongdanJob, brandName: '肯德基' };
+    expect(pickBestReferencedJob([chaoneiJob, otherBrand], '肯德基朝内店地址', 'store')).toBeNull();
+    expect(findStoreReferencedJobs([chaoneiJob, otherBrand], '肯德基朝内店地址')).toHaveLength(2);
+  });
+
+  it('独立点名的长短店名都参与歧义判断，不能默认选择长店名', () => {
+    const longer = { ...dongdanJob, storeName: '东方广场店' };
+    const message = '不要东方广场店，发朝内店定位';
+    expect(findStoreReferencedJobs([longer, chaoneiJob], message)).toEqual([longer, chaoneiJob]);
+    expect(pickBestReferencedJob([longer, chaoneiJob], message, 'store')).toBeNull();
+  });
+
+  it.each([true, false])('独立门店同分不按名字长短选择，也不回退到旧展示岗：%s', (longFirst) => {
+    const longer = { ...dongdanJob, storeName: '东方广场店' };
+    const jobs = longFirst ? [longer, chaoneiJob] : [chaoneiJob, longer];
+    const message = '不要东方广场店，想去朝内店';
+    expect(pickBestReferencedJob(jobs, message)).toBeNull();
+    expect(resolveCurrentFocusJob(message, [longer], [], jobs)).toBeNull();
+    expect(resolveCurrentFocusJob(message, [chaoneiJob], [], jobs)).toBeNull();
+  });
+
+  it('prefers a complete store name over another store’s shorter alias', () => {
+    const shortName = { ...chaoneiJob, storeName: '万达店' };
+    const fullName = { ...dongdanJob, storeName: '万达广场店' };
+    expect(pickBestReferencedJob([shortName, fullName], '万达广场店地址', 'store')).toEqual(
+      fullName,
+    );
+  });
+
+  it.each([true, false])('焦点选择使用完整门店名，短别名已展示=%s', (presentedShort) => {
+    const shortName = { ...chaoneiJob, storeName: '万达店' };
+    const fullName = { ...dongdanJob, storeName: '万达广场店' };
+    expect(pickBestReferencedJob([shortName, fullName], '万达广场店')).toEqual(fullName);
+    expect(
+      resolveCurrentFocusJob(
+        '我选万达广场店',
+        presentedShort ? [shortName] : [fullName, shortName],
+        [],
+        [shortName, fullName],
+      ),
+    ).toEqual(fullName);
+    expect(pickBestReferencedJob([shortName, { ...shortName, jobId: 999 }], '万达店')).toBeNull();
+  });
+
   it('should resolve focus job when user explicitly picks a store', () => {
     expect(resolveCurrentFocusJob('我选朝内店', [chaoneiJob, dongdanJob], [], [])).toEqual(
       chaoneiJob,
     );
+  });
+
+  it('岗位匹配分数不能让嵌入式短店名覆盖用户明确点名的长门店', () => {
+    const shortName = { ...chaoneiJob, storeName: '万达店' };
+    const fullName = {
+      ...dongdanJob,
+      storeName: '万达广场店',
+      jobName: '咖啡师',
+      jobCategoryName: '饮品/咖啡师',
+    };
+    const text = '我想看万达广场店的服务员岗位';
+    expect(pickBestReferencedJob([shortName, fullName], text)).toEqual(fullName);
+    expect(resolveCurrentFocusJob(text, [shortName], [], [shortName, fullName])).toEqual(fullName);
+    expect(
+      resolveAssistantAnchoredFocusJob(
+        '万达广场店服务员岗位，兼职，时薪 20元/小时',
+        [],
+        [],
+        [shortName, fullName],
+      ),
+    ).not.toEqual(shortName);
   });
 
   it('should clear focus job when user asks to switch batch', () => {
