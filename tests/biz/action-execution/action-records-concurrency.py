@@ -1,18 +1,23 @@
 """Run against the isolated Docker PostgreSQL used by action-records.postgres.sql."""
 import concurrent.futures
 import json
+import re
 import subprocess
 import sys
 import time
 
-container = sys.argv[1] if len(sys.argv) == 2 else ''
+container = sys.argv[1] if len(sys.argv) in (2, 3) else ''
+database = sys.argv[2] if len(sys.argv) == 3 else 'postgres'
 if not container.startswith('cake-runtime-pg-'):
     raise SystemExit('Pass the explicitly isolated cake-runtime-pg-* test container')
+if len(sys.argv) == 3 and not re.fullmatch(r'cake_projection_[a-zA-Z0-9_]+', database):
+    raise SystemExit('Explicit databases must use the isolated cake_projection_* prefix')
 
 
 def sql(statement):
     return subprocess.check_output(
-        ['docker', 'exec', '-i', container, 'psql', '-U', 'postgres', '-Atq', '-v', 'ON_ERROR_STOP=1'],
+        ['docker', 'exec', '-i', container, 'psql', '-U', 'postgres', '-d', database,
+         '-Atq', '-v', 'ON_ERROR_STOP=1'],
         input=statement, text=True).strip()
 
 
