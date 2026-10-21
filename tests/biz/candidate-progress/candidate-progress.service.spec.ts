@@ -91,6 +91,23 @@ describe('CandidateProgressService', () => {
     snapshot.load.mockResolvedValue({ status: 'ok', entries: [], fetchedAt: Date.now() });
     expect((await service.read(scope, 'cached')).active).toBe('unknown');
   });
+  it('does not infer current-account ownership from a legacy cached snapshot', async () => {
+    snapshot.load.mockResolvedValue({
+      status: 'ok',
+      entries: [],
+      allWorkOrders: [
+        { workOrderId: 12, currentStatus: '约面成功', signupSource: 'supplier' },
+        { workOrderId: 13, currentStatus: '约面成功', signupSource: 'bot' },
+      ],
+      fetchedAt: Date.now(),
+    });
+    const result = await service.read(scope, 'cached');
+    expect(result.orders).toEqual([
+      expect.objectContaining({ workOrderId: 12, ownedByCurrentAccount: 'unknown' }),
+      expect.objectContaining({ workOrderId: 13, ownedByCurrentAccount: 'unknown' }),
+    ]);
+    expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+  });
   it('cannot promote a partial empty read to no-booking guard evidence', async () => {
     snapshot.peekForCandidate.mockResolvedValue({ entries: [], fetchedAt: Date.now() });
     longTerm.tryGetActiveBookings.mockResolvedValue(null);
