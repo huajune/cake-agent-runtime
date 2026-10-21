@@ -122,6 +122,7 @@ describe('ReplyWorkflowService', () => {
 
   const replyTurns = { open: jest.fn(), settle: jest.fn(), acked: jest.fn() };
   let service: ReplyWorkflowService;
+  let reengagementAnchors: ReengagementAnchorService;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -305,7 +306,7 @@ describe('ReplyWorkflowService', () => {
     handoffRecorder.record.mockResolvedValue('inserted');
     botService.resolveBotUserIdByImBotId.mockResolvedValue(null);
 
-    const reengagementAnchors = new ReengagementAnchorService(
+    reengagementAnchors = new ReengagementAnchorService(
       followUpScheduler as never,
       session as never,
     );
@@ -426,6 +427,70 @@ describe('ReplyWorkflowService', () => {
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
     expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
   });
+
+  it('creates a fresh trace for every background recovery while retaining the original logical turn', async () => {
+    const turn = persistedTurn();
+    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
+    deliveryService.deliverReply.mockRejectedValue(new ReplyDeferredError('segment_0_unknown'));
+    await expect(service.resumePersistedReply(turn, 'fresh-token')).rejects.toThrow(
+      'segment_0_unknown',
+    );
+    await expect(service.resumePersistedReply(turn, 'fresh-token')).rejects.toThrow(
+      'segment_0_unknown',
+    );
+    const traceIds = wecomObservability.startRequestTrace.mock.calls.map(
+      ([value]) => value.traceId,
+    );
+    expect(new Set(traceIds).size).toBe(2);
+    expect(traceIds).toEqual([
+      expect.stringMatching(/^reply-recovery_/),
+      expect.stringMatching(/^reply-recovery_/),
+    ]);
+    expect(traceIds).not.toContain(turn.logicalTurnId);
+    expect(
+      deliveryService.deliverReply.mock.calls.map(([, context]) => context.logicalTurnId),
+    ).toEqual([turn.logicalTurnId, turn.logicalTurnId]);
+    expect(deliveryService.deliverReply.mock.calls.map(([, context]) => context.messageId)).toEqual(
+      traceIds,
+    );
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+  });
+
+  it.each(['handleToolAnchors', 'handleDeliveredReplyAnchors'] as const)(
+    'keeps a durable plan pending after %s persistence fails and repairs the same plan',
+    async (method) => {
+      const turn = persistedTurn();
+      replyTurns.open.mockResolvedValue(turn);
+      replyTurns.settle.mockResolvedValue({ ...turn, status: 'settled' });
+      deliveryService.prepareReplyPlan.mockResolvedValue(turn);
+      deliveryService.deliverReply.mockResolvedValue({
+        success: true,
+        segmentCount: 1,
+        deliveredSegments: 1,
+      });
+      const anchors = jest
+        .spyOn(reengagementAnchors, method)
+        .mockRejectedValueOnce(new Error('queue unavailable'));
+      await service.processSingleMessage(createMessage());
+      expect(replyTurns.settle).not.toHaveBeenCalled();
+      expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+      expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+      anchors.mockResolvedValue(undefined);
+      await service.resumePersistedReply(turn, 'fresh-token');
+      expect(replyTurns.settle).toHaveBeenCalledTimes(1);
+      expect(replyTurns.acked).toHaveBeenCalledTimes(1);
+      expect(runner.runInboundTurn).not.toHaveBeenCalled();
+      expect(deliveryService.deliverReply).toHaveBeenLastCalledWith(
+        { content: 'frozen reply' },
+        expect.objectContaining({
+          logicalTurnId: turn.logicalTurnId,
+          inputOccurredAt: turn.inputOccurredAt,
+        }),
+        true,
+      );
+    },
+  );
 
   it('blocks generation and fallback when input membership cannot be confirmed', async () => {
     replyTurns.open.mockRejectedValue(new ReplyDeferredError('membership_unconfirmed'));
