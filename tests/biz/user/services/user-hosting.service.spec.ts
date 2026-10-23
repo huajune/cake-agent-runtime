@@ -217,6 +217,17 @@ describe('UserHostingService', () => {
   // ==================== pauseUser ====================
 
   describe('pauseUser', () => {
+    it('reports false when only the current process can enforce the pause', async () => {
+      mockUserHostingRepository.upsertPause.mockRejectedValue(new Error('DB down'));
+      mockRedisService.set.mockRejectedValue(new Error('Redis down'));
+      await expect(service.pauseUser('user1')).resolves.toBe(false);
+      expect(await service.isUserPaused('user1')).toBe(true);
+    });
+    it('reports shared success when DB fails but Redis succeeds', async () => {
+      mockUserHostingRepository.upsertPause.mockRejectedValue(new Error('DB down'));
+      await expect(service.pauseUser('user1')).resolves.toBe(true);
+    });
+
     it('should add user to memory cache and persist to DB', async () => {
       mockUserHostingRepository.upsertPause.mockResolvedValue(undefined);
 

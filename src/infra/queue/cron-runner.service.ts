@@ -47,6 +47,8 @@ export const MANAGED_CRONS: readonly CronDefinition[] = [
 export interface CronBudget {
   /** Call before each next page / external write. Does not pretend to cancel an in-flight HTTP call. */
   checkpoint(rows?: number): Promise<void>;
+  /** Account for completed rows without starting or authorizing another batch. */
+  recordProcessed(rows: number): void;
 }
 
 @Injectable()
@@ -111,6 +113,11 @@ export class CronRunnerService implements OnApplicationBootstrap {
     const startedAt = Date.now();
     let rows = 0;
     const budget: CronBudget = {
+      recordProcessed: (count) => {
+        if (!Number.isSafeInteger(count) || count < 0 || rows + count > limits.maxRows)
+          throw new Error('Invalid processed row count');
+        rows += count;
+      },
       checkpoint: async (count = 0) => {
         rows += count;
         if (Date.now() - startedAt >= limits.timeMs || rows > limits.maxRows) {
@@ -134,6 +141,33 @@ export class CronRunnerService implements OnApplicationBootstrap {
       // Await the task itself before releasing; a timeout race must never release a still-running writer.
       await this.leases.release(lease);
     }
+  }
+
+  /** Drain bounded batches under one distributed lease; counts are processed rows, not side effects. */
+  async runBatches(
+    id: string,
+    limits: { timeMs: number; maxRows: number; batchSize: number },
+    batch: (limit: number) => Promise<number>,
+  ): Promise<number | undefined> {
+    if (!Number.isSafeInteger(limits.batchSize) || limits.batchSize <= 0)
+      throw new Error('Batch size must be a positive integer');
+    return this.run(id, limits, async (budget) => {
+      const deadline = Date.now() + limits.timeMs;
+      let processed = 0;
+      while (processed < limits.maxRows && Date.now() < deadline) {
+        const size = Math.min(limits.batchSize, limits.maxRows - processed);
+        await budget.checkpoint();
+        const count = await batch(size);
+        if (!Number.isSafeInteger(count) || count < 0 || count > size)
+          throw new Error('Invalid processed batch count');
+        budget.recordProcessed(count);
+        processed += count;
+        if (count < size) break;
+      }
+      if (processed >= limits.maxRows || Date.now() >= deadline)
+        this.logger.warn(`${id}: retention budget reached; remaining rows resume next tick`);
+      return processed;
+    });
   }
 
   private async event(id: string, status: string, startedAt: number, rows: number): Promise<void> {

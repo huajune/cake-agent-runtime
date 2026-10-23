@@ -163,9 +163,9 @@ export class UserHostingService {
    * 适用于店长微信、客户微信等永久禁止托管的联系人，以及黑名单候选人。
    *
    * 同步写入内存缓存，异步持久化到数据库。
-   * 数据库写入失败不影响缓存，调用方仍可继续运行。
+   * 返回是否已写入数据库或共享缓存；仅本机缓存生效不算共享暂停成功。
    */
-  async pauseUser(userId: string, options?: PauseUserOptions): Promise<void> {
+  async pauseUser(userId: string, options?: PauseUserOptions): Promise<boolean> {
     await this.ensureFreshPausedUsers();
 
     const now = Date.now();
@@ -183,6 +183,7 @@ export class UserHostingService {
     });
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
 
+    let persisted = false;
     try {
       await this.repository.upsertPause(userId, {
         pausedAt: new Date(now).toISOString(),
@@ -192,6 +193,7 @@ export class UserHostingService {
         operator: options?.operator,
         source: options?.source,
       });
+      persisted = true;
       this.logger.log(
         permanent
           ? `[托管暂停] 用户 ${userId} 已永久暂停托管${options?.reason ? `，理由：${options.reason}` : ''}`
@@ -201,7 +203,8 @@ export class UserHostingService {
       this.logger.error(`暂停用户 ${userId} 托管失败`, error);
     }
 
-    await this.persistSharedCache();
+    const shared = await this.persistSharedCache();
+    return persisted || shared;
   }
 
   /**
@@ -589,7 +592,7 @@ export class UserHostingService {
     }
   }
 
-  private async persistSharedCache(): Promise<void> {
+  private async persistSharedCache(): Promise<boolean> {
     try {
       const now = Date.now();
       await this.redisService.set(UserHostingService.SHARED_CACHE_KEY, {
@@ -606,8 +609,10 @@ export class UserHostingService {
           })),
         updatedAt: now,
       });
+      return true;
     } catch (error) {
       this.logger.warn('写入 Redis 暂停托管缓存失败', error);
+      return false;
     }
   }
 

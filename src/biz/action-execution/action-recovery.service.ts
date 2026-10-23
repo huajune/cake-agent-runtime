@@ -1,3 +1,4 @@
+import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { randomUUID } from 'crypto';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
@@ -16,6 +17,7 @@ export class ActionRecoveryService {
     private readonly records: ActionRecordsRepository,
     private readonly handlers: ActionRecoveryRegistry,
     private readonly localSync: ActionLocalSyncService,
+    private readonly crons: CronRunnerService,
     @Optional() private readonly incidents?: IncidentReporterService,
   ) {}
 
@@ -41,13 +43,13 @@ export class ActionRecoveryService {
     }
   }
 
-  @Cron('17 3 * * *', { timeZone: 'Asia/Shanghai' })
+  @Cron('17 */10 * * * *', { timeZone: 'Asia/Shanghai' })
   async retainTombstones(): Promise<void> {
-    try {
-      await this.records.redactCompleted();
-    } catch {
-      this.logger.error('action.retention_failed');
-    }
+    await this.crons.runBatches(
+      'action-retention',
+      { timeMs: 30_000, maxRows: 10_000, batchSize: 100 },
+      (limit) => this.records.redactCompleted(limit),
+    );
   }
 
   private async recover(record: ActionRecord): Promise<void> {

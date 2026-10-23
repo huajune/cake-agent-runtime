@@ -149,17 +149,20 @@ export class ActionRecordsRepository extends BaseRepository {
     };
   }
 
-  async redactCompleted(): Promise<void> {
+  async redactCompleted(limit = 100): Promise<number> {
     if (this.circuitBlocked('action_retention'))
       throw new Error('Action retention store unavailable');
-    const { error } = await this.getClient()
-      .rpc('redact_completed_agent_actions', { p_limit: 100 })
+    const { data, error } = await this.getClient()
+      .rpc('redact_completed_agent_actions', { p_limit: limit })
       .abortSignal(AbortSignal.timeout(5000));
     if (error) {
       this.noteOutcome('action_retention', error);
       throw error;
     }
     this.recordCircuitSuccess('action_retention');
+    if (!Number.isSafeInteger(data) || data < 0 || data > limit)
+      throw new Error('Invalid action retention count');
+    return data;
   }
 
   private ownership(record: ActionRecord): Record<string, unknown> {

@@ -74,11 +74,14 @@ export class ReplyTurnsRepository extends BaseRepository {
     return (data ?? []).map((row) => this.fromDb(row));
   }
 
-  async redact(): Promise<void> {
-    const { error } = await this.getClient()
-      .rpc('redact_completed_agent_reply_turns', { p_limit: 100 })
+  async redact(limit = 100): Promise<number> {
+    const { data, error } = await this.getClient()
+      .rpc('redact_completed_agent_reply_turns', { p_limit: limit })
       .abortSignal(AbortSignal.timeout(5000));
     if (error) throw error;
+    if (!Number.isSafeInteger(data) || data < 0 || data > limit)
+      throw new Error('Invalid reply retention count');
+    return data;
   }
 
   async confirmed(turn: ReplyTurn): Promise<boolean> {
