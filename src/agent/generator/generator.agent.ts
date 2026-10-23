@@ -1,3 +1,4 @@
+import { getToolContract } from '@tools/tool-contracts';
 /**
  * Agent 生成器：prepare → AI SDK 多步模型/工具循环 → 生成结果归一化。
  *
@@ -32,8 +33,6 @@ import {
   findRejectedSkipReplyErrorType,
   isShortCircuitedToolCall,
   isShortCircuitedToolResult,
-  MAX_PRECHECK_CALLS_PER_TURN,
-  MAX_SAME_TOOL_CALLS_PER_TURN,
 } from './tool-call-analysis';
 
 /**
@@ -319,14 +318,7 @@ export class GeneratorAgent {
     const logger = this.logger;
 
     return ({ steps }) => {
-      const precheckToolName = 'duliday_interview_precheck';
-      const overusedPrecheck = findToolsExceedingLimit(steps, MAX_PRECHECK_CALLS_PER_TURN).filter(
-        (name) => name === precheckToolName,
-      );
-      const overusedGeneral = findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN).filter(
-        (name) => name !== precheckToolName,
-      );
-      const overused = [...overusedPrecheck, ...overusedGeneral];
+      const overused = findToolsExceedingLimit(steps);
 
       // 本轮已调用过业务工具（非 skip_reply 自身）→ 屏蔽 skip_reply
       const called = collectCalledToolNames(steps);
@@ -349,16 +341,9 @@ export class GeneratorAgent {
 
       const activeTools = baseTools.filter((name) => !blocked.includes(name));
       const noticeParts: string[] = [];
-      const precheckOveruseNotice = buildToolCallLimitNotice(
-        overusedPrecheck.filter((name) => !sideEffectBlocked.includes(name)),
-        MAX_PRECHECK_CALLS_PER_TURN,
-      );
-      if (precheckOveruseNotice) noticeParts.push(precheckOveruseNotice);
-      const generalOveruseNotice = buildToolCallLimitNotice(
-        overusedGeneral.filter((name) => !sideEffectBlocked.includes(name)),
-        MAX_SAME_TOOL_CALLS_PER_TURN,
-      );
-      if (generalOveruseNotice) noticeParts.push(generalOveruseNotice);
+      for (const name of overused.filter((toolName) => !sideEffectBlocked.includes(toolName))) {
+        noticeParts.push(buildToolCallLimitNotice([name], getToolContract(name)?.maxCallsPerTurn));
+      }
       if (skipReplyBlocked.length > 0) {
         noticeParts.push(
           skipReplyRejectedErrorType !== null

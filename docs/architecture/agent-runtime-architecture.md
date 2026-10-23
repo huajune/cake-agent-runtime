@@ -818,9 +818,9 @@ Evaluation、Memory、Tool 和 Feishu Sync。
 
 1. 在 `src/tools/` 的所属域创建工具工厂和 description。
 2. 在 `ToolRegistryService` 注册，并加入目标 `scenarioToolMap`。
-3. 若有外部副作用，更新 side-effect、单轮重复屏蔽和 Replay 语义；不能只加工具名。
-4. 将确定性动作门禁放在工具执行边界，并登记 tool guardrail catalog。
-5. 更新 Prompt 规则台账和相关回归测试。
+3. 在 `tools/tool-contracts.ts` 声明动作契约并绑定工具定义：效果类别、Replay、新鲜度、调用上限、门禁与语义目标。副作用集合、Replay 集合、调用上限由契约推导，不再维护工具名白名单。业务查重目标不是永久动作 ID。
+4. 将确定性动作门禁放在工具执行边界，在 tool guardrail catalog 登记 `toolNames`，与契约的 `gates` 双向校验。动态图片/附件工具同样声明契约；MCP 缺少契约时拒绝注册。
+5. 更新 Prompt 规则台账（模型可见规则改变时）和相关回归测试。声明契约不代表已经接入外部执行记录；工具里的多个外部动作必须在实际执行位置分别纳管。
 
 ### 15.3 新增 Prompt section
 

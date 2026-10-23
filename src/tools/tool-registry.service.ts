@@ -50,6 +50,12 @@ import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import { sleep } from '@infra/utils/async.util';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import type { ToolActionContract } from '@shared-types/tool-action.contract';
+import {
+  BUILT_IN_TOOL_CONTRACTS,
+  publishToolContract,
+  validateToolContract,
+} from './tool-contracts';
 
 /**
  * 统一工具注册表
@@ -98,6 +104,7 @@ export class ToolRegistryService {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
         name: 'advance_stage',
+        contract: BUILT_IN_TOOL_CONTRACTS.advance_stage,
         description: '推进对话阶段（当前阶段目标达成后切换）',
         create: buildAdvanceStageTool(memoryService),
       }),
@@ -105,6 +112,7 @@ export class ToolRegistryService {
       // ===== 记忆工具（按需检索） =====
       recall_history: createToolDefinition({
         name: 'recall_history',
+        contract: BUILT_IN_TOOL_CONTRACTS.recall_history,
         description: '查询用户历史求职记录（用户提到"上次""之前"时调用）',
         create: buildRecallHistoryTool(memoryService),
       }),
@@ -112,6 +120,7 @@ export class ToolRegistryService {
       // ===== 业务工具 =====
       duliday_job_list: createToolDefinition({
         name: 'duliday_job_list',
+        contract: BUILT_IN_TOOL_CONTRACTS.duliday_job_list,
         description:
           '查询在招岗位列表（负责推荐阶段的数据查询与摘要；传入 location 后会做位置筛选，并基于经纬度按距离排序和按业务阈值过滤）',
         create: buildJobListTool(spongeService, opsEventsRecorder, geocodingService),
@@ -119,6 +128,7 @@ export class ToolRegistryService {
 
       duliday_interview_booking: createToolDefinition({
         name: 'duliday_interview_booking',
+        contract: BUILT_IN_TOOL_CONTRACTS.duliday_interview_booking,
         description: '面试预约（仅做接口字段校验与提交；仅在确认进入约面时调用）',
         create: buildInterviewBookingTool(
           spongeService,
@@ -142,6 +152,7 @@ export class ToolRegistryService {
 
       duliday_interview_precheck: createToolDefinition({
         name: 'duliday_interview_precheck',
+        contract: BUILT_IN_TOOL_CONTRACTS.duliday_interview_precheck,
         description:
           '面试前置校验（按岗位返回可约日期/时段、备注解析后的字段建议、报名补充信息；不真正提交预约）',
         create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder, {
@@ -156,6 +167,7 @@ export class ToolRegistryService {
 
       duliday_cancel_work_order: createToolDefinition({
         name: 'duliday_cancel_work_order',
+        contract: BUILT_IN_TOOL_CONTRACTS.duliday_cancel_work_order,
         description:
           '取消工单（候选人主动要求取消已确认的面试预约时调用，真正调海绵取消接口；workOrderId 取自 [当前预约信息]）',
         create: buildCancelWorkOrderTool(
@@ -169,6 +181,7 @@ export class ToolRegistryService {
 
       duliday_modify_interview_time: createToolDefinition({
         name: 'duliday_modify_interview_time',
+        contract: BUILT_IN_TOOL_CONTRACTS.duliday_modify_interview_time,
         description:
           '修改约面时间（候选人主动要求把已确认的面试改到新时间时调用，真正调海绵改约接口；workOrderId 取自 [当前预约信息]）',
         create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder, longTermService, {
@@ -178,18 +191,21 @@ export class ToolRegistryService {
 
       geocode: createToolDefinition({
         name: 'geocode',
+        contract: BUILT_IN_TOOL_CONTRACTS.geocode,
         description: '地理编码（将地名解析为标准化地址 + 经纬度；做附近推荐或距离过滤前优先调用）',
         create: buildGeocodeTool(geocodingService),
       }),
 
       send_store_location: createToolDefinition({
         name: 'send_store_location',
+        contract: BUILT_IN_TOOL_CONTRACTS.send_store_location,
         description: '向候选人发送面试地点或工作门店的企微位置消息（已约面后默认优先面试地点）',
         create: buildSendStoreLocationTool(spongeService, messageSenderService, geocodingService),
       }),
 
       invite_to_group: createToolDefinition({
         name: 'invite_to_group',
+        contract: BUILT_IN_TOOL_CONTRACTS.invite_to_group,
         description:
           '邀请候选人加入企微兼职群（连续两轮推荐不满意后的群承接 / 候选人同意入群；报名成功后的拉群由运行时自动完成）',
         create: buildInviteToGroupTool(groupInviteService, sessionService),
@@ -198,6 +214,7 @@ export class ToolRegistryService {
       // ===== 人工介入工具 =====
       raise_risk_alert: createToolDefinition({
         name: 'raise_risk_alert',
+        contract: BUILT_IN_TOOL_CONTRACTS.raise_risk_alert,
         description:
           '候选人出现辱骂/投诉/情绪升级时调用，异步触发人工介入（暂停托管+飞书告警，不阻塞回复）。调用后请以招募者身份自主组织共情/安抚话术，不使用预设模板，也不得暴露机器人/托管/系统等字眼。',
         create: buildRaiseRiskAlertTool(),
@@ -205,6 +222,7 @@ export class ToolRegistryService {
 
       request_handoff: createToolDefinition({
         name: 'request_handoff',
+        contract: BUILT_IN_TOOL_CONTRACTS.request_handoff,
         description:
           '面试/入职跟进阶段遇到需要人工处理的问题（找不到门店、无人接待、预约冲突、办理入职等）时调用。**调用即短路 Agent**：runtime 立即结束本轮，候选人本次不会收到任何回复；副作用（暂停托管+case 改为 handoff+飞书告警）全部异步执行。',
         create: buildRequestHandoffTool(
@@ -219,6 +237,7 @@ export class ToolRegistryService {
       // ===== 沉默工具 =====
       skip_reply: createToolDefinition({
         name: 'skip_reply',
+        contract: BUILT_IN_TOOL_CONTRACTS.skip_reply,
         description:
           '主动跳过本轮回复：候选人仅发纯确认词（好的/谢谢/嗯）且上轮已完成推进时调用，调用后本轮不再对外发送任何消息。',
         create: buildSkipReplyTool(),
@@ -252,8 +271,22 @@ export class ToolRegistryService {
 
   // ==================== MCP 动态注册 ====================
 
-  registerMcpTool(name: string, tool: AiTool, mcpServer: string): void {
-    this.mcpTools.set(name, { name, source: 'mcp', tool, mcpServer });
+  registerMcpTool(
+    name: string,
+    tool: AiTool,
+    mcpServer: string,
+    contract?: ToolActionContract,
+  ): void {
+    if (!contract) throw new Error(`MCP tool ${name} has no action contract`);
+    validateToolContract(contract);
+    if (this.registry[name] || name in BUILT_IN_TOOL_CONTRACTS) {
+      throw new Error(`MCP tool ${name} shadows a built-in tool`);
+    }
+    const existing = this.mcpTools.get(name);
+    if (existing && existing.mcpServer !== mcpServer)
+      throw new Error(`MCP tool ${name} is already registered`);
+    const published = publishToolContract(name, contract);
+    this.mcpTools.set(name, { name, source: 'mcp', tool, mcpServer, contract: published });
     this.logger.log(`MCP工具已注册: ${name} (server: ${mcpServer})`);
   }
 
@@ -272,6 +305,14 @@ export class ToolRegistryService {
     return [...Object.keys(this.registry), ...this.mcpTools.keys()];
   }
 
+  getContract(name: string): ToolActionContract | undefined {
+    return (
+      this.registry[name]?.contract ??
+      this.mcpTools.get(name)?.contract ??
+      (BUILT_IN_TOOL_CONTRACTS as Readonly<Record<string, ToolActionContract>>)[name]
+    );
+  }
+
   listBySource(source: 'built-in' | 'mcp'): string[] {
     if (source === 'built-in') return Object.keys(this.registry);
     return [...this.mcpTools.keys()];
@@ -283,6 +324,7 @@ export class ToolRegistryService {
     const tools: AiToolSet = {};
 
     for (const [name, def] of Object.entries(this.registry)) {
+      validateToolContract(def.contract);
       tools[name] = def.create(context);
     }
 
@@ -319,6 +361,7 @@ export class ToolRegistryService {
         imageUrlsByMessageId,
         this.brandResolutionService,
       );
+      validateToolContract(BUILT_IN_TOOL_CONTRACTS.save_image_description);
       tools['save_image_description'] = imgTool(context);
       this.logger.log(
         `动态注入 save_image_description 工具, imageMessageIds=${context.turnInput.imageMessageIds.join(',')}`,
@@ -334,6 +377,7 @@ export class ToolRegistryService {
         messageWriteback: (messageId, content, sheet) =>
           this.writeBackResumeMessage(messageId, content, sheet),
       });
+      validateToolContract(BUILT_IN_TOOL_CONTRACTS.read_resume_attachment);
       tools['read_resume_attachment'] = resumeTool(context);
       this.logger.log(
         `动态注入 read_resume_attachment 工具, resumeCount=${resumeAttachments.length}`,
@@ -349,6 +393,7 @@ export class ToolRegistryService {
     for (const name of names) {
       const def = this.registry[name];
       if (def) {
+        validateToolContract(def.contract);
         tools[name] = def.create(context);
         continue;
       }

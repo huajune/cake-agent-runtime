@@ -13,6 +13,7 @@ import type { SessionBrandState } from '@resolution/brand/brand-resolution.types
 import type { GeocodeLocationAnchor, TurnLedger } from './turn.types';
 import type { CorpusBlock } from './corpus.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import type { ToolActionContract } from './tool-action.contract';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -136,6 +137,7 @@ export type ToolBuilder = (context: ToolBuildContext) => AiTool;
 export interface ToolDefinition {
   name: string;
   description: string;
+  contract: ToolActionContract;
   create: ToolBuilder;
 }
 
@@ -147,6 +149,7 @@ export function createToolDefinition(def: ToolDefinition): ToolDefinition {
 /** 运行时工具注册记录。 */
 export interface ToolRegistration {
   name: string;
+  contract: ToolActionContract;
   source: 'built-in' | 'mcp';
   /** MCP 工具：预构建的 tool */
   tool?: AiTool;
