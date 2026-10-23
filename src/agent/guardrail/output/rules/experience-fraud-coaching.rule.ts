@@ -1,3 +1,4 @@
+// business-rules: ID-07
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { RuleContradiction } from '../output-rule.types';
 

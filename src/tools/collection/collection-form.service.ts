@@ -1,3 +1,4 @@
+// business-rules: IB-08, ID-02, ID-04, ID-06, ID-08
 /**
  * 收资表单的持久化编排：loadOrCreate / persist / phone 到达 rebind。
  *

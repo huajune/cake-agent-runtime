@@ -1,12 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readCandidateManual } from '../helpers/candidate-manual';
 import { FINAL_CHECK_RULES } from '@agent/generator/context/sections/procedural/final-check.section';
 
 describe('generic job-requirement boundaries', () => {
   const root = process.cwd();
-
-  const readPrompt = (name: string) =>
-    readFileSync(join(root, 'src/agent/generator/context/sections/procedural', name), 'utf8');
 
   const finalCheckRuleText = (ruleId: string): string => {
     const rule = FINAL_CHECK_RULES.find((item) => item.id === ruleId);
@@ -15,7 +11,7 @@ describe('generic job-requirement boundaries', () => {
   };
 
   it('keeps combination scheduling independent from weekly attendance frequency', () => {
-    const candidatePrompt = readPrompt('candidate-consultation.md');
+    const candidatePrompt = readCandidateManual(root);
     const comboScheduleCheck = finalCheckRuleText('combo_schedule_two_dimensions');
 
     expect(candidatePrompt).toContain('组合排班制完整满足其中一档即可');
@@ -29,7 +25,7 @@ describe('generic job-requirement boundaries', () => {
   });
 
   it('keeps the universal food-service requirement while forbidding stage proportions', () => {
-    const candidatePrompt = readPrompt('candidate-consultation.md');
+    const candidatePrompt = readCandidateManual(root);
     const healthCertCheck = finalCheckRuleText('health_cert_general_answer');
 
     expect(candidatePrompt).toContain('办理阶段以具体岗位当前要求为准');
@@ -43,7 +39,7 @@ describe('generic job-requirement boundaries', () => {
   });
 
   it('keeps weak gender evidence and post-form detail questions on the deduplicated collection path', () => {
-    const candidatePrompt = readPrompt('candidate-consultation.md');
+    const candidatePrompt = readCandidateManual(root);
 
     expect(candidatePrompt).toContain('无论岗位是否限制性别，都严禁拆成单独确认问题');
     expect(candidatePrompt).toContain('性别：男/女（如有误请改）');

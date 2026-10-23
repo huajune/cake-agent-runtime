@@ -1,3 +1,4 @@
+// business-rules: GEO-02, IB-03, IB-05, IB-06
 import type { ToolActionService } from './actions/tool-action.service';
 import { actionReceiptFields, unresolvedActionReceipt } from './actions/business-action.util';
 import { toErrorMessage } from '@infra/utils/error.util';

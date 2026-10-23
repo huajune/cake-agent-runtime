@@ -177,6 +177,10 @@ jobs:
         if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run duplication:check
 
+      - name: Validate business rule links and manual assets
+        if: steps.ci_scope.outputs.full_ci == 'true'
+        run: pnpm run business-rules:validate
+
       - name: Build
         if: steps.ci_scope.outputs.full_ci == 'true'
         run: pnpm run build:ci

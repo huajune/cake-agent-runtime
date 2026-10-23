@@ -1,3 +1,4 @@
+// business-rules: IB-04, IB-11, IB-12
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';

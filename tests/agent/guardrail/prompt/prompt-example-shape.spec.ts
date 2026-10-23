@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import * as ts from 'typescript';
 import { REGISTERED_PROMPT_EXAMPLE_VALUES } from '@agent/guardrail/prompt/example-registry';
+import { BUSINESS_TOPICS } from '@agent/generator/context/manual-loader';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
 
 interface PromptSurface {
@@ -22,6 +23,10 @@ interface ExampleShapeViolation {
 }
 
 const PROMPT_ASSETS: readonly PromptSurface[] = [
+  ...BUSINESS_TOPICS.map((topic) => ({
+    id: `business-${topic}`,
+    source: `src/agent/generator/context/sections/procedural/rules/${topic.toLowerCase()}.md`,
+  })),
   {
     id: 'candidate-consultation',
     source: 'src/agent/generator/context/sections/procedural/candidate-consultation.md',
@@ -281,8 +286,8 @@ function scanSurface(surface: PromptSurface): ExampleShapeViolation[] {
 }
 
 describe('prompt example shape CI guard', () => {
-  it('keeps the census surface explicit: 1 asset, 13 sections, all tool descriptions, extraction prompt', () => {
-    expect(PROMPT_ASSETS).toHaveLength(1);
+  it('keeps the census surface explicit: manifest and topics, 13 sections, tools and extraction', () => {
+    expect(PROMPT_ASSETS).toHaveLength(1 + BUSINESS_TOPICS.length);
     expect(PROMPT_SECTION_BUILDERS).toHaveLength(13);
     expect(TOOL_DESCRIPTION_BUILDERS.length).toBeGreaterThanOrEqual(13);
     expect(EXTRACTION_PROMPTS).toHaveLength(1);

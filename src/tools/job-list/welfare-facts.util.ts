@@ -1,3 +1,4 @@
+// business-rules: SW-02, SW-08
 /**
  * 从 raw job.welfare 派生结构化 WelfareFacts。
  *

@@ -1,3 +1,4 @@
+// business-rules: ID-08
 import type { FactRule } from '../output-rule.types';
 
 const SENSITIVE_ATTRIBUTE =

@@ -1,3 +1,4 @@
+// business-rules: GP-10
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
