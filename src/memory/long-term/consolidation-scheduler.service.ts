@@ -29,18 +29,29 @@ export class ConsolidationSchedulerService {
     private readonly config: MemoryConfig,
   ) {}
 
+  get idleGapMs(): number {
+    return this.config.consolidationGapSeconds * 1000;
+  }
+
   /**
-   * 每回合结束刷新同一 chat 的 delayed job。正常路径复用固定 jobId 并先移除旧任务；
+   * 每回合结束确保同一 chat 的 delayed job 存在；尚未执行的固定 jobId 直接复用；
    * 极小概率遇到旧任务已 active 时，另排一个带 activityAt 的接替任务，旧任务会在
    * 到点闲置校验中 fail closed。
    */
   async schedule(input: MemoryConsolidationJob, delayMs?: number): Promise<string> {
     const baseJobId = this.buildJobId(input.sessionId);
     let jobId = baseJobId;
-    const existing = await this.queue.getJob(baseJobId).catch(() => null);
+    const existing = await this.queue.getJob(baseJobId);
 
     if (existing) {
-      const state = await existing.getState().catch(() => null);
+      const state = await existing.getState();
+      // 保留尚未执行的检查；到点后从消息库复核实际闲置时长，不依赖任务旧 activityAt。
+      if (
+        delayMs === undefined &&
+        (state === 'delayed' || state === 'waiting' || state === 'paused')
+      ) {
+        return baseJobId;
+      }
       if (state === 'active') {
         jobId = `${baseJobId}:${input.activityAt}`;
       } else {

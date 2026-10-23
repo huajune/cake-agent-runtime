@@ -55,6 +55,15 @@ describe('ConsolidationSchedulerService', () => {
     );
   });
 
+  it('每轮复用尚未到期任务，不移除重建', async () => {
+    const existing = { getState: jest.fn().mockResolvedValue('delayed'), remove: jest.fn() };
+    queue.getJob.mockResolvedValue(existing);
+    await service.schedule(input);
+    await service.schedule({ ...input, activityAt: 456 });
+    expect(existing.remove).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
   it('旧任务已 active 时保留它并注册唯一接替任务', async () => {
     const existing = {
       getState: jest.fn().mockResolvedValue('active'),

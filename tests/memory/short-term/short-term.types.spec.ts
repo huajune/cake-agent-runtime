@@ -5,6 +5,44 @@ import {
 } from '@memory/short-term/short-term.types';
 
 describe('SessionFactsSchema 读写边界', () => {
+  it.each([
+    ['有（未领证）', '办理中'],
+    ['无本地有效健康证，接受办理', '无本地有效健康证，接受办理'],
+    ['下个月可能再说', null],
+  ])('健康证闭集归一 %s，未知值不丢整份 facts', (value, expected) => {
+    const base = toSessionFacts(FALLBACK_EXTRACTION, {
+      confidence: 'medium',
+      source: 'model',
+      evidence: '测试基线',
+    });
+    const original = {
+      value,
+      confidence: 'medium',
+      source: 'candidate_quote',
+      evidence: '原'.repeat(509),
+      extractedAt: '2026-10-01T00:00:00.000Z',
+    };
+    const facts = SessionFactsSchema.parse({
+      ...base,
+      interview_info: {
+        ...base.interview_info,
+        has_health_certificate: original,
+        name: { ...original, value: '张三' },
+      },
+      preferences: { ...base.preferences, location: { ...original, value: null } },
+    });
+    expect(facts.interview_info.has_health_certificate).toEqual(
+      expected === null ? null : { ...original, value: expected, evidence: `${'原'.repeat(199)}…` },
+    );
+    expect(facts.interview_info.name?.value).toBe('张三');
+    expect(facts.preferences.location).toEqual({
+      ...original,
+      value: null,
+      evidence: `${'原'.repeat(199)}…`,
+    });
+    expect(SessionFactsSchema.parse(facts)).toEqual(facts);
+  });
+
   it('空字符串信封归 null：旧提取路径曾把 value:"" 连信封落库（09-02 核对 3 例籍贯）', () => {
     const base = toSessionFacts(FALLBACK_EXTRACTION, {
       confidence: 'medium',

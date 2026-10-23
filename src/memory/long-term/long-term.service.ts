@@ -1,5 +1,6 @@
 import type { BookingProjectionOptions } from '../stores/supabase.store';
 import { Injectable, Logger } from '@nestjs/common';
+import { isExpiredTemporalFact } from '../temporal-facts';
 import { SupabaseStore } from '../stores/supabase.store';
 import type { CandidateFactProducer } from '@resolution/candidate/types';
 import type {
@@ -42,6 +43,7 @@ export interface FactOrigin {
 /** consolidation 专用：血缘之外附带品牌快照源；preferences.brands 已退役。 */
 export interface ConsolidationFactOrigin extends FactOrigin {
   brandState?: PersistedBrandState | null;
+  sessionEndAt?: string;
 }
 
 /**
@@ -159,11 +161,14 @@ export class LongTermService {
           userId,
           botUserId,
           profileFacts,
-          undefined,
+          { imBotId: origin.botImId },
           undefined,
           options,
         );
-      else await this.supabaseStore.upsertProfileFacts(corpId, userId, botUserId, profileFacts);
+      else
+        await this.supabaseStore.upsertProfileFacts(corpId, userId, botUserId, profileFacts, {
+          imBotId: origin.botImId,
+        });
       this.logger.log(
         `[writeFromBooking] Profile 写入成功: corpId=${corpId}, userId=${userId}, name=${data.name}`,
       );
@@ -202,7 +207,7 @@ export class LongTermService {
         userId,
         botUserId,
         profileFacts,
-        undefined,
+        origin?.botImId ? { imBotId: origin.botImId } : undefined,
         jobIntentFacts,
       );
       this.logger.log(
@@ -445,17 +450,17 @@ export class LongTermService {
   }
 
   /**
-   * 从 sessionFacts.preferences 构建长期求职意向快照。
+   * 从 sessionFacts.preferences 构建长期求职意向字段补丁。
    *
    * - 只取 LONG_TERM_JOB_INTENT_FIELD_KEYS 中的稳定意向字段
-   * - 快照式：不与既有长期意向 merge，由 store 整列覆盖（最新一段会话赢）
+   * - 缺席保留、信封内 null 显式清空；RPC 按字段原始时间在行锁内合并
    * - confidence 固定 medium（与 Profile 沉淀路径一致），evidence 截断保留一跳来源
    */
   private buildPreferenceFactsFromConsolidation(
     facts: EntityExtractionResult | SessionFacts,
     origin?: ConsolidationFactOrigin,
   ): JobIntentFacts {
-    const updatedAt = new Date().toISOString();
+    const updatedAt = origin?.sessionEndAt ?? new Date().toISOString();
     const jobIntentFacts: JobIntentFacts = {};
     const prefs = facts.preferences as unknown as Record<string, unknown>;
 
@@ -467,6 +472,7 @@ export class LongTermService {
       // 外层 null / 缺键 = 本轮缺席，不改变长期值；只有信封内 null/空值才是墓碑。
       if (rawValue === null || rawValue === undefined) continue;
       const value = unwrapSessionFactValue(rawValue as SessionFactValue<unknown> | null);
+      if (isSessionFactValue(rawValue) && isExpiredTemporalFact(key, rawValue)) continue;
       const explicitClear =
         isSessionFactValue(rawValue) &&
         (value === null ||
@@ -478,22 +484,28 @@ export class LongTermService {
         source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
         confidence: 'medium',
         evidence: this.buildConsolidationEvidence(rawValue),
-        updatedAt,
+        updatedAt: isSessionFactValue(rawValue) ? (rawValue.extractedAt ?? updatedAt) : updatedAt,
         originSessionId: origin?.sessionId,
         originBotId: origin?.botImId,
       });
     }
 
     const currentBrand = origin?.brandState?.currentBrand;
-    if (currentBrand) {
-      jobIntentFacts.brands = userProfileFactValue([currentBrand.canonicalName], {
-        source: 'rule',
-        confidence: 'medium',
-        evidence: '会话品牌状态快照（facts.brand.currentBrand）',
-        updatedAt,
-        originSessionId: origin?.sessionId,
-        originBotId: origin?.botImId,
-      });
+    if (currentBrand || origin?.brandState?.updatedAtMs != null) {
+      jobIntentFacts.brands = userProfileFactValue(
+        currentBrand ? [currentBrand.canonicalName] : null,
+        {
+          source: 'rule',
+          confidence: 'medium',
+          evidence: '会话品牌状态快照（facts.brand.currentBrand）',
+          updatedAt:
+            origin?.brandState?.updatedAtMs != null
+              ? new Date(origin.brandState.updatedAtMs).toISOString()
+              : updatedAt,
+          originSessionId: origin?.sessionId,
+          originBotId: origin?.botImId,
+        },
+      );
     }
 
     return jobIntentFacts;

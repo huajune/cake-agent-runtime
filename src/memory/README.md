@@ -171,8 +171,13 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 ## Long-term
 
-长期关系档按 `(corpId, userId, botUserId)` 隔离。关系行只由 consolidation 创建：候选人首次接触
-不再在 `agent_long_term_memories` 开户，`message_metadata` 列不再写入（存量保留，无读方）。`botUserId` 使用托管账号稳定的 `wecomUserId`；轮换的 `imBotId` 只用于渠道调用或血缘排障，不参与长期主键。
+长期关系档按 `(corpId, userId, botUserId)` 隔离。consolidation 和报名成功后的资料回写均可创建或更新关系行；候选人首次接触不再仅为联系人元信息在 `agent_long_term_memories` 创建占位行。
+入站不单为 metadata 新建壳行；沉淀和报名资料写入时，同事务保存已知 `imBotId`，RPC 合并保留已有外部身份与联系人字段，未知值不猜填。测试夹具与显式回填脚本也保留写入能力。该列是明确保留的跨系统关联扩展信息，保存外部身份和联系人快照；当前业务召回不消费不代表可以退役。它不等同于事实的 `source / evidence`，也不代替关系主键。仅含 metadata 的行不属于可直接删除的无用壳行。历史回填只能沿已有会话血缘核对候选人与 bot，补空不覆盖；消息表没有 `bot_id`，不得拿其他标识猜填 `botId`。
+`botUserId` 使用托管账号稳定的 `wecomUserId`；轮换的 `imBotId` 只用于渠道调用或血缘排障，不参与长期主键。
+
+表内 `bot_user_id IS NULL` 的旧行还承载候选人共享的 `active_booking`；其历史画像不参与当前按 bot 的画像召回，不能把整批旧行视为可删垃圾。
+健康证在短期读写和长期读写边界统一到 `HEALTH_CERTIFICATE_STATES` 的四种表单同源状态（未知为 null）；精确别名转换不改变来源、置信度与事实时间。自由描述不能直接进入该字段，日期与原话留在证据中。
+画像与求职意向事实的 `evidence` 均最多 200 个 Unicode 码点，省略号计入上限；构造器、读边界和长期 RPC 写边界共用 `fact-evidence.ts`。
 
 存储形态：
 
@@ -213,10 +218,10 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
                               SQL rank 守卫：medium 顶不掉 booking 写的 high
      哲学：档案是累积的——越确认越硬，好值粘住不退
 
-  ② 意向快照 semantic_job_intent  来源 B 的 preferences（11 键）+ brand.currentBrand
-     写法【整组覆盖】           不 merge，最新一段全赢；
+  ② 意向字段 semantic_job_intent  来源 B 的 preferences（11 键）+ brand.currentBrand
+     写法【时间合并】           每字段最新时间赢，不拼接字段数组；
                               信封内空值 = 显式墓碑（“不要了”清掉旧值，“没提”不动）
-     哲学：意向是易变的——只信最新，旧的整组作废
+     哲学：意向是易变的——明确修改才替换，换城市清空旧区域/商圈
 
   ③ 经历摘要 episodic_session_summaries  来源 A 的聊天原文（+B 作参考）
      写法【追加淘汰】           LLM 写一条 150 字四节摘要（全管线唯一 LLM 调用），
@@ -229,11 +234,11 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 └────────────────────────────────────────────────────────────┘
 ```
 
-三套写法对应三种数据的天性：**事实越证越硬（合并）、意向喜新厌旧（覆盖）、经历落笔成史（追加）**。
+三套写法对应三种数据的天性：**事实越证越硬（合并）、意向逐项更新（按时间合并）、经历落笔成史（追加）**。
 
-摘要 LLM 输出首行为「范围：求职 / 非求职」，随后四节固定为「标题：正文」纯文本；`parseSummaryOutput`
+摘要 LLM 输出首行为「范围：求职 / 非求职 / 无实质内容」，随后四节固定为「标题：正文」纯文本；`parseSummaryOutput`
 在写入前做确定性格式归一（去范围行、Markdown 标题与加粗统一为「标题：」），不改内容。范围为
-非求职（在职工时/工资/排班等事务、闲聊）时不写摘要、只推进水位；范围行缺失按求职处理。
+非求职（在职工时/工资/排班等事务、闲聊）或无实质内容时不写摘要、只推进水位；范围行缺失按求职处理。
 缺失的标识符直接省略，不再写「无」填充句。
 
 ## 回合生命周期
@@ -247,13 +252,15 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 3. 独立 `stage:` 阶段指针；
 4. 当前候选人 × bot 的长期 profile 与 job intent。
 
+回访首轮（会话缺失或距上轮已满沉淀间隙）自动读取最近一段有效摘要，正文最多 300 个码点；连续轮次不重复注入，更早历史由 `recall_history` 按需读取。
+
 返回两层召回契约后，`PreparationService` 才可调用
 `SnapshotEnrichmentService` 补齐当轮快照的缺失线索；这是 generator 备料步骤，
 不是 memory lifecycle，也不改写记忆存储。复聊使用同一召回入口的投影，不另造记忆层。
 
 ### `onTurnEnd`
 
-回合收尾按固定顺序更新工作台和事实，并在结束时注册或刷新同一 chat 的 delayed consolidation job。新队列与 job 标识统一使用 `consolidation` 词根。
+回合收尾按固定顺序更新工作台和事实，并在结束时确保同一 chat 有 delayed consolidation job；尚未到期的任务直接复用，不逐轮移除重建。新队列与 job 标识统一使用 `consolidation` 词根。
 
 任务在闲置满沉淀间隙（7 天）到点时：
 
@@ -300,3 +307,11 @@ DB RPC 若需要改参数，迁移必须 `DROP FUNCTION` 后以同名重新创�
 - [记忆系统架构与数据流](../../docs/architecture/memory-architecture.md)
 - [记忆与状态全局视图](../../docs/architecture/memory-and-state.md)
 - [候选人档案域架构](../../docs/architecture/candidate-profile-domain.md)
+
+### 时效与完整性
+
+`available_after` 早于上海业务日期时失效；`delayed_intent` 有明确日期时按日期失效，无明确日期则按原事实时间 30 天失效。短期读边界、长期读边界与沉淀共用规则；重复沉淀不刷新原事实时间。显式清空保留带时间的墓碑，旧任务不能重新写活。
+
+候选岗位池最多 30 条，前 10 条完整保留，后 20 条保留岗位定位、出处和结构化资格字段，薪资/班次/福利等细节按 jobId 重查；已展示与焦点岗位单独保存。`preferences.brand_ids` 的旧存储信封会被剥离，品牌状态以 `facts.brand` 为准，本轮明确品牌 ID 的临时投影仍有效。
+
+轮末抽取继续在会话锁内，沿用已有增量历史窗口；`memory_extraction_budget` 记录输入条数、字符数、耗时与降级标记，不记录候选人原话。模型切换和移出锁不属于未经验证即可实施的提速手段。

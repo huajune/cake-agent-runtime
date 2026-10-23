@@ -6,11 +6,14 @@
  * 则适配器只能另抄一份词表，违反「一处识别器多处消费」纪律。
  */
 
+import { normalizeHealthCertificateState } from './health-certificate-state';
+
 export type LocalHealthCertificateEligibilityStatus =
   | 'local_valid'
   | 'non_local_needs_confirmation'
   | 'accepts_local_application'
   | 'rejects_local_application'
+  | 'processing'
   | 'unknown';
 
 export interface LocalHealthCertificateEligibility {
@@ -116,6 +119,14 @@ export function resolveLocalHealthCertificateEligibility(params: {
 
   const normalizedKnown = readText(params.normalizedKnownValue);
   const effective = latest || normalizedKnown;
+  if (normalizeHealthCertificateState(effective) === '办理中') {
+    return {
+      status: 'processing',
+      spongeValue: null,
+      explicitNoCertificate: true,
+      reason: '健康证正在办理或待出证，尚不能按本地有效证提交',
+    };
+  }
   if (isRejection(effective)) {
     return {
       status: 'rejects_local_application',

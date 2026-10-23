@@ -163,6 +163,22 @@ describe('health-certificate.adapter', () => {
     expect(proposeHealthCertificate(input(HEALTH_CERT_FIELD, '还没办'))).toBeNull();
   });
 
+  it('办理中只映射实际契约选项，不猜 optionCode', () => {
+    const pending = {
+      ...HEALTH_CERT_FIELD,
+      acceptedOptions: [
+        ...HEALTH_CERT_FIELD.acceptedOptions,
+        { optionCode: 'pending-real', optionLabel: '办理中' },
+      ],
+    };
+    expect(
+      proposeHealthCertificate({ ...input(pending, '办理中'), answerBound: true })?.optionCodes,
+    ).toEqual(['pending-real']);
+    expect(
+      proposeHealthCertificate({ ...input(HEALTH_CERT_FIELD, '办理中'), answerBound: true }),
+    ).toBeNull();
+  });
+
   it('回归：缺少“有/无”的「本地有效健康证，接受办理」保持空槽，不替候选人猜', () => {
     expect(
       proposeHealthCertificate(

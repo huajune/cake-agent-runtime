@@ -986,7 +986,7 @@ describe('SessionStateService（S1-S6）', () => {
           originSessionId: 'session-1',
         }),
       },
-      undefined,
+      { imBotId: 'bot-1' },
       {},
     );
   });

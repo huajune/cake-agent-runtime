@@ -105,7 +105,7 @@ describe('formatExtractionFactLines', () => {
     expect(lines).toEqual([expect.stringContaining(`- 性别: 女${tag}`)]);
   });
 
-  it('should render Boss title brand ids', () => {
+  it('does not render retired persisted brand ids', () => {
     const lines = formatExtractionFactLines({
       ...FALLBACK_EXTRACTION,
       preferences: {
@@ -114,7 +114,7 @@ describe('formatExtractionFactLines', () => {
       },
     });
 
-    expect(lines).toEqual(['- 意向品牌ID: 10239']);
+    expect(lines).toEqual([]);
   });
 
   it('should render high-confidence field metadata without evidence by default', () => {

@@ -1,3 +1,4 @@
+import type { TurnHintProjection } from '@resolution/turn-hints/projection.types';
 import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 import { isValidLaborForm } from '@resolution/labor-form';
 import { stripTimeContextSuffix } from '@resolution/candidate/name';
@@ -45,7 +46,7 @@ const STALE_FACT_THRESHOLD_MS = 24 * 60 * 60 * 1000;
  * 供 session facts 渲染和 turn hints 渲染共用，避免重复维护字段顺序/文案。
  */
 export function formatExtractionFactLines(
-  facts: EntityExtractionResult | SessionFacts,
+  facts: EntityExtractionResult | SessionFacts | TurnHintProjection,
   options: FactLineFormatOptions = {},
 ): string[] {
   const { interview_info: info, preferences: pref } = facts;
@@ -102,8 +103,6 @@ export function formatExtractionFactLines(
   if (options.currentBrandName) {
     lines.push(`- 意向品牌: ${options.currentBrandName}（来源: 会话品牌状态）`);
   }
-  const brandIds = readFactValue(pref.brand_ids);
-  if (brandIds?.length) lines.push(`- 意向品牌ID: ${brandIds.join('、')}${meta(pref.brand_ids)}`);
   const salary = readFactValue(pref.salary);
   if (salary) lines.push(`- 意向薪资: ${salary}${meta(pref.salary)}`);
   const position = readFactValue(pref.position);

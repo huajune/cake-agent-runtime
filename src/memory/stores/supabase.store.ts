@@ -5,6 +5,10 @@ import { MemoryConfig } from '../memory.config';
 import type { z } from 'zod';
 import type { CandidateFactField, CandidateFactProducer } from '@resolution/candidate/types';
 import { canonicalizeCandidateFieldValue } from '@resolution/candidate/value-shape';
+import { normalizeHealthCertificateState } from '@resolution/candidate/health-certificate-state';
+import { truncateEvidence } from '../fact-evidence';
+import { isExpiredTemporalFact } from '../temporal-facts';
+import { isValidSummaryEntry } from '../memory-integrity';
 import type {
   UserProfile,
   UserProfileFactValue,
@@ -60,10 +64,9 @@ const EMPTY_CONSOLIDATION_WATERMARKS: ConsolidationWatermarks = {
 
 function toSummaryEntries(value: unknown): SummaryEntry[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (entry): entry is SummaryEntry =>
-      Boolean(entry) && typeof entry === 'object' && typeof entry.summary === 'string',
-  );
+  return value
+    .filter(isValidSummaryEntry)
+    .sort((a, b) => Date.parse(a.endTime) - Date.parse(b.endTime));
 }
 
 function isCanonicalWatermarks(value: unknown): value is ConsolidationWatermarks {
@@ -146,6 +149,10 @@ function normalizeProfileFactValue(
   fact: z.infer<typeof UserProfileFactValueSchema>,
 ): z.infer<typeof UserProfileFactValueSchema> | null {
   if (typeof fact.value === 'string' && fact.value.trim() === '') return null;
+  if (key === 'has_health_certificate') {
+    const value = normalizeHealthCertificateState(fact.value);
+    return value === null ? null : { ...fact, value };
+  }
   const numericField = PROFILE_NUMERIC_FIELDS[key];
   if (!numericField) return fact;
   const canonical = canonicalizeCandidateFieldValue(numericField, fact.value);
@@ -159,7 +166,12 @@ function normalizeJobIntentFacts(data: JobIntentFacts | null | undefined): JobIn
   const raw = data as Record<string, unknown>;
   for (const key of LONG_TERM_JOB_INTENT_FIELD_KEYS) {
     const parsed = UserProfileFactValueSchema.safeParse(raw[key]);
-    if (parsed.success) facts[key] = parsed.data as UserProfileFactValue<unknown>;
+    if (
+      parsed.success &&
+      !isExpiredTemporalFact(key, parsed.data as UserProfileFactValue<unknown>)
+    ) {
+      facts[key] = parsed.data as UserProfileFactValue<unknown>;
+    }
   }
   return Object.keys(facts).length > 0 ? facts : null;
 }
@@ -255,7 +267,7 @@ export class SupabaseStore implements MemoryStore {
    * 已有 high 时，incoming 非 high 不得覆盖。
    *
    * 可选同时携带 jobIntentFacts（沉淀路径）：两列在同一 RPC 事务/行锁内写入，
-   * 消除"profile 落库而意向丢失"的半写状态。preference 维持快照式整列覆盖语义。
+   * 消除"profile 落库而意向丢失"的半写状态。preference 按字段时间合并，显式墓碑清空。
    */
   async upsertProfileFacts(
     corpId: string,
@@ -277,10 +289,24 @@ export class SupabaseStore implements MemoryStore {
     for (const key of USER_PROFILE_FIELD_KEYS) {
       const fact = profileFacts[key];
       if (isUserProfileFactValue(fact) && fact.value !== null && fact.value !== undefined) {
-        profileFactsJson[key] = fact;
+        const value =
+          key === 'has_health_certificate'
+            ? normalizeHealthCertificateState(fact.value)
+            : fact.value;
+        if (value === null) continue;
+        profileFactsJson[key] = { ...fact, value, evidence: truncateEvidence(fact.evidence) };
       }
     }
-    const hasPreferences = Boolean(jobIntentFacts && Object.keys(jobIntentFacts).length > 0);
+    // 意向 value=null 是显式清空墓碑，截断 evidence 时不得过滤掉。
+    const normalizedIntent = jobIntentFacts
+      ? Object.fromEntries(
+          Object.entries(jobIntentFacts).map(([key, fact]) => [
+            key,
+            { ...fact, evidence: truncateEvidence(fact.evidence) },
+          ]),
+        )
+      : null;
+    const hasPreferences = Boolean(normalizedIntent && Object.keys(normalizedIntent).length > 0);
     if (Object.keys(profileFactsJson).length === 0 && !metadata && !hasPreferences) return;
 
     const request = client.rpc(
@@ -291,7 +317,7 @@ export class SupabaseStore implements MemoryStore {
         p_bot_user_id: botUserId,
         p_profile_facts: profileFactsJson,
         p_message_metadata: metadata ?? null,
-        p_preference_facts: hasPreferences ? jobIntentFacts : null,
+        p_preference_facts: hasPreferences ? normalizedIntent : null,
       },
     );
     const { data, error } = await (options?.strict

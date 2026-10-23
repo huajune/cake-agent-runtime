@@ -1,3 +1,4 @@
+import { normalizeHealthCertificateState } from '@resolution/candidate/health-certificate-state';
 import { inferCitiesFromGeoSignals } from '@resolution/geo/city-adjudicator';
 import { isConcreteCityScope } from '@resolution/geo';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
@@ -8,7 +9,6 @@ import {
   type UserProfileFacts,
 } from '@memory/long-term/long-term.types';
 import type {
-  EntityExtractionResult,
   Preferences,
   SessionFacts,
   WeworkSessionState,
@@ -32,6 +32,7 @@ import type { ModelMessage } from 'ai';
 import type { AgentMemorySnapshot, GeneratorInvokeParams } from '../generator.types';
 import type {
   HardConstraintsPromptView,
+  InterviewPromptView,
   PromptModel,
   PromptSecurityView,
   StudentJobVerdictView,
@@ -138,6 +139,7 @@ export function resolveTurnContext(input: {
     },
   });
   const memoryView: MemoryPromptView = {
+    recentSessionSummary: sources.memory.longTerm.recentSessionSummary,
     adjudication: promptMemoryView,
     booking: sources.booking,
     realtimeGroups: sources.realtimeGroups,
@@ -227,7 +229,12 @@ export function resolveTurnContext(input: {
   };
   const resolvedSessionFacts = hardConstraints.facts
     ? {
-        interview_info: hardConstraints.facts.interview,
+        interview_info: {
+          ...hardConstraints.facts.interview,
+          has_health_certificate: normalizeHealthCertificateState(
+            hardConstraints.facts.interview.has_health_certificate,
+          ),
+        },
         preferences: hardConstraints.facts.preferences,
         reasoning: 'resolved turn constraints',
       }
@@ -318,9 +325,9 @@ function collectMentionedBrands(input: {
   const session = sources.memory.shortTerm.sessionState;
   for (const state of [session?.facts?.brand, sources.turnBrandContext.state]) {
     collect(state?.currentBrand?.canonicalName);
+    collectIds(state?.currentBrand?.brandId != null ? [state.currentBrand.brandId] : null);
     collect(state?.excludedBrands?.map((brand) => brand.canonicalName));
   }
-  collectIds(unwrapSessionFactValue(session?.facts?.preferences?.brand_ids));
   collect(unwrapUserProfileFactValue(sources.memory.longTerm.semantic.jobIntent?.brands));
 
   // 与工具 archive.recentBrandPool 相同的三个历史岗位来源，额外承接岗位名中的品牌。
@@ -435,7 +442,7 @@ export function resolveHardConstraintsPromptView(input: {
   const hasFacts = Boolean(trusted || current || input.laborFormIntent.kind === 'set');
   if (!hasFacts) return { facts: null, brandState: input.brandState };
 
-  const interview: EntityExtractionResult['interview_info'] = {
+  const interview: InterviewPromptView = {
     ...emptyInterviewInfo(),
     ...dropNulls(trusted?.interview_info),
     ...dropNulls(current?.interview_info),
@@ -544,9 +551,7 @@ function selectClaims(
   return claims.length > 0 ? { claims, reasoning: hints.reasoning } : null;
 }
 
-function dropNulls(
-  obj: EntityExtractionResult['interview_info'] | undefined,
-): Partial<EntityExtractionResult['interview_info']> {
+function dropNulls(obj: InterviewPromptView | undefined): Partial<InterviewPromptView> {
   if (!obj) return {};
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -554,10 +559,10 @@ function dropNulls(
     if (typeof value === 'string' && value.trim() === '') continue;
     result[key] = value;
   }
-  return result as Partial<EntityExtractionResult['interview_info']>;
+  return result as Partial<InterviewPromptView>;
 }
 
-function emptyInterviewInfo(): EntityExtractionResult['interview_info'] {
+function emptyInterviewInfo(): InterviewPromptView {
   return {
     name: null,
     phone: null,

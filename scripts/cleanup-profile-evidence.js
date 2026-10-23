@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * 存量清洗：截断 agent_long_term_memories.semantic_profile 中的超长 evidence。
+ * 存量清洗：截断 agent_long_term_memories 画像和意向中的超长 evidence。
  *
  * 背景：会话沉淀曾把 LLM 提取 reasoning 全文（600+ 字）作为 evidence 永久写入
  * 长期画像，并随每轮注入 system prompt（张漪 case，chat 69a13e919d6d3a463b0a37c6）。
@@ -61,9 +61,9 @@ function loadEnvFile(filePath) {
 }
 
 function truncateEvidence(evidence) {
-  const trimmed = evidence.trim();
-  if (trimmed.length <= MAX_EVIDENCE_CHARS) return trimmed;
-  return `${trimmed.slice(0, MAX_EVIDENCE_CHARS)}…`;
+  const characters = Array.from(evidence.trim());
+  if (characters.length <= MAX_EVIDENCE_CHARS) return characters.join('');
+  return `${characters.slice(0, MAX_EVIDENCE_CHARS - 1).join('')}…`;
 }
 
 /** 返回 null 表示该行无需清洗。 */
@@ -76,7 +76,7 @@ function cleanProfileFacts(profileFacts) {
       value &&
       typeof value === 'object' &&
       typeof value.evidence === 'string' &&
-      value.evidence.length > MAX_EVIDENCE_CHARS
+      Array.from(value.evidence).length > MAX_EVIDENCE_CHARS
     ) {
       next[field] = { ...value, evidence: truncateEvidence(value.evidence) };
       changed = true;
@@ -109,10 +109,8 @@ async function main() {
   for (;;) {
     const { data, error } = await client
       .from('agent_long_term_memories')
-      .select('corp_id, user_id, semantic_profile')
-      .not('semantic_profile', 'is', null)
-      .order('corp_id', { ascending: true })
-      .order('user_id', { ascending: true })
+      .select('id, updated_at, semantic_profile, semantic_job_intent')
+      .order('id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
     if (error) {
       console.error('select failed:', error.message);
@@ -122,27 +120,29 @@ async function main() {
 
     for (const row of data) {
       scanned += 1;
-      const cleaned = cleanProfileFacts(row.semantic_profile);
-      if (!cleaned) continue;
+      const patch = {};
+      for (const column of ['semantic_profile', 'semantic_job_intent']) {
+        const cleaned = cleanProfileFacts(row[column]);
+        if (cleaned) patch[column] = cleaned;
+      }
+      if (Object.keys(patch).length === 0) continue;
       polluted += 1;
 
-      const longFields = Object.entries(row.semantic_profile)
-        .filter(
-          ([, v]) => v && typeof v === 'object' && (v.evidence?.length ?? 0) > MAX_EVIDENCE_CHARS,
-        )
-        .map(([f, v]) => `${f}(${v.evidence.length})`);
-      console.log(`- ${row.corp_id}/${row.user_id}: ${longFields.join(', ')}`);
+      console.log(`- ${row.id}: ${Object.keys(patch).join(', ')}`);
 
       if (args.dryRun) continue;
-      const { error: updateError } = await client
+      const { data: changed, error: updateError } = await client
         .from('agent_long_term_memories')
-        .update({ semantic_profile: cleaned })
-        .eq('corp_id', row.corp_id)
-        .eq('user_id', row.user_id);
+        .update(patch)
+        .eq('id', row.id)
+        .eq('updated_at', row.updated_at)
+        .select('id');
       if (updateError) {
-        console.error(`  update failed for ${row.corp_id}/${row.user_id}:`, updateError.message);
-      } else {
+        throw new Error(`update failed for ${row.id}: ${updateError.message}`);
+      } else if (changed?.length === 1) {
         updated += 1;
+      } else {
+        console.warn(`  skipped concurrent update: ${row.id}`);
       }
     }
 
@@ -155,7 +155,11 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+module.exports = { truncateEvidence, cleanProfileFacts };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
