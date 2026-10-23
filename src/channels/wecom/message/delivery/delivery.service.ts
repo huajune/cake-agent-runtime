@@ -1,5 +1,6 @@
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
@@ -28,7 +29,7 @@ import { TypingPolicyService } from './typing-policy.service';
  * - 处理发送失败重试
  */
 /** 单段发送瞬时失败后的重试次数与退避（WeCom 接口偶发抖动,一次重试即可覆盖绝大多数）。 */
-const SEGMENT_SEND_RETRIES = 1;
+const SEGMENT_SEND_RETRIES = RUNTIME_RETRY_LIMITS.deliverySegmentRetries;
 const SEGMENT_SEND_RETRY_DELAY_MS = 800;
 
 @Injectable()

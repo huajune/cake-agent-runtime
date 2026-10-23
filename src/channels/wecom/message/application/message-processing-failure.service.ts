@@ -96,7 +96,7 @@ export class MessageProcessingFailureService {
 
     this.logger.error(`[${contactName}] 请求处理失败 [${traceId}]: ${errorMessage}`);
 
-    const fallbackMessage = this.getFallbackMessage();
+    const fallbackMessage = this.getActionAwareFallback(error) ?? this.getFallbackMessage();
     const alertLevel = this.getAlertLevelFromError(error);
 
     const agentError = error as AgentError | null;
@@ -105,6 +105,8 @@ export class MessageProcessingFailureService {
     const maskedApiKey = maskApiKey(apiKey);
     const diagnosticPayload: Record<string, unknown> = {};
     if (maskedApiKey) diagnosticPayload.apiKey = maskedApiKey;
+    if (agentMeta?.replayBlockedBy?.length)
+      diagnosticPayload.replayBlockedBy = agentMeta.replayBlockedBy;
 
     const errorReceiver = await this.hostingMemberConfig.resolveFeishuReceiver(imBotId);
 
@@ -357,6 +359,36 @@ export class MessageProcessingFailureService {
         const alertErrorMessage = toErrorMessage(alertError);
         this.logger.error(`降级告警发送失败: ${alertErrorMessage}`);
       });
+  }
+
+  /** Action evidence outranks generic/env fallback prose; it cannot invite blind resubmission. */
+  private getActionAwareFallback(error: unknown): string | undefined {
+    const evidence = (error as AgentError | null)?.agentMeta?.replayBlockedBy;
+    if (!evidence?.length) return undefined;
+    const bookingSucceeded = evidence.some(
+      (item) =>
+        item.toolName === 'duliday_interview_booking' &&
+        !item.component &&
+        item.status === 'succeeded',
+    );
+    const invitePending = evidence.some(
+      (item) =>
+        item.component === 'groupInvite' &&
+        ['unknown', 'executing', 'pending'].includes(item.status),
+    );
+    if (bookingSucceeded && invitePending) {
+      return '报名已有成功回执，进群邀请的结果还需要核实，先不用重复报名或重复邀请。';
+    }
+    if (evidence.every((item) => item.status === 'succeeded')) {
+      return '刚才的操作已有成功回执，详细情况还需要确认，先不用重复提交。';
+    }
+    if (evidence.some((item) => item.status === 'succeeded')) {
+      return '部分操作已有成功回执，其余还需要确认，先不用重复提交。';
+    }
+    if (evidence.some((item) => ['unknown', 'executing', 'pending'].includes(item.status))) {
+      return '刚才的操作结果暂时还不能确认，先不用重复提交，请等核实后的结果。';
+    }
+    return '这次操作暂时没有执行，请等确认后再处理。';
   }
 
   private getFallbackMessage(options?: FallbackMessageOptions): string {

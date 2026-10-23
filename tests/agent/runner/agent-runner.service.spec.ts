@@ -1052,6 +1052,55 @@ describe('AgentRunnerService.runInboundTurn', () => {
       expect(replyRepairAgent.repair).not.toHaveBeenCalled();
     });
 
+    it('review failure after generation preserves completed action evidence for image/crash fallback', async () => {
+      generator.invoke.mockResolvedValueOnce(
+        makeResult({
+          text: '预约已完成',
+          toolCalls: [
+            {
+              toolName: 'duliday_interview_booking',
+              args: {},
+              result: { actionStatus: 'succeeded', localSync: 'pending' },
+            },
+          ] as never,
+        }),
+      );
+      outputGuard.check.mockRejectedValueOnce(new Error('review database unavailable'));
+      await expect(
+        service.runInboundTurn({ sessionRef, input: { text: '报名' } }),
+      ).rejects.toMatchObject({
+        agentMeta: {
+          replayBlockedBy: [{ toolName: 'duliday_interview_booking', status: 'succeeded' }],
+        },
+      });
+      expect(generator.invoke).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['unknown', 'executing', 'blocked'])(
+      'does not replan %s and never labels it committed',
+      async (actionStatus) => {
+        generator.invoke.mockResolvedValueOnce(
+          makeResult({
+            text: fabricated,
+            toolCalls: [
+              {
+                toolName: 'duliday_interview_booking',
+                args: {},
+                result: { actionStatus, success: true },
+              },
+            ] as never,
+          }),
+        );
+        outputGuard.check
+          .mockResolvedValueOnce(fabricationDecision)
+          .mockResolvedValueOnce(passDecision);
+        await service.runInboundTurn({ sessionRef, input: { text: '帮我确认一下' } });
+        expect(generator.invoke).toHaveBeenCalledTimes(1);
+        expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+        expect(replyRepairAgent.repair.mock.calls[0][0].committedSideEffects).toBeUndefined();
+      },
+    );
+
     it('downgrades to rewrite when the first reply already committed a side effect', async () => {
       // replan 档规则按定义只在零工具轮命中；万一规则漂移到已 booking 的回合，
       // 重进 generator 会重复提交副作用，执行层必须拒绝。

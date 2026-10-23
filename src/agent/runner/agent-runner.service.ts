@@ -1,3 +1,5 @@
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
+import { attachReplayEvidence } from '@infra/utils/action-receipt.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
@@ -10,6 +12,7 @@ import type {
 } from '../generator/generator.types';
 import {
   isShortCircuitedToolCall,
+  collectToolReplayEvidence,
   isSideEffectTool,
   isToolSuccess,
 } from '../generator/tool-call-analysis';
@@ -232,7 +235,27 @@ export class AgentRunnerService {
     ctx: ReviewContext,
   ): Promise<ReviewedRunResult> {
     const first = await this.generator.invoke(params);
+    const generations = [first];
+    const retainGeneration = (result: GeneratorRunResult) => {
+      generations.push(result);
+      return result;
+    };
+    try {
+      return await this.reviewGeneratedResult(params, ctx, first, retainGeneration);
+    } catch (error) {
+      throw attachReplayEvidence(
+        error,
+        collectToolReplayEvidence(generations.flatMap((result) => result.toolCalls ?? [])),
+      );
+    }
+  }
 
+  private async reviewGeneratedResult(
+    params: GeneratorInvokeParams,
+    ctx: ReviewContext,
+    first: GeneratorRunResult,
+    retainGeneration: (result: GeneratorRunResult) => GeneratorRunResult,
+  ): Promise<ReviewedRunResult> {
     // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记，避免噪声进入 LLM 审查
     // 上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
     // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
@@ -303,7 +326,10 @@ export class AgentRunnerService {
       );
     }
 
-    const shouldRepair = decision.decision !== 'pass' && decision.decision !== 'observe';
+    const shouldRepair =
+      RUNTIME_RETRY_LIMITS.outputRepairRetries > 0 &&
+      decision.decision !== 'pass' &&
+      decision.decision !== 'observe';
     if (!shouldRepair) {
       const resolution: OutputResolution = { outcome: 'reply', reasonCode: decision.reasonCode };
       this.persistReviewRecord(ctx, {
@@ -331,11 +357,12 @@ export class AgentRunnerService {
     // 执行；此时降级为 rewrite 并告警——replan 档规则按定义只在零工具轮命中，走到这里即规则漂移。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     const replanRequested = decision.repairMode === GUARDRAIL_REPAIR_MODE.REPLAN;
-    const replan = replanRequested && committed === '';
+    const replayBlocked = collectToolReplayEvidence(first.toolCalls ?? []);
+    const replan = replanRequested && replayBlocked.length === 0;
     if (replanRequested && !replan) {
       this.logger.warn(
-        `[invokeReviewed] 守卫要求 replan 但首版已提交副作用，降级为 rewrite: ` +
-          `rules=${decision.ruleIds.join(',') || '-'}, committed="${committed}", traceId=${ctx.traceId ?? '-'}`,
+        `[invokeReviewed] 守卫要求 replan 但首版动作禁止重做，降级为 rewrite: ` +
+          `rules=${decision.ruleIds.join(',') || '-'}, actionStates="${replayBlocked.map((item) => `${item.toolName}:${item.status}`).join(',')}", traceId=${ctx.traceId ?? '-'}`,
       );
     }
     // 首版可否 fail-open（回退首版/放行首版）：replan 档的首版整体作废，一律不可。
@@ -381,7 +408,7 @@ export class AgentRunnerService {
         (envelopeUnwrappedText !== null ? '，JSON 信封命中走确定性拆封，跳过 LLM 重写' : ''),
     );
     const revised = replan
-      ? this.attachDiscardedGeneration(first, await this.generator.invoke(params))
+      ? retainGeneration(this.attachDiscardedGeneration(first, await this.generator.invoke(params)))
       : deterministicRepairText !== null
         ? this.buildRepairedResult(first, deterministicRepairText)
         : this.buildRepairedResult(
@@ -1239,22 +1266,26 @@ export class AgentRunnerService {
 
     // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：无法安全放行→handoff/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
-    const outcome = classifyReviewedOutcome(
-      result,
-      sessionRef,
-      context?.logicalTurnId ?? context?.messageId,
-      {
-        userMessage: input.text,
-      },
-    );
-    if (outcome.kind === 'handoff' && outcome.guardrail?.phase === 'outbound') {
-      this.logger.warn(
-        `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
-          `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
-          `reason=${result.resolution.reasonCode ?? '-'}`,
+    try {
+      const outcome = classifyReviewedOutcome(
+        result,
+        sessionRef,
+        context?.logicalTurnId ?? context?.messageId,
+        {
+          userMessage: input.text,
+        },
       );
+      if (outcome.kind === 'handoff' && outcome.guardrail?.phase === 'outbound') {
+        this.logger.warn(
+          `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
+            `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
+            `reason=${result.resolution.reasonCode ?? '-'}`,
+        );
+      }
+      return outcome;
+    } catch (error) {
+      throw attachReplayEvidence(error, collectToolReplayEvidence(result.toolCalls ?? []));
     }
-    return outcome;
   }
 
   private buildInputGuardScanContent(userMessage: string): string {

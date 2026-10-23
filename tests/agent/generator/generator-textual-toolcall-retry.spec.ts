@@ -69,6 +69,26 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
       sessionId: 's1',
     });
 
+  it('does not swallow unknown action evidence from the correcting generation', async () => {
+    const failure = Object.assign(new Error('timeout after booking'), {
+      agentMeta: {
+        replayBlockedBy: [{ toolName: 'duliday_interview_booking', status: 'unknown' }],
+      },
+    });
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '预约成功',
+        reasoningText: LEAKED_REASONING,
+        steps: [{ text: '预约成功', finishReason: 'stop' }],
+        usage,
+        response: { messages: [] },
+      })
+      .mockRejectedValueOnce(failure);
+    await expect(invoke(buildService(generate))).rejects.toBe(failure);
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
   it('零工具调用 + reasoning 含调用 blob → 带工具重生成，取重试产物', async () => {
     const generate = jest
       .fn()

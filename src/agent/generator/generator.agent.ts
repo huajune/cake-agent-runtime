@@ -6,6 +6,8 @@ import { getToolContract } from '@tools/tool-contracts';
  * Runner/渠道会在 replay 和投递结局确定后，通过 `TurnFinalizer` 只触发一次。
  */
 
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
+import { hasReplayEvidence, attachReplayEvidence } from '@infra/utils/action-receipt.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -25,9 +27,13 @@ import {
   buildSideEffectBlockNotice,
   buildToolCallLimitNotice,
   collectCalledToolNames,
+  collectToolReplayEvidence,
   computeResultCount,
   computeToolCallStatus,
-  findSucceededSideEffectTools,
+  findReplayBlockedSideEffectTools,
+  replayBlockingStatus,
+  replayBlockingComponents,
+  SIDE_EFFECT_TOOLS,
   findToolsExceedingLimit,
   buildSkipReplyRejectedNotice,
   findRejectedSkipReplyErrorType,
@@ -285,6 +291,11 @@ export class GeneratorAgent {
       instructions: ctx.finalPrompt,
       messages: ctx.normalizedMessages,
       tools: ctx.tools,
+      toolReplayPolicy: {
+        toolNames: [...SIDE_EFFECT_TOOLS],
+        classify: replayBlockingStatus,
+        classifyAll: replayBlockingComponents,
+      },
       maxOutputTokens: this.maxOutputTokens,
       stopWhen: [
         stepCountIs(ctx.maxSteps),
@@ -304,8 +315,8 @@ export class GeneratorAgent {
    *    （典型如 duliday_job_list 用不稳定字段反复扩面）。
    * 2. **skip_reply 互斥**：本轮只要已经调用过任何其它工具，禁止再调 skip_reply——
    *    沉默只能发生在完全没有业务动作的轮次，已有动作后的沉默属于误用。
-   * 3. **副作用工具成功后屏蔽**：booking/invite/cancel/modify 本轮已成功执行一次后
-   *    禁止重复调用（防重复提交预约等）；失败后的重试不受限（允许修正参数自纠错）。
+   * 3. **外部动作屏蔽**：已成功、在途/未知、未获授权的动作禁止重复调用；
+   *    明确无副作用的失败仍保留原有调用上限内的参数自纠机会。
    *
    * 屏蔽方式 = activeTools 白名单移除 + instructions 末尾拼拦截说明。备选方案 stopWhen
    * 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能用其他工具或
@@ -333,8 +344,8 @@ export class GeneratorAgent {
           ? [SKIP_REPLY_TOOL_NAME]
           : [];
 
-      // 副作用工具本轮已成功执行 → 屏蔽，防止重复提交
-      const sideEffectBlocked = findSucceededSideEffectTools(steps).filter((name) =>
+      // 成功/在途/未知/阻断动作 → 屏蔽，避免同轮盲重做
+      const sideEffectBlocked = findReplayBlockedSideEffectTools(steps).filter((name) =>
         baseTools.includes(name),
       );
       const blocked = Array.from(new Set([...overused, ...skipReplyBlocked, ...sideEffectBlocked]));
@@ -352,7 +363,7 @@ export class GeneratorAgent {
             : `⚠️ 系统拦截：本轮已发生业务工具调用，不可再调用 \`${SKIP_REPLY_TOOL_NAME}\`。沉默仅适用于本轮完全无业务动作且候选人仅发确认词的场景。`,
         );
       }
-      const sideEffectNotice = buildSideEffectBlockNotice(sideEffectBlocked);
+      const sideEffectNotice = buildSideEffectBlockNotice(sideEffectBlocked, steps);
       if (sideEffectNotice) noticeParts.push(sideEffectNotice);
       const instructions =
         noticeParts.length > 0
@@ -619,32 +630,47 @@ export class GeneratorAgent {
       },
     });
 
-    if (r.reasoningText) {
-      this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
-    }
-    this.logger.log(
-      `Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}, cached=${r.usage.inputTokenDetails?.cacheReadTokens ?? 'n/a'}`,
-    );
+    try {
+      if (r.reasoningText) {
+        this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
+      }
+      this.logger.log(
+        `Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}, cached=${r.usage.inputTokenDetails?.cacheReadTokens ?? 'n/a'}`,
+      );
 
-    return this.buildRunResult({
-      text: r.text,
-      reasoningText: r.reasoningText,
-      responseMessages: r.response?.messages as Array<Record<string, unknown>> | undefined,
-      steps: r.steps,
-      usage: {
-        inputTokens: r.usage.inputTokens ?? 0,
-        outputTokens: r.usage.outputTokens ?? 0,
-        totalTokens: r.usage.totalTokens,
-        cachedInputTokens: r.usage.inputTokenDetails?.cacheReadTokens,
-      },
-      agentRequest,
-      memorySnapshot: ctx.memorySnapshot,
-      turnLedger: ctx.ledger,
-      stepStartMs,
-      stepEndWallclocks,
-      toolExecutionTimings: ctx.toolExecutionTimings,
-      stepAttempts: r.stepAttempts,
-    });
+      return this.buildRunResult({
+        text: r.text,
+        reasoningText: r.reasoningText,
+        responseMessages: r.response?.messages as Array<Record<string, unknown>> | undefined,
+        steps: r.steps,
+        usage: {
+          inputTokens: r.usage.inputTokens ?? 0,
+          outputTokens: r.usage.outputTokens ?? 0,
+          totalTokens: r.usage.totalTokens,
+          cachedInputTokens: r.usage.inputTokenDetails?.cacheReadTokens,
+        },
+        agentRequest,
+        memorySnapshot: ctx.memorySnapshot,
+        turnLedger: ctx.ledger,
+        stepStartMs,
+        stepEndWallclocks,
+        toolExecutionTimings: ctx.toolExecutionTimings,
+        stepAttempts: r.stepAttempts,
+      });
+    } catch (error) {
+      throw attachReplayEvidence(
+        error,
+        collectToolReplayEvidence(
+          r.steps.flatMap((step) =>
+            step.toolResults.map((item) => ({
+              toolName: item.toolName,
+              toolCallId: item.toolCallId,
+              result: item.output,
+            })),
+          ),
+        ),
+      );
+    }
   }
 
   /**
@@ -666,7 +692,7 @@ export class GeneratorAgent {
     ctx: WorkingMemory,
     params: GeneratorInvokeParams,
   ): Promise<GeneratorRunResult> {
-    if (result.toolCalls.length > 0) return result;
+    if (RUNTIME_RETRY_LIMITS.textualToolRetries < 1 || result.toolCalls.length > 0) return result;
 
     const leaked = [result.text, result.reasoning, ...result.agentSteps.map((s) => s.reasoning)]
       .filter((value): value is string => typeof value === 'string' && value.length > 0)
@@ -696,6 +722,7 @@ export class GeneratorAgent {
 
       return this.mergeRegeneration(result, retry);
     } catch (error) {
+      if (hasReplayEvidence(error)) throw error;
       this.logger.warn(
         `工具调用文本化重生成失败: sessionId=${ctx.sessionId}; ${toErrorMessage(error)}`,
       );
@@ -742,6 +769,7 @@ export class GeneratorAgent {
     ctx: WorkingMemory,
     params: GeneratorInvokeParams,
   ): Promise<GeneratorRunResult> {
+    if (RUNTIME_RETRY_LIMITS.emptyZeroToolRetries < 1) return result;
     this.logger.warn(`Agent 首步空响应且零工具调用，带工具重生成一次: sessionId=${ctx.sessionId}`);
     try {
       const retry = await this.runGeneration(params, ctx, {
@@ -751,6 +779,7 @@ export class GeneratorAgent {
       });
       return this.mergeRegeneration(result, retry);
     } catch (error) {
+      if (hasReplayEvidence(error)) throw error;
       this.logger.warn(
         `零工具空响应重生成失败: sessionId=${ctx.sessionId}; ${toErrorMessage(error)}`,
       );
