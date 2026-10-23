@@ -23,6 +23,7 @@
  *   和平台系统语都不是候选人状态的证据。
  */
 import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
+import type { BusinessRuleLink } from '@shared-types/business-rule.types';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
 import { RESTRICTED_REJECTION_MESSAGE } from '@resolution/collection';
 import { buildTextPromptBlock, type PromptSection } from '../section';
@@ -36,137 +37,162 @@ const LOCATION_CONTEXT_PATTERN = new RegExp(
 /** 常驻自检项的渲染分组（GROUP_ORDER 即渲染顺序）。 */
 export type FinalCheckGroup = 'meta' | 'promise_tool_consistency' | 'expression';
 
-export type FinalCheckRule =
-  | {
-      /** 规则标识，用于台账索引与排障定位。 */
-      id: string;
-      trigger: 'always';
-      group: FinalCheckGroup;
-      /** 自检 bullet 文本（渲染时加 "- " 前缀）。 */
-      text: string;
-    }
-  | {
-      id: string;
-      trigger: 'turn';
-      /** 匹配目标：current=本轮用户输入；combined=近邻对话+本轮输入；candidate_side=近邻对话里非 Agent 自产的原话+本轮输入。 */
-      target: 'current' | 'combined' | 'candidate_side';
-      /** 全部命中才触发。 */
-      patterns: RegExp[];
-      /** 命中后注入的禁令文本。 */
-      text: string;
-    };
+export type FinalCheckRule = BusinessRuleLink &
+  (
+    | {
+        /** 规则标识，用于台账索引与排障定位。 */
+        id: string;
+        trigger: 'always';
+        group: FinalCheckGroup;
+        /** 自检 bullet 文本（渲染时加 "- " 前缀）。 */
+        text: string;
+      }
+    | {
+        id: string;
+        trigger: 'turn';
+        /** 匹配目标：current=本轮用户输入；combined=近邻对话+本轮输入；candidate_side=近邻对话里非 Agent 自产的原话+本轮输入。 */
+        target: 'current' | 'combined' | 'candidate_side';
+        /** 全部命中才触发。 */
+        patterns: RegExp[];
+        /** 命中后注入的禁令文本。 */
+        text: string;
+      }
+  );
 
 export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   {
     id: 'answer_current_question_first',
+    businessRule: null,
+    mechanismReason: '通用执行/表达协议，具体招聘口径由业务规则维护。',
     group: 'meta',
     trigger: 'always',
     text: '是否**先回答了候选人当前最明确的问题**，没有答非所问？',
   },
   {
     id: 'obey_dynamic_red_lines_thresholds',
+    businessRule: null,
+    mechanismReason: '通用执行/表达协议，具体招聘口径由业务规则维护。',
     group: 'meta',
     trigger: 'always',
     text: '是否已**遵守当前动态注入的红线规则与业务阈值**（含距离上限、回复字数等）？',
   },
   {
     id: 'act_on_covering_rule_directly',
+    businessRule: null,
+    mechanismReason: '通用执行/表达协议，具体招聘口径由业务规则维护。',
     group: 'meta',
     trigger: 'always',
     text: '若本轮存在一条明确覆盖当前场景的红线、硬约束或工具描述硬规则，我是否**直接按该条款行动**，没有反复权衡是否调用工具或追问？',
   },
   {
     id: 'store_location_send_consistency',
+    businessRule: 'GEO-02',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '若回复承诺发送门店或面试定位，本轮**是否已调用 `send_store_location`**？调用前是否先核对了面试形式：仅明确线下/到店/现场面试才允许发送面试地址；线上、AI、视频、电话面试不得发送定位；面试形式未知不得根据残留地址猜测为线下。进行中预约的面试地点与工作门店不同时，是否明确区分了两者且没有用工作门店定位替代面试定位？',
   },
   {
     id: 'future_booking_promise_grounding',
+    businessRule: 'IB-04',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '若回复保证现在、任一未来日期或任一前置条件完成后可以预约，当前是否已有与该结论匹配的工具证据？`nextAction=wait_for_health_certificate` 时必须删除预约保证，只说明拿到证后需重新查询届时岗位是否在招和可约时段。',
   },
   {
     id: 'cert_flexible_job_existence',
+    businessRule: 'GP-05',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '若回复判断是否存在允许先面试后补证的岗位，本轮是否已经调用 `duliday_job_list` 并逐条核对返回岗位的健康证要求？未查询前只能说明需要查询，禁止预判有或没有。',
   },
   {
     id: 'job_pool_vs_interview_group',
+    businessRule: 'GP-10',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '`invite_to_group.groupPurpose="job_pool"` 只代表兼职岗位信息群：回复必须带工具返回的实际群名并说明该群用于兼职岗位信息，严禁把它说成面试群或承诺该群发送腾讯会议链接。booking 返回 `interviewGroupHandling.required=true` 时，必须明确这是两个群，并按 `_manualInterviewGroupGuide` 说明由本人接着发送邀请；禁止声称面试群邀请已经发出，也禁止出现工作人员、运营、人工、机器人或账号接管等身份切换表述。',
   },
   {
     id: 'quota_reservation_promise',
+    businessRule: 'IB-02',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '回复是否包含**名额保留或未来可用性保证**？没有任何工具能锁定名额，这类承诺一律删除；只能按本轮工具结果说明当前在招情况，说明无法替门店锁定名额并建议尽快推进。',
   },
   {
     id: 'distance_number_grounding',
+    businessRule: 'GEO-01',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '若回复中出现距离数字，该数字**是否来自本轮工具结果的距离字段**？本轮查询没带 location、结果里没有距离数据时，必须删除距离数字（禁止凭地名印象估算）。',
   },
   {
     id: 'salary_worktime_fact_grounding',
+    businessRule: 'SW-01',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '若回复中出现**结算周期（日结/周结/月结）、发薪日、阶梯薪资的计算口径（全月追溯还是超出部分）、每日工时数字、最短用工时长**等岗位薪酬/工时事实，该结论**是否能逐字对应到本轮工具返回的字段或自由文本**？工具本轮查无该岗位或未返回对应字段时，这些断言一律删除，说明需按门店口径核实，并按关键用工事实规则转人工——**禁止用通用常识或其他品牌的规则填空**。',
   },
   {
     id: 'combo_schedule_two_dimensions',
+    businessRule: 'SH-01',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '候选人问组合排班并同时给出每周最多出勤天数时，回复是否把两者作为独立维度？无具体岗位与本轮岗位工具证据时，不得推断组合排班存在周出勤底线或候选人难以匹配；只说明组合排班完整满足其中一档即可，周频另看具体岗位明确要求。',
   },
   {
     id: 'health_cert_general_answer',
+    businessRule: 'ID-03',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '候选人一般性询问健康证时，回复是否明确餐饮类工作一律需要食品健康证，具体需要在哪个阶段具备以具体岗位当前要求为准？保留正确的统一办证要求，但删除办理阶段分布的无证据比例结论；不得把问句写成候选人已持证或愿意办理的事实。',
   },
   {
     id: 'salary_told_before_collection',
+    businessRule: 'GP-02',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '若回复在**向候选人发收资清单或推进约面**，该岗位的**薪资**在本会话是否已经向候选人说过？还没说过的，先在本条回复里补上薪资和班次（以本轮工具结果为准）再收资——不得让候选人在不知道薪资的情况下填报名信息。',
   },
   {
     id: 'time_unsuitable_clarify_first',
+    businessRule: 'SH-02',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '候选人模糊表示时间不合适时，是否**先一句话澄清**：是当前**工作班次**不合适，还是已提议的**面试时间**不合适？两者解决路径不同（前者改查岗、后者改约时段），不得直接默认成换面试时间。',
   },
   {
     id: 'residency_gate_no_leak',
+    businessRule: 'ID-08',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '若岗位工具包含仅供内部筛选的户籍/籍贯/地域门槛，回复是否既没有直接透露，也没有改名为门店对常驻地、居住地或所在城市的要求？需要了解位置时只可中性询问常驻城市，不得解释背后的筛选条件。',
   },
   {
     id: 'walkin_without_signup_closure',
+    businessRule: 'IB-03',
     group: 'promise_tool_consistency',
     trigger: 'always',
     text: '候选人想自行到店且明确暂不报名时，回复在说明需先报名约面、否则门店无法接待后是否立即收口？删除任何附和自行到店的话术，尊重候选人暂不报名的决定并结束本轮推进。',
   },
   {
     id: 'no_internal_terms_no_nickname',
+    businessRule: 'ID-01',
     group: 'expression',
     trigger: 'always',
     text: '回复是否**没有系统/后台/策略/记忆/阶段等内部表述**，也没有机械复读候选人昵称？',
   },
   {
     id: 'per_sentence_dedup',
+    businessRule: null,
+    mechanismReason: '通用执行/表达协议，具体招聘口径由业务规则维护。',
     group: 'expression',
     trigger: 'always',
     text: '**逐句扫描**：回复里每一句是否都在传递**本轮新信息或直接回答候选人当前问题**？若某句的意思上一轮已经说过（哪怕换了措辞），删掉它。答完候选人的身份、费用等简单问题后，不再重复已说过的岗位查询、群邀请或后续通知信息。',
   },
   {
     id: 'tattoo_self_report_soft_decline',
+    businessRule: 'ID-08',
     trigger: 'turn',
     target: 'current',
     // 纹身默认门槛（岗位数据无字段，2026-09-08 运营裁定）：只在候选人自陈有纹身时触发；
@@ -180,6 +206,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'bare_number_reply_is_age_first',
+    businessRule: 'ID-04',
     trigger: 'turn',
     target: 'current',
     // 候选人只回一个两位数（"17" / "19 的不要？" / "45可以吗"）：badcase q6a8yvdy 把 17 岁当成 17 点
@@ -191,6 +218,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'gender_self_report_check',
+    businessRule: 'ID-02',
     trigger: 'turn',
     target: 'current',
     // badcase g4lc5u0q：岗位工具结果写着"仅限女"，候选人说"我是男生"，Agent 答"男生也可以做"。
@@ -201,6 +229,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'job_detail_missing_field_lookup',
+    businessRule: 'SW-01',
     trigger: 'turn',
     target: 'current',
     patterns: [
@@ -210,6 +239,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'schedule_constraint_precheck_first',
+    businessRule: 'SH-03',
     trigger: 'turn',
     target: 'current',
     patterns: [
@@ -219,6 +249,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'interview_date_precheck_first',
+    businessRule: 'IB-10',
     trigger: 'turn',
     target: 'current',
     patterns: [
@@ -228,6 +259,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'interview_time_only_precheck_first',
+    businessRule: 'IB-10',
     trigger: 'turn',
     target: 'current',
     // CUTOFF 缺口（badcase recvhv3W5Dy24G / SCN-PREBOOK-20260511-CUTOFF）：
@@ -242,6 +274,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'health_cert_is_not_major',
+    businessRule: 'ID-03',
     trigger: 'turn',
     target: 'combined',
     // 「食品健康证」是证件名不是专业词：岗位卡每张都带「入职前办食品健康证」，不排除会逢卡必中。
@@ -250,6 +283,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'post_interview_no_rebook',
+    businessRule: 'HO-03',
     trigger: 'turn',
     // 只认候选人与真人经理的原话：词表里的「入职/通过了/培训」同样出现在 Agent 岗位卡
     // （入职前办食品健康证）、加好友系统语（我通过了你的联系人验证请求）和位置分享 POI 名里，
@@ -265,6 +299,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'submitted_form_no_refill',
+    businessRule: 'IB-08',
     trigger: 'turn',
     target: 'current',
     patterns: [
@@ -275,6 +310,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'salary_account_no_fabricated_policy',
+    businessRule: 'SW-06',
     trigger: 'turn',
     target: 'combined',
     patterns: [/银行卡|工资|扣税|税务|本人卡|别人卡|房贷|起诉|没几块钱|没啥税/],
@@ -284,6 +320,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
   },
   {
     id: 'location_reference_needs_grounding',
+    businessRule: 'GEO-01',
     trigger: 'turn',
     target: 'combined',
     patterns: [LOCATION_CONTEXT_PATTERN],

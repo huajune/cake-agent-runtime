@@ -1,3 +1,4 @@
+// business-rules: SW-07
 import { asRecord, type UnknownRecord } from '@infra/utils/object.util';
 
 function readText(value: unknown): string | null {

@@ -1,3 +1,4 @@
+// business-rules: IB-06, IB-09, IB-10, IB-12, HO-03
 import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 // 知识归类：semantic —— 本段渲染候选人档案、会话事实、岗位与预约上下文。
 import { formatExtractionFactLines } from '@memory/fact-lines.formatter';

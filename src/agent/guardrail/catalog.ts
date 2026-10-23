@@ -19,6 +19,8 @@ export const GUARDRAIL_CATALOG: readonly GuardrailCatalogEntry[] = [
   ...OUTPUT_RULE_CATALOG.map(
     (rule): GuardrailCatalogEntry => ({
       id: rule.id,
+      businessRule: rule.businessRule,
+      mechanismReason: rule.mechanismReason,
       layer: 'output',
       stage: 'output_pre_send',
       action: rule.action,

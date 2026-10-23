@@ -1,5 +1,7 @@
 # 文档中心
 
+招聘业务规则按 [七个主题](business-rules/README.md) 维护；运行时手册在 `src`，Claude/Codex 共用 [维护 skill](../src/skills/maintain-business-rules/SKILL.md)。
+
 > Cake Agent Runtime — 技术文档导航
 
 **最后更新**：2026-09-11

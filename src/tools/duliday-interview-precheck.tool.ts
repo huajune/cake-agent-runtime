@@ -1,3 +1,4 @@
+// business-rules: IB-01, IB-07, IB-08, IB-10, IB-11, ID-06
 import { toErrorMessage } from '@infra/utils/error.util';
 import type { CollectionFormService } from '@tools/collection/collection-form.service';
 import type { LongTermService } from '@memory/long-term/long-term.service';

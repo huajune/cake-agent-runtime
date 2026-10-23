@@ -1,3 +1,4 @@
+// business-rules: ID-06
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import {

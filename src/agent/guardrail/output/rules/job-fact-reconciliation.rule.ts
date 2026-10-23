@@ -1,3 +1,4 @@
+// business-rules: GP-01, GP-04
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { asRecord } from '@infra/utils/object.util';

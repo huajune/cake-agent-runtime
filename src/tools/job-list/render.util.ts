@@ -1,3 +1,4 @@
+// business-rules: SW-04, SW-07, SW-08, SW-09
 /**
  * duliday_job_list 工具的 markdown 渲染层（render-sections + 编排）。
  *

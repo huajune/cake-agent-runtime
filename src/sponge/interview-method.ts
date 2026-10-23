@@ -1,3 +1,4 @@
+// business-rules: IB-06
 /**
  * 海绵岗位「面试方式」（`interviewProcess.firstInterview.firstInterviewWay`）。
  *

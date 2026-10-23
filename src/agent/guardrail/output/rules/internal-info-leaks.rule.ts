@@ -1,3 +1,4 @@
+// business-rules: HO-02
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { RuleContradiction } from '../output-rule.types';
 

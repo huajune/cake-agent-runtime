@@ -33,6 +33,17 @@
 
 ## 居所索引（终态）
 
+2026-10-23 全主题维护重构（基线 `12090e6f`，本次结构调整、无新增业务裁定）：
+跨工具手册按 [七个业务主题](business-rules/README.md) 拆成 `procedural/rules/{ib,sw,id,sh,geo,gp,ho}.md`，
+`candidate-consultation.md` 保留共通规程与片段顺序。加载后模型可见正文仍为 55,988 UTF-8 字节，
+SHA-256 `f2e59fec2118593b57fd82244c01f22a51b3f2219e07c903f163bc7f8c7f3b44`；
+`tests/agent/generator/context/manual-loader.spec.ts` 校验迁移等价性。未迁移已有工具、守卫、final-check、复聊或 DB 策略的执行职责。
+本台账继续作为 prompt 居所总目录；主题文档是业务口径与实现/测试关联入口，维护摘要而非第二份模型指令。
+Guardrail 与 final-check 定义新增仅用于审计的 `businessRule`；技术机制使用 null 并注明原因。
+`pnpm run business-rules:validate` 校验主题、落点、测试和反向关联，CI 同步执行。
+敏感条件婉拒与禁止无证据声称招满的冲突已记录于 [ID 未决项](business-rules/id.md)，按用户裁定保持行为。
+
+
 2026-10-23 健康证记忆契约收敛：`short-term.types.ts#InterviewInfoSchema` 的健康证字段说明与
 `resolution/candidate/health-certificate-state.ts` 四态闭集保持一致：有本地有效健康证、无本地有效健康证且接受办理、无本地有效健康证且不接受办理、办理中；未知值为 null，不能补全有效性或办理意愿。
 这是身份事实存储/兼容 schema；当前 `LLMEntityExtractionResultSchema` 不提取身份字段，仍由收资专用入口写入。
