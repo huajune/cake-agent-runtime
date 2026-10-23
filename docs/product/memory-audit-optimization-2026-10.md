@@ -51,3 +51,6 @@
 - 正式 Agent 回归 7/7 通过；检查实际请求、回复、工具调用和记忆 trace，已回写 Codex 评审。批次 `603c4075-4f0d-4b44-8500-b5513bdd021e`（四态与旧值）、`bab18b93-a18a-43c8-a034-caaadae3844b`（回访摘要与过期意向）。全部合成身份、零副作用工具。
 
 - 已同步生产测试看板，并通过生产 API 对账：2 批 completed、7 passed、0 failed/pending，执行 ID 全量一致，回复和评审备注保留。
+
+- 本地完整 `pnpm run ci:check`（含 pre-push）通过；548 个测试组、8,960 项测试通过，5 项按既有配置跳过。GitHub 检出已有 24 小时窗口测试的毫秒级竞态，同一 PR 中改为固定时钟精确验证。
+- 统一正式 PR：[#1451](https://github.com/huajune/cake-agent-runtime/pull/1451)。生产 schema/应用尚未发布。
