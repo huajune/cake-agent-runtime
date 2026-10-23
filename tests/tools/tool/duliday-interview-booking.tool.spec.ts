@@ -136,7 +136,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     }),
   };
   const notifier = { notifyInterviewBookingResult: jest.fn().mockResolvedValue(true) };
-  const hosting = { pauseUser: jest.fn().mockResolvedValue(undefined) };
+  const hosting = { pauseUser: jest.fn().mockResolvedValue(true) };
   const longTerm = {
     getActiveBookings: jest.fn().mockResolvedValue([]),
     setActiveBooking: jest.fn().mockResolvedValue(undefined),
@@ -601,7 +601,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
       message: '字段错误',
       applyErrorList: [{ labelId: 103, field: '年龄', msg: '请重填' }],
     });
-    hosting.pauseUser.mockRejectedValueOnce(new Error('pause store unavailable'));
+    hosting.pauseUser.mockResolvedValueOnce(false);
     const result = await execute({ jobId: 100 });
     expect(result.hostingPaused).toBe(false);
     expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
@@ -620,8 +620,8 @@ describe('duliday_interview_booking（form → labelList）', () => {
     });
     let release: () => void = () => undefined;
     hosting.pauseUser.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        release = resolve;
+      new Promise<boolean>((resolve) => {
+        release = () => resolve(true);
       }),
     );
     let settled = false;

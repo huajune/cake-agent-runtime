@@ -1153,8 +1153,7 @@ async function pauseUserHosting(
   reason: string,
 ): Promise<boolean> {
   try {
-    await service.pauseUser(chatId, { source: 'interview_booking', reason });
-    return true;
+    return (await service.pauseUser(chatId, { source: 'interview_booking', reason })) === true;
   } catch (error) {
     logger.error(`[booking] 暂停托管失败: ${toErrorMessage(error)}`);
     return false;
