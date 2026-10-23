@@ -678,6 +678,8 @@ export class ReplyWorkflowService {
             suppressAddressMissing: replyKind !== 'reply',
           })
           .catch((error: unknown) => {
+            // Durable plans retain pending local work for recovery of the same reply.
+            if (durableTurn) throw error;
             // Delivery is already confirmed. An auxiliary queue outage must not send
             // a second, contradictory fallback reply through the generic error path.
             this.logger.error(`已投递回复的复聊排程失败: ${toErrorMessage(error)}`);
