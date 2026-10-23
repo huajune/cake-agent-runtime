@@ -30,6 +30,8 @@ export interface WorkingMemory {
   corpId: string;
   userId: string;
   sessionId: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
   botUserId?: string;
   botImId?: string;
   maxSteps: number;
@@ -158,6 +160,8 @@ export class PreparationService {
         corpId: params.corpId,
         userId: params.userId,
         sessionId: params.sessionId,
+        logicalTurnId: params.logicalTurnId,
+        inputOccurredAt: params.inputOccurredAt,
         botUserId: params.botUserId,
         botImId: params.botImId,
         maxSteps,

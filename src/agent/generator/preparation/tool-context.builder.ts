@@ -241,7 +241,9 @@ export function resolveToolContextModel(input: {
       botUserId: params.botUserId,
       botImId: params.botImId,
       groupId: params.groupId,
-      turnId: params.messageId,
+      turnId: params.logicalTurnId ?? params.messageId,
+      logicalTurnId: params.logicalTurnId,
+      inputOccurredAt: params.inputOccurredAt,
       contactName: params.contactName,
     },
     archive: {

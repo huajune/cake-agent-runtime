@@ -39,12 +39,16 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
       eval: jest.fn(async (_script: string, keys: string[], args: (string | number)[]) => {
         store.set(keys[0], 'sent');
         const arr = lists.get(keys[1]) ?? [];
-        arr.push(args[1]);
+        if (!store.has(keys[3])) arr.push(args[1]);
+        store.set(keys[3], '1');
         lists.set(keys[1], arr);
-        store.set(keys[2], args[1]);
+        if (Number(args[1]) > Number(store.get(keys[2]) ?? 0)) store.set(keys[2], args[1]);
         return 1;
       }),
-      scan: jest.fn(async () => [0, Array.from(store.keys())]),
+      scan: jest.fn(async () => [
+        0,
+        Array.from(store.keys()).filter((key) => key.startsWith('reengagement:touch:')),
+      ]),
     };
     ledger = new TouchLedgerService(redis as never);
   });
@@ -79,6 +83,27 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     await ledger.markSent('a', 's1', now - 1000);
     await ledger.markSent('b', 's1', now - 25 * 60 * 60 * 1000); // outside 24h
     expect(await ledger.countSentIn24h('s1', now)).toBe(1);
+  });
+
+  it('repairing an older confirmed touch neither counts it twice nor rewinds the session cooldown', async () => {
+    await ledger.markSent('a', 's1', 1000);
+    await ledger.markSent('b', 's1', 2000);
+    await ledger.markSent('a', 's1', 1000);
+    expect(await ledger.countSentIn24h('s1', 2001)).toBe(2);
+    expect(await ledger.getLastTouchAt('s1')).toBe(2000);
+    expect(redis.eval.mock.calls[2][0]).toContain("'NX', 'EX'");
+  });
+
+  it('retains the unused SCAN page across runs when Redis returns more than COUNT or the result budget', async () => {
+    for (let i = 0; i < 240; i++) store.set(`reengagement:touch:k${i}`, 'unknown');
+    const recovered: string[] = [];
+    for (let i = 0; i < 10; i++)
+      recovered.push(...(await ledger.listUnknownSlots(25)).map((slot) => slot.key));
+    expect(new Set(recovered).size).toBe(240);
+    expect(redis.scan).toHaveBeenCalledTimes(1);
+    expect(
+      redis.get.mock.calls.filter(([key]) => String(key).startsWith('reengagement:touch:')),
+    ).toHaveLength(240);
   });
 
   it('isOverFrequencyLimit flips at 2 sent within 24h', async () => {

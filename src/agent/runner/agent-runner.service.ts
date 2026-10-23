@@ -1181,7 +1181,7 @@ export class AgentRunnerService {
       userId: sessionRef.userId,
       pauseTargetId: sessionRef.sessionId || sessionRef.userId,
       scanContent: this.buildInputGuardScanContent(input.text),
-      messageId: context?.messageId,
+      messageId: context?.logicalTurnId ?? context?.messageId,
       contactName: context?.contactName,
       botImId: context?.botImId,
       botUserName: context?.botUserId,
@@ -1193,6 +1193,8 @@ export class AgentRunnerService {
       userId: sessionRef.userId,
       corpId: sessionRef.corpId,
       sessionId: sessionRef.sessionId,
+      logicalTurnId: context?.logicalTurnId,
+      inputOccurredAt: context?.inputOccurredAt,
       messageId: context?.messageId,
       messages: [
         {
@@ -1237,9 +1239,14 @@ export class AgentRunnerService {
 
     // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：无法安全放行→handoff/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
-    const outcome = classifyReviewedOutcome(result, sessionRef, context?.messageId, {
-      userMessage: input.text,
-    });
+    const outcome = classifyReviewedOutcome(
+      result,
+      sessionRef,
+      context?.logicalTurnId ?? context?.messageId,
+      {
+        userMessage: input.text,
+      },
+    );
     if (outcome.kind === 'handoff' && outcome.guardrail?.phase === 'outbound') {
       this.logger.warn(
         `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +

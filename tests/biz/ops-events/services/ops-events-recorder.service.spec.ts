@@ -4,6 +4,7 @@ describe('OpsEventsRecorderService', () => {
   const repository = {
     upsertOpsEvent: jest.fn(),
     checkAndRecordFirstEngaged: jest.fn(),
+    openingLogicalTurn: jest.fn(),
   };
   const botGroupResolver = {
     resolve: jest.fn(),
@@ -20,6 +21,57 @@ describe('OpsEventsRecorderService', () => {
       managerName: 'LiYuHang',
       groupName: '宇航组',
     });
+  });
+
+  it('preserves an opening identity after its event committed and dependent scheduling must retry', async () => {
+    const service = new OpsEventsRecorderService(
+      repository as never,
+      botGroupResolver as never,
+      { add: jest.fn() } as never,
+      { report: jest.fn() } as never,
+    );
+    const input = {
+      corpId: 'corp',
+      chatId: 'chat',
+      eventName: 'agent.opening_sent' as const,
+      idempotencyKey: 'chat:opening',
+      occurredAt: new Date('2026-10-21T00:00:00Z'),
+    };
+    repository.upsertOpsEvent.mockResolvedValue('duplicate');
+    repository.openingLogicalTurn.mockResolvedValue('original-turn');
+    await expect(service.recordOpeningDurably(input, 'original-turn')).resolves.toBe(true);
+    await expect(service.recordOpeningDurably(input, 'new-turn')).resolves.toBe(false);
+    repository.openingLogicalTurn.mockRejectedValueOnce(new Error('read unavailable'));
+    await expect(service.recordOpeningDurably(input, 'original-turn')).rejects.toThrow(
+      'read unavailable',
+    );
+  });
+
+  it('does not classify or continue local opening writes after ownership is lost', async () => {
+    const service = new OpsEventsRecorderService(
+      repository as never,
+      botGroupResolver as never,
+      { add: jest.fn() } as never,
+      { report: jest.fn() } as never,
+    );
+    await expect(
+      service.recordOpeningDurably(
+        {
+          corpId: 'corp',
+          chatId: 'chat',
+          eventName: 'agent.opening_sent',
+          idempotencyKey: 'chat:opening',
+          occurredAt: new Date(),
+        },
+        'turn',
+        {
+          assertOwned: async () => {
+            throw new Error('lost lease');
+          },
+        },
+      ),
+    ).rejects.toThrow('lost lease');
+    expect(repository.upsertOpsEvent).not.toHaveBeenCalled();
   });
 
   it('enriches bot manager/group and returns detailed insert state', async () => {

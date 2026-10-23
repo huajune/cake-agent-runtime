@@ -1,5 +1,7 @@
 import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { retainedJobs } from '@infra/queue/queue-policy';
+import { ActionExecutionModule } from '@biz/action-execution/action-execution.module';
+import { GroupTaskActionService } from './services/group-task-action.service';
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { SpongeModule } from '@sponge/sponge.module';
@@ -33,6 +35,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
 @Module({
   imports: [
     ActionPermitModule,
+    ActionExecutionModule,
     SpongeModule,
     LlmModule,
     HostingConfigModule,
@@ -50,6 +53,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
   ],
   controllers: [GroupTaskController],
   providers: [
+    GroupTaskActionService,
     GroupTaskSchedulerService,
     GroupTaskAdminService,
     GroupTaskProcessor,

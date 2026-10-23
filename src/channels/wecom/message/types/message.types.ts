@@ -1,3 +1,4 @@
+import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import type {
   ActionDenialReason,
   PermittedAction,
@@ -77,6 +78,13 @@ export interface AgentInvokeResult {
 }
 
 export interface DeliveryContext {
+  corpId?: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
+  replyTurn?: ReplyTurn;
+  /** Whitelisted task metadata only; never credentials or message history. */
+  taskRecovery?: { kind: 'reengagement'; data: Record<string, unknown> };
+  assertOwned?: () => Promise<void>;
   action?: PermittedAction;
   groupId?: string;
   token: string;

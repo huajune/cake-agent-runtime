@@ -109,7 +109,7 @@ export interface GroupExecutionDetail {
   /** 数据摘要（如 "塔可贝尔: 2个岗位"） */
   dataSummary: string;
   /** 执行状态 */
-  status: 'success' | 'skipped' | 'failed' | 'partial';
+  status: 'success' | 'skipped' | 'failed' | 'partial' | 'pending';
   /** 群名列表 */
   groupNames: string[];
 }
@@ -121,6 +121,7 @@ export interface TaskExecutionResult {
   successCount: number;
   failedCount: number;
   skippedCount: number;
+  pendingCount?: number;
   errors: Array<{ groupName: string; error: string }>;
   /** 分组执行详情 */
   details: GroupExecutionDetail[];

@@ -63,14 +63,32 @@ export class BrandRotationService {
     }
   }
 
+  /** Recovery may repeat local synchronization; one action advances the rotation only once. */
+  async recordPushedBrandOnce(groupId: string, brand: string, actionId: string): Promise<void> {
+    await this.redis.eval(
+      `
+      if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+      local raw = redis.call('GET', KEYS[1])
+      local history = raw and cjson.decode(raw) or {}
+      if type(history) == 'string' then history = cjson.decode(history) end
+      table.insert(history, ARGV[1])
+      redis.call('SETEX', KEYS[1], ARGV[2], cjson.encode(history))
+      redis.call('SETEX', KEYS[2], ARGV[2], '1')
+      return 1`,
+      [`${KEY_PREFIX}:${groupId}`, `${KEY_PREFIX}:applied:${actionId}`],
+      [brand, TTL_SECONDS],
+    );
+  }
+
   /**
    * 获取已推送历史
    */
   private async getHistory(groupId: string): Promise<string[]> {
     const key = `${KEY_PREFIX}:${groupId}`;
     try {
-      const raw = await this.redis.get<string>(key);
+      const raw = await this.redis.get<string | string[]>(key);
       if (!raw) return [];
+      if (Array.isArray(raw)) return raw.filter((brand) => typeof brand === 'string');
       return JSON.parse(raw) as string[];
     } catch {
       return [];

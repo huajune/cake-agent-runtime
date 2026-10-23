@@ -96,6 +96,22 @@ export class OpsEventsRepository extends BaseRepository {
     return data.inserted === true ? 'inserted' : 'duplicate';
   }
 
+  /** Exact unique-key lookup; an unavailable read must not reclassify a recovered opening. */
+  async openingLogicalTurn(corpId: string, chatId: string): Promise<string | null> {
+    if (!this.isAvailable()) throw new Error('Opening event store unavailable');
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('payload')
+      .eq('corp_id', corpId)
+      .eq('event_name', 'agent.opening_sent')
+      .eq('idempotency_key', `${chatId}:opening`)
+      .limit(1)
+      .abortSignal(AbortSignal.timeout(5000));
+    if (error || !data?.length) throw new Error('Opening event lookup not confirmed');
+    const value = data[0].payload?.logical_turn_id;
+    return typeof value === 'string' ? value : null;
+  }
+
   /**
    * 调 check_and_record_first_engaged：记录候选人消息并原子检测首条破冰。
    */
