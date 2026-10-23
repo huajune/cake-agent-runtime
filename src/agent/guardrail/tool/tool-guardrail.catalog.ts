@@ -22,6 +22,7 @@ import {
  */
 export interface ToolGuardrailCatalogEntry {
   id: string;
+  toolNames: readonly string[];
   stage: GuardrailStage;
   action: GuardrailAction;
   coverage: GuardrailCoverage;
@@ -40,6 +41,7 @@ export interface ToolGuardrailCatalogEntry {
 export const TOOL_GUARDRAIL_CATALOG = [
   {
     id: 'job_list_brand_provenance',
+    toolNames: ['duliday_job_list'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -60,6 +62,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'job_list_schedule_constraint_provenance',
+    toolNames: ['duliday_job_list'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -78,6 +81,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_jobid_provenance',
+    toolNames: ['duliday_interview_booking', 'duliday_interview_precheck'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -95,6 +99,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_precheck_contract',
+    toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -112,6 +117,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_real_name',
+    toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -127,6 +133,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_name_authority',
+    toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -142,6 +149,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'invite_city_provenance',
+    toolNames: ['invite_to_group', 'geocode'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -162,6 +170,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'invite_timing_gate',
+    toolNames: ['invite_to_group'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
     coverage: GUARDRAIL_COVERAGE.CODE,
@@ -175,6 +184,54 @@ export const TOOL_GUARDRAIL_CATALOG = [
     residualRisk:
       '候选人换城市时按放行处理，不拦跨城重复拉群；查岗轮次与入群同意的判断已交回主 Agent，模型不遵循时工具层不再兜底。',
     verification: 'tests/tools/invite/invite-timing-gate.spec.ts',
+    owner: 'tools-runtime',
+    status: 'active',
+  },
+  {
+    id: 'cancel_work_order_ownership',
+    toolNames: ['duliday_cancel_work_order'],
+    stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
+    action: GUARDRAIL_ACTION.REJECT_HARD,
+    coverage: GUARDRAIL_COVERAGE.CODE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '取消只接受当前候选人有效预约集合内的工单。',
+    riskGoal: '阻止工具写入当前候选人和当前输入范围之外的目标。',
+    source: 'tools/duliday-cancel-work-order.tool.ts',
+    exogenousSignal: '运行时提供的候选人工单引用或图片消息 ID 白名单',
+    residualRisk: '依赖上游引用的归属与新鲜度，不替代外部系统权限校验。',
+    verification: 'tests/tools/duliday-cancel-work-order.tool.spec.ts',
+    owner: 'tools-runtime',
+    status: 'active',
+  },
+  {
+    id: 'modify_work_order_ownership',
+    toolNames: ['duliday_modify_interview_time'],
+    stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
+    action: GUARDRAIL_ACTION.REJECT_HARD,
+    coverage: GUARDRAIL_COVERAGE.CODE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '改约只接受当前候选人有效预约集合内的工单。',
+    riskGoal: '阻止工具写入当前候选人和当前输入范围之外的目标。',
+    source: 'tools/duliday-modify-interview-time.tool.ts',
+    exogenousSignal: '运行时提供的候选人工单引用或图片消息 ID 白名单',
+    residualRisk: '依赖上游引用的归属与新鲜度，不替代外部系统权限校验。',
+    verification: 'tests/tools/duliday-modify-interview-time.tool.spec.ts',
+    owner: 'tools-runtime',
+    status: 'active',
+  },
+  {
+    id: 'image_message_allowlist',
+    toolNames: ['save_image_description'],
+    stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
+    action: GUARDRAIL_ACTION.REJECT_HARD,
+    coverage: GUARDRAIL_COVERAGE.CODE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '图片描述只可写回本轮提供的图片消息。',
+    riskGoal: '阻止工具写入当前候选人和当前输入范围之外的目标。',
+    source: 'tools/save-image-description.tool.ts',
+    exogenousSignal: '运行时提供的候选人工单引用或图片消息 ID 白名单',
+    residualRisk: '依赖上游引用的归属与新鲜度，不替代外部系统权限校验。',
+    verification: 'tests/tools/save-image-description.tool.spec.ts',
     owner: 'tools-runtime',
     status: 'active',
   },

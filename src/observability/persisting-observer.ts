@@ -10,6 +10,7 @@ import {
 const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'agent_end',
   'agent_error',
+  'candidate_progress_difference',
   // 注入命中：只在本批输入命中时发射（detectTexts 不回扫历史），一次入侵一条。
   'prompt_injection_detected',
   'model_fallback',

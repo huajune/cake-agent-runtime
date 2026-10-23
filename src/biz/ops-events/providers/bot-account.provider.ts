@@ -10,10 +10,13 @@ export const BOT_ACCOUNT_PROVIDER = Symbol('BOT_ACCOUNT_PROVIDER');
 
 /** 运营日报 / 分组解析用到的托管账号字段子集（BotService.BotAccount 的超集兼容）。 */
 export interface BotAccountInfo {
+  id?: string;
+  weixin?: string;
   wxid?: string;
   wecomUserId?: string;
   name?: string;
   groupName?: string;
+  groupId?: string;
 }
 
 export interface BotAccountProvider {

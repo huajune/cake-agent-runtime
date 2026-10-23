@@ -1265,6 +1265,7 @@ export class ReplyWorkflowService {
       contactName: parsed.contactName || '客户',
       messageId: traceId ?? parsed.messageId,
       chatId: parsed.chatId,
+      groupId: parsed.groupId,
       _apiType: parsed._apiType,
     };
   }

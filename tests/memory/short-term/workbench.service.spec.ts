@@ -6,7 +6,7 @@ describe('SessionWorkbenchService stage pointer', () => {
     set: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockConfig = { sessionTtl: 86400 };
+  const mockConfig = { sessionTtl: 86400, sessionFactsTtl: 129600 };
 
   let service: SessionWorkbenchService;
 
@@ -47,7 +47,7 @@ describe('SessionWorkbenchService stage pointer', () => {
   });
 
   describe('set', () => {
-    it('should write stage to Redis with SESSION_TTL', async () => {
+    it('should write stage to Redis with the same TTL as session facts', async () => {
       await service.setStage('corp1', 'user1', 'session1', {
         currentStage: 'job_recommendation',
       });
@@ -55,7 +55,7 @@ describe('SessionWorkbenchService stage pointer', () => {
       expect(mockRedisStore.set).toHaveBeenCalledWith(
         'stage:corp1:user1:session1',
         expect.objectContaining({ currentStage: 'job_recommendation' }),
-        86400,
+        129600,
         false,
       );
     });
@@ -68,7 +68,7 @@ describe('SessionWorkbenchService attested focus job', () => {
     patchSessionState: jest.fn().mockResolvedValue(undefined),
   };
   const mockRedisStore = { get: jest.fn(), set: jest.fn() };
-  const mockConfig = { sessionTtl: 86400 };
+  const mockConfig = { sessionTtl: 86400, sessionFactsTtl: 129600 };
 
   const summary = (jobId: number, salaryDesc: string | null = null) => ({
     jobId,

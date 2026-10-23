@@ -1,3 +1,5 @@
+import { CandidateProgressModule } from '@biz/candidate-progress/candidate-progress.module';
+import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { retainedJobs } from '@infra/queue/queue-policy';
 import {
   ReengagementCommandService,
@@ -53,6 +55,8 @@ import {
 
 @Module({
   imports: [
+    CandidateProgressModule,
+    ActionPermitModule,
     ConfigModule,
     GeocodingModule,
     BizModule,

@@ -389,3 +389,14 @@ describe('detectBookingReceiptMismatch — 运行时拉群后的兼职群/面试
     ).toBeNull();
   });
 });
+
+
+describe('未核实的海绵重复报名', () => {
+  it.each(['这个岗位已经约上了，明天下午去面试', '那就约在明天'])('拦截虚构确认：%s', (reply) => {
+    expect(detectBookingReceiptMismatch(reply, [{
+      toolName: 'duliday_interview_booking', status: 'ok', result: {
+        success: false, errorType: 'booking.already_booked', alreadyBookedSource: 'sponge_duplicate_signup', crossAccount: true,
+      },
+    } as never])?.ruleId).toBe('booking_receipt_mismatch');
+  });
+});

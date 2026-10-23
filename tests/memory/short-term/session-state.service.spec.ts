@@ -781,6 +781,7 @@ describe('SessionStateService（S1-S6）', () => {
       'factsv2:corp-1:user-1:session-1',
       expect.any(Object),
       config.sessionFactsTtl,
+      ['stage:corp-1:user-1:session-1'],
     );
   });
 

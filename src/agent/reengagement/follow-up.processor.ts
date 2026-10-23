@@ -1,3 +1,6 @@
+import { isHumanHandledHistoryReason } from '@enums/message-filter.enum';
+import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
@@ -27,7 +30,7 @@ import { SessionStateService } from '@memory/short-term/session-state.service';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
-import { ACTIVE_INTERVIEW_WORK_ORDER_STATUSES } from '@sponge/sponge.types';
+import { isLegacyPostBookingActive } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import type { ReengagementSessionState } from '@memory/recall.types';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
@@ -49,14 +52,12 @@ import {
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
-import { evaluateOutOfBandWorkOrders, type OutOfBandWorkOrderVerdict } from './oob-work-order';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ChatInterviewTimeMismatch, ReengagementAgentExecution } from './reengagement.agent';
 import {
   resolveReengagementBookingContext,
   type ReengagementBookingContext,
 } from './booking-context';
-import { BotService } from '@wecom/bot/bot.service';
 import { CallerKind } from '@enums/agent.enum';
 import { RequestContextService } from '@observability/context/request-context.service';
 import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.util';
@@ -76,7 +77,7 @@ export class ReengagementDeliveryService
 {
   constructor(
     private readonly delivery: MessageDeliveryService,
-    private readonly botService: BotService,
+    private readonly actionPermit: ActionPermitService,
   ) {}
 
   async deliver(
@@ -92,12 +93,13 @@ export class ReengagementDeliveryService
       throw new Error('reengagement_delivery_missing_context');
     }
 
-    // 复聊没有候选人入站消息可触发常规入口过滤，因此在真正投递前按接客 bot
-    // 重新核验托管账号列表。查不到或上游查询失败均 fail closed，避免已取消托管的
-    // 账号仍被历史 delayed job 主动发消息。
-    // 小组关闭托管（system_config.group_blacklist）只停 AI 对候选人入站消息的回复，
-    // 不停复聊提醒：面试提醒、回访照常发出（用户 2026-10-15 裁定，勿在此按小组停发）。
-    if (!(await this.isReceivingBotHosted(context.imBotId))) {
+    const permit = await this.actionPermit.evaluate({
+      chatId: context.chatId,
+      action: 'proactive',
+      botImId: context.imBotId,
+      candidateIds: [context.imContactId],
+    });
+    if (!permit.allowed) {
       return {
         success: true,
         segmentCount: 0,
@@ -105,28 +107,15 @@ export class ReengagementDeliveryService
         deliveredSegments: 0,
         totalTime: 0,
         skipped: true,
-        skipReason: 'receiving_bot_not_hosted',
+        skipReason: permit.reason,
       };
     }
 
     return this.delivery.deliverReply(
       { content: text, reasoning: outcome.reasoning },
-      context,
+      { ...context, action: 'proactive' },
       false,
     );
-  }
-
-  private async isReceivingBotHosted(imBotId: string): Promise<boolean> {
-    try {
-      const bots = await this.botService.getConfiguredBotList();
-      return bots.some((bot) =>
-        [bot.wxid, bot.id, bot.weixin, bot.wecomUserId]
-          .filter((id): id is string => typeof id === 'string')
-          .some((id) => id.trim() === imBotId.trim()),
-      );
-    } catch {
-      return false;
-    }
   }
 }
 
@@ -175,6 +164,8 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly handoffRecorder: HandoffRecorderService,
     private readonly handoffNotifier: GeneralHandoffNotifierService,
     private readonly configService: ConfigService,
+    private readonly actionPermit: ActionPermitService,
+    private readonly candidateProgress: CandidateProgressService,
     @Optional()
     @Inject(REENGAGEMENT_DELIVERY_PORT)
     private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
@@ -383,9 +374,46 @@ export class FollowUpProcessor implements OnModuleInit {
       }
     }
 
+    const permit = await this.actionPermit.evaluate({
+      chatId: sessionRef.sessionId,
+      action: 'proactive',
+      botImId: channelIdentity?.botImId,
+      candidateIds: [
+        sessionRef.userId,
+        channelIdentity?.imContactId,
+        channelIdentity?.externalUserId,
+      ],
+    });
+    if (!permit.allowed) {
+      this.tracking.trackStopped(identity, `action_permit:${permit.reason}`);
+      return;
+    }
+
     const state = bookingContext?.interviewAt
       ? ({ ...loadedState, interviewAt: bookingContext.interviewAt } as ReengagementSessionState)
       : loadedState;
+
+    const progress =
+      scenario.phase === 'pre_booking'
+        ? await this.candidateProgress.read(
+            {
+              corpId: sessionRef.corpId,
+              userId: sessionRef.userId,
+              chatId: sessionRef.sessionId,
+              botImId: channelIdentity?.botImId,
+              botUserId: channelIdentity?.managerName,
+            },
+            'fresh',
+          )
+        : undefined;
+    // booked 继续作为兼容投影写入；新鲜事实可推导停发，未知时保留旧终态，不能清空。
+    if (progress?.active === 'yes') {
+      this.tracking.trackStopped(
+        identity,
+        progress.outOfBandVerdict?.reason ?? 'candidate_progress:active',
+      );
+      return;
+    }
 
     // 最近一条候选人消息：转给真人处理（只存历史）的回话，报名前场景算已回话（1），
     // 待答闸也不把它当主链丢消息（1.4）。
@@ -395,7 +423,9 @@ export class FollowUpProcessor implements OnModuleInit {
     const stop = shouldStop(scenario, state, anchorAt, {
       externallyVerifiable: job.data.workOrderId != null,
       now,
-      humanHandledCandidateMessageAt: latestCandidateMessage?.historyOnlyReason
+      humanHandledCandidateMessageAt: isHumanHandledHistoryReason(
+        latestCandidateMessage?.historyOnlyReason,
+      )
         ? latestCandidateMessage.timestamp
         : undefined,
     });
@@ -483,23 +513,6 @@ export class FollowUpProcessor implements OnModuleInit {
       }
       if (scenarioCode === 'interview_reminder' && bookingContext.interviewAt! <= now) {
         this.tracking.trackStopped(identity, 'interview_time_passed');
-        return;
-      }
-    }
-
-    // 1.55) pre_booking 带外工单核验（human_oob 确定性切片，badcase recvqgvKqRAcKg 族）：
-    // pre_booking 场景只认 Agent 自建 terminal 态，经理带外约面/拒面、候选人已面试的
-    // 事实只在海绵工单里。到点按手机号查该候选人全部工单，在途/已推进即停。
-    // 无手机号或查询失败按放行降级（该闸历史上不存在，fail open 仅维持现状，
-    // 不让海绵抖动放大成全量复聊静默）。
-    if (scenario.phase === 'pre_booking') {
-      const oobVerdict = await this.checkOutOfBandWorkOrderAtFire(state, channelIdentity?.botImId);
-      if (oobVerdict) {
-        this.logger.log(
-          `[reengagement] 停止 ${scenarioCode} sessionId=${sessionRef.sessionId} 原因=${oobVerdict.reason}` +
-            `（带外工单 workOrderId=${oobVerdict.workOrderId ?? '-'}）`,
-        );
-        this.tracking.trackStopped(identity, oobVerdict.reason);
         return;
       }
     }
@@ -762,7 +775,7 @@ export class FollowUpProcessor implements OnModuleInit {
     const MERGE_TOLERANCE_MS = 2 * 60 * 1000;
     const PREVIEW_MAX_CHARS = 120;
     if (!latestCandidateMessage) return null;
-    if (latestCandidateMessage.historyOnlyReason) {
+    if (isHumanHandledHistoryReason(latestCandidateMessage.historyOnlyReason)) {
       this.logger.log(
         `[reengagement] 最近候选人消息已转真人处理（${latestCandidateMessage.historyOnlyReason}），` +
           `不按待答停发 sessionId=${sessionId}`,
@@ -798,34 +811,6 @@ export class FollowUpProcessor implements OnModuleInit {
   }
 
   /**
-   * pre_booking 带外工单核验：按候选人手机号查海绵全部工单，交给纯分类器判停。
-   *
-   * 手机号来源是复聊会话快照的 collectedFields（booking 写回或候选人自陈）；拿不到
-   * 手机号说明该候选人极大概率没走过任何报名流程，跳过核验不算漏。
-   * 查询失败 fail open：pre_booking 历史上没有这道闸，降级即维持现状行为。
-   */
-  private async checkOutOfBandWorkOrderAtFire(
-    state: ReengagementSessionState,
-    botImId?: string,
-  ): Promise<OutOfBandWorkOrderVerdict | null> {
-    const rawPhone = state.collectedFields?.phone?.value;
-    const phone = typeof rawPhone === 'string' ? rawPhone.trim() : '';
-    if (!phone || !/^1\d{10}$/.test(phone)) return null;
-    try {
-      const result = await this.sponge.fetchSignupWorkOrders(
-        { phone },
-        botImId ? { botImId } : undefined,
-      );
-      return evaluateOutOfBandWorkOrders(result.workOrders ?? [], Date.now());
-    } catch (error) {
-      this.logger.warn(
-        `[reengagement] 带外工单核验失败（fail open 放行）: ${this.errorMessage(error)}`,
-      );
-      return null;
-    }
-  }
-
-  /**
    * 报名后场景到点核验（shouldStop 之后、生成之前）。返回失效原因；仍有效返回 null。
    *
    * - 海绵实时工单现状（source of truth）：只有约面待确认/约面成功是进行中报名；
@@ -835,7 +820,7 @@ export class FollowUpProcessor implements OnModuleInit {
   private checkBookingInvalidAtFire(bookingContext: ReengagementBookingContext): string | null {
     const currentStatus = bookingContext.currentStatus ?? null;
     if (!currentStatus) return 'work_order_status_unavailable';
-    return ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(currentStatus)
+    return isLegacyPostBookingActive(currentStatus)
       ? null
       : `work_order_not_active:${currentStatus}`;
   }
@@ -1556,6 +1541,7 @@ export class FollowUpProcessor implements OnModuleInit {
       messageId: batchId,
       chatId: sessionId,
       externalRequestId: batchId,
+      action: 'proactive',
       _apiType: 'enterprise',
     };
   }

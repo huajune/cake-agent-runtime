@@ -272,9 +272,29 @@ function describeAlreadyBookedDenial(
     SYSTEM_FAULT_CLAIM_PATTERN.test(replyText) ||
     RESUBMIT_PROMISE_PATTERN.test(replyText);
   const asksDateAgain = DATE_ASK_PATTERN.test(replyText) && !CONFIRMATION_PATTERN.test(replyText);
-  if (!deniesBooking && !asksDateAgain) return null;
+  const result = asRecord(alreadyBooked.result);
+  const unverifiedConfirmation =
+    result?.alreadyBookedSource === 'sponge_duplicate_signup' &&
+    result.crossAccount !== false &&
+    !BOOKING_FAILURE_ACKNOWLEDGED_PATTERN.test(replyText) &&
+    (CONFIRMATION_PATTERN.test(replyText) ||
+      BOOKING_SETTLED_CLAIM_PATTERN.test(replyText) ||
+      TIME_CONFIRMATION_PATTERN.test(replyText));
+  if (!deniesBooking && !asksDateAgain && !unverifiedConfirmation) return null;
 
   const existingTime = readExistingInterviewTimeHuman(alreadyBooked);
+  if (result?.alreadyBookedSource === 'sponge_duplicate_signup') {
+    return {
+      label: '海绵已确认候选人报过该岗位或品牌，回复不得改写为报名失败或要求重新提交。',
+      suggestion:
+        result.crossAccount !== false
+          ? '如实告知系统显示已报过该岗位或品牌，已有报名的归属和面试安排由同事核实；不要声称本次申请的时间已经约上，不要补收资料或承诺重提。'
+          : '如实告知已有报名，不用再提交；' +
+            (existingTime
+              ? `面试时间按工单登记的「${existingTime}」播报。`
+              : '工单未记录面试时间，安排待通知，不得把本次申请时间当成已确认。'),
+    };
+  }
   return {
     label:
       '本轮 duliday_interview_booking 命中在途工单查重：预约已经存在、本轮只是没有重复提交，' +

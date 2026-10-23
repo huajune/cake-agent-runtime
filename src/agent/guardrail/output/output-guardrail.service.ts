@@ -1,3 +1,5 @@
+import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
+import { mergeLegacyGuardBookings } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -54,6 +56,7 @@ export class OutputGuardrailService {
     private readonly sessionFacts?: SessionFactsService,
     @Optional() private readonly bookingSnapshot?: BookingSnapshotService,
     @Optional() private readonly collectionForms?: CollectionFormService,
+    @Optional() private readonly candidateProgress?: CandidateProgressService,
   ) {}
 
   /**
@@ -104,6 +107,7 @@ export class OutputGuardrailService {
     userId: string | undefined,
   ): Promise<readonly ActiveBookingEntry[] | undefined> {
     if (!corpId || !userId) return undefined;
+    if (this.candidateProgress) return this.candidateProgress.readGuardBookings(corpId, userId);
     // 本轮预约快照（prepare 按手机号从海绵查得、按候选人身份镜像 5 分钟）是权威读视图：
     // 候选人在聊 Y 岗时，按快照里有没有 Y 岗的在途工单判断，不再只看 active_booking 指针。
     // 指针仍并入：它带着"另一账号刚建单"的并发窗口；两者按工单号去重。
@@ -111,12 +115,7 @@ export class OutputGuardrailService {
       this.readSnapshotBookings(corpId, userId),
       this.readPointerBookings(corpId, userId),
     ]);
-    if (snapshot === undefined && pointer === undefined) return undefined;
-    const merged = new Map<number, ActiveBookingEntry>();
-    for (const entry of [...(snapshot ?? []), ...(pointer ?? [])]) {
-      if (!merged.has(entry.work_order_id)) merged.set(entry.work_order_id, entry);
-    }
-    return Array.from(merged.values());
+    return mergeLegacyGuardBookings(snapshot, pointer);
   }
 
   private async readSnapshotBookings(

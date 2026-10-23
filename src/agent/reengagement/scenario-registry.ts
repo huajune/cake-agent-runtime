@@ -1,3 +1,4 @@
+import { legacyTerminalStops } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import type { ReengagementSessionState } from '@memory/recall.types';
 import { parseInterviewMethod } from '@sponge/interview-method';
 
@@ -505,10 +506,7 @@ export function shouldStop(
     humanHandledCandidateMessageAt?: number;
   },
 ): ShouldStopResult {
-  const postBookingFollowUp =
-    scenario.phase === 'post_booking' &&
-    (state.terminal === 'booked' || state.terminal === 'handed_off');
-  if (state.terminal && !postBookingFollowUp) {
+  if (legacyTerminalStops(state.terminal, scenario.phase)) {
     return { stop: true, reason: `terminal:${state.terminal}` };
   }
   if (

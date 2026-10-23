@@ -1,3 +1,4 @@
+import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { MESSAGE_MERGE_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -55,6 +56,7 @@ import {
  */
 @Module({
   imports: [
+    ActionPermitModule,
     ConfigModule,
     LlmModule,
     forwardRef(() => AgentModule),

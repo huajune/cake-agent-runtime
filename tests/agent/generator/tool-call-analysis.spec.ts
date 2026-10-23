@@ -16,8 +16,6 @@ import {
   hasRejectedSkipReply,
   isAcceptedSkipReplyResult,
   isShortCircuitedToolCall,
-  isForbiddenDuringRevise,
-  isForbiddenForProactive,
   isGuardrailRejected,
   isSideEffectCommitted,
   isSideEffectTool,
@@ -25,7 +23,6 @@ import {
   MAX_PRECHECK_CALLS_PER_TURN,
   MAX_SAME_TOOL_CALLS_PER_TURN,
   REPLAY_BLOCKING_TOOLS,
-  REVISION_FORBIDDEN_TOOLS,
   SIDE_EFFECT_TOOLS,
   TOOL_GUARDRAIL_IDS,
 } from '@agent/generator/tool-call-analysis';
@@ -444,9 +441,6 @@ describe('tool-call-analysis', () => {
         }),
       ).toBe(true);
       expect(blocksReplay({ toolName: 'advance_stage', result: { success: true } })).toBe(false);
-      expect(REVISION_FORBIDDEN_TOOLS.has('duliday_interview_booking')).toBe(true);
-      expect(isForbiddenDuringRevise('duliday_interview_booking')).toBe(true);
-      expect(isForbiddenForProactive('invite_to_group')).toBe(true);
     });
 
     it('取消/改约成功后阻断 replay（badcase [03]：首版已取消工单，重跑版向候选人要工单号）', () => {
@@ -473,11 +467,6 @@ describe('tool-call-analysis', () => {
           }),
         ).toBe(false);
       }
-    });
-
-    it('keeps revise and proactive policy aligned with the side-effect set', () => {
-      expect(isForbiddenDuringRevise('duliday_interview_booking')).toBe(true);
-      expect(isForbiddenForProactive('invite_to_group')).toBe(true);
     });
 
     it('reads the minimal side-effect and guardrail result fields when tools provide them', () => {

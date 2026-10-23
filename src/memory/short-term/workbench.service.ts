@@ -50,7 +50,7 @@ export class SessionWorkbenchService {
     await this.redisStore.set(
       this.buildStageKey(corpId, userId, sessionId),
       state as unknown as Record<string, unknown>,
-      this.config.sessionTtl,
+      this.config.sessionFactsTtl,
       false,
     );
     this.logger.log(`阶段更新: ${state.currentStage} (user=${userId})`);

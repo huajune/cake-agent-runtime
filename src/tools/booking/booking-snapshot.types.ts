@@ -32,6 +32,7 @@ export interface BookingSnapshotEntry {
 export type BookingSnapshotLoadResult =
   | {
       status: 'ok';
+      allWorkOrders?: SignupWorkOrderItem[];
       entries: BookingSnapshotEntry[];
       /** 海绵顶层候选人姓名（本人校验用）。 */
       candidateName: string | null;
@@ -49,6 +50,8 @@ export type BookingSnapshotLoadResult =
 
 /** Redis 缓存体（按手机号+托管账号）；同时按候选人身份镜像一份供出站守卫读。 */
 export interface BookingSnapshotCacheRecord {
+  /** 原始列表仅在既有 5 分钟缓存内保留，供窗口差异比较；旧缓存缺失时视为未知。 */
+  allWorkOrders?: SignupWorkOrderItem[];
   entries: BookingSnapshotEntry[];
   candidateName: string | null;
   fetchedAt: number;
