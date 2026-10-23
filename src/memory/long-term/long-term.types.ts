@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { CANDIDATE_FACT_PRODUCERS, type CandidateFactProducer } from '@resolution/candidate/types';
+import { truncateEvidence } from '../fact-evidence';
+import type { HealthCertificateState } from '@resolution/candidate/health-certificate-state';
 import {
   FACT_CONFIDENCE_LEVELS_DESC,
   FACT_CONFIDENCE_RANK,
@@ -21,11 +23,11 @@ export interface LongTermMemory {
 /** 语义记忆：跨咨询段复用的身份事实与最近一段求职意向快照。 */
 export interface SemanticMemory {
   profile: UserProfileFacts | null;
-  /** 求职意向快照（原 preference_facts；consolidation 整组覆盖写入）。 */
+  /** 求职意向快照（原 preference_facts；consolidation 按字段时间戳合并写入）。 */
   jobIntent?: JobIntentFacts | null;
 }
 
-/** 情景记忆：按时间排列的咨询段摘要；仅由 recall_history 按需拉取。 */
+/** 情景记忆：按时间排列的咨询段摘要；回访首轮注入最近一段，更多历史由 recall_history 按需拉取。 */
 export interface EpisodicMemory {
   sessionSummaries: SummaryEntry[] | null;
 }
@@ -40,7 +42,7 @@ export interface UserProfile {
   age: string | null;
   is_student: boolean | null;
   education: string | null;
-  has_health_certificate: string | null;
+  has_health_certificate: HealthCertificateState | null;
   height: string | null;
   weight: string | null;
 }
@@ -104,7 +106,7 @@ export const UserProfileFactValueSchema = z.object({
     z.enum(FACT_CONFIDENCE_LEVELS_DESC),
   ),
   source: z.enum(CANDIDATE_FACT_PRODUCERS),
-  evidence: z.string(),
+  evidence: z.string().transform((value) => truncateEvidence(value)),
   updatedAt: z.string(),
   originSessionId: z.string().optional(),
   originBotId: z.string().optional(),
@@ -152,7 +154,7 @@ export function userProfileFactValue<T>(
     value,
     confidence: meta.confidence,
     source: meta.source,
-    evidence: meta.evidence,
+    evidence: truncateEvidence(meta.evidence),
     updatedAt: meta.updatedAt ?? new Date().toISOString(),
     ...(meta.originSessionId ? { originSessionId: meta.originSessionId } : {}),
     ...(meta.originBotId ? { originBotId: meta.originBotId } : {}),
@@ -239,7 +241,7 @@ export function toUserProfileFacts(
   return facts;
 }
 
-/** 消息回调元数据 — 冗余到长期记忆中 */
+/** 跨系统关联元数据 — 保留外部身份与联系人信息，独立于候选人语义事实 */
 export interface MessageMetadata {
   botId?: string;
   imBotId?: string;
@@ -351,9 +353,8 @@ export type JobIntentFieldKey = (typeof LONG_TERM_JOB_INTENT_FIELD_KEYS)[number]
 /**
  * 长期求职意向集合。
  *
- * 覆盖语义是**快照式整组覆盖**（最新一段会话的意向赢），与 session facts 的
- * deepMerge 累积不同——累积语义会让错值/错字变体永远清不掉（张漪 case 的
- * pref.location 教训）。consolidation 是唯一写方。
+ * 更新按字段原始时间合并：缺席保留、显式 null 墓碑清空；换城市清空旧区域和商圈。
+ * 不拼接同字段数组，consolidation 是唯一写方。
  */
 export type JobIntentFacts = Partial<Record<JobIntentFieldKey, UserProfileFactValue<unknown>>>;
 

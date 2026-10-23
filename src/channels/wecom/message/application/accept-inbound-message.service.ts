@@ -327,7 +327,7 @@ export class AcceptInboundMessageService {
    * 即触发、含从不发消息的沉默僵尸。两者共用同一幂等键，谁先到算谁。
    *
    * 首次接触不再在 agent_long_term_memories 开户：09-11 核对近 60 天 10,988 行里 7,758 行
-   * 是只带 message_metadata 的占位行，从未沉淀；长期关系行只由 consolidation 创建。
+   * 是只带 message_metadata 的占位行，从未沉淀；关系行改由 consolidation 或报名资料回写创建。
    */
   private async recordFriendAddedOnFirstContact(
     messageData: EnterpriseMessageCallbackDto,

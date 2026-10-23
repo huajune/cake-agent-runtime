@@ -30,7 +30,7 @@ describe('resolveLocalHealthCertificateEligibility', () => {
     ).toEqual(expect.objectContaining({ status: 'rejects_local_application', spongeValue: 3 }));
   });
 
-  it.each(['无', '没有', '没办', '还没办', '健康证过期了', '在办', '办理中，还没下证'])(
+  it.each(['无', '没有', '没办', '还没办', '健康证过期了', '办理中，还没下证'])(
     '明确无可用证时标记 explicitNoCertificate：%s',
     (latestAnswer) => {
       expect(resolveLocalHealthCertificateEligibility({ latestAnswer })).toEqual(
@@ -38,6 +38,16 @@ describe('resolveLocalHealthCertificateEligibility', () => {
       );
     },
   );
+
+  it('办理中不能当成已持证', () => {
+    expect(resolveLocalHealthCertificateEligibility({ latestAnswer: '在办' })).toEqual(
+      expect.objectContaining({
+        status: 'processing',
+        spongeValue: null,
+        explicitNoCertificate: true,
+      }),
+    );
+  });
 
   it('有证、接受办理、空值不误标 explicitNoCertificate', () => {
     expect(resolveLocalHealthCertificateEligibility({ latestAnswer: '有' })).toEqual(

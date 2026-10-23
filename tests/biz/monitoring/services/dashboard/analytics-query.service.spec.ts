@@ -291,13 +291,16 @@ describe('AnalyticsQueryService', () => {
         sampleCount: 0,
         avgQueueDuration: 0,
       });
-      const before = Date.now();
+      const now = Date.parse('2026-10-23T08:00:00Z');
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+      try {
+        await service.getSystemMonitoringAsync();
 
-      await service.getSystemMonitoringAsync();
-
-      const [sinceTime] = mockMessageProcessingService.countProcessingRecordsSince.mock.calls[0];
-      expect(before - sinceTime).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000);
-      expect(Date.now() - sinceTime).toBeLessThan(24 * 60 * 60 * 1000 + 5000);
+        const [sinceTime] = mockMessageProcessingService.countProcessingRecordsSince.mock.calls[0];
+        expect(sinceTime).toBe(now - 24 * 60 * 60 * 1000);
+      } finally {
+        clock.mockRestore();
+      }
     });
 
     it('should resync the Redis counter to the DB truth before reading the peak', async () => {

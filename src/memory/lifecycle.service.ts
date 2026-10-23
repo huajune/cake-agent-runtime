@@ -148,6 +148,20 @@ export class MemoryLifecycleService {
     }
 
     const hasOwnSessionMemory = this.hasStructuredSessionMemoryState(sessionState);
+    const lastProcessedAt = Date.parse(sessionState?.lastProcessedCandidateMessageAt ?? '');
+    const isReturningFirstTurn =
+      !Number.isFinite(lastProcessedAt) ||
+      Date.now() - lastProcessedAt >= this.configuredConsolidationGapMs();
+    const recentSessionSummary =
+      botUserId && isReturningFirstTurn
+        ? ((await this.longTerm.getSessionSummaries(corpId, userId, botUserId))
+            ?.filter(
+              (entry) =>
+                entry.sessionId && entry.endTime && Number.isFinite(Date.parse(entry.endTime)),
+            )
+            .sort((a, b) => Date.parse(a.endTime!) - Date.parse(b.endTime!))
+            .at(-1) ?? null)
+        : null;
     const snapshot: MemoryRecallContext = {
       shortTerm: {
         messageWindow: shortTermMessages,
@@ -158,10 +172,16 @@ export class MemoryLifecycleService {
       turnHints,
       longTerm: {
         semantic: { profile, jobIntent: longTermPreferences },
+        ...(recentSessionSummary ? { recentSessionSummary } : {}),
       },
     };
 
     return snapshot;
+  }
+
+  private configuredConsolidationGapMs(): number {
+    // 与闲置 episode 判据同源，由 scheduler 暴露配置，避免另立固定天数。
+    return this.consolidationScheduler.idleGapMs;
   }
 
   private loadShortTermMessages(

@@ -1,4 +1,4 @@
-import type { LongTermMemory, SemanticMemory } from './long-term/long-term.types';
+import type { LongTermMemory, SemanticMemory, SummaryEntry } from './long-term/long-term.types';
 import type { StageState } from './short-term/short-term.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
 import type { ShortTermMemoryStructure } from './short-term/short-term.types';
@@ -44,6 +44,8 @@ export interface MemoryRecallContext {
   longTerm: {
     /** 语义记忆分组（CoALA A3）：跨会话稳定事实；类型定义见 long-term.types。 */
     semantic: SemanticMemory;
+    /** 回访首轮最近一段摘要；其余历史仍由 recall_history 读取。 */
+    recentSessionSummary?: SummaryEntry | null;
   };
   // episodic 摘要不进入默认召回；需要时由显式 recall_history 路径按需读取。
 }

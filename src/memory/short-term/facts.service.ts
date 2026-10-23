@@ -748,15 +748,31 @@ export class SessionFactsService {
 
     const brandData = await this.sponge.fetchBrandList();
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
+    const extractionHistory = previousFacts
+      ? history.slice(-this.config.sessionExtractionIncrementalMessages)
+      : history;
     const prompt = buildSessionExtractionPrompt(
       brandData,
       currentMessage,
-      previousFacts ? history.slice(-this.config.sessionExtractionIncrementalMessages) : history,
+      extractionHistory,
       aliasHints,
       formatCurrentTime(),
       previousFacts,
     );
+    const extractionStartedAt = Date.now();
     const llmOutcome = await this.callLLM(prompt);
+    this.logger.log(
+      JSON.stringify({
+        event: 'memory_extraction_budget',
+        sessionId,
+        historyMessages: extractionHistory.length,
+        currentMessages: currentCount,
+        promptChars: prompt.length,
+        durationMs: Date.now() - extractionStartedAt,
+        incremental: Boolean(previousFacts),
+        degraded: llmOutcome.degraded,
+      }),
+    );
     // 早班/早上/早晨固定映射为早班+上午班，抽取漏写上午班时按本轮原话补齐。
     llmOutcome.facts.preferences.schedule_constraint = completeEarlyShiftMapping(
       llmOutcome.facts.preferences.schedule_constraint,

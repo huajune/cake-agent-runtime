@@ -12,7 +12,7 @@ import { isSessionFactValue } from './short-term.types';
 export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎。只从候选人本轮表达中提取表单外软事实。
 
 允许输出：
-- preferences：brand_ids、salary、position、schedule、city、district、location、labor_form、
+- preferences：salary、position、schedule、city、district、location、labor_form、
   delayed_intent、short_term、open_position、time_windows、schedule_constraint、available_after
 - brand_intents：本轮品牌偏好的 positive / negative / browse_all 极性
 - labor_form_intent：set / clear / ignore 三态

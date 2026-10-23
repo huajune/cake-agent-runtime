@@ -1,6 +1,6 @@
 export const SUMMARY_SECTION_TITLES = ['求职目标', '关键约束', '进展与结果', '未决事项'] as const;
 
-export type SummaryScope = 'job_seeking' | 'other';
+export type SummaryScope = 'job_seeking' | 'other' | 'empty';
 
 export interface ParsedSummaryOutput {
   /** 首行「范围」标记；缺失或不可识别时为 null，调用方按求职处理（fail-open 到现状）。 */
@@ -9,7 +9,7 @@ export interface ParsedSummaryOutput {
   body: string;
 }
 
-const SCOPE_LINE_PATTERN = /^范围\s*[:：]\s*(求职|非求职)\s*$/u;
+const SCOPE_LINE_PATTERN = /^范围\s*[:：]\s*(求职|非求职|无实质内容)\s*$/u;
 const TITLE_ONLY_PATTERN = new RegExp(`^(?:${SUMMARY_SECTION_TITLES.join('|')})：$`, 'u');
 const SECTION_LINE_PATTERN = new RegExp(
   `^(${SUMMARY_SECTION_TITLES.join('|')})\\s*[:：]?\\s*(.*)$`,
@@ -33,7 +33,8 @@ export function parseSummaryOutput(text: string): ParsedSummaryOutput {
     const line = rawLine.trim();
     if (line.length === 0) continue;
     if (scope === null && lines.length === 0 && SCOPE_LINE_PATTERN.test(line)) {
-      scope = SCOPE_LINE_PATTERN.exec(line)?.[1] === '非求职' ? 'other' : 'job_seeking';
+      const label = SCOPE_LINE_PATTERN.exec(line)?.[1];
+      scope = label === '非求职' ? 'other' : label === '无实质内容' ? 'empty' : 'job_seeking';
       continue;
     }
     const unmarked = line

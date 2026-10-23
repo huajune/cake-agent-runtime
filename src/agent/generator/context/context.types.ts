@@ -48,9 +48,15 @@ export interface StudentJobVerdictView {
   eligibility: StudentEligibility;
 }
 
+/** Prompt 视图保留本轮原始线索；持久事实另在读写边界归一。 */
+export type InterviewPromptView = Omit<
+  EntityExtractionResult['interview_info'],
+  'has_health_certificate'
+> & { has_health_certificate?: string | null };
+
 export interface HardConstraintsPromptView {
   facts: {
-    interview: EntityExtractionResult['interview_info'];
+    interview: InterviewPromptView;
     preferences: Preferences;
   } | null;
   brandState: SessionBrandState | null;
