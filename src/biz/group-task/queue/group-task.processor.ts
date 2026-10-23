@@ -1,3 +1,6 @@
+import { retainedJobs } from '@infra/queue/queue-policy';
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
@@ -51,13 +54,6 @@ import {
 const BOT_DISPATCH_LOCK_TTL_SECONDS = 20 * 60;
 const BOT_DISPATCH_LOCK_POLL_MS = 1_000;
 
-const RELEASE_OWNED_LOCK_SCRIPT = `
-if redis.call('get', KEYS[1]) == ARGV[1] then
-  return redis.call('del', KEYS[1])
-end
-return 0
-`;
-
 /**
  * 群任务队列处理器
  *
@@ -76,6 +72,8 @@ export class GroupTaskProcessor implements OnModuleInit {
     @InjectQueue(GROUP_TASK_QUEUE_NAME) private readonly queue: Queue,
     private readonly llm: LlmExecutorService,
     private readonly redisService: RedisService,
+    private readonly leases: RedisLeaseService,
+    private readonly queueFailures: QueueFailureService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
     private readonly brandRotation: BrandRotationService,
@@ -127,49 +125,13 @@ export class GroupTaskProcessor implements OnModuleInit {
       // 只在最终失败（重试耗尽）时触发告警，中间重试噪音靠 logger 即可。
       // 没有这条告警，prod 曾有一周多天全员静默失败都没人感知 —— 不可省。
       if (job.attemptsMade >= attempts) {
-        this.notifyJobExhausted(job, error);
+        void this.queueFailures.exhausted(GROUP_TASK_QUEUE_NAME, job, error);
       }
     });
     this.queue.on('stalled', (job: Job) => {
       this.logger.warn(
         `[群任务队列] ⚠️ ${job.name} job=${job.id} 被标记 stalled，将由 Bull 重新派发`,
       );
-    });
-  }
-
-  private notifyJobExhausted(job: Job, error: Error): void {
-    if (!this.exceptionNotifier) return;
-
-    const data = job.data as
-      | { execId?: string; type?: GroupTaskType; group?: { groupName?: string } }
-      | undefined;
-    const trigger = (job.data as { trigger?: 'cron' | 'manual' } | undefined)?.trigger ?? 'cron';
-
-    this.exceptionNotifier.notifyAsync({
-      source: {
-        subsystem: 'group-task',
-        component: 'GroupTaskProcessor',
-        action: `queue:${job.name}`,
-        trigger,
-      },
-      code: `group_task.${job.name}_exhausted`,
-      summary: `群任务 ${job.name} 重试耗尽 (${job.attemptsMade}/${job.opts.attempts ?? 1}) exec=${data?.execId ?? 'n/a'}`,
-      error,
-      severity: AlertLevel.ERROR,
-      scope: { scenario: data?.type },
-      diagnostics: {
-        payload: {
-          jobId: String(job.id),
-          jobName: job.name,
-          execId: data?.execId,
-          group: data?.group?.groupName,
-          attempts: job.opts.attempts ?? 1,
-          attemptsMade: job.attemptsMade,
-        },
-      },
-      dedupe: {
-        key: `group_task.${job.name}_exhausted:${data?.execId ?? job.id}:${data?.group?.groupName ?? 'n/a'}`,
-      },
     });
   }
 
@@ -294,8 +256,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         jobId: `${execId}:prepare:${prepareJob.groupKey}`,
         attempts: 3,
         backoff: { type: 'exponential', delay: 10_000 },
-        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-        removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+        ...retainedJobs(500),
       });
     }
 
@@ -331,8 +292,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       delay: delayMs,
       attempts: 2,
       backoff: { type: 'fixed', delay: 30_000 },
-      removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-      removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+      ...retainedJobs(500),
     });
   }
 
@@ -423,8 +383,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         delay: globalIndex * sendDelayMs,
         attempts: 3,
         backoff: { type: 'exponential', delay: 15_000 },
-        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 1000 },
-        removeOnFail: { age: 7 * 24 * 60 * 60, count: 1000 },
+        ...retainedJobs(1000),
       });
     }
 
@@ -541,14 +500,19 @@ export class GroupTaskProcessor implements OnModuleInit {
     lockOwner: string,
     groupName: string,
   ): Promise<void> {
-    let loggedWaiting = false;
-    while (!(await this.redisService.setNx(lockKey, lockOwner, BOT_DISPATCH_LOCK_TTL_SECONDS))) {
-      if (!loggedWaiting) {
-        this.logger.log(`[send] ${groupName} 等待同 bot 的前序群发送完成`);
-        loggedWaiting = true;
-      }
+    // Cover the healthy holder's full lease without exhausting Bull send attempts.
+    // Each shared lease wait remains bounded to one minute.
+    const deadline = Date.now() + BOT_DISPATCH_LOCK_TTL_SECONDS * 1_000;
+    while (Date.now() < deadline) {
+      const lease = await this.leases.acquire(lockKey, BOT_DISPATCH_LOCK_TTL_SECONDS, {
+        owner: lockOwner,
+        waitMs: Math.min(60_000, Math.max(0, deadline - Date.now())),
+        pollMs: BOT_DISPATCH_LOCK_POLL_MS,
+      });
+      if (lease) return;
       await this.delay(BOT_DISPATCH_LOCK_POLL_MS);
     }
+    throw new Error(`同 bot 发送锁不可用，已停止本次发送: ${groupName}`);
   }
 
   private async waitForBotDispatchWindow(
@@ -580,7 +544,11 @@ export class GroupTaskProcessor implements OnModuleInit {
   }
 
   private async releaseBotDispatchLock(lockKey: string, lockOwner: string): Promise<void> {
-    await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [lockKey], [lockOwner]);
+    await this.leases.release({
+      key: lockKey,
+      owner: lockOwner,
+      ttlSeconds: BOT_DISPATCH_LOCK_TTL_SECONDS,
+    });
   }
 
   // ==================== Summarize ====================

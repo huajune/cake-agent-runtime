@@ -1,3 +1,4 @@
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { CandidateBlacklistFilterRule } from '../application/filter-rules/message-filter.rules';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
@@ -39,6 +40,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly messageTracking: MessageTrackingService,
     private readonly configService: ConfigService,
     private readonly chatSession: ChatSessionService,
+    private readonly queueFailures: QueueFailureService,
     private readonly blacklistFilter: CandidateBlacklistFilterRule,
   ) {
     this.drainTimeoutMs = parseInt(
@@ -170,6 +172,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
 
     this.messageQueue.on('failed', (job: Job, error: Error) => {
       this.logger.error(`[Bull] ❌ 任务 ${job.id} 失败: ${error.message}`);
+      void this.queueFailures.exhausted('message-merge', job, error);
     });
 
     this.messageQueue.on('active', (job: Job) => {

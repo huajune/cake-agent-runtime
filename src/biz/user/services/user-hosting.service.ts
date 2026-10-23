@@ -1,3 +1,4 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -93,6 +94,7 @@ export class UserHostingService {
   constructor(
     private readonly repository: UserHostingRepository,
     private readonly redisService: RedisService,
+    private readonly leases: RedisLeaseService,
     private readonly configService: ConfigService,
     @Optional()
     private readonly handoffEventsRepository?: HandoffEventsRepository,
@@ -610,29 +612,18 @@ export class UserHostingService {
   }
 
   private async acquireExpireCronLock(): Promise<string | null> {
-    const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-    try {
-      const acquired = await this.redisService.setNx(
-        UserHostingService.EXPIRE_CRON_LOCK_KEY,
-        token,
-        EXPIRE_CRON_LOCK_TTL_SECONDS,
-      );
-      return acquired ? token : null;
-    } catch (error) {
-      this.logger.warn('获取过期暂停扫描锁失败，回退为当前副本执行', error);
-      return token;
-    }
+    const lease = await this.leases.acquire(
+      UserHostingService.EXPIRE_CRON_LOCK_KEY,
+      EXPIRE_CRON_LOCK_TTL_SECONDS,
+    );
+    return lease?.owner ?? null;
   }
 
   private async releaseExpireCronLock(token: string): Promise<void> {
-    try {
-      await this.redisService.eval(
-        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0",
-        [UserHostingService.EXPIRE_CRON_LOCK_KEY],
-        [token],
-      );
-    } catch (error) {
-      this.logger.warn('释放过期暂停扫描锁失败', error);
-    }
+    await this.leases.release({
+      key: UserHostingService.EXPIRE_CRON_LOCK_KEY,
+      owner: token,
+      ttlSeconds: EXPIRE_CRON_LOCK_TTL_SECONDS,
+    });
   }
 }

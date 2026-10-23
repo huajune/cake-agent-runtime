@@ -1,3 +1,5 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { GroupTaskProcessor } from '@biz/group-task/queue/group-task.processor';
@@ -122,6 +124,8 @@ describe('GroupTaskProcessor', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        RedisLeaseService,
+        { provide: QueueFailureService, useValue: { report: jest.fn(), exhausted: jest.fn() } },
         GroupTaskProcessor,
         { provide: getQueueToken(GROUP_TASK_QUEUE_NAME), useValue: queueMock },
         { provide: LlmExecutorService, useValue: llm },

@@ -3,7 +3,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { AlertLevel } from '@enums/alert.enum';
-import { RedisService } from '@infra/redis/redis.service';
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import {
@@ -74,7 +74,7 @@ export class JobDataAuditCronService {
   constructor(
     private readonly spongeService: SpongeService,
     private readonly alertNotifier: AlertNotifierService,
-    private readonly redisService: RedisService,
+    private readonly leases: RedisLeaseService,
     @Optional() private readonly configService?: ConfigService,
   ) {
     this.enabled = this.configService?.get<string>('JOB_DATA_AUDIT_ENABLED', 'false') === 'true';
@@ -104,16 +104,8 @@ export class JobDataAuditCronService {
       this.logger.warn('上一轮岗位数据体检尚未结束，跳过本次');
       return;
     }
-    const locked = await this.redisService
-      .setNx(JOB_DATA_AUDIT_LOCK_KEY, new Date().toISOString(), LOCK_TTL_SECONDS)
-      .catch((error: unknown) => {
-        this.logger.warn(`岗位数据体检抢锁失败，跳过本次: ${toErrorMessage(error)}`);
-        return false;
-      });
-    if (!locked) {
-      this.logger.warn('岗位数据体检已有实例在跑（Redis 锁占用），跳过本次');
-      return;
-    }
+    const lease = await this.leases.acquire(JOB_DATA_AUDIT_LOCK_KEY, LOCK_TTL_SECONDS);
+    if (!lease) return;
     this.running = true;
     try {
       await this.runOnce();
@@ -121,9 +113,7 @@ export class JobDataAuditCronService {
       this.logger.error('岗位数据体检失败', toErrorStack(error));
     } finally {
       this.running = false;
-      await this.redisService.del(JOB_DATA_AUDIT_LOCK_KEY).catch((error: unknown) => {
-        this.logger.warn(`岗位数据体检释放锁失败（TTL 到期自动释放）: ${toErrorMessage(error)}`);
-      });
+      await this.leases.release(lease);
     }
   }
 

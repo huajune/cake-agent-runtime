@@ -1,3 +1,4 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { Logger } from '@nestjs/common';
 import { OobReconcileScanCronService } from '@agent/reengagement/oob-reconcile-scan.cron';
 
@@ -18,6 +19,7 @@ describe('OobReconcileScanCronService', () => {
       phoneIndex as never,
       reconcile as never,
       redis as never,
+      new RedisLeaseService(redis as never, { report: jest.fn() } as never),
       systemConfig as never,
       config as never,
       tracer as never,

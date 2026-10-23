@@ -109,6 +109,21 @@ export class RedisStore implements MemoryStore {
     this.logger.debug(`记忆已按字段更新: ${key} [${Object.keys(patch).join(',')}]`);
   }
 
+  /** Advance an ISO timestamp atomically; delayed recovery must not overwrite newer activity. */
+  async advanceHashTimestamp(key: string, field: string, value: Date, ttl: number): Promise<void> {
+    const iso = value.toISOString();
+    await this.redis.eval(
+      `local current = redis.call('hget', KEYS[1], ARGV[1])
+       if not current or current < ARGV[2] then
+         redis.call('hset', KEYS[1], ARGV[1], ARGV[2])
+       end
+       redis.call('expire', KEYS[1], ARGV[3])
+       return 1`,
+      [key],
+      [field, iso, ttl],
+    );
+  }
+
   /**
    * 仅补齐缺失字段（HSETNX 逐字段），不覆盖已有值。
    * 用于旧版单 blob → hash 的惰性迁移：并发迁移/并发新写入都不会被回填覆盖。

@@ -1,3 +1,4 @@
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { CandidateBlacklistFilterRule } from '@channels/wecom/message/application/filter-rules/message-filter.rules';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
@@ -77,6 +78,7 @@ describe('MessageProcessor', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: QueueFailureService, useValue: { exhausted: jest.fn() } },
         MessageProcessor,
         { provide: CandidateBlacklistFilterRule, useValue: blacklistFilter },
         MessageWorkerManagerService,

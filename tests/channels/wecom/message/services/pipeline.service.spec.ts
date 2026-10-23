@@ -18,6 +18,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import { ReengagementCommandService } from '@agent/reengagement/reengagement-command.service';
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
@@ -209,6 +210,16 @@ describe('MessagePipelineService', () => {
       providers: [
         MessagePipelineService,
         AcceptInboundMessageService,
+        {
+          provide: ReengagementCommandService,
+          useValue: {
+            recordCandidateActivity: jest.fn().mockResolvedValue(undefined),
+            scheduleFollowUp: jest.fn().mockResolvedValue(undefined),
+            scheduleBookingResolution: jest.fn().mockResolvedValue(undefined),
+            stopPendingJobsForSessionScenario: jest.fn().mockResolvedValue(undefined),
+            removeSupersededPendingJobs: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         ReplyWorkflowService,
         MessageProcessingFailureService,
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
@@ -236,6 +247,7 @@ describe('MessagePipelineService', () => {
             saveLastCandidateMessageAt: jest.fn().mockResolvedValue(undefined),
             saveTerminalState: jest.fn().mockResolvedValue(undefined),
             recordCandidateActivity: jest.fn().mockResolvedValue(undefined),
+            recordCandidateMessagesProcessed: jest.fn().mockResolvedValue(undefined),
           },
         },
         { provide: HostingMemberConfigService, useValue: mockHostingMemberConfigService },

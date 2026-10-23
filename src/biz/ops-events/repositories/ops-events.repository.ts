@@ -10,6 +10,20 @@ import type {
   RecordOpsEventInput,
 } from '../types/ops-events.types';
 
+export interface OpsBookingPollCursor {
+  reportDate: string;
+  id: string;
+}
+interface BookingPollRow {
+  id: number | string;
+  report_date: string;
+  corp_id: string;
+  user_id?: string | null;
+  chat_id?: string | null;
+  bot_im_id?: string | null;
+  payload?: { work_order_id?: unknown } | null;
+}
+
 /**
  * ops_events 写入侧仓储：只调两个 RPC，写底账 + 投影日报全在 PG 内原子完成。
  *
@@ -92,54 +106,80 @@ export class OpsEventsRepository extends BaseRepository {
   /**
    * 查待轮询面试结果的工单：window 内 booking.succeeded 但尚未 interview.passed 的工单。
    *
-   * 两次 select + 应用层差集（已 pass 的不再轮询）。同一 workOrderId 去重。
+   * 一页 booking + 按企业精确键查询 pass，再取差集。同一企业的 workOrderId 去重。
    * 注：统计收口到面试通过，不再轮询 / 采集入职（candidate.hired）。
    * @param sinceReportDate YYYY-MM-DD（Asia/Shanghai），window 下界（含）。
    */
-  async findWorkOrdersPendingPass(sinceReportDate: string): Promise<PendingHireWorkOrder[]> {
-    if (!this.isAvailable()) {
-      return [];
+  async findWorkOrdersPendingPass(
+    sinceReportDate: string,
+    cursor?: OpsBookingPollCursor | null,
+  ): Promise<{ pending: PendingHireWorkOrder[]; nextCursor: OpsBookingPollCursor | null }> {
+    if (!this.isAvailable()) throw new Error('Ops events store unavailable');
+    const pageSize = 100;
+    const columns = 'id,report_date,corp_id,user_id,chat_id,bot_im_id,payload';
+    if (cursor && (!/^\d{4}-\d{2}-\d{2}$/.test(cursor.reportDate) || !/^\d+$/.test(cursor.id))) {
+      throw new Error('Invalid booking poll cursor');
     }
-
-    // selectAllPaged 复用熔断器 + 退避重试；modifier 内附带稳定排序（report_date + id），
-    // 避免分页跨 1000 行时漏/重。
-    const [bookingRows, passedRows] = await Promise.all([
-      this.selectAllPaged<{
-        corp_id: string;
-        user_id?: string | null;
-        chat_id?: string | null;
-        bot_im_id?: string | null;
-        payload?: { work_order_id?: unknown } | null;
-      }>(this.tableName, 'corp_id, user_id, chat_id, bot_im_id, payload', (q) =>
-        q
-          .eq('event_name', 'booking.succeeded')
-          .gte('report_date', sinceReportDate)
-          .order('report_date', { ascending: true })
-          .order('id', { ascending: true }),
-      ),
-      this.selectAllPaged<{ idempotency_key?: string | null }>(
+    const seek = cursor && cursor.reportDate >= sinceReportDate ? cursor : null;
+    // Two index ranges express tuple seek without a REST OR filter that scans old pages.
+    const bookingRows: BookingPollRow[] = seek
+      ? await this.selectFrom<BookingPollRow>(this.tableName, columns, (q) =>
+          q
+            .eq('event_name', 'booking.succeeded')
+            .eq('report_date', seek.reportDate)
+            .gt('id', seek.id)
+            .order('id', { ascending: true })
+            .limit(pageSize),
+        )
+      : [];
+    if (bookingRows.length < pageSize) {
+      bookingRows.push(
+        ...(await this.selectFrom<BookingPollRow>(this.tableName, columns, (q) => {
+          let query = q.eq('event_name', 'booking.succeeded').gte('report_date', sinceReportDate);
+          if (seek) query = query.gt('report_date', seek.reportDate);
+          return query
+            .order('report_date', { ascending: true })
+            .order('id', { ascending: true })
+            .limit(pageSize - bookingRows.length);
+        })),
+      );
+    }
+    const keysByCorp = new Map<string, Set<string>>();
+    for (const row of bookingRows) {
+      const id = Number(row.payload?.work_order_id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const keys = keysByCorp.get(row.corp_id) ?? new Set<string>();
+      keys.add(`${id}:pass`);
+      keysByCorp.set(row.corp_id, keys);
+    }
+    const passedWorkOrders = new Set<string>();
+    for (const [corpId, keys] of keysByCorp) {
+      // Uses the existing unique (corp_id, event_name, idempotency_key) index.
+      const passedRows = await this.selectFrom<{ idempotency_key?: string | null }>(
         this.tableName,
         'idempotency_key',
         (q) =>
           q
+            .eq('corp_id', corpId)
             .eq('event_name', 'interview.passed')
-            .gte('report_date', sinceReportDate)
-            .order('report_date', { ascending: true })
-            .order('id', { ascending: true }),
-      ),
-    ]);
+            .in('idempotency_key', [...keys])
+            .limit(pageSize),
+      );
+      for (const row of passedRows) {
+        passedWorkOrders.add(
+          `${corpId}:${String(row.idempotency_key ?? '').replace(/:pass$/, '')}`,
+        );
+      }
+    }
 
-    const passedWorkOrderIds = new Set(
-      passedRows.map((row) => String(row.idempotency_key ?? '').replace(/:pass$/, '')),
-    );
-
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     const pending: PendingHireWorkOrder[] = [];
     for (const row of bookingRows) {
       const workOrderId = Number(row.payload?.work_order_id);
       if (!Number.isFinite(workOrderId) || workOrderId <= 0) continue;
-      if (passedWorkOrderIds.has(String(workOrderId)) || seen.has(workOrderId)) continue;
-      seen.add(workOrderId);
+      const workOrderKey = `${row.corp_id}:${workOrderId}`;
+      if (passedWorkOrders.has(workOrderKey) || seen.has(workOrderKey)) continue;
+      seen.add(workOrderKey);
       pending.push({
         workOrderId,
         corpId: row.corp_id,
@@ -148,7 +188,14 @@ export class OpsEventsRepository extends BaseRepository {
         botImId: row.bot_im_id ?? null,
       });
     }
-    return pending;
+    const last = bookingRows.at(-1);
+    return {
+      pending,
+      nextCursor:
+        bookingRows.length === pageSize && last
+          ? { reportDate: last.report_date, id: String(last.id) }
+          : null,
+    };
   }
 
   /**

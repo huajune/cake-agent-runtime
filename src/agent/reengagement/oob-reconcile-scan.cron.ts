@@ -1,3 +1,4 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -51,8 +52,6 @@ const PROGRESS_KEY = 'oob:reconcile-scan:progress:v1';
 const RUN_DEADLINE_MS = 20 * 60 * 1000;
 /** 锁 TTL 必须 ≥ 2 × 单轮硬时间窗：一轮跑满 + 释放失败也不会让下一副本提前进场重排。 */
 const LOCK_TTL_SECONDS = (2 * RUN_DEADLINE_MS) / 1000;
-const RELEASE_OWNED_LOCK_SCRIPT =
-  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0";
 const SIGNUP_LOOKBACK_MS = 15 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 100;
 const DEFAULT_MAX_PAGES_PER_ACCOUNT = 10;
@@ -81,6 +80,7 @@ export class OobReconcileScanCronService {
     private readonly phoneSessionIndex: PhoneSessionIndexService,
     private readonly oobReconcile: OobReconcileService,
     private readonly redisService: RedisService,
+    private readonly leases: RedisLeaseService,
     private readonly systemConfig: SystemConfigService,
     private readonly configService: ConfigService,
     @Optional() private readonly tracer?: AgentTracerService,
@@ -347,23 +347,12 @@ export class OobReconcileScanCronService {
   }
 
   private async acquireLock(): Promise<string | null> {
-    const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-    try {
-      const acquired = await this.redisService.setNx(LOCK_KEY, token, LOCK_TTL_SECONDS);
-      return acquired ? token : null;
-    } catch (error) {
-      // 锁不可用时宁可不跑：扫描不是关键路径，重复跑却会给同一候选人排两遍提醒。
-      this.logger.warn(`[oob-scan] 获取扫描锁失败，本轮跳过: ${toErrorMessage(error)}`);
-      return null;
-    }
+    const lease = await this.leases.acquire(LOCK_KEY, LOCK_TTL_SECONDS);
+    return lease?.owner ?? null;
   }
 
   private async releaseLock(token: string): Promise<void> {
-    try {
-      await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [LOCK_KEY], [token]);
-    } catch (error) {
-      this.logger.warn(`[oob-scan] 释放扫描锁失败（到期自动过期）: ${toErrorMessage(error)}`);
-    }
+    await this.leases.release({ key: LOCK_KEY, owner: token, ttlSeconds: LOCK_TTL_SECONDS });
   }
 
   private emit(event: Parameters<AgentTracerService['emit']>[0]): void {

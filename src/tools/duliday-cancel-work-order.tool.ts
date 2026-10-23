@@ -314,7 +314,7 @@ export function buildCancelWorkOrderTool(
           );
 
           // 运营事件底账：booking.canceled。幂等键用 workOrderId（一张工单仅取消一次，Bull 重试去重）。
-          void opsEventsRecorder.recordEvent({
+          await opsEventsRecorder.recordEvent({
             corpId: context.session.corpId,
             eventName: 'booking.canceled',
             idempotencyKey: `${workOrderId}:canceled`,

@@ -1,3 +1,5 @@
+import { BullModule } from '@nestjs/bull';
+import { CriticalEventProcessor, CRITICAL_OPS_EVENT_QUEUE } from './critical-event.processor';
 import { Global, Module } from '@nestjs/common';
 import { SpongeModule } from '@sponge/sponge.module';
 import { JobDataAuditCronService } from './crons/job-data-audit.cron';
@@ -24,9 +26,10 @@ import { OpsEventsRecorderService } from './services/ops-events-recorder.service
  */
 @Global()
 @Module({
-  imports: [SpongeModule],
+  imports: [SpongeModule, BullModule.registerQueue({ name: CRITICAL_OPS_EVENT_QUEUE })],
   providers: [
     OpsEventsRepository,
+    CriticalEventProcessor,
     OpsEventsRecorderService,
     BotGroupResolverService,
     SpongeStatusPollService,

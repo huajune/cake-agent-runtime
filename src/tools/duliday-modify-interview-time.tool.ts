@@ -243,7 +243,7 @@ export function buildModifyInterviewTimeTool(
 
           // 运营事件底账：booking.interview_modified。幂等键含新时间，允许同一工单多次改约，
           // 仅 Bull 重试（同工单同新时间）去重。
-          void opsEventsRecorder.recordEvent({
+          await opsEventsRecorder.recordEvent({
             corpId: context.session.corpId,
             eventName: 'booking.interview_modified',
             idempotencyKey: `${workOrderId}:interview_modified:${trimmedTime}`,

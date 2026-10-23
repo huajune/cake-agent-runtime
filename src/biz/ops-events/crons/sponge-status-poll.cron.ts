@@ -1,4 +1,5 @@
-import { toErrorStack } from '@infra/utils/error.util';
+import { CronRunnerService, type CronBudget } from '@infra/queue/cron-runner.service';
+import { RedisService } from '@infra/redis/redis.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -9,7 +10,10 @@ import {
   getLocalDayStart,
   parseLocalDateTime,
 } from '@infra/utils/date.util';
-import { OpsEventsRepository } from '../repositories/ops-events.repository';
+import {
+  OpsEventsRepository,
+  type OpsBookingPollCursor,
+} from '../repositories/ops-events.repository';
 import { OpsEventsRecorderService } from '../services/ops-events-recorder.service';
 
 /**
@@ -25,12 +29,13 @@ import { OpsEventsRecorderService } from '../services/ops-events-recorder.servic
 export class SpongeStatusPollService {
   private readonly logger = new Logger(SpongeStatusPollService.name);
   private readonly lookbackDays = 60;
-  private running = false;
 
   constructor(
     private readonly opsEventsRepository: OpsEventsRepository,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly spongeService: SpongeService,
+    private readonly cronRunner: CronRunnerService,
+    private readonly redis: RedisService,
     @Optional() private readonly configService?: ConfigService,
   ) {}
 
@@ -38,33 +43,44 @@ export class SpongeStatusPollService {
   async poll(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
 
-    if (this.running) {
-      this.logger.warn('上一轮海绵状态轮询尚未结束，跳过本次');
-      return;
-    }
-    this.running = true;
-    try {
-      await this.runOnce();
-    } catch (error) {
-      this.logger.error('海绵状态轮询失败', toErrorStack(error));
-    } finally {
-      this.running = false;
-    }
+    await this.cronRunner.run(
+      'sponge-status-poll',
+      { timeMs: 10 * 60_000, maxRows: 100 },
+      async (budget) => {
+        const cursor = await this.redis.get<OpsBookingPollCursor>(
+          'cron:sponge-status-poll:cursor:v2',
+        );
+        const result = await this.runOnce(budget, cursor);
+        await this.redis.setex('cron:sponge-status-poll:cursor:v2', 90 * 86400, result.nextCursor);
+      },
+    );
   }
 
   /** 执行一次轮询（独立方法便于测试 / 手动触发）。 */
-  async runOnce(): Promise<{ scanned: number; passed: number }> {
+  async runOnce(
+    budget?: CronBudget,
+    cursor?: OpsBookingPollCursor | null,
+  ): Promise<{ scanned: number; passed: number; nextCursor: OpsBookingPollCursor | null }> {
     const sinceReportDate = formatLocalDate(addLocalDays(getLocalDayStart(), -this.lookbackDays));
-    const pending = await this.opsEventsRepository.findWorkOrdersPendingPass(sinceReportDate);
+    const { pending, nextCursor } = await this.opsEventsRepository.findWorkOrdersPendingPass(
+      sinceReportDate,
+      cursor,
+    );
 
     let passed = 0;
+    let incomplete = false;
     for (const wo of pending) {
+      await budget?.checkpoint(1);
       // 必须按工单所属托管账号（botImId）解析 Duliday-Token：多账号下各账号只能查到
       // 自己的工单，缺了 botImId 会退回 fallback token，查不到别家工单 → interview.passed 漏记。
       const workOrder = await this.spongeService
         .getCachedWorkOrderById(wo.workOrderId, { botImId: wo.botImId })
         .catch(() => null);
-      if (!workOrder) continue;
+      if (!workOrder) {
+        incomplete = true;
+        this.logger.warn(`海绵工单查询未完成，保留本页游标: ${wo.workOrderId}`);
+        continue;
+      }
 
       if (workOrder.interviewPassTime) {
         const inserted = await this.opsEventsRecorder.recordEvent({
@@ -85,7 +101,11 @@ export class SpongeStatusPollService {
     }
 
     this.logger.log(`海绵状态轮询完成: 扫描=${pending.length}, 新通过=${passed}`);
-    return { scanned: pending.length, passed };
+    return {
+      scanned: pending.length,
+      passed,
+      nextCursor: incomplete ? (cursor ?? null) : nextCursor,
+    };
   }
 
   private isReadOnlyPreview(): boolean {
