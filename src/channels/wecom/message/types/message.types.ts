@@ -1,3 +1,8 @@
+import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import type {
+  ActionDenialReason,
+  PermittedAction,
+} from '@biz/action-permit/services/action-permit.service';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -73,6 +78,15 @@ export interface AgentInvokeResult {
 }
 
 export interface DeliveryContext {
+  corpId?: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
+  replyTurn?: ReplyTurn;
+  /** Whitelisted task metadata only; never credentials or message history. */
+  taskRecovery?: { kind: 'reengagement'; data: Record<string, unknown> };
+  assertOwned?: () => Promise<void>;
+  action?: PermittedAction;
+  groupId?: string;
   token: string;
   imBotId: string;
   imContactId: string;
@@ -98,7 +112,7 @@ export interface DeliveryResult {
   /** 投递层主动跳过本次发送（内部实现泄漏 / 已暂停托管）。 */
   skipped?: boolean;
   /** 跳过原因，用于排障。 */
-  skipReason?: 'output_leak' | 'hosting_paused' | 'receiving_bot_not_hosted';
+  skipReason?: 'output_leak' | ActionDenialReason;
 }
 
 export class DeliveryFailureError extends Error {

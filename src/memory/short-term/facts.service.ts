@@ -111,7 +111,7 @@ export class SessionFactsService {
   // 存储形态：Redis hash（factsv2:*），每个 top-level 字段一个 hash field。
   //
   // 为什么不是单 JSON blob：save* 的"读整份-改-写整份"在并发写入方之间互相覆盖
-  // （入站 fire-and-forget 的 recordCandidateActivity、复聊 processor 的
+  // （入站等待写入的 recordCandidateActivity、复聊 processor 的
   // saveTerminalState 与 worker 回合收尾不持同一把锁，P0 丢更新）。hash 形态下
   // 每个 save* 只 HSET 自己的字段，跨字段并发写天然隔离。
   //
@@ -234,7 +234,7 @@ export class SessionFactsService {
 
   /**
    * 只写 patch 中的字段（HSET），其余字段不受影响。
-   * 所有 save* 必须经此出口写入，禁止回到"读整份-写整份"。
+   * 普通 save* 经此出口；收资办结与邀请记录改用字段 CAS，禁止回到"读整份-写整份"。
    */
   async patchSessionState(
     corpId: string,
@@ -247,6 +247,7 @@ export class SessionFactsService {
       buildSessionFactsHashKey(corpId, userId, sessionId),
       validated,
       this.config.sessionFactsTtl,
+      [`stage:${corpId}:${userId}:${sessionId}`],
     );
   }
 
@@ -347,20 +348,41 @@ export class SessionFactsService {
     userId: string,
     sessionId: string,
     interviewInfo: Partial<SessionFacts['interview_info']>,
+    options?: { requireExisting?: boolean },
   ): Promise<void> {
     for (const [field, raw] of Object.entries(interviewInfo)) {
       if (raw !== null && (!isSessionFactValue(raw) || raw.confidence !== 'high')) {
         throw new Error(`collection form fact must be high: ${field}`);
       }
     }
-    const state = await this.getSessionState(corpId, userId, sessionId);
-    const base = state.facts ?? (SessionFactsSchema.parse(FALLBACK_EXTRACTION) as SessionFacts);
-    const merged = SessionFactsSchema.parse({
-      interview_info: { ...base.interview_info, ...interviewInfo },
-      preferences: base.preferences,
-      brand: base.brand,
-    }) as SessionFacts;
-    await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
+    const key = buildSessionFactsHashKey(corpId, userId, sessionId);
+    const snapshot = await this.redisStore.readHashFieldSnapshot(key, 'facts');
+    const base =
+      snapshot.value == null
+        ? SessionFactsSchema.parse(FALLBACK_EXTRACTION)
+        : SessionFactsSchema.parse(snapshot.value);
+    const identity = { ...base.interview_info };
+    for (const [field, incoming] of Object.entries(interviewInfo)) {
+      if (!isSessionFactValue(incoming)) continue;
+      const previous = identity[field as keyof typeof identity];
+      if (
+        isSessionFactValue(previous) &&
+        Date.parse(previous.extractedAt) >= Date.parse(incoming.extractedAt)
+      )
+        continue;
+      Object.assign(identity, { [field]: incoming });
+    }
+    const merged = SessionFactsSchema.parse({ ...base, interview_info: identity });
+    const saved = await this.redisStore.compareHashField(
+      key,
+      'facts',
+      snapshot,
+      merged,
+      this.config.sessionFactsTtl,
+      [`stage:${corpId}:${userId}:${sessionId}`],
+      options,
+    );
+    if (!saved) throw new Error('completed_collection_facts_changed_or_expired');
   }
 
   /**
@@ -476,6 +498,11 @@ export class SessionFactsService {
 
   /**
    * 城市写入统一走 adjudicateCityClaims；外部工具确权按 high 入档。
+   *
+   * 例外：geocode 以 city=null 全国搜索得到的 unique（attestation.nationwideSearch）只是
+   * 「该地名全国唯一」，不是候选人在该城市的证据，只记 medium——不得压过候选人亲口陈述
+   * （explicit_city 记 medium/candidate_quote，system high 一旦写入会以 high 冲突拒绝改口；
+   * BadCase 复核 [17]：全国搜「王府井」把佛山候选人写成 pref.city=北京 high）。
    */
   async saveToolAttestedCity(
     corpId: string,
@@ -488,9 +515,13 @@ export class SessionFactsService {
 
     const state = await this.getSessionState(corpId, userId, sessionId);
     const previous = state.facts?.preferences.city ?? null;
+    const confidence =
+      attestation.source === 'geocode_unique' && attestation.nationwideSearch === true
+        ? 'medium'
+        : 'high';
     const incoming = cityClaimFromFact({
       value: normalized,
-      confidence: 'high',
+      confidence,
       source: 'system',
       evidence: attestation.evidence,
       extractedAt: new Date().toISOString(),
@@ -506,7 +537,7 @@ export class SessionFactsService {
         preferences: {
           ...FALLBACK_EXTRACTION.preferences,
           city: sessionFactValue(normalized, {
-            confidence: 'high',
+            confidence,
             source: 'system',
             evidence: truncateEvidence(attestation.evidence),
             extractedAt: new Date().toISOString(),
@@ -600,18 +631,32 @@ export class SessionFactsService {
     userId: string,
     sessionId: string,
     record: InvitedGroupRecord,
+    options?: { requireExisting?: boolean },
   ): Promise<void> {
-    const state = await this.getSessionState(corpId, userId, sessionId);
+    const key = buildSessionFactsHashKey(corpId, userId, sessionId);
+    const snapshot = await this.redisStore.readHashFieldSnapshot(key, 'invitedGroups');
     const validated = InvitedGroupRecordSchema.parse(record) as InvitedGroupRecord;
-    const existing = state.invitedGroups ?? [];
+    const existing =
+      snapshot.value == null ? [] : z.array(InvitedGroupRecordSchema).parse(snapshot.value);
     // 按群名去重；新记录在前，超上限裁最旧（该数组会全量渲染进 prompt 的
     // "已邀入群"段，正常会话个位数，cap 只是防单调增长的安全阀）。
     const MAX_INVITED_GROUPS = 20;
     const merged = [validated, ...existing]
+      // 后台恢复旧邀请只补历史，不能把同群较新的邀请时间回退。
+      .sort((left, right) => Date.parse(right.invitedAt) - Date.parse(left.invitedAt))
       .filter((g, i, arr) => arr.findIndex((item) => item.groupName === g.groupName) === i)
       .slice(0, MAX_INVITED_GROUPS);
 
-    await this.patchSessionState(corpId, userId, sessionId, { invitedGroups: merged });
+    const saved = await this.redisStore.compareHashField(
+      key,
+      'invitedGroups',
+      snapshot,
+      merged,
+      this.config.sessionFactsTtl,
+      [`stage:${corpId}:${userId}:${sessionId}`],
+      options,
+    );
+    if (!saved) throw new Error('invited_groups_changed_or_expired');
   }
 
   /**
@@ -622,7 +667,7 @@ export class SessionFactsService {
     corpId: string,
     userId: string,
     sessionId: string,
-    terminal: ReengagementSessionState['terminal'],
+    terminal: 'booked' | undefined,
   ): Promise<void> {
     await this.patchSessionState(corpId, userId, sessionId, { terminal: terminal ?? null });
     this.logger.log(
@@ -640,9 +685,12 @@ export class SessionFactsService {
     sessionId: string,
     at: Date = new Date(),
   ): Promise<void> {
-    await this.patchSessionState(corpId, userId, sessionId, {
-      lastCandidateMessageAt: at.toISOString(),
-    });
+    await this.redisStore.advanceHashTimestamp(
+      buildSessionFactsHashKey(corpId, userId, sessionId),
+      'lastCandidateMessageAt',
+      at,
+      this.config.sessionFactsTtl,
+    );
   }
 
   /**

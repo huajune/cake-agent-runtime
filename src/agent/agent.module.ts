@@ -1,3 +1,10 @@
+import { CandidateProgressModule } from '@biz/candidate-progress/candidate-progress.module';
+import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
+import { retainedJobs } from '@infra/queue/queue-policy';
+import {
+  ReengagementCommandService,
+  REENGAGEMENT_COMMAND_QUEUE,
+} from './reengagement/reengagement-command.service';
 import { Module, forwardRef } from '@nestjs/common';
 import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 import { ConfigModule } from '@nestjs/config';
@@ -48,6 +55,8 @@ import {
 
 @Module({
   imports: [
+    CandidateProgressModule,
+    ActionPermitModule,
     ConfigModule,
     GeocodingModule,
     BizModule,
@@ -68,11 +77,11 @@ import {
     // 带外工单对账：手动恢复托管即时对账（UserHostingService 监听）、补偿扫描运行时开关（SystemConfigService）。
     UserModule,
     HostingConfigModule,
+    BullModule.registerQueue({ name: REENGAGEMENT_COMMAND_QUEUE }),
     BullModule.registerQueue({
       name: REENGAGEMENT_QUEUE,
       defaultJobOptions: {
-        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-        removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+        ...retainedJobs(500),
       },
     }),
   ],
@@ -95,6 +104,7 @@ import {
     FollowUpProcessor,
     TouchLedgerService,
     ReengagementAnchorService,
+    ReengagementCommandService,
     ReengagementAgent,
     OnboardingSweepCronService,
     ReengagementDeliveryService,
@@ -113,6 +123,7 @@ import {
     GuardrailModule,
     FollowUpSchedulerService,
     ReengagementAnchorService,
+    ReengagementCommandService,
     OobReconcileService,
   ],
 })

@@ -1,3 +1,9 @@
+import { randomUUID } from 'node:crypto';
+import {
+  COMPARE_HASH_FIELD_SCRIPT,
+  READ_HASH_FIELD_SNAPSHOT_SCRIPT,
+  type HashFieldSnapshot,
+} from './hash-field-cas';
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import type { MemoryEntry, MemoryStore } from './store.types';
@@ -82,8 +88,63 @@ export class RedisStore implements MemoryStore {
     return fields && Object.keys(fields).length > 0 ? fields : null;
   }
 
+  async readHashFieldSnapshot(key: string, field: string): Promise<HashFieldSnapshot> {
+    const result = await this.redis.eval(
+      READ_HASH_FIELD_SNAPSHOT_SCRIPT,
+      [key],
+      [field, randomUUID()],
+    );
+    const envelope = (typeof result === 'string' ? JSON.parse(result) : result) as {
+      raw: string | null;
+      generation: string | null;
+    };
+    let value: unknown = envelope.raw;
+    if (envelope.raw !== null) {
+      try {
+        value = JSON.parse(envelope.raw);
+      } catch {
+        /* Non-JSON scalar fields remain strings. */
+      }
+    }
+    return { ...envelope, value };
+  }
+
+  async compareHashField(
+    key: string,
+    field: string,
+    snapshot: HashFieldSnapshot,
+    value: unknown,
+    ttl?: number,
+    renewKeys: readonly string[] = [],
+    options?: { requireExisting?: boolean },
+  ): Promise<boolean> {
+    return (
+      Number(
+        await this.redis.eval(
+          COMPARE_HASH_FIELD_SCRIPT,
+          [key, ...renewKeys],
+          [
+            field,
+            snapshot.raw === null ? '0' : '1',
+            snapshot.raw ?? '',
+            snapshot.generation ?? '',
+            this.serializeRedisValue(value),
+            ttl ?? 0,
+            options?.requireExisting ? '0' : '1',
+            randomUUID(),
+          ],
+        ),
+      ) === 1
+    );
+  }
+
   /** 原子写入 patch 中的字段（其余字段不受影响），并续期 TTL。 */
-  async patchHash(key: string, patch: Record<string, unknown>, ttl?: number): Promise<void> {
+  async patchHash(
+    key: string,
+    patch: Record<string, unknown>,
+    ttl?: number,
+    renewKeys: readonly string[] = [],
+  ): Promise<void> {
     const args = this.toHashEvalArgs(patch, ttl);
     if (args.length <= 1) return;
 
@@ -94,14 +155,29 @@ export class RedisStore implements MemoryStore {
           changed = changed + redis.call("hset", KEYS[1], ARGV[i], ARGV[i + 1])
         end
         if tonumber(ARGV[1]) > 0 then
-          redis.call("expire", KEYS[1], ARGV[1])
+          for _, key in ipairs(KEYS) do redis.call("expire", key, ARGV[1]) end
         end
         return changed
       `,
-      [key],
+      [key, ...renewKeys],
       args,
     );
     this.logger.debug(`记忆已按字段更新: ${key} [${Object.keys(patch).join(',')}]`);
+  }
+
+  /** Advance an ISO timestamp atomically; delayed recovery must not overwrite newer activity. */
+  async advanceHashTimestamp(key: string, field: string, value: Date, ttl: number): Promise<void> {
+    const iso = value.toISOString();
+    await this.redis.eval(
+      `local current = redis.call('hget', KEYS[1], ARGV[1])
+       if not current or current < ARGV[2] then
+         redis.call('hset', KEYS[1], ARGV[1], ARGV[2])
+       end
+       redis.call('expire', KEYS[1], ARGV[3])
+       return 1`,
+      [key],
+      [field, iso, ttl],
+    );
   }
 
   /**

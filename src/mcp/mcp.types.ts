@@ -1,3 +1,5 @@
+import type { ToolActionContract } from '@shared-types/tool-action.contract';
+
 export type McpTransportType = 'stdio' | 'sse' | 'http';
 
 export interface McpStdioConfig {
@@ -24,6 +26,8 @@ export type McpServerTransportConfig = McpStdioConfig | McpSseConfig | McpHttpCo
 export interface McpServerConfig {
   /** 服务器唯一名称 */
   name: string;
+  /** Explicit local policy; never trust declarations supplied by a remote server. */
+  toolContracts?: Record<string, ToolActionContract>;
   /** 传输配置 */
   transport: McpServerTransportConfig;
 }

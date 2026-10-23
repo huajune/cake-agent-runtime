@@ -1,3 +1,4 @@
+import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind } from '@enums/agent.enum';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -13,7 +14,7 @@ import { requiresStoreVisit } from '@sponge/interview-method';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import type { BookingSnapshotEntry } from '@tools/booking/booking-snapshot.types';
-import { BOOKING_DEDUP_WINDOW_MS } from '@tools/booking/active-booking-dedup.util';
+import { isRecentBookingPointer } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import type { GeneratorInvokeParams } from '../generator.types';
 import type {
   BookingLocationDetails,
@@ -37,6 +38,7 @@ export class BookingContextLoaderService {
     private readonly spongeService: SpongeService,
     @Optional() private readonly bookingSnapshot?: BookingSnapshotService,
     @Optional() private readonly phoneSessionIndex?: PhoneSessionIndexService,
+    @Optional() private readonly candidateProgress?: CandidateProgressService,
   ) {}
 
   /** 本轮预约读视图入口。 */
@@ -53,7 +55,11 @@ export class BookingContextLoaderService {
       return this.loadPointer(params, currentUserMessage);
     }
 
-    const result = await this.bookingSnapshot.load({
+    const result = await (
+      this.candidateProgress
+        ? this.candidateProgress.loadBookingSnapshot.bind(this.candidateProgress)
+        : this.bookingSnapshot.load.bind(this.bookingSnapshot)
+    )({
       phone,
       botImId: params.botImId,
       corpId: params.corpId,
@@ -175,8 +181,7 @@ export class BookingContextLoaderService {
     const now = Date.now();
     const recent = pointers.filter((pointer) => {
       if (known.has(pointer.work_order_id)) return false;
-      const linkedAt = Date.parse(pointer.linked_at);
-      return Number.isFinite(linkedAt) && now - linkedAt < BOOKING_DEDUP_WINDOW_MS;
+      return isRecentBookingPointer(pointer, now);
     });
     if (recent.length === 0) return [];
     const lookups = await Promise.all(
@@ -231,12 +236,16 @@ export class BookingContextLoaderService {
         typeof job.basicInfo?.storeInfo?.storeAddress === 'string'
           ? job.basicInfo.storeInfo.storeAddress.trim()
           : undefined;
+      const storeCity =
+        typeof job.basicInfo?.storeInfo?.storeCityName === 'string'
+          ? job.basicInfo.storeInfo.storeCityName.trim() || undefined
+          : undefined;
       const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
       const interviewMethod = interviewMeta.method ?? undefined;
       const interviewAddress = requiresStoreVisit(interviewMeta.method)
         ? (interviewMeta.address ?? undefined)
         : undefined;
-      return { storeAddress, interviewMethod, interviewAddress };
+      return { storeAddress, storeCity, interviewMethod, interviewAddress };
     } catch (error) {
       this.logger.warn(`加载预约地址详情失败 workOrderId=${workOrderId}: ${toErrorMessage(error)}`);
       return undefined;

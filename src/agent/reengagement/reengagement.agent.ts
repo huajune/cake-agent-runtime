@@ -9,9 +9,12 @@ import { z } from 'zod';
 import type { ReengagementSessionState, CandidateFieldKey } from '@memory/recall.types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
+import { HUMAN_AGENT_MESSAGE_MARKER } from '@shared-types/corpus.types';
+import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
 import type { FollowUpJob } from './follow-up-scheduler.service';
 import { parseInterviewTimestamp, type FollowUpScenario } from './scenario-registry';
 import type { ReengagementBookingContext } from './booking-context';
+import { parseInterviewMethod, requiresStoreVisit } from '@sponge/interview-method';
 import { stripTimeContext } from '@resolution/signal/markers';
 import { redactCandidatePhones } from '@resolution/candidate/phone';
 import {
@@ -248,6 +251,7 @@ export class ReengagementAgent {
             `上次结构化输出违反协议（${contractIssue}），请重新决策。`,
             'decision=send 时 blockReason 必须为 none 且 message 非空；decision=skip 时必须命中明确的 blockReason 且 message 为空。',
             'interviewTimeMismatch=true 时 chatAgreedInterviewTime 必须是对话中明确约定的、与工单面试时间确实不同的时间（YYYY-MM-DD HH:mm）；对话没有明确约定不同时间的，interviewTimeMismatch 必须为 false 且 chatAgreedInterviewTime 留空。',
+            'interview_time_mismatch_not_applicable：本场景或本面试形式（入职跟进、AI/电话/视频等不到店面试）不适用时间不一致判定；AI/线上面试的「X 点前完成」是完成时限不是面试时间，interviewTimeMismatch 必须为 false、chatAgreedInterviewTime 留空、blockReason 不得为 chat_interview_time_mismatch。',
             'candidate_message_unanswered 只适用于近期对话以候选人（user）消息结尾的情况；最后一条是 assistant 时，候选人的消息已有人回应。',
             '不得以对话正常或主观认为无需跟进等模糊判断，跳过已到点且通过预检的复聊任务。',
           ].join('\n'),
@@ -533,9 +537,11 @@ export class ReengagementAgent {
             ...(ctx.scenario.code === 'post_interview_onboarding'
               ? []
               : [
-                  '- 时间口径（工单为准，聊天不一致则不发）：状态摘要里的面试时间来自工单登记。先检查近期对话：若候选人（user）或招募经理（assistant）已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间，且该时间与工单面试时间不同（日期或钟点任一不同），必须把该时间填入 chatAgreedInterviewTime（YYYY-MM-DD HH:mm，相对日期按该条消息的发送时间换算），interviewTimeMismatch=true，blockReason=chat_interview_time_mismatch，decision=skip，message 留空。提醒钟点不得改写成聊天时间——工单需由运营修正后系统再按新时间提醒。对话中没有明确时间约定、约定时间与工单一致、或无法确认该时间属于本工单本次面试时，interviewTimeMismatch=false、chatAgreedInterviewTime 留空，一律按工单时间处理，不得据此 skip。',
-                  '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
-                  '- 候选人得知岗位要求或条件后表示无法接受，即使语气委婉、未直接声明取消，也属于放弃本岗位；若招募经理随后已转为邀请进群、改推其他岗位，候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview。招募经理为本次面试拉群不属于放弃信号。',
+                  this.isRemoteInterview(ctx)
+                    ? `- 时间口径（本次为${this.resolveInterviewMethodLabel(ctx)}，不到店；工单为准）：状态摘要里的面试时间来自工单登记，提醒钟点一律按工单时间。AI/线上面试的「X 点前完成」「截止 X 点」「X 点之前做完」是完成时限，不是面试时间：本次不适用时间不一致判定，不得填入 chatAgreedInterviewTime，interviewTimeMismatch 必须为 false，blockReason 不得为 chat_interview_time_mismatch。`
+                    : '- 时间口径（工单为准，聊天不一致则不发）：状态摘要里的面试时间来自工单登记。先检查近期对话：若候选人（user）或招募经理（assistant）已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间，且该时间与工单面试时间不同（日期或钟点任一不同），必须把该时间填入 chatAgreedInterviewTime（YYYY-MM-DD HH:mm，相对日期按该条消息的发送时间换算），interviewTimeMismatch=true，blockReason=chat_interview_time_mismatch，decision=skip，message 留空。提醒钟点不得改写成聊天时间——工单需由运营修正后系统再按新时间提醒。对话中没有明确时间约定、约定时间与工单一致、或无法确认该时间属于本工单本次面试时，interviewTimeMismatch=false、chatAgreedInterviewTime 留空，一律按工单时间处理，不得据此 skip。',
+                  '- 候选人（user）本人最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。候选人得知岗位要求或条件后表示无法接受，即使语气委婉、未直接声明取消，也属于放弃本岗位；只认候选人本人的明确表态，不能用自动回复替候选人表态。',
+                  `- candidate_declined_interview 的另一类证据：带有来源标记 ${HUMAN_AGENT_MESSAGE_MARKER} 的真人招募经理明确将本次面试改推为其他岗位，且此后没有重新确认参加本次面试。没有该标记的 assistant 消息不得当作真人改推证据；仅角色为 assistant 不代表真人。单纯邀请进群、说「群里看新岗位」「稍后邀你进群」属于群收口话术，不是候选人放弃信号；招募经理为本次面试拉群同样不属于放弃信号。既无候选人明确放弃、也无上述真人改推证据时，不得判 candidate_declined_interview。`,
                   '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。**婉拒也算取消**：招募经理在了解候选人条件后给出否定性结论，且此后没有重新确认面试继续的，同样命中本条；候选人接受该否定结论可作为补充证据。不要求出现明确取消措辞，也不得因工单仍显示约面成功而放行发送。',
                   '- 对话已经给出面试通过、未通过、录用或淘汰等结果，或者已有充分证据表明面试流程已经终止：blockReason=interview_result_known。等待通知或尚不知道结果不算已有结果。',
                   '- 招募经理（assistant）在本次面试时间**之后**已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。只看发送时间晚于状态摘要中面试时间的询问；面试时间之前发出的完成情况或到店情况询问是进程确认，不算已询问结果。候选人自己询问结果不属于此项。',
@@ -544,17 +550,23 @@ export class ReengagementAgent {
               ? ctx.jobData.touchVariant === 'd2_confirm'
                 ? [
                     '- 本场景是面试前 2 天的意向确认；若报名成功当轮之后，招募经理（assistant）已经另行发出过确认候选人是否还在找工作、是否仍会参加本次面试的同类消息：blockReason=confirmation_already_sent。预约成功当轮的时间地点告知与收尾叮嘱不算另行确认。',
-                    '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；聊天约定了不同时间的按上面的时间口径不发。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次确认。',
+                    this.isRemoteInterview(ctx)
+                      ? '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；AI/线上面试的完成时限或截止时间不是面试时间，不得据此改写钟点或跳过。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次确认。'
+                      : '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；聊天约定了不同时间的按上面的时间口径不发。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次确认。',
                   ]
                 : [
                     '- 本场景是面试提醒；只有招募经理（assistant）在**面试当天**（发送时间与状态摘要中面试时间同一天）另行发出过提醒候选人参加本次面试的语句才算已提醒：blockReason=interview_reminder_already_sent。前一天或更早发出的提醒不算，今天照常提醒。以下都不算已提醒：预约成功当轮的告知与收尾叮嘱（时间地点确认、到场准备要求）、改时间或通知面试时间、询问 AI 面试是否完成、发送面试码/二维码、发送地址、面试前 1–3 天的求职意向确认。可用状态摘要里的报名完成时间区分：与其紧邻的消息属于预约当轮。',
-                    '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；聊天约定了不同时间的按上面的时间口径不发。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。',
+                    this.isRemoteInterview(ctx)
+                      ? '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；AI/线上面试的完成时限或截止时间不是面试时间，不得据此改写钟点或跳过。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。'
+                      : '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；聊天约定了不同时间的按上面的时间口径不发。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。',
                   ]
               : ctx.scenario.code === 'post_interview_onboarding'
                 ? []
                 : [
                     '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
-                    '- 候选人（user）或招募经理（assistant）近期明确表示本次面试尚未开始或已推迟，但没有给出具体新时间的：blockReason=interview_not_started_per_chat（给出了具体不同时间的走上面的时间口径 chat_interview_time_mismatch）。不要仅因为工单登记时间已过就断定面试已经进行。',
+                    this.isRemoteInterview(ctx)
+                      ? '- 候选人（user）或招募经理（assistant）近期明确表示本次面试尚未开始或已推迟：blockReason=interview_not_started_per_chat。单纯告知完成截止时间不等于面试尚未开始；不到店面试不使用 chat_interview_time_mismatch。不要仅因为工单登记时间已过就断定面试已经进行。'
+                      : '- 候选人（user）或招募经理（assistant）近期明确表示本次面试尚未开始或已推迟，但没有给出具体新时间的：blockReason=interview_not_started_per_chat（给出了具体不同时间的走上面的时间口径 chat_interview_time_mismatch）。不要仅因为工单登记时间已过就断定面试已经进行。',
                     '- 候选人已经主动告知本次面试已参加/已完成并在等结果，且招募经理（assistant）已对该消息作出过回应：blockReason=interview_done_reported。此时重复询问面试完成情况或是否顺利属于重复打扰；面试是否顺利的结果跟进由招募经理按通知节奏处理。注意与 interview_result_known 的区别：本条不要求已知结果，只要求候选人已报告面试完成且经理已回应过。',
                   ]),
             ...(ctx.scenario.code === 'post_interview_onboarding'
@@ -591,11 +603,28 @@ export class ReengagementAgent {
     return ctx.scenario.phase === 'post_booking';
   }
 
-  /** 面试提醒（含前 2 天确认档）与面试后回访才有「聊天约定时间 vs 工单时间」判定；入职跟进无面试时间。 */
+  /**
+   * 面试提醒（含前 2 天确认档）与面试后回访才有「聊天约定时间 vs 工单时间」判定；入职跟进无面试时间。
+   *
+   * 不到店的面试形式（AI/电话/视频）同样不适用：规则来自线下窗口制 badcase，而 AI 面试里真人说的
+   * 「明天下午三点前完成」是完成时限不是面试时间，曾被当成聊天约定时间触发 chat_interview_time_mismatch
+   * 跳过当天提醒（BadCase 复核 [16]，reengagement_touch_records#103127）。面试形式未知时维持原判定。
+   */
   private isInterviewTimeMismatchScenario(ctx: ReengagementComposeContext): boolean {
+    if (this.isRemoteInterview(ctx)) return false;
     return (
       ctx.scenario.code === 'interview_reminder' || ctx.scenario.code === 'post_interview_followup'
     );
+  }
+
+  /** 实时工单岗位的面试形式可解析且不需到店（AI/电话/视频）；未知形式按 false，不放宽判定。 */
+  private isRemoteInterview(ctx: ReengagementComposeContext): boolean {
+    const method = parseInterviewMethod(ctx.bookingContext?.interviewType);
+    return method !== null && !requiresStoreVisit(method);
+  }
+
+  private resolveInterviewMethodLabel(ctx: ReengagementComposeContext): string {
+    return parseInterviewMethod(ctx.bookingContext?.interviewType) ?? '线上面试';
   }
 
   private isInterviewTimeMismatchFlagged(output: ReengagementOutput): boolean {
@@ -754,12 +783,6 @@ export class ReengagementAgent {
           );
         }
         lines.push(`- 面试日期相对当前：${formatRelativeShanghaiDate(booking.interviewAt, now)}`);
-        // 窗口制岗位的工单时间只是面试窗口起点（badcase：工单 10:00、聊天约定 13:00，
-        // 12:00 回访问"面试顺利吗"）。2026-09 裁定：聊天约定了不同时间不按聊天时间发，
-        // 而是不发并提醒运营改工单（生成后的钟点纠正会把文案改回工单钟点）。
-        lines.push(
-          '- 时间口径：以上面试时间来自工单登记；近期对话中对本次面试实际时间有与之不同的明确约定时，本次不发（见发送前语义停止条件）',
-        );
       }
     }
     return lines.length > 0 ? lines.join('\n') : '（无额外状态信息）';
@@ -772,7 +795,9 @@ export class ReengagementAgent {
     const candidateNames = this.collectCandidateNames(ctx, memory);
     return memory.recentMessages.map((message) => ({
       role: message.role,
-      content: this.redactPersonalIdentifiers(message.content, candidateNames),
+      content:
+        (isHumanAgentTextMessage(message) ? `${HUMAN_AGENT_MESSAGE_MARKER}\n` : '') +
+        this.redactPersonalIdentifiers(message.content, candidateNames),
     }));
   }
 

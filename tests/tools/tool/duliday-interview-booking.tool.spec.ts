@@ -1,3 +1,4 @@
+import type { ToolActionService } from '@tools/actions/tool-action.service';
 import {
   createForm,
   verdictOf,
@@ -135,7 +136,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     }),
   };
   const notifier = { notifyInterviewBookingResult: jest.fn().mockResolvedValue(true) };
-  const hosting = { pauseUser: jest.fn().mockResolvedValue(undefined) };
+  const hosting = { pauseUser: jest.fn().mockResolvedValue(true) };
   const longTerm = {
     getActiveBookings: jest.fn().mockResolvedValue([]),
     setActiveBooking: jest.fn().mockResolvedValue(undefined),
@@ -163,7 +164,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     context.ledger.jobs.collectionReadyJobId = 100;
     sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: CONTRACT });
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB] });
-    sponge.fetchSignupWorkOrders.mockResolvedValue({ workOrders: [] });
+    sponge.fetchSignupWorkOrders.mockReset().mockResolvedValue({ workOrders: [] });
     bookingSnapshot.invalidate.mockResolvedValue(undefined);
     phoneSessionIndex.record.mockResolvedValue(undefined);
     sponge.bookInterview.mockResolvedValue({
@@ -180,7 +181,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     longTerm.getActiveBookings.mockResolvedValue([]);
   });
 
-  function buildTool() {
+  function buildTool(actions?: ToolActionService) {
     return buildInterviewBookingTool(
       sponge as never,
       notifier as never,
@@ -188,6 +189,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
       longTerm as never,
       ops as never,
       {
+        actions,
         collectionForms: collectionForms as never,
         sessionFacts: sessionFacts as never,
         bookingSnapshot: bookingSnapshot as never,
@@ -196,8 +198,8 @@ describe('duliday_interview_booking（form → labelList）', () => {
     )(context);
   }
 
-  async function execute(input: Record<string, unknown>) {
-    const built = buildTool();
+  async function execute(input: Record<string, unknown>, actions?: ToolActionService) {
+    const built = buildTool(actions);
     return built.execute!(input as never, {
       toolCallId: 'booking-test',
       context: {},
@@ -205,6 +207,64 @@ describe('duliday_interview_booking（form → labelList）', () => {
       abortSignal: undefined as never,
     }) as Promise<Record<string, unknown>>;
   }
+
+  it.each(['unknown', 'executing', 'blocked'])(
+    'action %s never triggers booking failure, pause, red card or a direct second request',
+    async (status) => {
+      const actions = {
+        executeSponge: jest.fn().mockResolvedValue({
+          status,
+          actionId: 'action',
+          requestId: 'request',
+          localSync: 'complete',
+          dispatched: false,
+        }),
+      };
+      const result = await execute({ jobId: 100 }, actions as never);
+      expect(result).toMatchObject({
+        actionStatus: status,
+        errorType: 'action.result_unresolved',
+        sideEffect: { kind: 'general_handoff' },
+      });
+      expect(result.success).toBeUndefined();
+      expect(sponge.bookInterview).not.toHaveBeenCalled();
+      expect(hosting.pauseUser).not.toHaveBeenCalled();
+      expect(notifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+      expect(ops.recordEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: 'booking.failed' }),
+      );
+    },
+  );
+
+  it('success with pending local sync is still a successful booking receipt', async () => {
+    const actions = {
+      executeSponge: jest.fn().mockResolvedValue({
+        status: 'succeeded',
+        actionId: 'action',
+        requestId: 'request',
+        localSync: 'pending',
+        dispatched: true,
+        result: { success: true, code: 0, workOrderId: 9001 },
+      }),
+    };
+    const result = await execute({ jobId: 100 }, actions as never);
+    expect(result).toMatchObject({ success: true, localSync: 'pending' });
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+    expect(collectionForms.persist).not.toHaveBeenCalled();
+    expect(actions.executeSponge).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          opsEventPayload: expect.objectContaining({
+            job_id: 100,
+            candidate_name: expect.any(String),
+            phone: expect.any(String),
+          }),
+        }),
+      }),
+      expect.any(Function),
+    );
+  });
 
   it('本轮没有 ready_to_book 凭据时，在任何外部请求前拒绝', async () => {
     context.ledger.jobs.collectionReadyJobId = undefined;
@@ -275,6 +335,32 @@ describe('duliday_interview_booking（form → labelList）', () => {
     ]);
     expect(payload).not.toEqual(expect.objectContaining({ name: expect.anything() }));
     expect(payload).not.toEqual(expect.objectContaining({ customerLabelList: expect.anything() }));
+  });
+
+  it('AI 面试等通知岗：回执按短信发链接口径，不说面试官电话联系（badcase 2026-10-14 trace batch_6acf1cc3ce406a6aeee8d66c_1791960188741）', async () => {
+    sponge.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...JOB,
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: 'AI面试',
+              periodicInterviewTimes: [],
+              fixedInterviewTimes: [],
+            },
+          },
+        },
+      ],
+    });
+    const result = await execute({ jobId: 100 });
+    expect(result.success).toBe(true);
+    expect(result.interviewMethod).toBe('AI面试');
+    expect(result._confirmedInterviewTimeHuman).toBeUndefined();
+    expect(result._waitNoticeReplyGuide).toContain('AI 面试');
+    expect(result._waitNoticeReplyGuide).toContain('短信');
+    expect(result._waitNoticeReplyGuide).toContain('禁止说"面试官会电话联系"');
+    expect(result._waitNoticeReplyGuide).not.toMatch(/^.*告知候选人资料已提交，面试官会电话联系/);
+    expect(result._onlineInterviewGuide).toContain('不需要到店');
   });
 
   it('真实 SDK 后续模型消息隐藏后台工单号，运行时结果与报名指针仍保留', async () => {
@@ -446,6 +532,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     const result = await execute({ jobId: 100 });
 
     expect(result).toMatchObject({ success: true, candidateScope: 'additional' });
+    expect(context.ledger.jobs.confirmedBookingJobIds ?? []).not.toContain(100);
     expect(result._replyInstruction).toContain('只有告知成功后才能处理下一位候选人');
     expect(sponge.bookInterview).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -502,8 +589,54 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result.success).toBe(true);
     expect(result.errorType).toBeUndefined();
     expect(result._replyInstruction).toContain('预约已真实成功');
+    expect(context.ledger.jobs.confirmedBookingJobIds).toContain(100);
     expect(context.ledger.jobs.bookingSucceeded).toBe(true);
     expect(hosting.pauseUser).not.toHaveBeenCalled();
+  });
+
+  it('等待暂停托管结果，暂停失败时不宣称已暂停', async () => {
+    sponge.bookInterview.mockResolvedValue({
+      success: false,
+      code: 400,
+      message: '字段错误',
+      applyErrorList: [{ labelId: 103, field: '年龄', msg: '请重填' }],
+    });
+    hosting.pauseUser.mockResolvedValueOnce(false);
+    const result = await execute({ jobId: 100 });
+    expect(result.hostingPaused).toBe(false);
+    expect(result.sideEffect).toEqual(
+      expect.objectContaining({ actionAdvice: expect.stringContaining('核对托管暂停状态') }),
+    );
+    expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
+    expect(notifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
+      expect.objectContaining({ toolOutput: expect.objectContaining({ hostingPaused: false }) }),
+      expect.objectContaining({ sessionId: 'session-1' }),
+    );
+  });
+
+  it('暂停尚未落定时不提前返回已暂停回执', async () => {
+    sponge.bookInterview.mockResolvedValue({
+      success: false,
+      code: 400,
+      message: '字段错误',
+      applyErrorList: [{ labelId: 103, field: '年龄', msg: '请重填' }],
+    });
+    let release: () => void = () => undefined;
+    hosting.pauseUser.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        release = () => resolve(true);
+      }),
+    );
+    let settled = false;
+    const operation = execute({ jobId: 100 }).then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(hosting.pauseUser).toHaveBeenCalled();
+    expect(settled).toBe(false);
+    release();
+    expect((await operation).hostingPaused).toBe(true);
   });
 
   it('applyErrorList 带 labelId 时只重开对应槽位', async () => {
@@ -666,6 +799,225 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result._replyInstruction).toContain('你之前已经报过这个岗位/品牌');
     expect(result._replyInstruction).toContain('reasonCode="duplicate_signup"');
     expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  describe('海绵重复报名拒绝恢复', () => {
+    const duplicateMessages = [
+      ['用户已报名该岗位或品牌', 'already_registered'],
+      ['用户已报名该品牌！请联系独立日工作人员，确定候选人归属', 'ownership_review'],
+    ] as const;
+    const order = {
+      candidateName: '兮兮',
+      workOrderId: 9002,
+      jobId: 100,
+      brandName: JOB.basicInfo.brandName,
+      currentStatus: '约面成功',
+      interviewTime: `${getTomorrowDate()} 13:30:00`,
+    };
+
+    function rejectAsDuplicate(message: string, reason: string) {
+      sponge.bookInterview.mockResolvedValue({
+        success: false,
+        code: -9,
+        message,
+        duplicateSignupReason: reason,
+      });
+    }
+
+    it.each(
+      duplicateMessages.flatMap(([message, reason]) =>
+        ['current', 'other', 'missing'].map((ownership) => ({ message, reason, ownership })),
+      ),
+    )('$reason + $ownership 不记报名失败，并按归属恢复', async ({ message, reason, ownership }) => {
+      rejectAsDuplicate(message, reason);
+      sponge.fetchSignupWorkOrders
+        .mockResolvedValueOnce({ workOrders: [] })
+        .mockResolvedValueOnce({ workOrders: ownership === 'missing' ? [] : [order] })
+        .mockResolvedValueOnce({ workOrders: ownership === 'current' ? [order] : [] });
+      const result = await execute({ jobId: 100 });
+      const owns = ownership === 'current' && reason !== 'ownership_review';
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+      expect(result.crossAccount).toBe(!owns);
+      expect(result.alreadyBookedSource).toBe('sponge_duplicate_signup');
+      expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
+      expect(hosting.pauseUser).not.toHaveBeenCalled();
+      expect(notifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+      expect(ops.recordEvent).not.toHaveBeenCalled();
+      if (owns) {
+        expect(result.sideEffect).toBeUndefined();
+        expect(result._existingInterviewTimeHuman).toBeDefined();
+        expect(longTerm.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 9002, {
+          job_id: 100,
+          interview_time: order.interviewTime,
+        });
+        expect(verdictOf(currentForm)).toBe('submitted');
+        expect(bookingSnapshot.invalidate).toHaveBeenCalledTimes(1);
+      } else {
+        expect(result.sideEffect).toMatchObject({
+          kind: 'general_handoff',
+          reasonCode: 'duplicate_signup',
+          recordHandoff: true,
+        });
+        expect(result._replyInstruction).toContain('系统显示你已报过');
+        expect(result._replyInstruction).toContain('不要再调用 request_handoff');
+        expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+        expect(verdictOf(currentForm)).toBe('ready');
+      }
+      expect(
+        detectBookingReceiptMismatch(
+          owns
+            ? '你已经报过名了，不用再提交。'
+            : '系统显示你已报过这个岗位或品牌，我让同事核实一下已有报名和面试安排。',
+          [{ toolName: 'duliday_interview_booking', status: 'ok', result } as never],
+        ),
+      ).toBeNull();
+    });
+
+    it.each(['cross-account', 'ownership'])(
+      '%s 查询失败仍保留已报过事实，并转人工',
+      async (failure) => {
+        rejectAsDuplicate(...duplicateMessages[0]);
+        sponge.fetchSignupWorkOrders.mockResolvedValueOnce({ workOrders: [] });
+        if (failure === 'ownership')
+          sponge.fetchSignupWorkOrders.mockResolvedValueOnce({ workOrders: [order] });
+        sponge.fetchSignupWorkOrders.mockRejectedValueOnce(new Error('lookup timeout'));
+        const result = await execute({ jobId: 100 });
+        expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+        expect(result.sideEffect).toMatchObject({ reasonCode: 'duplicate_signup' });
+        expect(hosting.pauseUser).not.toHaveBeenCalled();
+        expect(ops.recordEvent).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['他人', undefined])('姓名 %s 未核实不能认领或披露工单时间', async (candidateName) => {
+      rejectAsDuplicate(...duplicateMessages[0]);
+      sponge.fetchSignupWorkOrders
+        .mockResolvedValueOnce({ workOrders: [] })
+        .mockResolvedValueOnce({ workOrders: [order] })
+        .mockResolvedValueOnce({ workOrders: [{ ...order, candidateName }] });
+      const result = await execute({ jobId: 100 });
+      expect(result.crossAccount).toBe(true);
+      expect(result._existingInterviewTimeHuman).toBeUndefined();
+      expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+      expect(verdictOf(currentForm)).toBe('ready');
+    });
+
+    it('同品牌另一岗位只写真实工单岗位，不把当前岗位标为已约', async () => {
+      currentForm.scheduleDraft = { sourceText: '希望明天下午面试' };
+      rejectAsDuplicate(...duplicateMessages[0]);
+      const otherJobOrder = { ...order, jobId: 200 };
+      sponge.fetchSignupWorkOrders
+        .mockResolvedValueOnce({ workOrders: [] })
+        .mockResolvedValueOnce({ workOrders: [otherJobOrder] })
+        .mockResolvedValueOnce({ workOrders: [otherJobOrder] });
+      const result = await execute({ jobId: 100 });
+      expect(result.matchedBy).toBe('brand');
+      expect(longTerm.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 9002, {
+        job_id: 200,
+        interview_time: order.interviewTime,
+      });
+      expect(context.ledger.jobs.confirmedBookingJobIds).toEqual([200]);
+      expect(currentForm.scheduleDraft).toEqual({ sourceText: '希望明天下午面试' });
+      expect(verdictOf(currentForm)).toBe('ready');
+    });
+
+    it('代报朋友用朋友自己的手机号核实，且不改本人的工单指针', async () => {
+      currentForm.candidateScope = 'additional';
+      currentForm.slots[102].value!.value = '13812345678';
+      rejectAsDuplicate(...duplicateMessages[0]);
+      sponge.fetchSignupWorkOrders.mockResolvedValue({ workOrders: [order] });
+      const result = await execute({ jobId: 100 });
+      expect(result.candidateScope).toBe('additional');
+      expect(sponge.fetchSignupWorkOrders.mock.calls.map(([params]) => params.phone)).toEqual([
+        '13812345678',
+        '13812345678',
+      ]);
+      expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+      expect(verdictOf(currentForm)).toBe('submitted');
+    });
+
+    it('本地补写失败不会触发报名失败告警，当前回合重复调用复用回执', async () => {
+      rejectAsDuplicate(...duplicateMessages[0]);
+      sponge.fetchSignupWorkOrders
+        .mockResolvedValueOnce({ workOrders: [] })
+        .mockResolvedValueOnce({ workOrders: [order] })
+        .mockResolvedValueOnce({ workOrders: [order] });
+      collectionForms.persist.mockRejectedValueOnce(new Error('write failed'));
+      longTerm.setActiveBooking.mockRejectedValueOnce(new Error('pointer failed'));
+      const tool = buildTool();
+      const options = { toolCallId: 'duplicate', messages: [] };
+      const result = await tool.execute!({ jobId: 100 }, options as never);
+      const replay = await tool.execute!({ jobId: 100 }, options as never);
+      expect(replay).toEqual(result);
+      expect(result).toMatchObject({
+        errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
+        crossAccount: false,
+      });
+      expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
+      expect(hosting.pauseUser).not.toHaveBeenCalled();
+      expect(ops.recordEvent).not.toHaveBeenCalled();
+    });
+
+    it('AI SDK 下一步收到已报过回执且不泄露工单与转人工载荷', async () => {
+      rejectAsDuplicate(...duplicateMessages[0]);
+      const usage = {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      };
+      const model = new MockLanguageModelV3({
+        doGenerate: [
+          {
+            content: [
+              {
+                type: 'tool-call',
+                toolCallId: 'duplicate-1',
+                toolName: 'duliday_interview_booking',
+                input: '{"jobId":100}',
+              },
+            ],
+            finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+            usage,
+            warnings: [],
+          },
+          {
+            content: [
+              {
+                type: 'text',
+                text: '系统显示你已报过这个岗位或品牌，我让同事核实一下已有报名和面试安排。',
+              },
+            ],
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage,
+            warnings: [],
+          },
+        ],
+      });
+      const output = await generateText({
+        model,
+        prompt: '确认报名',
+        tools: { duliday_interview_booking: buildTool() },
+        stopWhen: stepCountIs(3),
+        maxRetries: 0,
+      });
+      const modelReceipt = JSON.stringify(model.doGenerateCalls[1].prompt);
+      expect(modelReceipt).toContain('系统显示你已报过');
+      expect(modelReceipt).not.toMatch(/workOrderId|sideEffect|recordHandoff/);
+      expect(output.steps[0].toolResults[0].output).toMatchObject({
+        sideEffect: { reasonCode: 'duplicate_signup' },
+      });
+      expect(output.text).toContain('已报过');
+      expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
+    });
+
+    it('未核实工单时的修复反馈不会把申请时间升级成已确认', async () => {
+      rejectAsDuplicate(...duplicateMessages[0]);
+      const result = await execute({ jobId: 100 });
+      const finding = detectBookingReceiptMismatch('系统出了点问题，明天再帮你提交。', [
+        { toolName: 'duliday_interview_booking', status: 'ok', result } as never,
+      ]);
+      expect(finding?.feedbackToGenerator).toContain('已有报名的归属和面试安排由同事核实');
+      expect(finding?.feedbackToGenerator).not.toContain('这个岗位已经约上');
+    });
   });
 
   it('测试链路用统一假身份报名成功：快照照常失效，但不写手机号→会话索引', async () => {
@@ -912,6 +1264,30 @@ describe('duliday_interview_booking（form → labelList）', () => {
           }),
         }),
       );
+    });
+
+    it('海绵拒绝后核实本账号已有工单，仍执行现有拉群流程', async () => {
+      sponge.bookInterview.mockResolvedValue({
+        success: false,
+        duplicateSignupReason: 'already_registered',
+        message: '用户已报名该岗位或品牌',
+      });
+      const order = {
+        candidateName: '兮兮',
+        workOrderId: 9002,
+        jobId: 100,
+        currentStatus: '约面成功',
+        interviewTime: `${getTomorrowDate()} 13:30:00`,
+      };
+      sponge.fetchSignupWorkOrders
+        .mockResolvedValueOnce({ workOrders: [] })
+        .mockResolvedValue({ workOrders: [order] });
+      const result = await executeWithInvite();
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+      expect(result.groupInvite.success).toBe(true);
+      expect(groupInvite.invite).toHaveBeenCalledTimes(1);
+      expect(hosting.pauseUser).not.toHaveBeenCalled();
+      expect(ops.recordEvent).not.toHaveBeenCalled();
     });
 
     it('群聊里报名成功不拉群并给原因', async () => {

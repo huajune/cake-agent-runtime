@@ -49,6 +49,108 @@ describe('OutputGuardrailService', () => {
     );
   });
 
+  it.each([
+    { workOrderId: undefined, precheckPhone: '13800000002', expectedBlocked: true },
+    { workOrderId: 9001, precheckPhone: '13800000002', expectedBlocked: false },
+    { workOrderId: 9001, precheckPhone: undefined, expectedBlocked: true },
+    { workOrderId: 9001, precheckPhone: '13800000003', expectedBlocked: true },
+  ])(
+    '追加候选人工单必须有同轮身份依据：%j',
+    async ({ workOrderId, precheckPhone, expectedBlocked }) => {
+      useActualRules();
+      const forms = {
+        peekActive: jest.fn().mockResolvedValue({
+          candidateScope: 'additional',
+          candidateRef: '13800000002',
+          workOrderId,
+        }),
+      };
+      const guard = new OutputGuardrailService(
+        systemConfig as never,
+        ruleGuard as never,
+        shortTerm as never,
+        { tryGetActiveBookings: jest.fn().mockResolvedValue([]) } as never,
+        undefined,
+        undefined,
+        forms as never,
+      );
+      const decision = await guard.check({
+        reply: precheckPhone === '13800000002' ? '第二人也报名成功了' : '第三人也报名成功了',
+        toolCalls: precheckPhone
+          ? ([
+              {
+                toolName: 'duliday_interview_precheck',
+                args: { jobId: 100, candidatePhone: precheckPhone },
+                result: {
+                  success: true,
+                  nextAction: 'already_submitted',
+                  candidateScope: 'additional',
+                },
+              },
+            ] as never)
+          : [],
+        corpId: 'c1',
+        userId: 'u1',
+        botUserName: 'bot1',
+        memorySnapshot: { currentFocusJob: { jobId: 100 } } as never,
+      });
+      expect(decision.blockedRuleIds).toEqual(
+        expectedBlocked ? ['booking_done_claim_no_work_order'] : [],
+      );
+      expect(forms.peekActive).toHaveBeenCalledWith({
+        corpId: 'c1',
+        userId: 'u1',
+        botUserId: 'bot1',
+        jobId: 100,
+      });
+    },
+  );
+
+  it.each([
+    { receiptOrder: 9002, formOrder: 9002, scope: 'additional', before: false, blocked: false },
+    { receiptOrder: 9001, formOrder: undefined, scope: 'primary', before: true, blocked: true },
+    { receiptOrder: 9001, formOrder: 9002, scope: 'additional', before: false, blocked: true },
+    { receiptOrder: 9002, formOrder: 9002, scope: 'additional', before: true, blocked: true },
+  ])('仅本次预检之后属于当前追加表单的成功预约可作证：%j', async (row) => {
+    useActualRules();
+    const guard = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      { tryGetActiveBookings: jest.fn().mockResolvedValue([]) } as never,
+      undefined,
+      undefined,
+      {
+        peekActive: jest.fn().mockResolvedValue({
+          candidateScope: 'additional',
+          candidateRef: '13800000002',
+          workOrderId: row.formOrder,
+        }),
+      } as never,
+    );
+    const precheck = {
+      toolName: 'duliday_interview_precheck',
+      args: { jobId: 100, candidatePhone: '13800000002' },
+      result: { success: true, nextAction: 'ready_to_book', candidateScope: 'additional' },
+    };
+    const booking = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 100 },
+      result: { success: true, workOrderId: row.receiptOrder, candidateScope: row.scope },
+    };
+    const decision = await guard.check({
+      reply: '第二人也报名成功了',
+      toolCalls: (row.before ? [booking, precheck] : [precheck, booking]) as never,
+      corpId: 'c1',
+      userId: 'u1',
+      botUserName: 'bot1',
+      memorySnapshot: { currentFocusJob: { jobId: 100 } } as never,
+    });
+    expect(decision.blockedRuleIds).toEqual(
+      row.blocked ? ['booking_done_claim_no_work_order'] : [],
+    );
+  });
+
   it('带会话身份时读取在途工单并把 activeBookings / 历史助手文本传给规则层', async () => {
     const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue([]) };
     const withLongTerm = new OutputGuardrailService(
@@ -70,7 +172,7 @@ describe('OutputGuardrailService', () => {
     expect(longTerm.tryGetActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
     expect(ruleGuard.check).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeBookings: [],
+        activeBookings: undefined,
         priorAssistantTexts: ['肯德基 2.7km'],
       }),
     );

@@ -13,6 +13,7 @@ import {
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import type { GroupTaskDispatchPlan } from '../queue/group-task-queue.constants';
 import {
   INTRA_GROUP_MESSAGE_DELAY_MS,
   MINIPROGRAM_CARD_DELAY_MAX_MS,
@@ -105,6 +106,66 @@ export class NotificationSenderService {
     );
   }
 
+  buildDispatchParts(
+    message: string,
+    followUp: string | undefined,
+    type: GroupTaskType,
+  ): GroupTaskDispatchPlan['parts'] {
+    const parts: GroupTaskDispatchPlan['parts'] = [
+      { id: 'main', messageType: 7, payload: { text: message }, delayMs: 0 },
+    ];
+    if (type === GroupTaskType.PART_TIME_JOB && this.miniprogramAppid && this.miniprogramUsername) {
+      parts.push({
+        id: 'mini-program',
+        messageType: 9,
+        delayMs: resolveHumanizedDelayMs(MINIPROGRAM_CARD_DELAY_MIN_MS, {
+          minFactor: 1,
+          maxFactor: MINIPROGRAM_CARD_DELAY_MAX_MS / MINIPROGRAM_CARD_DELAY_MIN_MS,
+        }),
+        payload: {
+          appid: this.miniprogramAppid,
+          username: this.miniprogramUsername,
+          title: MINIPROGRAM_DEFAULTS.TITLE,
+          thumbUrl: this.miniprogramThumbUrl,
+          pagePath: MINIPROGRAM_DEFAULTS.PAGE_PATH,
+          description: MINIPROGRAM_DEFAULTS.DESCRIPTION,
+        },
+      });
+    }
+    if (followUp)
+      parts.push({
+        id: 'follow-up',
+        messageType: 7,
+        payload: { text: followUp },
+        delayMs: INTRA_GROUP_MESSAGE_DELAY_MS,
+      });
+    return parts;
+  }
+
+  async sendPreparedPart(
+    group: GroupContext,
+    part: GroupTaskDispatchPlan['parts'][number],
+    requestId?: string,
+  ): Promise<void> {
+    this.assertEnterpriseSendable(group);
+    await this.sendEnterpriseGroupMessage(
+      group,
+      part.messageType,
+      part.payload,
+      part.id,
+      part.delayMs,
+      requestId,
+    );
+  }
+
+  async previewPrepared(group: GroupContext, message: string, type: GroupTaskType): Promise<void> {
+    try {
+      await this.sendFeishuPreview(group, message, type, false);
+    } catch (error) {
+      this.notifyFeishuSendFailure(GROUP_TASK_TYPE_NAMES[type] || type, group, error, false);
+    }
+  }
+
   /**
    * 校验企业级发送所需字段齐全，否则抛错让队列 handleSend 记失败快照、
    * summarize 阶段计入 errors 并走到飞书汇总卡片
@@ -162,7 +223,7 @@ export class NotificationSenderService {
     });
     if (!sent) {
       const error = new Error(
-        `飞书通知群预览发送失败: ${typeName} -> ${group.groupName}，请检查 MESSAGE_NOTIFICATION_WEBHOOK_URL / MESSAGE_NOTIFICATION_WEBHOOK_SECRET 或默认 webhook 配置`,
+        `飞书通知群预览发送失败: ${typeName} -> ${group.groupName}，请检查 MESSAGE_NOTIFICATION_WEBHOOK_URL / MESSAGE_NOTIFICATION_WEBHOOK_SECRET 配置`,
       );
       this.logger.error(`[群任务] ${error.message}`);
       this.notifyFeishuSendFailure(typeName, group, error, false);
@@ -224,6 +285,7 @@ export class NotificationSenderService {
         successCount: result.successCount,
         failedCount: result.failedCount,
         skippedCount: result.skippedCount,
+        pendingCount: result.pendingCount,
         durationSeconds: duration,
         details: result.details,
         errors: result.errors,
@@ -265,6 +327,7 @@ export class NotificationSenderService {
     payload: Record<string, unknown>,
     label: string,
     delayBeforeMs = 0,
+    externalRequestId?: string,
   ): Promise<void> {
     if (delayBeforeMs > 0) {
       this.logger.debug(
@@ -279,6 +342,7 @@ export class NotificationSenderService {
       imRoomId: group.imRoomId,
       messageType,
       payload,
+      ...(externalRequestId ? { externalRequestId } : {}),
     });
   }
 

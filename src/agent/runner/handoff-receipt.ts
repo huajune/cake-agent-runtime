@@ -1,5 +1,9 @@
 import type { AgentToolCall } from '../generator/generator.types';
-import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
+import {
+  describeWaitNoticeForCandidate,
+  formatInterviewTimeForReply,
+} from '@tools/booking/booking-reply-format.util';
+import { parseInterviewMethod } from '@sponge/interview-method';
 
 /**
  * 转人工前的「已提交动作回执」（PRD R5.1 第 3 条）。
@@ -15,6 +19,7 @@ export interface PreHandoffReceipt {
 }
 
 const BOOKING_TOOL = 'duliday_interview_booking';
+const PRECHECK_TOOL = 'duliday_interview_precheck';
 const MODIFY_TOOL = 'duliday_modify_interview_time';
 const CANCEL_TOOL = 'duliday_cancel_work_order';
 
@@ -23,17 +28,46 @@ export function buildPreHandoffReceipt(toolCalls: AgentToolCall[]): PreHandoffRe
   const sources: string[] = [];
   for (const call of toolCalls) {
     const result = asRecord(call.result);
-    if (!result || result.success !== true) continue;
+    if (!result) continue;
     let line: string | undefined;
-    if (call.toolName === BOOKING_TOOL) line = describeBookingSuccess(result);
-    else if (call.toolName === MODIFY_TOOL) line = describeModifySuccess(result);
-    else if (call.toolName === CANCEL_TOOL) line = '这次面试预约已经帮你取消了。';
+    if (call.toolName === PRECHECK_TOOL || call.toolName === BOOKING_TOOL)
+      line = describeExistingBooking(call.toolName, result);
+    if (!line && result.success === true) {
+      if (call.toolName === BOOKING_TOOL) line = describeBookingSuccess(result);
+      else if (call.toolName === MODIFY_TOOL) line = describeModifySuccess(result);
+      else if (call.toolName === CANCEL_TOOL) line = '这次面试预约已经帮你取消了。';
+    }
     if (!line) continue;
     lines.push(line);
     sources.push(call.toolName);
   }
   if (lines.length === 0) return undefined;
   return { text: lines.join('\n\n'), sources };
+}
+
+/** An existing booking is also a receipt: handoff must not discard it with model text. */
+function describeExistingBooking(
+  toolName: string,
+  result: Record<string, unknown>,
+): string | undefined {
+  const guard = asRecord(result.duplicateBookingGuard);
+  const prechecked =
+    toolName === PRECHECK_TOOL &&
+    result.success === true &&
+    result.nextAction === 'already_booked' &&
+    typeof guard?.workOrderId === 'number' &&
+    guard.workOrderId > 0;
+  const rejected =
+    toolName === BOOKING_TOOL &&
+    result.errorType === 'booking.already_booked' &&
+    ['sponge_duplicate_signup', 'active_booking_dedup'].includes(
+      String(result.alreadyBookedSource),
+    );
+  if (!prechecked && !rejected) return undefined;
+  const matchedBy = prechecked ? guard?.matchedBy : result.matchedBy;
+  const scope =
+    matchedBy === 'job' ? '这个岗位' : matchedBy === 'brand' ? '这个品牌' : '这个岗位或品牌';
+  return `系统显示你已报过${scope}，本次没有重复提交。我会请同事核实已有报名和面试安排。`;
 }
 
 function describeBookingSuccess(result: Record<string, unknown>): string {
@@ -48,7 +82,12 @@ function describeBookingSuccess(result: Record<string, unknown>): string {
         : null;
   const jobLabel = describeJob(result);
   if (!human) {
-    return `${jobLabel}报名资料已经提交成功了，这个岗位是等通知的，面试官会电话联系你，请保持电话畅通。`;
+    // 等通知岗按 booking 回执里的面试方式分支：AI 面试是短信发链接，不是面试官来电。
+    const waitNotice = describeWaitNoticeForCandidate(
+      parseInterviewMethod(result.interviewMethod),
+      typeof result.interviewProcessRemark === 'string' ? result.interviewProcessRemark : null,
+    );
+    return `${jobLabel}报名资料已经提交成功了，这个岗位是等通知的，${waitNotice}`;
   }
   const address =
     typeof result.interviewAddress === 'string' && result.interviewAddress.trim()

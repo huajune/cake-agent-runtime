@@ -9,7 +9,11 @@ import type { SessionStateService } from '@memory/short-term/session-state.servi
 import { extractUserTexts } from '@resolution/signal/dialogue';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
-import { evaluateInviteCityGate, type InviteCityGateVerdict } from './invite-city-gate';
+import {
+  collectCityGateContextInputs,
+  evaluateInviteCityGate,
+  type InviteCityGateVerdict,
+} from './invite-city-gate';
 import { evaluateInviteTimingGate, type InviteTimingGateVerdict } from './invite-timing-gate';
 
 /**
@@ -48,7 +52,11 @@ export function buildGroupInviteInput(
     contactWxid: context.session.userId,
     city,
     industry,
-    turnKey: context.session.turnId ?? Date.now().toString(),
+    turnKey: context.session.logicalTurnId ?? context.session.turnId ?? Date.now().toString(),
+    logicalTurnId: context.session.logicalTurnId,
+    inputOccurredAt: context.session.inputOccurredAt,
+    authorize: async () =>
+      !context.runtime.hasNewerUserInput || !(await context.runtime.hasNewerUserInput()),
     messageId: context.session.turnId,
     contactName: context.session.contactName,
     chatId: context.session.chatId ?? context.session.sessionId,
@@ -132,6 +140,8 @@ export async function runGroupInvitePipeline(
       context.ledger.geo.cityAttestation?.city ?? null,
     ],
     turnVisualSheets: context.ledger.visual.factSheets,
+    // 已在群城市 / 在途预约门店城市 / 候选人对「你在 X 对吧」的肯定应答（2026-10-19 新增三档）。
+    ...collectCityGateContextInputs(context),
   });
   if (cityGateVerdict.decision === 'reject') {
     return { kind: 'city_rejected', verdict: cityGateVerdict };

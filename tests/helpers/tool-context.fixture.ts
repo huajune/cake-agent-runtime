@@ -83,6 +83,9 @@ export function mergeToolContext(
           : overrides.ledger.jobs.currentFocusJob,
     });
     ledger.jobs.bookingSucceeded = base.ledger.jobs.bookingSucceeded;
+    ledger.jobs.confirmedBookingJobIds = base.ledger.jobs.confirmedBookingJobIds
+      ? [...base.ledger.jobs.confirmedBookingJobIds]
+      : undefined;
     ledger.jobs.jobListExecuted = base.ledger.jobs.jobListExecuted;
     ledger.jobs.resolvedWorkOrderId = base.ledger.jobs.resolvedWorkOrderId;
     applyLedgerOverrides(ledger, overrides.ledger);
@@ -115,6 +118,9 @@ function applyLedgerOverrides(ledger: TurnLedger, overrides?: TurnLedgerOverride
   for (const jobId of overrides.jobs?.invalidatedJobIds ?? []) ledger.markJobInvalidated(jobId);
   if (overrides.jobs && 'bookingSucceeded' in overrides.jobs) {
     ledger.jobs.bookingSucceeded = overrides.jobs.bookingSucceeded;
+  }
+  if (overrides.jobs?.confirmedBookingJobIds) {
+    ledger.jobs.confirmedBookingJobIds = [...overrides.jobs.confirmedBookingJobIds];
   }
   if (overrides.jobs?.jobListExecuted !== undefined) {
     ledger.jobs.jobListExecuted = overrides.jobs.jobListExecuted;

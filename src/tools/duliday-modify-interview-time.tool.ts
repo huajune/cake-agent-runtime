@@ -1,3 +1,9 @@
+import type { ToolActionService } from './actions/tool-action.service';
+import {
+  actionReceiptFields,
+  isUnresolvedAction,
+  unresolvedActionReceipt,
+} from './actions/business-action.util';
 /**
  * DuLiDay 修改约面时间工具
  *
@@ -86,6 +92,7 @@ const inputSchema = z.object({
  * 成功后写入 booking.interview_modified 运营事件。
  */
 export interface ModifyInterviewTimeToolDeps {
+  actions?: ToolActionService;
   /** 改约成功后失效该手机号的预约快照缓存（否则 5 分钟内仍显示旧面试时间）。 */
   bookingSnapshot?: Pick<BookingSnapshotService, 'invalidate'>;
 }
@@ -202,10 +209,44 @@ export function buildModifyInterviewTimeTool(
         }
 
         try {
-          const result = await spongeService.modifyInterviewTime(
-            { workOrderId, newInterviewTime: trimmedTime },
-            tokenContext,
-          );
+          const parameters = { workOrderId, newInterviewTime: trimmedTime };
+          const opsEventPayload = {
+            work_order_id: workOrderId,
+            new_interview_time: trimmedTime,
+            // 带外工单（供应商后台建单）的后续改约按来源单列统计。
+            source: bookingEventSource(snapshotRef),
+          };
+          const action = deps?.actions
+            ? await deps.actions.executeSponge(
+                context,
+                {
+                  kind: 'sponge.modify',
+                  target: `work-order:${workOrderId}`,
+                  parameters,
+                  recovery: {
+                    userId: context.session.userId,
+                    sessionId: context.session.sessionId,
+                    botUserId: context.session.botUserId ?? '',
+                    botImId: context.session.botImId ?? '',
+                    workOrderId,
+                    opsEventPayload,
+                    phone:
+                      context.archive.bookingCandidateFacts?.phone ??
+                      context.archive.profile?.phone ??
+                      null,
+                  },
+                },
+                () =>
+                  spongeService.modifyInterviewTime(parameters, tokenContext, {
+                    deferCacheInvalidation: true,
+                  }),
+              )
+            : undefined;
+          if (action && (isUnresolvedAction(action) || !action.result))
+            return unresolvedActionReceipt(context, action, '改约', undefined, workOrderId);
+          const result = action
+            ? action.result!
+            : await spongeService.modifyInterviewTime(parameters, tokenContext);
 
           if (!result.success) {
             logger.warn(
@@ -243,34 +284,35 @@ export function buildModifyInterviewTimeTool(
 
           // 运营事件底账：booking.interview_modified。幂等键含新时间，允许同一工单多次改约，
           // 仅 Bull 重试（同工单同新时间）去重。
-          void opsEventsRecorder.recordEvent({
+          await opsEventsRecorder.recordEvent({
             corpId: context.session.corpId,
             eventName: 'booking.interview_modified',
             idempotencyKey: `${workOrderId}:interview_modified:${trimmedTime}`,
             botImId: context.session.botImId,
             managerName: context.session.botUserId,
+            ...(context.session.inputOccurredAt
+              ? { occurredAt: context.session.inputOccurredAt }
+              : {}),
             userId: context.session.userId,
             chatId: context.session.sessionId,
-            payload: {
-              work_order_id: workOrderId,
-              new_interview_time: trimmedTime,
-              // 带外工单（供应商后台建单）的后续改约按来源单列统计。
-              source: bookingEventSource(snapshotRef),
-            },
+            payload: opsEventPayload,
           });
           // 预约快照按手机号缓存 5 分钟；不失效会让后续回合仍显示旧面试时间。
-          await deps?.bookingSnapshot?.invalidate({
-            phone:
-              context.archive.bookingCandidateFacts?.phone ??
-              context.archive.profile?.phone ??
-              null,
-            botImId: context.session.botImId,
-            corpId: context.session.corpId,
-            userId: context.session.userId,
-          });
+          if (!deps?.actions) {
+            await deps?.bookingSnapshot?.invalidate({
+              phone:
+                context.archive.bookingCandidateFacts?.phone ??
+                context.archive.profile?.phone ??
+                null,
+              botImId: context.session.botImId,
+              corpId: context.session.corpId,
+              userId: context.session.userId,
+            });
+          }
 
           return {
             success: true,
+            ...(action ? actionReceiptFields(action) : {}),
             errorType: null,
             workOrderId,
             newInterviewTime: trimmedTime,

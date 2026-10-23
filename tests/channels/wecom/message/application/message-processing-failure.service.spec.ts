@@ -80,6 +80,43 @@ describe('MessageProcessingFailureService', () => {
     ).toBe('delivery');
   });
 
+  it.each([
+    ['unknown', '暂时还不能确认'],
+    ['executing', '暂时还不能确认'],
+    ['succeeded', '已有成功回执'],
+    ['blocked', '暂时没有执行'],
+  ])('uses truthful %s action fallback instead of env retry advice', async (status, expected) => {
+    configService.get.mockReturnValue('出错了，请重新提交报名');
+    const error = Object.assign(new Error('provider/local failure after action'), {
+      isAgentError: true,
+      agentMeta: { replayBlockedBy: [{ toolName: 'duliday_interview_booking', status }] },
+    });
+    await service.handleProcessingError(error, createParsedMessage(), { errorType: 'agent' });
+    const text = deliveryService.deliverReply.mock.calls[0][0].content as string;
+    expect(text).toContain(expected);
+    expect(text).not.toContain('请重新提交');
+    if (status !== 'succeeded') expect(text).not.toContain('成功回执');
+    expect(alertService.sendAlert.mock.calls[0][0].diagnostics.payload.replayBlockedBy).toEqual(
+      error.agentMeta.replayBlockedBy,
+    );
+  });
+
+  it('states booking success separately from an unresolved invitation', async () => {
+    const error = Object.assign(new Error('local review failed'), {
+      agentMeta: {
+        replayBlockedBy: [
+          { toolName: 'duliday_interview_booking', status: 'succeeded' },
+          { toolName: 'duliday_interview_booking', status: 'unknown', component: 'groupInvite' },
+        ],
+      },
+    });
+    await service.handleProcessingError(error, createParsedMessage(), { errorType: 'agent' });
+    const text = deliveryService.deliverReply.mock.calls[0][0].content as string;
+    expect(text).toContain('报名已有成功回执');
+    expect(text).toContain('进群邀请的结果还需要核实');
+    expect(text).not.toContain('刚才的操作结果暂时还不能确认');
+  });
+
   it('should skip fallback delivery when part of the reply was already delivered', async () => {
     const error = new DeliveryFailureError('partial delivery', {
       success: false,

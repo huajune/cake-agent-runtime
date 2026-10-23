@@ -75,6 +75,20 @@ describe('job-list render util', () => {
     expect(markdown.indexOf('⚠️ 同品牌多门店')).toBeLessThan(markdown.indexOf('## 1. 服务员'));
   });
 
+  it.each([false, true])(
+    '面试详情关闭时，精简和详细输出都保留面试形式（salary=%s）',
+    (includeJobSalary) => {
+      const job = {
+        ...makeJob(1),
+        interviewProcess: { firstInterview: { firstInterviewWay: 'AI面试' } },
+      };
+      const markdown = formatJobsToMarkdown([job], 1, 1, 1, { ...minimalFlags, includeJobSalary });
+      expect(markdown).toContain('AI面试');
+      expect(markdown).toContain('面试形式');
+      expect(markdown).not.toContain('### 面试流程');
+    },
+  );
+
   // figure='不限' 是海绵下发的**明确**取值，不是缺数据。此前卡片把它渲染成
   // 「未标注学生限制」，与硬过滤（判 any）各说各话，模型因此从不知道哪些岗收学生。
   it('renders an explicit figure=不限 as identity-unrestricted, not as missing data', () => {
@@ -99,6 +113,18 @@ describe('job-list render util', () => {
     const markdown = formatJobsToMarkdown([job], 1, 1, 10, flags);
 
     expect(markdown).toContain('岗位数据未下发社会身份要求（疑似数据缺失，不等于"不限身份"）');
+  });
+
+  it('约面重点固定带「面试形式」一行，缺失时写明未明确而不是省略（badcase 2026-10-14 AI 面试说成电话面试）', () => {
+    const flags: ProgressiveDisclosureFlags = { ...minimalFlags, includeHiringRequirement: true };
+    const bare = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, flags);
+    expect(bare).toContain('**面试形式**: 未明确（以报名回执为准，不得默认电话或到店）');
+
+    const job = makeJob(2) as ReturnType<typeof makeJob> & { interviewProcess?: unknown };
+    job.interviewProcess = { firstInterview: { firstInterviewWay: 'AI面试' } };
+    const withMethod = formatJobsToMarkdown([job], 1, 1, 10, flags);
+    expect(withMethod).toContain('**面试形式**: AI面试');
+    expect(withMethod).not.toContain('未明确（以报名回执为准');
   });
 
   it('marks insurance as sensitive in welfare markdown instead of ordinary active welfare', () => {

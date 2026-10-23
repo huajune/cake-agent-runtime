@@ -1,3 +1,10 @@
+import { retainedJobs } from '@infra/queue/queue-policy';
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
+import {
+  GroupTaskActionService,
+  GroupTaskDeferredError,
+} from '../services/group-task-action.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
@@ -51,13 +58,6 @@ import {
 const BOT_DISPATCH_LOCK_TTL_SECONDS = 20 * 60;
 const BOT_DISPATCH_LOCK_POLL_MS = 1_000;
 
-const RELEASE_OWNED_LOCK_SCRIPT = `
-if redis.call('get', KEYS[1]) == ARGV[1] then
-  return redis.call('del', KEYS[1])
-end
-return 0
-`;
-
 /**
  * 群任务队列处理器
  *
@@ -76,6 +76,9 @@ export class GroupTaskProcessor implements OnModuleInit {
     @InjectQueue(GROUP_TASK_QUEUE_NAME) private readonly queue: Queue,
     private readonly llm: LlmExecutorService,
     private readonly redisService: RedisService,
+    private readonly leases: RedisLeaseService,
+    private readonly queueFailures: QueueFailureService,
+    private readonly scheduledActions: GroupTaskActionService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
     private readonly brandRotation: BrandRotationService,
@@ -127,49 +130,13 @@ export class GroupTaskProcessor implements OnModuleInit {
       // 只在最终失败（重试耗尽）时触发告警，中间重试噪音靠 logger 即可。
       // 没有这条告警，prod 曾有一周多天全员静默失败都没人感知 —— 不可省。
       if (job.attemptsMade >= attempts) {
-        this.notifyJobExhausted(job, error);
+        void this.queueFailures.exhausted(GROUP_TASK_QUEUE_NAME, job, error);
       }
     });
     this.queue.on('stalled', (job: Job) => {
       this.logger.warn(
         `[群任务队列] ⚠️ ${job.name} job=${job.id} 被标记 stalled，将由 Bull 重新派发`,
       );
-    });
-  }
-
-  private notifyJobExhausted(job: Job, error: Error): void {
-    if (!this.exceptionNotifier) return;
-
-    const data = job.data as
-      | { execId?: string; type?: GroupTaskType; group?: { groupName?: string } }
-      | undefined;
-    const trigger = (job.data as { trigger?: 'cron' | 'manual' } | undefined)?.trigger ?? 'cron';
-
-    this.exceptionNotifier.notifyAsync({
-      source: {
-        subsystem: 'group-task',
-        component: 'GroupTaskProcessor',
-        action: `queue:${job.name}`,
-        trigger,
-      },
-      code: `group_task.${job.name}_exhausted`,
-      summary: `群任务 ${job.name} 重试耗尽 (${job.attemptsMade}/${job.opts.attempts ?? 1}) exec=${data?.execId ?? 'n/a'}`,
-      error,
-      severity: AlertLevel.ERROR,
-      scope: { scenario: data?.type },
-      diagnostics: {
-        payload: {
-          jobId: String(job.id),
-          jobName: job.name,
-          execId: data?.execId,
-          group: data?.group?.groupName,
-          attempts: job.opts.attempts ?? 1,
-          attemptsMade: job.attemptsMade,
-        },
-      },
-      dedupe: {
-        key: `group_task.${job.name}_exhausted:${data?.execId ?? job.id}:${data?.group?.groupName ?? 'n/a'}`,
-      },
     });
   }
 
@@ -265,6 +232,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       }));
       targets.forEach(({ group }) => groupIds.push(group.imRoomId));
       prepareJobs.push({
+        startedAt,
         execId,
         type,
         timeSlot,
@@ -294,8 +262,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         jobId: `${execId}:prepare:${prepareJob.groupKey}`,
         attempts: 3,
         backoff: { type: 'exponential', delay: 10_000 },
-        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-        removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+        ...retainedJobs(500),
       });
     }
 
@@ -331,8 +298,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       delay: delayMs,
       attempts: 2,
       backoff: { type: 'fixed', delay: 30_000 },
-      removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
-      removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+      ...retainedJobs(500),
     });
   }
 
@@ -401,10 +367,12 @@ export class GroupTaskProcessor implements OnModuleInit {
       brand,
       summary: notificationData.summary,
     };
-    await this.redisService.setex(msgRedisKey, GROUP_TASK_CACHE_TTL_SECONDS, cache);
+    // A retry must not replace text already dispatched by a previous prepare attempt.
+    await this.redisService.setNx(msgRedisKey, cache, GROUP_TASK_CACHE_TTL_SECONDS);
 
     for (const { group, globalIndex } of targets) {
       const sendJob: SendJobData = {
+        startedAt: job.data.startedAt ?? job.timestamp,
         execId,
         type,
         timeSlot,
@@ -423,8 +391,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         delay: globalIndex * sendDelayMs,
         attempts: 3,
         backoff: { type: 'exponential', delay: 15_000 },
-        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 1000 },
-        removeOnFail: { age: 7 * 24 * 60 * 60, count: 1000 },
+        ...retainedJobs(1000),
       });
     }
 
@@ -442,7 +409,15 @@ export class GroupTaskProcessor implements OnModuleInit {
     // 幂等守护：跨 exec、跨重试共享。只在"成功后"写入，失败留白可重试。
     const dailyKey = groupTaskDailySentKey(type, execDate, timeSlot, group.imRoomId);
     const alreadySent = await this.redisService.exists(dailyKey);
-    if (alreadySent) {
+    if (alreadySent && job.data.dispatchPlan) {
+      const previous = await this.redisService.get<GroupTaskResultSnapshot>(
+        groupTaskResultKey(execId, group.imRoomId),
+      );
+      if (previous?.status === 'sent') return;
+      // This exact original task may still need local projection repair. Let
+      // its action records settle it; never overwrite known success as skipped.
+    }
+    if (alreadySent && !job.data.dispatchPlan) {
       this.logger.log(`[send] 已发送，跳过: ${group.groupName}`);
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
@@ -471,7 +446,7 @@ export class GroupTaskProcessor implements OnModuleInit {
     let dispatchAttempted = false;
     try {
       // 等锁期间可能已有另一个 exec 完成了同群发送，锁内再查一次避免重复投递。
-      if (await this.redisService.exists(dailyKey)) {
+      if (!job.data.dispatchPlan && (await this.redisService.exists(dailyKey))) {
         this.logger.log(`[send] 等锁期间已发送，跳过: ${group.groupName}`);
         await this.writeGroupResult(execId, group.imRoomId, {
           groupKey,
@@ -484,6 +459,33 @@ export class GroupTaskProcessor implements OnModuleInit {
       }
 
       await this.waitForBotDispatchWindow(botId, group.groupName, sendDelayMs);
+      if (!dryRun) {
+        await this.scheduledActions.freezePlan(
+          job,
+          this.notificationSender.buildDispatchParts(cache.message, cache.followUpMessage, type),
+        );
+      }
+      if (!dryRun && job.data.dispatchPlan) {
+        await this.previewPreparedOnce(job, cache.message, type);
+        for (const part of job.data.dispatchPlan.parts) {
+          await this.scheduledActions.executePart(
+            job,
+            cache,
+            part,
+            async (requestId) => {
+              dispatchAttempted = true;
+              await this.notificationSender.sendPreparedPart(group, part, requestId);
+            },
+            () =>
+              this.leases.renew({
+                key: lockKey,
+                owner: lockOwner,
+                ttlSeconds: BOT_DISPATCH_LOCK_TTL_SECONDS,
+              }),
+          );
+        }
+        return;
+      }
       dispatchAttempted = true;
       await this.notificationSender.sendToGroup(group, cache.message, type, dryRun);
       if (cache.followUpMessage) {
@@ -512,8 +514,9 @@ export class GroupTaskProcessor implements OnModuleInit {
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
         groupName: group.groupName,
-        status: 'failed',
-        summary: '发送失败',
+        status: error instanceof GroupTaskDeferredError ? 'pending' : 'failed',
+        summary:
+          error instanceof GroupTaskDeferredError ? '发送结果待核对，不自动重发' : '发送失败',
         error: errorMsg,
         updatedAt: Date.now(),
       });
@@ -529,10 +532,34 @@ export class GroupTaskProcessor implements OnModuleInit {
             Date.now(),
           );
         }
+      } catch (error) {
+        await this.queueFailures?.report(
+          'group_task.dispatch_timestamp_failed',
+          String(job.id),
+          error,
+        );
       } finally {
         // 时间戳写入失败也必须释放锁，避免后续群只能等锁 TTL 自然过期。
         await this.releaseBotDispatchLock(lockKey, lockOwner);
       }
+    }
+  }
+
+  private async previewPreparedOnce(
+    job: Job<SendJobData>,
+    message: string,
+    type: GroupTaskType,
+  ): Promise<void> {
+    if (job.data.previewAttempted) return;
+    try {
+      // This is auxiliary monitoring: prefer a missing preview after a crash to
+      // repeated webhook sends while business segments await callbacks.
+      const data = { ...job.data, previewAttempted: true };
+      await job.update(data);
+      job.data = data;
+      await this.notificationSender.previewPrepared(data.group, message, type);
+    } catch (error) {
+      this.logger.warn(`群任务预览未确认，继续原发送计划: ${toErrorMessage(error)}`);
     }
   }
 
@@ -541,14 +568,19 @@ export class GroupTaskProcessor implements OnModuleInit {
     lockOwner: string,
     groupName: string,
   ): Promise<void> {
-    let loggedWaiting = false;
-    while (!(await this.redisService.setNx(lockKey, lockOwner, BOT_DISPATCH_LOCK_TTL_SECONDS))) {
-      if (!loggedWaiting) {
-        this.logger.log(`[send] ${groupName} 等待同 bot 的前序群发送完成`);
-        loggedWaiting = true;
-      }
+    // Cover the healthy holder's full lease without exhausting Bull send attempts.
+    // Each shared lease wait remains bounded to one minute.
+    const deadline = Date.now() + BOT_DISPATCH_LOCK_TTL_SECONDS * 1_000;
+    while (Date.now() < deadline) {
+      const lease = await this.leases.acquire(lockKey, BOT_DISPATCH_LOCK_TTL_SECONDS, {
+        owner: lockOwner,
+        waitMs: Math.min(60_000, Math.max(0, deadline - Date.now())),
+        pollMs: BOT_DISPATCH_LOCK_POLL_MS,
+      });
+      if (lease) return;
       await this.delay(BOT_DISPATCH_LOCK_POLL_MS);
     }
+    throw new Error(`同 bot 发送锁不可用，已停止本次发送: ${groupName}`);
   }
 
   private async waitForBotDispatchWindow(
@@ -580,7 +612,11 @@ export class GroupTaskProcessor implements OnModuleInit {
   }
 
   private async releaseBotDispatchLock(lockKey: string, lockOwner: string): Promise<void> {
-    await this.redisService.eval(RELEASE_OWNED_LOCK_SCRIPT, [lockKey], [lockOwner]);
+    await this.leases.release({
+      key: lockKey,
+      owner: lockOwner,
+      ttlSeconds: BOT_DISPATCH_LOCK_TTL_SECONDS,
+    });
   }
 
   // ==================== Summarize ====================
@@ -596,11 +632,11 @@ export class GroupTaskProcessor implements OnModuleInit {
       if (snapshot) {
         results.push(snapshot);
       } else {
-        // 没有结果记录的群（summarize 触发时还未跑完）标记为失败，避免静默遗漏
+        // 未收到结果不能证明发送失败；保留待核对，避免运营盲目重发。
         results.push({
           groupKey: 'unknown',
           groupName: groupId,
-          status: 'failed',
+          status: 'pending',
           summary: '未收到发送结果（可能仍在重试或消息缓存过期）',
           updatedAt: Date.now(),
         });
@@ -648,8 +684,12 @@ export class GroupTaskProcessor implements OnModuleInit {
           action: 'summarize',
           trigger: 'cron',
         },
-        code: allSkipped ? 'group_task.all_skipped' : 'group_task.total_failure',
-        summary: `${type} 执行 ${result.totalGroups} 个群零成功 (失败=${result.failedCount} 跳过=${result.skippedCount}) exec=${execId}`,
+        code: result.pendingCount
+          ? 'group_task.result_pending'
+          : allSkipped
+            ? 'group_task.all_skipped'
+            : 'group_task.total_failure',
+        summary: `${type} 执行 ${result.totalGroups} 个群未确认成功 (待核对=${result.pendingCount ?? 0} 失败=${result.failedCount} 跳过=${result.skippedCount}) exec=${execId}`,
         error: new Error(`group-task ${type} zero success`),
         severity: AlertLevel.ERROR,
         scope: { scenario: type },
@@ -702,6 +742,7 @@ export class GroupTaskProcessor implements OnModuleInit {
     const successCount = results.filter((r) => r.status === 'sent').length;
     const failedCount = results.filter((r) => r.status === 'failed').length;
     const skippedCount = results.filter((r) => r.status === 'skipped').length;
+    const pendingCount = results.filter((r) => r.status === 'pending').length;
 
     const errors = results
       .filter((r) => r.status === 'failed')
@@ -735,13 +776,16 @@ export class GroupTaskProcessor implements OnModuleInit {
       const allSent = detail.groupResults.every((r) => r.status === 'sent');
       const allSkipped = detail.groupResults.every((r) => r.status === 'skipped');
       const anySent = detail.groupResults.some((r) => r.status === 'sent');
-      const status: GroupExecutionDetail['status'] = allSent
-        ? 'success'
-        : allSkipped
-          ? 'skipped'
-          : anySent
-            ? 'partial'
-            : 'failed';
+      const anyPending = detail.groupResults.some((r) => r.status === 'pending');
+      const status: GroupExecutionDetail['status'] = anyPending
+        ? 'pending'
+        : allSent
+          ? 'success'
+          : allSkipped
+            ? 'skipped'
+            : anySent
+              ? 'partial'
+              : 'failed';
       details.push({
         groupKey: detail.groupKey,
         groupCount: detail.groupCount,
@@ -757,6 +801,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       successCount,
       failedCount,
       skippedCount,
+      pendingCount,
       errors,
       details,
       startTime: new Date(startedAt),

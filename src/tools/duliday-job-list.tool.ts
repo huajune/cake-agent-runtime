@@ -80,13 +80,19 @@ import {
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { WorkTimeContractError } from '@sponge/work-time.types';
 import { SpongeResponseContractError } from '@sponge/response-contract.error';
+import { selectCorpusMessages } from '@resolution/signal/corpus';
+import { extractMessageText } from '@resolution/signal/markers';
 import { getJobSchedule } from '@tools/job-list/schedule-normalizer.util';
 import {
   allRejectedAsUnmatched,
   buildBrandQueryPlan,
+  findRejectedIdNeighbors,
   findUnmentionedQueryBrands,
+  findUnprovenancedRejectedBrands,
+  rejectedBrandIds,
   toBrandQueryMeta,
   type BrandQueryPlan,
+  type RejectedIdNeighbor,
 } from '@tools/job-list/brand-query.util';
 import {
   findBrandFuzzyMatches,
@@ -114,6 +120,7 @@ import {
   type AgeScreeningSignal,
 } from '@resolution/candidate/age';
 import { normalizeCitationText, normalizedIncludes } from '@resolution/notary/text-normalization';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 
 // ==================== 常量 ====================
 
@@ -167,6 +174,29 @@ function hasCandidateGroundedPostInviteLookup(params: {
 }
 
 /**
+ * 目录外品牌名的出处材料：候选人在证据域里的全部消息原文（含图片描述）、本轮原文、
+ * 企微备注品牌与本轮视觉事实 sheet。只回答"这个名字候选人/截图有没有出现过"，
+ * 不做归属或极性判断。没有语料块时仍核对本轮消息与视觉事实。
+ */
+function collectCandidateBrandProvenanceTexts(context: ToolBuildContext): string[] {
+  const blocks = context.turnInput.corpusBlocks ?? [];
+  const texts = selectCorpusMessages(blocks, { domains: ['evidence'], roles: ['user'] })
+    .map((message) => stripMessageDecorations(extractMessageText(message.content)))
+    .filter(Boolean);
+  if (context.turnInput.currentUserMessage) {
+    texts.push(stripMessageDecorations(context.turnInput.currentUserMessage));
+  }
+  texts.push(...(context.turnInput.contactBrandAliases ?? []));
+  for (const entry of context.ledger.visual.factSheets) {
+    texts.push(entry.sheet.rawDescription, ...entry.sheet.fields.map((field) => field.value));
+  }
+  for (const sheet of context.turnInput.visualSheetsByContent?.values() ?? []) {
+    texts.push(sheet.rawDescription, ...sheet.fields.map((field) => field.value));
+  }
+  return texts.filter((text) => typeof text === 'string' && text.trim().length > 0);
+}
+
+/**
  * 模型品牌入参全部被拒（未命中品牌库/冲突别名）时的结构化结果（§8.2.5）。
  *
  * 四种走向：回指置信度 high=直接按回指品牌推进；low=反问澄清（判定阈值与守卫共享
@@ -178,13 +208,46 @@ function hasCandidateGroundedPostInviteLookup(params: {
 function buildBrandRejectedResult(params: {
   brandPlan: BrandQueryPlan;
   fuzzySuggestions: BrandFuzzyMatch[];
+  idNeighbors: RejectedIdNeighbor[];
   noMatchScript: ReturnType<typeof buildNoMatchScript>;
   brandNotPartneredScript: ReturnType<typeof buildBrandNotPartneredScript>;
 }): Record<string, unknown> {
-  const { brandPlan, fuzzySuggestions, noMatchScript, brandNotPartneredScript } = params;
+  const { brandPlan, fuzzySuggestions, idNeighbors, noMatchScript, brandNotPartneredScript } =
+    params;
   const fuzzyConfidence = resolveFuzzyConfidence(fuzzySuggestions);
   const topMatch = fuzzySuggestions[0] ?? null;
   const rejectedInputs = brandPlan.rejected.map((item) => item.input);
+  const rejectedIds = rejectedBrandIds(brandPlan);
+
+  // 目录外品牌 ID（截图视觉读数多/少一位）：既不是候选人点名的品牌名，也不是"没合作"，
+  // 不生成任何候选人可见话术；给出数字近邻让模型回看截图品牌名后按品牌名重查。
+  if (rejectedIds.length > 0) {
+    const neighborText =
+      idNeighbors.length > 0
+        ? `目录里有数字近邻：${idNeighbors
+            .map(
+              (item) =>
+                `${item.inputId}→${item.brandId}（${item.brandName}，${item.relation === 'delete_one_digit' ? '多读一位' : '少读一位'}）`,
+            )
+            .join('；')}。只有截图里的品牌名与近邻品牌一致时才按该品牌重查。`
+        : '目录里没有数字近邻。';
+    return buildToolError({
+      errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+      outcome: '品牌 ID 不在合作品牌目录中（疑似截图读数误差），未执行查询',
+      replyInstruction:
+        `brandIdList ${JSON.stringify(rejectedIds)} 未在品牌目录命中。品牌 ID 来自截图标题方括号，` +
+        `视觉读数常多读或少读一位，这个数字不是品牌名。${neighborText}` +
+        '处理方式：回看截图/图片描述里的**品牌名**，用 brandAliasList 传品牌名（不传这个 ID）重查一次；' +
+        '截图里没有品牌名就按候选人位置不带品牌查。**禁止**把这个数字当品牌名念给候选人，' +
+        '禁止说"该品牌没合作/暂时没岗位"，禁止照念 noMatchScript，禁止调用 invite_to_group。',
+      details: {
+        rejectedBrandIds: rejectedIds,
+        idSuggestions: idNeighbors,
+        fuzzySuggestions: idNeighbors,
+        queryMeta: { brand: toBrandQueryMeta(brandPlan) },
+      },
+    });
+  }
 
   let outcome: string;
   let replyInstruction: string;
@@ -208,11 +271,10 @@ function buildBrandRejectedResult(params: {
     replyInstruction =
       `品牌入参 ${JSON.stringify(rejectedInputs)} 经品牌库校验全部为 unmatched（见 queryMeta.brand.rejected），` +
       '含义是**我们没有和这个品牌合作**，不是"该品牌暂时没有岗位"。未按该品牌执行查询。' +
-      '**严格按 brandNotPartneredScript.candidateMessage 原文照念**：如实说没有合作，' +
+      '该品牌名已核对过出自候选人原话或截图。**严格按 brandNotPartneredScript.candidateMessage 原文照念**：如实说没有合作，' +
       '并在同一句里问候选人接不接受其他品牌；' +
       '禁止说"暂时没找到合适的岗位""后续有新岗位第一时间联系你"，禁止照念 noMatchScript，禁止调用 invite_to_group。' +
-      "候选人明确答复接受其他品牌后，才用 brandFilterMode='clear' 按候选人已确认的城市/位置重查一次再推荐。" +
-      '若这个品牌名不是候选人说的（你自己拼错或凭空补的），以候选人当场的答复为准重查，不要把它当作候选人意向沉淀。';
+      "候选人明确答复接受其他品牌后，才用 brandFilterMode='clear' 按候选人已确认的城市/位置重查一次再推荐。";
   } else {
     outcome = '品牌入参未命中品牌库，未形成品牌过滤';
     replyInstruction =
@@ -1056,7 +1118,7 @@ export function buildJobListTool(
                 includeWelfare,
                 includeHiringRequirement,
                 includeWorkTime,
-                includeInterviewProcess,
+                includeInterviewProcess: true,
               },
               ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
             });
@@ -1142,7 +1204,16 @@ export function buildJobListTool(
         try {
           brandCatalog = await spongeService.fetchBrandList();
         } catch (error) {
-          logger.warn(`品牌目录拉取失败，入口标准化按空目录降级: ${toErrorMessage(error)}`);
+          logger.warn(`品牌目录拉取失败: ${toErrorMessage(error)}`);
+          if (brandIdListInput.length > 0 || brandAliasListInput.length > 0) {
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+              outcome: '品牌目录暂时不可用，本次未查询岗位',
+              replyInstruction:
+                '保留原品牌 ID/名称和筛选条件重试。目录请求失败不代表品牌不存在或截图读错，' +
+                '不得让候选人重新读编号、不得声称品牌未合作或无岗，也不得清空品牌后扩展查询。',
+            });
+          }
         }
         const brandPlan = buildBrandQueryPlan({
           brandAliasList: brandAliasListInput,
@@ -1166,8 +1237,32 @@ export function buildJobListTool(
         }
 
         // 模型传了品牌但全部被拒（未命中/歧义）：不得静默降级成无品牌查询乱推。
-        // 先与会话最近推荐品牌池做同音回指（"刘姐妹"→"成都你六姐"口误场景，§8.3）。
+        // 先核对被拒品牌名是否出自候选人原话/截图：目录外品牌名绕过下方的提及集合出处门
+        // （集合只登记目录内品牌），模型凭空补的「星巴克」会直接落成「没合作」话术
+        // （生产 trace batch_6acda349ce406a6aee8d6641_1791862156121）。没出处就拒绝查询、
+        // 要求清空品牌按位置重查，而不是替候选人认领一个他从没提过的品牌。
         if (brandPlan.allRejected) {
+          const unprovenancedBrands = findUnprovenancedRejectedBrands(
+            brandPlan,
+            collectCandidateBrandProvenanceTexts(context),
+            context.ledger.mentionedBrands,
+          );
+          if (unprovenancedBrands.length > 0) {
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE,
+              outcome: '品牌参数不在候选人原话/截图中，也不在品牌目录中，未执行岗位查询',
+              replyInstruction:
+                `品牌入参 ${JSON.stringify(unprovenancedBrands.map((item) => item.input))} 既未在品牌目录命中，` +
+                '也找不到候选人原话或截图出处，视为误传。本次未执行岗位查询。' +
+                "清空 brandAliasList 和 brandIdList，并传 brandFilterMode='clear'，按候选人已确认的城市/位置重查；" +
+                '不得对候选人说该品牌没合作或没岗位，不要把它当作候选人意向，也不要向候选人提起这个品牌名。',
+              details: {
+                unprovenancedBrands: unprovenancedBrands.map((item) => item.input),
+                queryMeta: { brand: toBrandQueryMeta(brandPlan) },
+              },
+            });
+          }
+          // 再与会话最近推荐品牌池做同音回指（"刘姐妹"→"成都你六姐"口误场景，§8.3）。
           const rejectedInputs = brandPlan.rejected.map((item) => item.input);
           const fuzzySuggestions =
             (context.archive.recentBrandPool?.length ?? 0) > 0
@@ -1176,6 +1271,7 @@ export function buildJobListTool(
           return buildBrandRejectedResult({
             brandPlan,
             fuzzySuggestions,
+            idNeighbors: findRejectedIdNeighbors(brandPlan, brandCatalog),
             noMatchScript: buildNoMatchScript({
               brandLabels: rejectedInputs,
               storeLabels: storeNameList,
@@ -1198,6 +1294,7 @@ export function buildJobListTool(
           brandPlan,
           context.ledger.mentionedBrands,
           brandCatalog,
+          collectCandidateBrandProvenanceTexts(context),
         );
         if (unmentionedBrands.length > 0) {
           return buildToolError({
@@ -1282,7 +1379,9 @@ export function buildJobListTool(
           includeWelfare: includeWelfare || requireAccommodation,
           includeHiringRequirement,
           includeWorkTime,
-          includeInterviewProcess,
+          // 面试方式（AI/电话/视频/线下）来自 interviewProcess；推荐卡片「约面重点」固定带
+          // 「面试形式」一行，所以始终拉取；includeInterviewProcess 只控制面试流程段是否展示。
+          includeInterviewProcess: true,
         };
 
         // 当前轮高置信事实会覆盖旧会话事实。提前解析一次，除了成功结果过滤外，

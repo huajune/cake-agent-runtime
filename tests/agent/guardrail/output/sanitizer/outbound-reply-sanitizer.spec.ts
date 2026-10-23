@@ -155,6 +155,8 @@ describe('OutboundReplySanitizer', () => {
     it('Markdown 装饰符需要规范化', () => {
       expect(OutboundReplySanitizer.needsSanitization('**重点**：附近有岗位')).toBe(true);
       expect(OutboundReplySanitizer.needsSanitization('`重点`：附近有岗位')).toBe(true);
+      expect(OutboundReplySanitizer.needsSanitization('## 岗位推荐\n肯德基万达店')).toBe(true);
+      expect(OutboundReplySanitizer.needsSanitization('#1 这家最近')).toBe(false);
     });
 
     it('含推理/思考标签需要规范化', () => {
@@ -548,5 +550,23 @@ describe('OutboundReplySanitizer', () => {
       expect(result).not.toContain('可以选');
       expect(result).not.toMatch(/哈～$/);
     });
+  });
+});
+
+describe('OutboundReplySanitizer - markdown 标题标记剥离（2026-10-16 API 密钥文案外泄顺带）', () => {
+  it('只剥行首 #~###### 标记，标题文字与正文原样保留', () => {
+    const input = ['## 岗位推荐', '', '肯德基万达店在招服务员', '  ### 面试安排', '周三下午'].join(
+      '\n',
+    );
+    expect(OutboundReplySanitizer.sanitize(input)).toBe(
+      ['岗位推荐', '', '肯德基万达店在招服务员', '面试安排', '周三下午'].join('\n'),
+    );
+  });
+
+  it('不带空格的 # 与行中 # 不动', () => {
+    expect(OutboundReplySanitizer.sanitize('#1 这家最近，门牌 #203')).toBe(
+      '#1 这家最近，门牌 #203',
+    );
+    expect(OutboundReplySanitizer.sanitize('#岗位 不是标题')).toBe('#岗位 不是标题');
   });
 });

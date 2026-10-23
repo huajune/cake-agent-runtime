@@ -163,6 +163,7 @@ export class MessageCallbackAdapterService {
     const normalized = {
       ...body,
       source: body.source,
+      _sourceInferred: body.source == null,
     } as EnterpriseMessageCallbackDto;
 
     // 补充缺失的 source 字段

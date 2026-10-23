@@ -1,5 +1,6 @@
 import { parseDayWorkTime, WorkTimeContractError } from './work-time.types';
 import { SpongeResponseContractError } from './response-contract.error';
+import { classifyDuplicateSignup } from './interview-booking-result.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
@@ -398,6 +399,9 @@ export class SpongeService {
 
     return {
       success: isSuccess,
+      ...(!isSuccess && classifyDuplicateSignup(parsed.data.message)
+        ? { duplicateSignupReason: classifyDuplicateSignup(parsed.data.message) }
+        : {}),
       code: parsed.data.code,
       message: parsed.data.message,
       notice: parsed.data.data?.notice ?? null,
@@ -758,10 +762,14 @@ export class SpongeService {
    * 工单状态变更（取消 / 改约）成功后调用：清掉 5min 缓存，确保下一轮 [当前预约信息]
    * 重新拉取到最新状态，不会继续渲染旧态。失败仅 warn，不阻断主流程。
    */
-  private async invalidateWorkOrderCache(workOrderId: number): Promise<void> {
+  async invalidateWorkOrderCache(
+    workOrderId: number,
+    options?: { strict?: boolean },
+  ): Promise<void> {
     try {
       await this.redisService.del(this.workOrderCacheKey(workOrderId));
     } catch (error) {
+      if (options?.strict) throw error;
       this.logger.warn(`失效工单缓存失败 workOrderId=${workOrderId}: ${this.errorMessage(error)}`);
     }
   }
@@ -775,6 +783,7 @@ export class SpongeService {
   async cancelWorkOrder(
     params: CancelWorkOrderParams,
     tokenContext?: SpongeTokenResolveContext,
+    options?: { deferCacheInvalidation?: boolean },
   ): Promise<WorkOrderMutationResult> {
     const token = await this.resolveDulidayToken(tokenContext);
 
@@ -789,7 +798,7 @@ export class SpongeService {
     });
 
     const result = await this.mutateWorkOrder(this.cancelWorkOrderApi, payload, '取消工单', token);
-    if (result.success) {
+    if (result.success && !options?.deferCacheInvalidation) {
       await this.invalidateWorkOrderCache(params.workOrderId);
     }
     return result;
@@ -803,6 +812,7 @@ export class SpongeService {
   async modifyInterviewTime(
     params: ModifyInterviewTimeParams,
     tokenContext?: SpongeTokenResolveContext,
+    options?: { deferCacheInvalidation?: boolean },
   ): Promise<WorkOrderMutationResult> {
     const token = await this.resolveDulidayToken(tokenContext);
 
@@ -821,7 +831,7 @@ export class SpongeService {
       '修改约面时间',
       token,
     );
-    if (result.success) {
+    if (result.success && !options?.deferCacheInvalidation) {
       await this.invalidateWorkOrderCache(params.workOrderId);
     }
     return result;

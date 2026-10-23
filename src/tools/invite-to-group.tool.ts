@@ -225,7 +225,12 @@ function buildRuntimeHandledResult(
   if (runtimeInvite.success) {
     if (runtimeInvite.alreadyInGroup) {
       return buildAlreadyInGroupResult(
-        { success: true, alreadyInGroup: true, groupName: runtimeInvite.groupName },
+        {
+          success: true,
+          alreadyInGroup: true,
+          groupName: runtimeInvite.groupName,
+          ...inviteActionReceipt(runtimeInvite),
+        },
         runtimeInvite.city ?? city,
         industry,
       );
@@ -235,11 +240,19 @@ function buildRuntimeHandledResult(
         success: true,
         groupName: runtimeInvite.groupName,
         inviteDelivery: runtimeInvite.delivery ?? 'invite_card',
+        ...inviteActionReceipt(runtimeInvite),
       },
       city: runtimeInvite.city ?? city,
       industry,
     });
   }
+  if (runtimeInvite.failureReason === 'result_unknown')
+    return {
+      ...inviteActionReceipt(runtimeInvite),
+      errorType: 'action.result_unresolved',
+      _outcome: '本轮群邀请结果尚待核实，不重复发起',
+      _replyInstruction: buildPostBookingGroupInviteGuide(runtimeInvite),
+    };
   return buildToolError({
     errorType: TOOL_ERROR_TYPES.INVITE_HANDLED_BY_RUNTIME,
     outcome: '本轮报名成功后拉群已由系统处理且未成功，不重复发起',
@@ -249,6 +262,7 @@ function buildRuntimeHandledResult(
       industry: industry ?? undefined,
       skippedReason: runtimeInvite.skippedReason,
       failureReason: runtimeInvite.failureReason,
+      ...inviteActionReceipt(runtimeInvite),
     },
   });
 }
@@ -316,11 +330,30 @@ function buildInviteTimingGateError(params: {
   });
 }
 
+function inviteActionReceipt(
+  result: Pick<
+    GroupInviteResult,
+    'actionStatus' | 'actionId' | 'requestId' | 'localSync' | 'actionDispatched' | 'actionReason'
+  >,
+) {
+  return result.actionStatus
+    ? {
+        actionStatus: result.actionStatus,
+        actionId: result.actionId,
+        requestId: result.requestId,
+        localSync: result.localSync,
+        actionDispatched: result.actionDispatched,
+        actionReason: result.actionReason,
+      }
+    : {};
+}
+
 function buildAlreadyInGroupResult(result: GroupInviteResult, city: string, industry?: string) {
   const groupName = result.groupName ?? '';
   return {
     success: true,
     alreadyInGroup: true,
+    ...inviteActionReceipt(result),
     groupName,
     groupPurpose: 'job_pool',
     city,
@@ -349,6 +382,7 @@ function buildGroupInviteResult(params: {
     const isDirectAdd = result.inviteDelivery === 'direct_add';
     return {
       success: true,
+      ...inviteActionReceipt(result),
       groupName,
       groupPurpose: 'job_pool',
       city,
@@ -370,6 +404,14 @@ function buildGroupInviteResult(params: {
   }
 
   switch (result.reason) {
+    case 'result_unknown':
+      return {
+        errorType: 'action.result_unresolved',
+        ...inviteActionReceipt(result),
+        _outcome: '群邀请结果尚待核实，禁止重复邀请',
+        _replyInstruction:
+          '群邀请结果尚待核实，禁止声称已入群、邀请失败或换群重试。请调用 request_handoff(reasonCode="group_invite_failed") 请同事先核实原邀请，不要再次发送。',
+      };
     case 'enterprise_token_missing':
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,

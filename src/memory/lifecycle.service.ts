@@ -25,6 +25,7 @@ export interface MemoryLifecycleTurnContext {
   userId: string;
   sessionId: string;
   messageId?: string;
+  logicalTurnId?: string;
   /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
   botImId?: string;
   /** 当前托管账号的稳定企微身份（wecomUserId）；长期记忆严格按此维度隔离。 */
@@ -357,7 +358,7 @@ export class MemoryLifecycleService {
       const querySignatureResult = await this.runMeasuredStep('save_job_list_query', async () => {
         await this.session.saveLastJobListQuery(ctx.corpId, ctx.userId, ctx.sessionId, {
           signature: ctx.jobListQuerySignature as string,
-          turnId: ctx.messageId ?? null,
+          turnId: ctx.logicalTurnId ?? ctx.messageId ?? null,
           updatedAtMs: Date.now(),
         });
       });

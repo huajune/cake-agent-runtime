@@ -1,4 +1,4 @@
-import { evaluateOutOfBandWorkOrders } from '@agent/reengagement/oob-work-order';
+import { evaluateOutOfBandWorkOrders } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 
 describe('evaluateOutOfBandWorkOrders（pre_booking 带外工单核验，human_oob P1）', () => {

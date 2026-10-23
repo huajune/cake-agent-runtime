@@ -1,7 +1,14 @@
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
+import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import {
+  ActionPermitService,
+  type ActionDenialReason,
+} from '@biz/action-permit/services/action-permit.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -22,7 +29,7 @@ import { TypingPolicyService } from './typing-policy.service';
  * - 处理发送失败重试
  */
 /** 单段发送瞬时失败后的重试次数与退避（WeCom 接口偶发抖动,一次重试即可覆盖绝大多数）。 */
-const SEGMENT_SEND_RETRIES = 1;
+const SEGMENT_SEND_RETRIES = RUNTIME_RETRY_LIMITS.deliverySegmentRetries;
 const SEGMENT_SEND_RETRY_DELAY_MS = 800;
 
 @Injectable()
@@ -34,7 +41,9 @@ export class MessageDeliveryService implements OnModuleInit {
     private readonly monitoringService: MessageTrackingService,
     private readonly typingPolicy: TypingPolicyService,
     private readonly wecomObservability: WecomMessageObservabilityService,
-    private readonly userHostingService: UserHostingService,
+    private readonly actionPermit: ActionPermitService,
+    @Optional() private readonly durable?: DurableReplyDeliveryService,
+    @Optional() private readonly recoveryLease?: ReplyRecoveryLeaseService,
   ) {}
 
   async onModuleInit() {
@@ -53,6 +62,22 @@ export class MessageDeliveryService implements OnModuleInit {
     context: DeliveryContext,
     recordMonitoring: boolean = true,
   ): Promise<DeliveryResult> {
+    // Resolve/freeze before any provider call. A stored plan is always authoritative.
+    const turn = await this.prepareReplyPlan(reply, context);
+    if (turn && this.durable) {
+      if (recordMonitoring) await this.wecomObservability.markDeliveryStart(context.messageId);
+      const result = await this.durable.deliver(turn, context);
+      if (recordMonitoring)
+        await this.wecomObservability.markDeliveryEnd(context.messageId, result);
+      // Task memberships have no inbound Redis messages. Their domain repairs touch/events separately.
+      if (!turn.recovery.primary) {
+        await context.assertOwned?.();
+        const settled = await this.durable.turns.settle(turn);
+        await context.assertOwned?.();
+        await this.durable.turns.acked(settled);
+      }
+      return result;
+    }
     const startTime = Date.now();
     const { messageId, contactName } = context;
 
@@ -62,9 +87,10 @@ export class MessageDeliveryService implements OnModuleInit {
       }
 
       // 入口/worker 复查后，Agent 推理 + 工具调用还会再消耗 10-30s。
-      // 投递前用同一组 ID 再做一次 isAnyPaused，命中即整批回复一段不发，
+      // 投递前重新判定行动许可，拒绝即整批回复一段不发，
       // 避免运营关托管后仍有"撤回很多条"的体验（1tsdimfg badcase）。
-      if (await this.shouldSkipForHostingPause(context)) {
+      const denied = await this.deniedActionReason(context);
+      if (denied) {
         const totalTime = Date.now() - startTime;
         const skippedResult: DeliveryResult = {
           success: true,
@@ -73,14 +99,14 @@ export class MessageDeliveryService implements OnModuleInit {
           deliveredSegments: 0,
           totalTime,
           skipped: true,
-          skipReason: 'hosting_paused',
+          skipReason: denied,
         };
         if (recordMonitoring) {
-          this.monitoringService.recordReplySkipped(messageId, 'hosting_paused');
+          this.monitoringService.recordReplySkipped(messageId, denied);
           await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
         }
         this.logger.warn(
-          `[${contactName}] 投递前命中已暂停托管，${reply.content.length} 字符回复全部丢弃 (chatId=${context.chatId})`,
+          `[${contactName}] 投递前行动许可拒绝（${denied}），${reply.content.length} 字符回复全部丢弃 (chatId=${context.chatId})`,
         );
         return skippedResult;
       }
@@ -101,6 +127,7 @@ export class MessageDeliveryService implements OnModuleInit {
 
       return { ...result, totalTime };
     } catch (error) {
+      if (error instanceof ReplyDeferredError) throw error;
       const totalTime = Date.now() - startTime;
       const errorMessage = toErrorMessage(error);
       const failureResult =
@@ -122,6 +149,56 @@ export class MessageDeliveryService implements OnModuleInit {
       this.logger.error(`[${contactName}] 消息发送失败: ${errorMessage}`);
       throw new DeliveryFailureError(errorMessage, failureResult);
     }
+  }
+
+  async beginReply(context: DeliveryContext): Promise<ReplyTurn | undefined> {
+    return this.durable?.resolveTurn(context);
+  }
+
+  /** Proactive local repair after callbacks; permission changes do not undo delivery evidence. */
+  async completeConfirmedReply(
+    turn: ReplyTurn,
+    assertOwned?: () => Promise<void>,
+  ): Promise<boolean> {
+    if (!this.durable || turn.recovery.primary) return false;
+    if (!(await this.durable.turns.repository.confirmed(turn))) return false;
+    await assertOwned?.();
+    const settled = await this.durable.turns.settle(turn);
+    await assertOwned?.();
+    await this.durable.turns.acked(settled);
+    return true;
+  }
+
+  async pendingReplyTasks(): Promise<ReplyTurn[]> {
+    return this.durable?.turns.repository.dueTaskProjections() ?? [];
+  }
+  async finishReplyTask(turn: ReplyTurn): Promise<void> {
+    await this.durable?.turns.completeProjection(turn);
+  }
+  async deferReplyTask(turn: ReplyTurn): Promise<void> {
+    await this.durable?.turns.deferProjection(turn);
+  }
+  async withReplyRecovery<T>(
+    turn: ReplyTurn,
+    task: (assertOwned: () => Promise<void>) => Promise<T>,
+  ): Promise<T | undefined> {
+    if (!this.recoveryLease) throw new ReplyDeferredError('reply_recovery_lease_unavailable');
+    return this.recoveryLease.run(turn.chatId, task);
+  }
+
+  async prepareReplyPlan(
+    reply: AgentReply,
+    context: DeliveryContext,
+    resume?: Record<string, unknown>,
+  ): Promise<ReplyTurn | undefined> {
+    const turn = await this.durable?.resolveTurn(context);
+    if (!turn || !this.durable) return undefined;
+    const segments = !reply.content.trim()
+      ? []
+      : this.typingPolicy.shouldSplit(reply.content)
+        ? MessageSplitter.split(reply.content, MESSAGE_SPLIT_MAX_SEGMENTS)
+        : [MessageSplitter.stripTrailingPunctuation(reply.content) || reply.content.trim()];
+    return this.durable.prepare(turn, reply.content, segments, resume);
   }
 
   private async deliverSingle(content: string, context: DeliveryContext): Promise<DeliveryResult> {
@@ -165,7 +242,7 @@ export class MessageDeliveryService implements OnModuleInit {
     let successCount = 0;
     let failedCount = 0;
     let firstSegmentSent = false;
-    let pauseInterrupted = false;
+    let pauseInterrupted: ActionDenialReason | undefined;
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
@@ -180,10 +257,11 @@ export class MessageDeliveryService implements OnModuleInit {
       // 段间打字延迟 + 段间 paragraph gap 加起来可达数秒，运营在分段过程中点
       // 关托管时必须立刻止损，避免循环把后续段一段段发出。每段发送前复查
       // isUserPaused，命中则截断（已发出的段保留）。
-      if (await this.shouldSkipForHostingPause(context)) {
-        pauseInterrupted = true;
+      const denied = await this.deniedActionReason(context);
+      if (denied) {
+        pauseInterrupted = denied;
         this.logger.warn(
-          `[${contactName}] 分段投递期间命中已暂停托管，` +
+          `[${contactName}] 分段投递期间行动许可拒绝（${denied}），` +
             `已发 ${successCount}/${segments.length} 段，丢弃剩余 ${segments.length - i} 段 (chatId=${chatId})`,
         );
         break;
@@ -198,6 +276,7 @@ export class MessageDeliveryService implements OnModuleInit {
           context,
           segment,
           this.segmentExternalRequestId(context, i, segments.length),
+          i,
         );
         successCount++;
         if (!firstSegmentSent) {
@@ -214,7 +293,7 @@ export class MessageDeliveryService implements OnModuleInit {
     }
 
     if (pauseInterrupted) {
-      this.monitoringService.recordReplySkipped(context.messageId, 'hosting_paused');
+      this.monitoringService.recordReplySkipped(context.messageId, pauseInterrupted);
     }
 
     this.logger.log(
@@ -228,8 +307,8 @@ export class MessageDeliveryService implements OnModuleInit {
       failedSegments: failedCount,
       deliveredSegments: successCount,
       totalTime: 0,
-      skipped: pauseInterrupted || undefined,
-      skipReason: pauseInterrupted ? 'hosting_paused' : undefined,
+      skipped: Boolean(pauseInterrupted) || undefined,
+      skipReason: pauseInterrupted,
       error: failedCount > 0 ? `${failedCount}/${segments.length} 个消息片段发送失败` : undefined,
     };
 
@@ -240,16 +319,18 @@ export class MessageDeliveryService implements OnModuleInit {
     return result;
   }
 
-  /**
-   * 投递前/段间统一的"已暂停托管"复查。
-   *
-   * 与 PausedUserFilterRule、MessageProcessor.dropIfHostingPaused 共用 `isAnyPaused`
-   * helper（前两层多查 externalUserId，本层 DeliveryContext 不携带该 ID；pauseUser
-   * 以 chatId 落锚，实务等价）：任一 ID 命中暂停即视为关托管。
-   */
-  private async shouldSkipForHostingPause(context: DeliveryContext): Promise<boolean> {
-    const hit = await this.userHostingService.isAnyPaused([context.chatId, context.imContactId]);
-    return hit.paused;
+  /** 投递前及每段发送前重新读取聊天级行动许可，长推理/打字期间的变更立即生效。 */
+  private async deniedActionReason(
+    context: DeliveryContext,
+  ): Promise<ActionDenialReason | undefined> {
+    const permit = await this.actionPermit.evaluate({
+      chatId: context.chatId,
+      action: context.action ?? 'reply',
+      botImId: context.imBotId,
+      groupId: context.groupId,
+      candidateIds: [context.imContactId],
+    });
+    return permit.allowed ? undefined : permit.reason;
   }
 
   private calculateDelay(text: string, isFirstSegment: boolean = false): number {
@@ -268,6 +349,19 @@ export class MessageDeliveryService implements OnModuleInit {
    * failedCount,交后续 fallback / 告警链路兜底。
    */
   private async sendTextSegment(
+    context: DeliveryContext,
+    text: string,
+    externalRequestId?: string,
+    segmentIndex = 0,
+  ): Promise<void> {
+    if (this.durable)
+      return this.durable.observeLegacy(context, text, segmentIndex, () =>
+        this.sendLegacySegment(context, text, externalRequestId),
+      );
+    return this.sendLegacySegment(context, text, externalRequestId);
+  }
+
+  private async sendLegacySegment(
     context: DeliveryContext,
     text: string,
     externalRequestId?: string,

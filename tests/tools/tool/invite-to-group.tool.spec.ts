@@ -1,3 +1,7 @@
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
+import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
+import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
+import { createActionExecutorFixture } from '../../helpers/action-executor.fixture';
 import { buildInviteToGroupTool } from '@tools/invite-to-group.tool';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
@@ -25,6 +29,7 @@ interface InviteContextOverrides {
   strategySource?: ToolBuildContext['runtime']['strategySource'];
   bookingSucceeded?: boolean;
   jobListExecuted?: boolean;
+  bookingWorkOrders?: ToolBuildContext['archive']['bookingWorkOrders'];
 }
 
 describe('buildInviteToGroupTool', () => {
@@ -66,6 +71,7 @@ describe('buildInviteToGroupTool', () => {
         },
       },
       runtime: has('strategySource') ? { strategySource: overrides.strategySource } : {},
+      archive: has('bookingWorkOrders') ? { bookingWorkOrders: overrides.bookingWorkOrders } : {},
     });
   };
 
@@ -108,6 +114,12 @@ describe('buildInviteToGroupTool', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         GroupInviteService,
+        {
+          provide: ActionPermitService,
+          useValue: { evaluate: jest.fn().mockResolvedValue({ allowed: true }) },
+        },
+        { provide: ActionExecutorService, useValue: createActionExecutorFixture() },
+        { provide: ActionRecoveryRegistry, useValue: new ActionRecoveryRegistry() },
         { provide: GroupResolverService, useValue: mockGroupResolver },
         { provide: GroupMembershipService, useValue: groupMembership },
         { provide: RoomService, useValue: mockRoomService },
@@ -658,42 +670,24 @@ describe('buildInviteToGroupTool', () => {
     });
   });
 
-  it('should handle addMember failure gracefully', async () => {
+  it('transport timeout remains unknown and must not encourage a retry', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
     mockRoomService.addMemberEnterprise.mockRejectedValue(new Error('WeChat API timeout'));
-
     const result = await executeTool({ city: '上海' });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_FAILED);
-    expect(result.reason).toBe('WeChat API timeout');
+    expect(result.success).toBeUndefined();
+    expect(result.errorType).toBe('action.result_unresolved');
     expect(result._replyInstruction).not.toContain('WeChat API timeout');
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
   });
 
-  it('should return invite_api_rejected and alert when enterprise API returns non-zero errcode', async () => {
+  it('unverified provider error codes remain unknown without claiming rejection', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
     mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 40003, errmsg: 'forbidden' });
-
     const result = await executeTool({ city: '上海' });
-    await flushAsyncEvents();
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_REJECTED);
-    expect(result.reason).toContain('errcode=40003');
+    expect(result.success).toBeUndefined();
+    expect(result.errorType).toBe('action.result_unresolved');
     expect(mockMemoryService.saveInvitedGroup).not.toHaveBeenCalled();
-    expect(mockOpsNotifier.sendInviteRejectedAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        city: '上海',
-        chatBotImId: 'chat-bot-im-id',
-        chatBotUserId: 'chat-bot-weixin',
-        rejectedGroups: [
-          expect.objectContaining({
-            name: '上海兼职群1号',
-            error: expect.stringContaining('errcode=40003'),
-          }),
-        ],
-      }),
-    );
+    expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
   });
 
   it('should silently close out without alert or handoff when all groups reject with errcode=-8 (candidate blocked/removed bot)', async () => {
@@ -776,7 +770,7 @@ describe('buildInviteToGroupTool', () => {
     ]);
     mockRoomService.addMemberEnterprise
       .mockResolvedValueOnce({ errcode: -8, errmsg: 'is not a friend, wxid: cand-1' })
-      .mockResolvedValueOnce({ errcode: 40003, errmsg: 'forbidden' });
+      .mockResolvedValueOnce({ errcode: 400400, errmsg: 'room not found' });
 
     const result = await executeTool({ city: '上海' });
     await flushAsyncEvents();
@@ -1085,6 +1079,25 @@ describe('buildInviteToGroupTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT);
       expect(result.expectedCity).toBe('上海');
       expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    });
+
+    it('rejects a city supported only by another person’s booking before inviting', async () => {
+      const result = await executeToolWithSession({ city: '杭州' }, makeSessionService(null), {
+        messages: [{ role: 'user', content: '想找兼职' }],
+        bookingWorkOrders: [
+          {
+            workOrderId: 1,
+            jobId: 2,
+            source: 'out_of_band',
+            storeCity: '杭州市',
+            ownedByCandidate: false,
+          },
+        ],
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
+      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 
     it('allows via session fact when candidate never typed the city this session', async () => {

@@ -55,6 +55,15 @@ function joinWithCommaAndOr(labels: string[] | undefined): string {
   return labels.join(' / ');
 }
 
+/**
+ * 候选人可见话术里的品牌只能是品牌名：纯数字（模型把品牌 ID 当品牌名传进来，或目录外
+ * ID 被拒后的原文）不得念给候选人——「100006在武进区这片暂时没找到」读起来像乱码。
+ * 观测用 querySummary 不受此过滤，仍能看到原始入参。
+ */
+function candidateFacingBrandLabels(labels: string[] | undefined): string[] {
+  return (labels ?? []).filter((label) => !/^\s*\d+\s*$/.test(label));
+}
+
 function buildQuerySummary(ctx: NoMatchQueryContext): string {
   const brand = joinWithCommaAndOr(ctx.brandLabels);
   const store = joinWithCommaAndOr(ctx.storeLabels);
@@ -83,7 +92,7 @@ function buildQuerySummary(ctx: NoMatchQueryContext): string {
 export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
   const querySummary = buildQuerySummary(ctx);
 
-  const brand = joinWithCommaAndOr(ctx.brandLabels);
+  const brand = joinWithCommaAndOr(candidateFacingBrandLabels(ctx.brandLabels));
   const store = joinWithCommaAndOr(ctx.storeLabels);
   const region = joinWithCommaAndOr(ctx.regionLabels);
   const city = joinWithCommaAndOr(ctx.cityLabels);
@@ -152,14 +161,14 @@ export function buildBrandNotPartneredScript(ctx: {
   cityLabels?: string[];
   regionLabels?: string[];
 }): NoMatchScript {
-  const brand = joinWithCommaAndOr(ctx.brandLabels) || '这个品牌';
+  const brand = joinWithCommaAndOr(candidateFacingBrandLabels(ctx.brandLabels)) || '这个品牌';
   const region = joinWithCommaAndOr(ctx.regionLabels);
   const city = joinWithCommaAndOr(ctx.cityLabels);
   const place = region || city;
   const placePhrase = place ? `${place}这边` : '我这边';
 
   return {
-    querySummary: `${brand}未在合作品牌目录中${place ? `（候选人查询范围：${place}）` : ''}`,
+    querySummary: `${joinWithCommaAndOr(ctx.brandLabels) || brand}未在合作品牌目录中${place ? `（候选人查询范围：${place}）` : ''}`,
     candidateMessage:
       `${brand}我们这边目前没有合作，所以接不到他家的岗位，不好意思～` +
       `${placePhrase}还有别的品牌在招人，你接受其他品牌吗？接受的话我发几个给你看看。`,

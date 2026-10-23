@@ -38,6 +38,8 @@ describe('SessionStateService（S1-S6）', () => {
   const redis = {
     get: jest.fn().mockResolvedValue(null),
     getHash: jest.fn(),
+    readHashFieldSnapshot: jest.fn(),
+    compareHashField: jest.fn(),
     patchHash: jest.fn(),
     backfillHash: jest.fn().mockResolvedValue(undefined),
     del: jest.fn().mockResolvedValue(true),
@@ -61,6 +63,16 @@ describe('SessionStateService（S1-S6）', () => {
     redis.getHash.mockImplementation(async () =>
       Object.keys(hash).length > 0 ? { ...hash } : null,
     );
+    redis.readHashFieldSnapshot.mockImplementation(async (_key, field: string) => ({
+      raw: JSON.stringify(hash[field]) ?? null,
+      generation: Object.keys(hash).length ? 'test-generation' : null,
+      value: hash[field] ?? null,
+    }));
+    redis.compareHashField.mockImplementation(async (_key, field: string, snapshot, value) => {
+      if ((JSON.stringify(hash[field]) ?? null) !== snapshot.raw) return false;
+      hash[field] = value;
+      return true;
+    });
     redis.patchHash.mockImplementation(async (_key, patch: Record<string, unknown>) => {
       hash = { ...hash, ...patch };
     });
@@ -781,6 +793,7 @@ describe('SessionStateService（S1-S6）', () => {
       'factsv2:corp-1:user-1:session-1',
       expect.any(Object),
       config.sessionFactsTtl,
+      ['stage:corp-1:user-1:session-1'],
     );
   });
 
@@ -1003,6 +1016,48 @@ describe('SessionStateService（S1-S6）', () => {
     expect(saved?.preferences.position?.value).toEqual(['服务员']);
   });
 
+  it('late completed identity cannot replace newer identity or its timestamp', async () => {
+    const newer = sessionFactValue('新姓名', {
+      confidence: 'high',
+      source: 'candidate_quote',
+      evidence: 'new',
+      extractedAt: '2026-10-21T02:00:00Z',
+    });
+    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', { name: newer });
+    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', {
+      name: sessionFactValue('旧姓名', {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: 'old',
+        extractedAt: '2026-10-21T01:00:00Z',
+      }),
+    });
+    expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.name).toEqual(
+      newer,
+    );
+  });
+
+  it('completion CAS conflict fails for local repair instead of overwriting or retrying', async () => {
+    redis.compareHashField.mockResolvedValueOnce(false);
+    await expect(
+      service.saveCompletedCollectionFacts(
+        'corp-1',
+        'user-1',
+        'session-1',
+        {
+          name: sessionFactValue('旧姓名', {
+            confidence: 'high',
+            source: 'candidate_quote',
+            evidence: 'old',
+          }),
+        },
+        { requireExisting: true },
+      ),
+    ).rejects.toThrow('changed_or_expired');
+    expect(redis.compareHashField).toHaveBeenCalledTimes(1);
+    expect(redis.patchHash).not.toHaveBeenCalled();
+  });
+
   it('轮末 LLM 纯偏好提取不会覆盖 booking high 身份字段', async () => {
     const bookingIdentity = {
       name: sessionFactValue('兮兮', {
@@ -1218,6 +1273,52 @@ describe('SessionStateService（S1-S6）', () => {
         evidence: '地图解析',
       }),
     ).resolves.toBe('skipped_city_conflict');
+  });
+
+  it('city=null 全国搜得到的工具确权只记 medium，候选人亲口陈述可覆盖它（BadCase 复核 [17]）', async () => {
+    hash = {};
+    await expect(
+      service.saveToolAttestedCity('corp-1', 'user-1', 'session-4', {
+        city: '北京',
+        source: 'geocode_unique',
+        evidence: 'geocode 唯一解析：北京市东城区王府井',
+        nationwideSearch: true,
+      }),
+    ).resolves.toBe('written');
+    const written = await service.getFacts('corp-1', 'user-1', 'session-4');
+    expect(written?.preferences.city).toEqual(
+      expect.objectContaining({ value: '北京', confidence: 'medium', source: 'system' }),
+    );
+
+    // 候选人随后亲口说在佛山（candidate_quote/high）要能压过全国搜写入的 medium。
+    await service.saveFacts(
+      'corp-1',
+      'user-1',
+      'session-4',
+      softFacts({
+        city: {
+          value: '佛山',
+          confidence: 'high',
+          source: 'candidate_quote',
+          evidence: '我在佛山',
+        },
+      }),
+    );
+    expect((await service.getFacts('corp-1', 'user-1', 'session-4'))?.preferences.city?.value).toBe(
+      '佛山',
+    );
+
+    // 带出处 city 限定搜索（nationwideSearch=false / 缺省）仍按 high 入档。
+    hash = {};
+    await service.saveToolAttestedCity('corp-1', 'user-1', 'session-5', {
+      city: '上海',
+      source: 'geocode_unique',
+      evidence: '地图解析',
+      nationwideSearch: false,
+    });
+    expect((await service.getFacts('corp-1', 'user-1', 'session-5'))?.preferences.city).toEqual(
+      expect.objectContaining({ value: '上海', confidence: 'high' }),
+    );
   });
 
   it('城市确权后剔除白名单能反推为其他城市的区域/地点，白名单外的值保留', async () => {

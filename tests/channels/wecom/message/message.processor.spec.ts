@@ -1,3 +1,5 @@
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
+import { CandidateBlacklistFilterRule } from '@channels/wecom/message/application/filter-rules/message-filter.rules';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
@@ -7,7 +9,7 @@ import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service'
 import { MessageDeduplicationService } from '@wecom/message/runtime/deduplication.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { MessageWorkerManagerService } from '@wecom/message/runtime/message-worker-manager.service';
-import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { FilterReason } from '@enums/message-filter.enum';
@@ -56,8 +58,9 @@ describe('MessageProcessor', () => {
     getMessageMergeEnabled: jest.fn().mockResolvedValue(true),
   };
 
-  const mockUserHostingService = {
-    isAnyPaused: jest.fn().mockResolvedValue({ paused: false }),
+  const blacklistFilter = { evaluate: jest.fn().mockResolvedValue({ historyOnly: true }) };
+  const mockActionPermitService = {
+    evaluate: jest.fn().mockResolvedValue({ allowed: true }),
   };
 
   const mockDeduplicationService = {
@@ -75,13 +78,15 @@ describe('MessageProcessor', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: QueueFailureService, useValue: { exhausted: jest.fn() } },
         MessageProcessor,
+        { provide: CandidateBlacklistFilterRule, useValue: blacklistFilter },
         MessageWorkerManagerService,
         { provide: getQueueToken('message-merge'), useValue: mockQueue },
         { provide: MessagePipelineService, useValue: mockPipeline },
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
-        { provide: UserHostingService, useValue: mockUserHostingService },
+        { provide: ActionPermitService, useValue: mockActionPermitService },
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
         { provide: MessageTrackingService, useValue: mockMessageTracking },
         { provide: ConfigService, useValue: mockConfigService },
@@ -108,8 +113,9 @@ describe('MessageProcessor', () => {
 
   describe('dropIfHostingPaused', () => {
     it('drops batch and dedup-marks every messageId when paused (badcase 1tsdimfg)', async () => {
-      mockUserHostingService.isAnyPaused.mockResolvedValueOnce({
-        paused: true,
+      mockActionPermitService.evaluate.mockResolvedValueOnce({
+        allowed: false,
+        reason: 'hosting_paused',
         matchedId: 'chat-123',
       });
       const messages = [
@@ -126,11 +132,13 @@ describe('MessageProcessor', () => {
         messages.map((message: { messageId: string }) => message.messageId),
         'job-9',
       );
-      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
-        'chat-123',
-        'c-1',
-        undefined,
-      ]);
+      expect(mockActionPermitService.evaluate).toHaveBeenCalledWith({
+        chatId: 'chat-123',
+        action: 'reply',
+        botImId: undefined,
+        groupId: undefined,
+        candidateIds: ['c-1', undefined],
+      });
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledTimes(2);
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-2');
@@ -142,7 +150,11 @@ describe('MessageProcessor', () => {
     });
 
     it('补记只存历史原因失败时仍完成丢弃', async () => {
-      mockUserHostingService.isAnyPaused.mockResolvedValueOnce({ paused: true, matchedId: 'c-1' });
+      mockActionPermitService.evaluate.mockResolvedValueOnce({
+        allowed: false,
+        reason: 'hosting_paused',
+        matchedId: 'c-1',
+      });
       mockChatSession.markHistoryOnly.mockRejectedValueOnce(new Error('db down'));
       const messages = [{ chatId: 'chat-1', messageId: 'msg-1', imContactId: 'c-1' }];
 
@@ -153,7 +165,7 @@ describe('MessageProcessor', () => {
     });
 
     it('returns false and does not touch dedup when not paused', async () => {
-      mockUserHostingService.isAnyPaused.mockResolvedValueOnce({ paused: false });
+      mockActionPermitService.evaluate.mockResolvedValueOnce({ allowed: true });
       const messages = [{ chatId: 'chat-1', messageId: 'msg-1', imContactId: 'c-1' }];
 
       const dropped = await (processor as any).dropIfHostingPaused('chat-1', messages, 'job-1');
@@ -252,5 +264,20 @@ describe('MessageProcessor', () => {
       maxConcurrency: 20,
       messageMergeEnabled: true,
     });
+  });
+  it('enforces a blacklist added after intake before acknowledging the worker batch', async () => {
+    const message = { chatId: 'chat', messageId: 'message', imBotId: 'bot' } as never;
+    mockActionPermitService.evaluate.mockResolvedValueOnce({
+      allowed: false,
+      reason: 'candidate_blacklisted',
+    });
+    const drop = processor as unknown as {
+      dropIfHostingPaused(chat: string, messages: unknown[], job: string): Promise<boolean>;
+    };
+    expect(await drop.dropIfHostingPaused('chat', [message], 'job')).toBe(true);
+    expect(blacklistFilter.evaluate).toHaveBeenCalledWith(message);
+    expect(blacklistFilter.evaluate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDeduplicationService.markMessageAsProcessedAsync.mock.invocationCallOrder[0],
+    );
   });
 });

@@ -1,3 +1,5 @@
+import { RedisLeaseService } from '@infra/queue/redis-lease.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -35,6 +37,8 @@ describe('UserHostingService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        RedisLeaseService,
+        { provide: QueueFailureService, useValue: { report: jest.fn(), exhausted: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn((_k: string, d?: unknown) => d) } },
         UserHostingService,
         { provide: UserHostingRepository, useValue: mockUserHostingRepository },
@@ -213,6 +217,17 @@ describe('UserHostingService', () => {
   // ==================== pauseUser ====================
 
   describe('pauseUser', () => {
+    it('reports false when only the current process can enforce the pause', async () => {
+      mockUserHostingRepository.upsertPause.mockRejectedValue(new Error('DB down'));
+      mockRedisService.set.mockRejectedValue(new Error('Redis down'));
+      await expect(service.pauseUser('user1')).resolves.toBe(false);
+      expect(await service.isUserPaused('user1')).toBe(true);
+    });
+    it('reports shared success when DB fails but Redis succeeds', async () => {
+      mockUserHostingRepository.upsertPause.mockRejectedValue(new Error('DB down'));
+      await expect(service.pauseUser('user1')).resolves.toBe(true);
+    });
+
     it('should add user to memory cache and persist to DB', async () => {
       mockUserHostingRepository.upsertPause.mockResolvedValue(undefined);
 

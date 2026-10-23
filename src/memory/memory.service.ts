@@ -7,14 +7,16 @@ import type { MemoryRecallContext } from './recall.types';
 import type { SummaryEntry } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './short-term/short-term.types';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
-import type { StageState } from './short-term/short-term.types';
+import type { StageState, ShortTermMessage } from './short-term/short-term.types';
 import { formatExtractionFactLines } from './fact-lines.formatter';
 
 export interface ProactiveMemoryRecall {
-  recentMessages: Array<{
-    role: 'user' | 'assistant';
-    content: string;
-  }>;
+  recentMessages: Array<
+    { role: 'user' | 'assistant'; content: string } & Pick<
+      ShortTermMessage,
+      'source' | 'messageType' | 'isSelf' | 'payloadSource'
+    >
+  >;
   factLines: string[];
   warnings?: string[];
 }
@@ -83,7 +85,14 @@ export class MemoryService {
           (message.role === 'user' || message.role === 'assistant') &&
           message.content.trim().length > 0,
       )
-      .map((message) => ({ role: message.role, content: message.content }));
+      .map((message) => ({
+        role: message.role,
+        content: message.content,
+        source: message.source,
+        messageType: message.messageType,
+        isSelf: message.isSelf,
+        payloadSource: message.payloadSource,
+      }));
     const factLines = memory.shortTerm.sessionState?.facts
       ? formatExtractionFactLines(memory.shortTerm.sessionState.facts, {
           // 品牌唯一真相是 facts.brand；facts.preferences.brands 已退役。
@@ -130,8 +139,9 @@ export class MemoryService {
     userId: string,
     sessionId: string,
     record: InvitedGroupRecord,
+    options?: { requireExisting?: boolean },
   ): Promise<void> {
-    await this.session.saveInvitedGroup(corpId, userId, sessionId, record);
+    await this.session.saveInvitedGroup(corpId, userId, sessionId, record, options);
   }
 
   /** 写入当前程序阶段，供 advance_stage 等外部模块调用。 */

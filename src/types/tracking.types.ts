@@ -1,3 +1,4 @@
+import type { ActionDenialReason } from '@biz/action-permit/services/action-permit.service';
 /**
  * Tracking 服务类型定义
  * 消息处理生命周期追踪、Redis 实时计数
@@ -192,4 +193,4 @@ export interface MonitoringGlobalCounters {
 }
 
 /** 投递层主动丢弃回复的原因，与 DeliveryResult.skipReason 同枚举。 */
-export type DeliverySkipReason = 'output_leak' | 'hosting_paused';
+export type DeliverySkipReason = 'output_leak' | ActionDenialReason;

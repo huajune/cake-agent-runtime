@@ -118,8 +118,8 @@ export class InterventionService {
       `[Intervention] kind=${payload.kind} source=${payload.source} chatId=${payload.chatId} alerted=${alerted}`,
     );
 
-    // 飞书任务（PRD R6）：异步、不阻塞群卡片与暂停；失败由任务服务自行告警。
-    this.submitFeishuTask(payload);
+    // 暂停与通知先完成；返回前等待飞书任务被持久化到恢复队列。
+    await this.submitFeishuTask(payload);
 
     return {
       dispatched: true,
@@ -130,13 +130,16 @@ export class InterventionService {
     };
   }
 
-  private submitFeishuTask(payload: InterventionPayload): void {
+  private async submitFeishuTask(payload: InterventionPayload): Promise<void> {
     if (!this.interventionTaskService) return;
-    void this.interventionTaskService.submit(payload).catch((error: unknown) => {
-      this.logger.warn(
-        `[Intervention] 飞书任务提交异常（已忽略）: chatId=${payload.chatId} error=${toErrorMessage(error)}`,
+    try {
+      await this.interventionTaskService.submit(payload);
+    } catch (error) {
+      // Safety pause has already succeeded; queue failure must not undo it or repeat the alert.
+      this.logger.error(
+        `[Intervention] 飞书任务未持久化: chatId=${payload.chatId} error=${toErrorMessage(error)}`,
       );
-    });
+    }
   }
 
   private notifyRisk(payload: RiskInterventionPayload): Promise<boolean> {

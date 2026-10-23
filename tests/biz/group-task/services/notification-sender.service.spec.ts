@@ -126,6 +126,15 @@ describe('NotificationSenderService', () => {
       expect(messageSenderService.sendMessage).toHaveBeenCalled();
     });
 
+    it('labels prepared preview as production and tolerates webhook exceptions', async () => {
+      opsNotifierService.sendGroupTaskPreview.mockRejectedValueOnce(new Error('webhook offline'));
+      await expect(
+        service.previewPrepared(mockGroup, 'content', GroupTaskType.ORDER_GRAB),
+      ).resolves.toBeUndefined();
+      expect(opsNotifierService.sendGroupTaskPreview).toHaveBeenCalledWith(
+        expect.objectContaining({ dryRun: false }),
+      );
+    });
     it('should continue enterprise send when production feishu preview fails', async () => {
       opsNotifierService.sendGroupTaskPreview.mockResolvedValueOnce(false);
 

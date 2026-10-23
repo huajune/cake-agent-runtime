@@ -1,9 +1,8 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { Job, Queue } from 'bull';
-import { AlertLevel } from '@enums/alert.enum';
-import { toErrorMessage } from '@infra/utils/error.util';
-import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { SessionStateService } from '../short-term/session-state.service';
 import { ConsolidationService } from './consolidation.service';
 import {
@@ -23,7 +22,7 @@ export class ConsolidationProcessor implements OnModuleInit {
     private readonly session: SessionStateService,
     private readonly consolidation: ConsolidationService,
     private readonly scheduler: ConsolidationSchedulerService,
-    private readonly incidents: IncidentReporterService,
+    private readonly failures: QueueFailureService,
   ) {}
 
   onModuleInit(): void {
@@ -60,32 +59,16 @@ export class ConsolidationProcessor implements OnModuleInit {
         );
       }
     } catch (error) {
-      if (this.isFinalAttempt(job)) {
-        await this.incidents.notify({
-          code: 'memory.consolidation_failed',
-          summary: '会话记忆定时沉淀重试耗尽',
-          severity: AlertLevel.ERROR,
-          source: {
-            subsystem: 'memory',
-            component: 'ConsolidationProcessor',
-            action: 'process',
-            trigger: 'queue',
-          },
-          scope: { userId, sessionId },
-          error,
-          diagnostics: {
-            errorMessage: toErrorMessage(error),
-            totalAttempts: job.opts.attempts ?? 1,
-            payload: { corpId, userId, sessionId, botUserId, botImId },
-          },
-          dedupe: { key: `memory.consolidation_failed:${corpId}:${sessionId}` },
-        });
-      }
+      // process() runs before Bull increments attemptsMade; report through the same exhausted policy.
+      await this.failures.exhausted(
+        MEMORY_CONSOLIDATION_QUEUE,
+        {
+          ...job,
+          attemptsMade: job.attemptsMade + 1,
+        } as Job,
+        new Error(toErrorMessage(error)),
+      );
       throw error;
     }
-  }
-
-  private isFinalAttempt(job: Job<MemoryConsolidationJob>): boolean {
-    return job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
   }
 }

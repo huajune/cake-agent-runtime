@@ -13,6 +13,7 @@ import type { SessionBrandState } from '@resolution/brand/brand-resolution.types
 import type { GeocodeLocationAnchor, TurnLedger } from './turn.types';
 import type { CorpusBlock } from './corpus.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import type { ToolActionContract } from './tool-action.contract';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -30,6 +31,8 @@ export interface ToolSessionContext {
   botImId?: string;
   groupId?: string;
   turnId?: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
   contactName?: string;
 }
 
@@ -53,6 +56,11 @@ export interface ToolBookingWorkOrderRef {
   /** 海绵 `yyyy-MM-dd HH:mm`；等通知单为 null。 */
   interviewTime?: string | null;
   signUpTime?: string | null;
+  /**
+   * 门店所在城市（岗位详情 storeInfo.storeCityName）；只在本轮加载了预约地址详情时有值。
+   * 城市出处门（invite/geocode）据此把在途预约门店城市当作候选人所在城市的一档证据。
+   */
+  storeCity?: string | null;
 }
 
 export interface ToolArchiveContext {
@@ -71,10 +79,17 @@ export interface ToolArchiveContext {
   /** 与 [当前预约信息] 同门可见的工单引用（含来源）；带外工单只在这里可见，不进 active_booking。 */
   bookingWorkOrders?: ToolBookingWorkOrderRef[];
   currentFocusJob?: RecommendedJobSummary | null;
+  /** 最近候选池与已展示岗位；定位发送前核对候选人本轮点名的品牌/门店。 */
+  candidatePool?: readonly RecommendedJobSummary[];
   recentBrandPool?: string[];
   bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;
   /** 已成功拉群事实；用于阻止重复拉群及 Agent 主动续推，候选人明确点名详情时不作永久封口。 */
   invitedGroups?: InvitedGroupRecord[];
+  /**
+   * 候选人当前已在的兼职群城市（与 prompt [候选人当前所在兼职群] 同源的实时核验结果，非记忆；
+   * 核验失败/未核验为空数组）。城市出处门把它当作候选人所在城市的一档证据。
+   */
+  realtimeGroupCities?: string[];
 }
 
 export interface ToolTurnInputContext {
@@ -124,6 +139,7 @@ export type ToolBuilder = (context: ToolBuildContext) => AiTool;
 export interface ToolDefinition {
   name: string;
   description: string;
+  contract: ToolActionContract;
   create: ToolBuilder;
 }
 
@@ -135,6 +151,7 @@ export function createToolDefinition(def: ToolDefinition): ToolDefinition {
 /** 运行时工具注册记录。 */
 export interface ToolRegistration {
   name: string;
+  contract: ToolActionContract;
   source: 'built-in' | 'mcp';
   /** MCP 工具：预构建的 tool */
   tool?: AiTool;

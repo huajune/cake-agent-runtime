@@ -152,6 +152,10 @@ export class MessageTrackingService {
    * 用于排障 / 回归测试断言。
    */
   recordReplySkipped(messageId: string, reason: DeliverySkipReason): void {
+    if (reason !== 'hosting_paused' && reason !== 'output_leak') {
+      this.logger.warn(`[Monitoring] 投递跳过 [${messageId}] reason=${reason}`);
+      return;
+    }
     const counterKey: keyof MonitoringGlobalCounters =
       reason === 'hosting_paused' ? 'totalHostingPausedSkipped' : 'totalOutputLeakSkipped';
     this.cacheService.incrementCounter(counterKey, 1).catch((err) => {

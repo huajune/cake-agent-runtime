@@ -5,6 +5,13 @@
  * BookingCollectionForm，唯一外发形状是 `{ jobId, interviewTime?, labelList }`。
  */
 
+import { createHash } from 'crypto';
+import type { ToolActionService } from './actions/tool-action.service';
+import {
+  actionReceiptFields,
+  isUnresolvedAction,
+  unresolvedActionReceipt,
+} from './actions/business-action.util';
 import type { GroupInviteService } from '@biz/group-task/services/group-invite.service';
 import type { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import type { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -35,11 +42,14 @@ import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
+  buildWaitNoticeReplyGuide,
   resolveInterviewReceiptMode,
   resolveManualInterviewGroupHandling,
 } from '@tools/booking/booking-reply-format.util';
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
 import { projectBookingModelOutput } from '@tools/booking/booking-model-output.util';
+import { buildDuplicateBookingReceipt } from '@tools/booking/duplicate-booking-receipt.util';
+import { recoverDuplicateSignup } from '@tools/booking/duplicate-signup-recovery.util';
 import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
 import type { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import {
@@ -52,6 +62,7 @@ import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/j
 import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
 import {
   buildPostBookingGroupInviteGuide,
+  buildPostBookingUnknownInviteHandoff,
   describePostBookingGroupInviteForEvent,
   runPostBookingGroupInvite,
 } from '@tools/invite/post-booking-group-invite';
@@ -76,7 +87,7 @@ const DESCRIPTION = `提交面试报名。候选人资料全部来自已授权�
 - wait_notice 岗位：不要传 interviewTime。
 - 不得传姓名、手机号、年龄、性别或补充标签；这些值只能由持久表单生成 labelList。
 - 同一会话代多人报名时必须严格串行：当前人的 precheck ready_to_book 后立即调用本工具，成功后才能 precheck 下一人；不得并行办理多人。
-- booking success=true 前禁止声称已报名。`;
+- 只有 booking success=true 或 booking.already_booked 回执才可如实告知已报名；后者须按回执区分已核实预约与待人工核实的已有报名。`;
 
 const inputSchema = z.object({
   jobId: z.coerce.number().int().positive().describe('本轮 precheck 已确认可提交的岗位 ID'),
@@ -88,6 +99,7 @@ const inputSchema = z.object({
 });
 
 export interface BookingAdjudicationDeps {
+  actions?: ToolActionService;
   collectionForms?: CollectionFormService;
   sessionFacts?: SessionStateService;
   identityAnchors?: string;
@@ -183,8 +195,9 @@ export function buildInterviewBookingTool(
   opsEventsRecorder: OpsEventsRecorderService,
   deps?: BookingAdjudicationDeps,
 ): ToolBuilder {
-  return (context) =>
-    tool({
+  return (context) => {
+    const duplicateReceipts = new Map<string, Record<string, unknown>>();
+    return tool({
       description: DESCRIPTION,
       inputSchema,
       toModelOutput: ({ output }) => ({ type: 'json', value: projectBookingModelOutput(output) }),
@@ -279,6 +292,9 @@ export function buildInterviewBookingTool(
               }),
             );
           }
+          const duplicateReceiptKey = `${jobId}:${form.candidateRef}`;
+          const recoveredReceipt = duplicateReceipts.get(duplicateReceiptKey);
+          if (recoveredReceipt) return recoveredReceipt;
           const isAdditionalCandidate = form.candidateScope === 'additional';
           const verdict = verdictOf(form);
           if (
@@ -497,36 +513,16 @@ export function buildInterviewBookingTool(
             // 另一账号刚建单时，这里也会命中。此时预约**已经存在**，不是"没提交成功"——
             // 回复必须如实说已约上，不得编造系统故障或承诺稍后重提（生产 batch …_1789111221226）。
             context.ledger.jobs.bookingSucceeded = true;
-            const existingInterviewTimeHuman = duplicate.interview_time
-              ? formatInterviewTimeForReply(duplicate.interview_time)
-              : undefined;
-            const scopeText = duplicate.matchedBy === 'brand' ? '同品牌' : '该岗位';
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
-              outcome: `${scopeText}已有在途预约工单，本次未重复提交；预约已存在，不是失败`,
-              replyInstruction:
-                (duplicate.crossAccount
-                  ? `候选人在${scopeText}的面试预约已经存在（由其它托管账号/渠道提交），如实告诉候选人「你之前已经报过这个岗位/品牌」、不用再提交；`
-                  : `${scopeText}的面试预约已经存在，如实告诉候选人已经约上、不用再提交；`) +
-                (existingInterviewTimeHuman
-                  ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
-                  : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
-                '禁止把已有预约描述为系统故障、提交失败或尚待再次提交。' +
-                (duplicate.crossAccount
-                  ? '本账号无法操作该工单，随后调用 request_handoff(reasonCode="duplicate_signup") 转人工核实。'
-                  : '改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。'),
-              details: {
-                existingWorkOrderId: duplicate.work_order_id,
-                alreadyBookedSource: 'active_booking_dedup',
-                matchedBy: duplicate.matchedBy,
-                crossAccount: duplicate.crossAccount,
-                ...(duplicate.interview_time
-                  ? { existingInterviewTime: duplicate.interview_time }
-                  : {}),
-                ...(existingInterviewTimeHuman
-                  ? { _existingInterviewTimeHuman: existingInterviewTimeHuman }
-                  : {}),
-              },
+            if (duplicate.matchedBy === 'job') {
+              context.ledger.jobs.confirmedBookingJobIds = [
+                ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), jobId]),
+              ];
+            }
+            return buildDuplicateBookingReceipt({
+              workOrderId: duplicate.work_order_id,
+              interviewTime: duplicate.interview_time,
+              matchedBy: duplicate.matchedBy,
+              crossAccount: duplicate.crossAccount,
             });
           }
 
@@ -579,14 +575,153 @@ export function buildInterviewBookingTool(
             );
           }
 
-          const result = await spongeService.bookInterview(
-            { jobId, interviewTime, labelList: payload.labelList },
-            tokenContext,
-          );
+          const jobInfo = readJobInfo(job);
+          const opsEventPayload = {
+            job_id: jobId,
+            interview_time: interviewTime ?? null,
+            candidate_name: identity.name,
+            phone: identity.phone,
+            candidate_age: Number(identity.age),
+            candidate_gender: identity.gender,
+            brand_name: jobInfo.brandName,
+            store_name: jobInfo.storeName,
+            job_name: jobInfo.jobName,
+            turn_id: context.session.turnId ?? null,
+          };
+          const bookingParameters = { jobId, interviewTime, labelList: payload.labelList };
+          const action = deps.actions
+            ? await deps.actions.executeSponge(
+                context,
+                {
+                  kind: 'sponge.booking',
+                  target: `booking:${identity.phone}:${jobId}`,
+                  parameters: bookingParameters,
+                  recovery: {
+                    userId: scope.userId,
+                    sessionId: scope.sessionId,
+                    botUserId: scope.botUserId,
+                    botImId: context.session.botImId ?? '',
+                    phone: identity.phone,
+                    jobId,
+                    candidateRef: form.candidateRef,
+                    formDigest: createHash('sha256').update(JSON.stringify(form)).digest('hex'),
+                    additional: isAdditionalCandidate,
+                    identity,
+                    opsEventPayload,
+                    testing: context.runtime.strategySource === 'testing',
+                  },
+                },
+                () => spongeService.bookInterview(bookingParameters, tokenContext),
+              )
+            : undefined;
+          if (action && (isUnresolvedAction(action) || !action.result))
+            return unresolvedActionReceipt(context, action, '报名', jobId);
+          const result = action
+            ? action.result!
+            : await spongeService.bookInterview(bookingParameters, tokenContext);
+          if (!result.success && result.duplicateSignupReason) {
+            // 海绵已确认“报过”，后续读写失败不能把事实降级成预约失败或再次提交。
+            const spongeRejection = { context, jobId, message: result.message ?? '已报名' };
+            committedBookingFallback = {
+              ...buildDuplicateBookingReceipt({ crossAccount: true, spongeRejection }),
+              ...(action ? actionReceiptFields(action) : {}),
+              candidateScope: isAdditionalCandidate ? 'additional' : 'primary',
+            };
+            duplicateReceipts.set(duplicateReceiptKey, committedBookingFallback);
+            context.ledger.jobs.bookingSucceeded = true;
+            const recovered = await recoverDuplicateSignup({
+              spongeService,
+              candidateName: identity.name,
+              phone: identity.phone,
+              tokenContext,
+              target: { jobId, brandName: job.basicInfo.brandName },
+              reason: result.duplicateSignupReason,
+              onFailure: (message) =>
+                logger.warn(`[booking] 重复报名工单核实失败，转人工: ${message}`),
+            });
+            const ownedOrder = recovered.ownedOrder;
+            committedBookingFallback = {
+              ...buildDuplicateBookingReceipt({
+                workOrderId: recovered.match?.workOrderId,
+                interviewTime: ownedOrder?.interviewTime,
+                matchedBy: recovered.match?.matchedBy,
+                crossAccount: !ownedOrder,
+                spongeRejection,
+              }),
+              ...(action ? actionReceiptFields(action) : {}),
+              candidateScope: isAdditionalCandidate ? 'additional' : 'primary',
+            };
+            duplicateReceipts.set(duplicateReceiptKey, committedBookingFallback);
+            if (!ownedOrder) return committedBookingFallback;
+            // 只采用已有工单的真实岗位和时间；同品牌另一岗位不得伪装成当前请求已约上。
+            const existingJobId = ownedOrder.jobId ?? null;
+            if (!isAdditionalCandidate && existingJobId != null) {
+              context.ledger.jobs.confirmedBookingJobIds = [
+                ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), existingJobId]),
+              ];
+              await runPostBookingWrite('重复报名 active booking 指针写入', () =>
+                longTermService.setActiveBooking(
+                  scope.corpId,
+                  scope.userId,
+                  ownedOrder.workOrderId,
+                  {
+                    job_id: existingJobId,
+                    interview_time: ownedOrder.interviewTime ?? null,
+                  },
+                ),
+              );
+            }
+            if (existingJobId === jobId)
+              await runPostBookingWrite('重复报名收资表单办结', () =>
+                deps.collectionForms!.persist(
+                  scope,
+                  markSubmitted({ ...form, scheduleDraft: undefined }, ownedOrder.workOrderId),
+                ),
+              );
+            await runPostBookingWrite('重复报名预约快照失效', async () => {
+              await deps.bookingSnapshot?.invalidate({
+                phone: identity.phone,
+                botImId: context.session.botImId,
+                corpId: scope.corpId,
+                userId: scope.userId,
+              });
+            });
+            const groupInvite = await runPostBookingGroupInvite({
+              context,
+              groupInviteService: deps.groupInvite,
+              sessionService: deps.sessionFacts,
+              logger,
+              isAdditionalCandidate,
+              hasOtherActiveBookings: otherActiveBookings.length > 0,
+            });
+            const receipt = {
+              ...committedBookingFallback,
+              groupInvite,
+              _groupInviteGuide: buildPostBookingGroupInviteGuide(groupInvite),
+              ...(groupInvite.failureReason === 'result_unknown'
+                ? {
+                    sideEffect: buildPostBookingUnknownInviteHandoff(
+                      context,
+                      groupInvite,
+                      jobId,
+                      ownedOrder.workOrderId,
+                    ),
+                  }
+                : {}),
+            };
+            duplicateReceipts.set(duplicateReceiptKey, receipt);
+            return receipt;
+          }
           context.ledger.jobs.bookingSucceeded = result.success;
+          if (result.success && !isAdditionalCandidate) {
+            context.ledger.jobs.confirmedBookingJobIds = [
+              ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), jobId]),
+            ];
+          }
 
           const baseToolOutput = {
             ...result,
+            ...(action ? actionReceiptFields(action) : {}),
             requestInfo: {
               jobId,
               interviewTime: interviewTime ?? null,
@@ -600,19 +735,22 @@ export function buildInterviewBookingTool(
             // 绝不能落入下方通用失败 catch 后谎报“预约失败”。
             committedBookingFallback = {
               ...baseToolOutput,
+              interviewMethod: analysis.interviewMeta.method,
+              interviewProcessRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
               _outcome: '预约成功，可以告知候选人资料已提交',
               _replyInstruction:
                 '预约已真实成功。即使本地后处理异常，也必须告知候选人报名成功；禁止改口为预约失败。',
               ...(interviewTime
                 ? { _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime) }
                 : {
-                    _waitNoticeReplyGuide:
-                      '告知候选人资料已提交，面试官会电话联系；请保持电话畅通，禁止编造时间。',
+                    _waitNoticeReplyGuide: buildWaitNoticeReplyGuide({
+                      interviewMethod: analysis.interviewMeta.method,
+                      processRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
+                    }),
                   }),
             };
           }
 
-          const jobInfo = readJobInfo(job);
           const interviewType = analysis.interviewMeta.method ?? undefined;
 
           if (!result.success) {
@@ -625,10 +763,21 @@ export function buildInterviewBookingTool(
               after: rewritten,
             });
             await deps.collectionForms.persist(scope, rewritten);
-            recordBookingEvent(opsEventsRecorder, context, 'booking.failed', jobId, interviewTime, {
-              reason: result.message ?? null,
-            });
-            pauseUserHostingAsync(userHostingService, context.session.sessionId, '预约失败');
+            await recordBookingEvent(
+              opsEventsRecorder,
+              context,
+              'booking.failed',
+              jobId,
+              interviewTime,
+              {
+                reason: result.message ?? null,
+              },
+            );
+            const hostingPaused = await pauseUserHosting(
+              userHostingService,
+              context.session.sessionId,
+              '预约失败',
+            );
 
             const toolResult = {
               ...baseToolOutput,
@@ -646,7 +795,7 @@ export function buildInterviewBookingTool(
                   applyErrorList: result.applyErrorList ?? [],
                 },
               }),
-              hostingPaused: true,
+              hostingPaused,
               // 报名失败类介入落 handoff_events 底账（recordOnly：托管已在上面暂停、卡片由 notifyBooking 发）
               sideEffect: buildBookingFailureRecordIntent({
                 context,
@@ -656,7 +805,7 @@ export function buildInterviewBookingTool(
                 failureReason: result.message ?? `海绵返回 code=${result.code}`,
               }),
             };
-            void notifyBooking(
+            await notifyBooking(
               privateChatNotifier,
               context,
               identity,
@@ -668,92 +817,94 @@ export function buildInterviewBookingTool(
             return toolResult;
           }
 
-          let submitted: BookingCollectionForm;
-          if (result.workOrderId != null) {
-            submitted = markSubmitted(form, result.workOrderId);
-            if (!isAdditionalCandidate) {
-              await runPostBookingWrite('active booking 指针写入', () =>
-                longTermService.setActiveBooking(
+          if (!deps.actions || result.workOrderId == null) {
+            let submitted: BookingCollectionForm;
+            if (result.workOrderId != null) {
+              submitted = markSubmitted(form, result.workOrderId);
+              if (!isAdditionalCandidate) {
+                await runPostBookingWrite('active booking 指针写入', () =>
+                  longTermService.setActiveBooking(
+                    scope.corpId,
+                    scope.userId,
+                    result.workOrderId as number,
+                    { job_id: jobId, interview_time: interviewTime ?? null },
+                  ),
+                );
+              }
+            } else {
+              submitted = escalate(form, 'booking_success_missing_work_order_id');
+              logger.warn('[booking] 预约成功但缺少 workOrderId，表单转人工以阻止重复提交');
+            }
+            await runPostBookingWrite('收资表单办结写入', () =>
+              deps.collectionForms!.persist(scope, submitted),
+            );
+
+            if (result.workOrderId != null && !isAdditionalCandidate) {
+              await runPostBookingWrite('会话身份事实写入', async () => {
+                const formFact = (value: string, evidence: string) =>
+                  sessionFactValue(value, {
+                    confidence: 'high',
+                    source: 'candidate_quote',
+                    evidence,
+                    extractedAt: new Date().toISOString(),
+                  });
+                await deps.sessionFacts?.saveCompletedCollectionFacts(
                   scope.corpId,
                   scope.userId,
-                  result.workOrderId as number,
-                  { job_id: jobId, interview_time: interviewTime ?? null },
-                ),
-              );
-            }
-          } else {
-            submitted = escalate(form, 'booking_success_missing_work_order_id');
-            logger.warn('[booking] 预约成功但缺少 workOrderId，表单转人工以阻止重复提交');
-          }
-          await runPostBookingWrite('收资表单办结写入', () =>
-            deps.collectionForms!.persist(scope, submitted),
-          );
-
-          if (result.workOrderId != null && !isAdditionalCandidate) {
-            await runPostBookingWrite('会话身份事实写入', async () => {
-              const formFact = (value: string, evidence: string) =>
-                sessionFactValue(value, {
-                  confidence: 'high',
-                  source: 'candidate_quote',
-                  evidence,
-                  extractedAt: new Date().toISOString(),
-                });
-              await deps.sessionFacts?.saveCompletedCollectionFacts(
-                scope.corpId,
-                scope.userId,
-                scope.sessionId,
-                {
-                  name: formFact(identity.name, '收资表单办结：姓名'),
-                  phone: formFact(identity.phone, '收资表单办结：手机号'),
-                  age: formFact(identity.age, '收资表单办结：年龄'),
-                  gender: sessionFactValue(identity.gender, {
-                    confidence: 'high',
-                    source: 'system',
-                    evidence: '收资表单办结：性别',
-                    extractedAt: new Date().toISOString(),
-                  }),
-                },
-              );
-            });
-            // 报名成功后失效该手机号的预约快照缓存，并把手机号→会话索引写下（补偿扫描反查用）。
-            await runPostBookingWrite('预约快照失效', async () => {
-              await deps.bookingSnapshot?.invalidate({
-                phone: identity.phone,
-                botImId: context.session.botImId,
-                corpId: scope.corpId,
-                userId: scope.userId,
+                  scope.sessionId,
+                  {
+                    name: formFact(identity.name, '收资表单办结：姓名'),
+                    phone: formFact(identity.phone, '收资表单办结：手机号'),
+                    age: formFact(identity.age, '收资表单办结：年龄'),
+                    gender: sessionFactValue(identity.gender, {
+                      confidence: 'high',
+                      source: 'system',
+                      evidence: '收资表单办结：性别',
+                      extractedAt: new Date().toISOString(),
+                    }),
+                  },
+                );
               });
-            });
-            // 测试链路（统一假身份报名）不写索引：带外补偿扫描会按手机号反查到测试会话并排提醒。
-            if (context.runtime.strategySource !== 'testing') {
-              await runPostBookingWrite('手机号→会话索引写入', async () => {
-                await deps.phoneSessionIndex?.record(identity.phone, {
+              // 报名成功后失效该手机号的预约快照缓存，并把手机号→会话索引写下（补偿扫描反查用）。
+              await runPostBookingWrite('预约快照失效', async () => {
+                await deps.bookingSnapshot?.invalidate({
+                  phone: identity.phone,
+                  botImId: context.session.botImId,
                   corpId: scope.corpId,
                   userId: scope.userId,
-                  chatId: scope.sessionId,
-                  botImId: context.session.botImId ?? null,
-                  botUserId: scope.botUserId,
                 });
               });
-            }
-            const botUserId = context.session.botUserId?.trim();
-            if (botUserId) {
-              await runPostBookingWrite('长期身份档案写入', () =>
-                longTermService.writeFromBooking(
-                  scope.corpId,
-                  scope.userId,
-                  botUserId,
-                  {
-                    name: identity.name,
-                    phone: identity.phone,
-                    age: Number(identity.age),
-                    gender: identity.gender,
-                    jobId,
-                    workOrderId: result.workOrderId as number,
-                  },
-                  { sessionId: scope.sessionId, botImId: context.session.botImId },
-                ),
-              );
+              // 测试链路（统一假身份报名）不写索引：带外补偿扫描会按手机号反查到测试会话并排提醒。
+              if (context.runtime.strategySource !== 'testing') {
+                await runPostBookingWrite('手机号→会话索引写入', async () => {
+                  await deps.phoneSessionIndex?.record(identity.phone, {
+                    corpId: scope.corpId,
+                    userId: scope.userId,
+                    chatId: scope.sessionId,
+                    botImId: context.session.botImId ?? null,
+                    botUserId: scope.botUserId,
+                  });
+                });
+              }
+              const botUserId = context.session.botUserId?.trim();
+              if (botUserId) {
+                await runPostBookingWrite('长期身份档案写入', () =>
+                  longTermService.writeFromBooking(
+                    scope.corpId,
+                    scope.userId,
+                    botUserId,
+                    {
+                      name: identity.name,
+                      phone: identity.phone,
+                      age: Number(identity.age),
+                      gender: identity.gender,
+                      jobId,
+                      workOrderId: result.workOrderId as number,
+                    },
+                    { sessionId: scope.sessionId, botImId: context.session.botImId },
+                  ),
+                );
+              }
             }
           }
           // 报名成功后拉群改为程序保证（PRD R3）：首次报名成功、私聊、城市可知时直接走
@@ -767,7 +918,7 @@ export function buildInterviewBookingTool(
             isAdditionalCandidate,
             hasOtherActiveBookings: otherActiveBookings.length > 0,
           });
-          recordBookingEvent(
+          await recordBookingEvent(
             opsEventsRecorder,
             context,
             'booking.succeeded',
@@ -775,23 +926,19 @@ export function buildInterviewBookingTool(
             interviewTime,
             {
               work_order_id: result.workOrderId ?? null,
-              candidate_name: identity.name,
-              phone: identity.phone,
-              candidate_age: Number(identity.age),
-              candidate_gender: identity.gender,
-              brand_name: jobInfo.brandName,
-              store_name: jobInfo.storeName,
-              job_name: jobInfo.jobName,
-              turn_id: context.session.turnId ?? null,
+              ...opsEventPayload,
               group_invite: describePostBookingGroupInviteForEvent(groupInvite),
             },
             result.workOrderId,
           );
 
-          const manualGroup = resolveManualInterviewGroupHandling({
-            interviewRemark: analysis.normalizedRequirements.interviewRemark,
-            flowDescription: analysis.interviewMeta.demand,
-          });
+          const manualGroup =
+            groupInvite.failureReason === 'result_unknown'
+              ? null
+              : resolveManualInterviewGroupHandling({
+                  interviewRemark: analysis.normalizedRequirements.interviewRemark,
+                  flowDescription: analysis.interviewMeta.demand,
+                });
           const receiptMode = resolveInterviewReceiptMode(analysis.interviewMeta.method);
           if (receiptMode === 'unknown') {
             logger.warn(
@@ -801,9 +948,22 @@ export function buildInterviewBookingTool(
           const groupInviteGuide = buildPostBookingGroupInviteGuide(groupInvite);
           const toolResult = {
             ...baseToolOutput,
+            // 转人工前的确定性回执（handoff-receipt）按它区分等通知岗的 AI/电话/视频口径。
+            interviewMethod: analysis.interviewMeta.method,
+            interviewProcessRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
             _outcome: '预约成功，可以告知候选人面试安排',
             groupInvite,
             _groupInviteGuide: groupInviteGuide,
+            ...(groupInvite.failureReason === 'result_unknown'
+              ? {
+                  sideEffect: buildPostBookingUnknownInviteHandoff(
+                    context,
+                    groupInvite,
+                    jobId,
+                    result.workOrderId,
+                  ),
+                }
+              : {}),
             ...(otherActiveBookings.length > 0
               ? {
                   otherActiveBookings,
@@ -834,8 +994,10 @@ export function buildInterviewBookingTool(
               : {}),
             ...(!interviewTime
               ? {
-                  _waitNoticeReplyGuide:
-                    '告知候选人资料已提交，面试官会电话联系；请保持电话畅通，禁止编造时间。',
+                  _waitNoticeReplyGuide: buildWaitNoticeReplyGuide({
+                    interviewMethod: analysis.interviewMeta.method,
+                    processRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
+                  }),
                 }
               : {}),
             ...(manualGroup
@@ -856,8 +1018,8 @@ export function buildInterviewBookingTool(
                 }
               : {}),
           };
-          if (!manualGroup) {
-            void notifyBooking(
+          if (!manualGroup && action?.dispatched !== false) {
+            await notifyBooking(
               privateChatNotifier,
               context,
               identity,
@@ -871,17 +1033,28 @@ export function buildInterviewBookingTool(
         } catch (error) {
           if (committedBookingFallback) {
             logger.error(
-              `[booking] 外部预约已成功，回执后处理异常（保持成功口径）: ${toErrorMessage(error)}`,
+              `[booking] 外部已确认报名状态，回执后处理异常（保留已报名口径）: ${toErrorMessage(error)}`,
             );
             context.ledger.jobs.bookingSucceeded = true;
             return committedBookingFallback;
           }
           logger.error(`预约面试失败: ${toErrorMessage(error)}`);
           context.ledger.jobs.bookingSucceeded = false;
-          recordBookingEvent(opsEventsRecorder, context, 'booking.failed', jobId, interviewTime, {
-            reason: toErrorMessage(error),
-          });
-          pauseUserHostingAsync(userHostingService, context.session.sessionId, '预约异常');
+          await recordBookingEvent(
+            opsEventsRecorder,
+            context,
+            'booking.failed',
+            jobId,
+            interviewTime,
+            {
+              reason: toErrorMessage(error),
+            },
+          );
+          const hostingPaused = await pauseUserHosting(
+            userHostingService,
+            context.session.sessionId,
+            '预约异常',
+          );
           return {
             ...buildToolError({
               errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
@@ -890,7 +1063,7 @@ export function buildInterviewBookingTool(
                 '用真人招募者口吻简短说明会让同事确认，并停止继续推进；不要透露接口错误。',
               details: { jobId, reason: toErrorMessage(error) },
             }),
-            hostingPaused: true,
+            hostingPaused,
             sideEffect: buildBookingFailureRecordIntent({
               context,
               jobId,
@@ -902,6 +1075,7 @@ export function buildInterviewBookingTool(
         }
       },
     });
+  };
 }
 
 function readIdentity(
@@ -973,10 +1147,17 @@ async function buildLabelList(params: {
   return { labelList };
 }
 
-function pauseUserHostingAsync(service: UserHostingService, chatId: string, reason: string): void {
-  void service
-    .pauseUser(chatId, { source: 'interview_booking', reason })
-    .catch((error: unknown) => logger.error(`[booking] 暂停托管失败: ${toErrorMessage(error)}`));
+async function pauseUserHosting(
+  service: UserHostingService,
+  chatId: string,
+  reason: string,
+): Promise<boolean> {
+  try {
+    return (await service.pauseUser(chatId, { source: 'interview_booking', reason })) === true;
+  } catch (error) {
+    logger.error(`[booking] 暂停托管失败: ${toErrorMessage(error)}`);
+    return false;
+  }
 }
 
 /**
@@ -994,7 +1175,7 @@ async function runPostBookingWrite(
   }
 }
 
-function recordBookingEvent(
+async function recordBookingEvent(
   recorder: OpsEventsRecorderService,
   context: ToolBuildContext,
   eventName: 'booking.failed' | 'booking.succeeded',
@@ -1002,15 +1183,16 @@ function recordBookingEvent(
   interviewTime: string | undefined,
   payload: Record<string, unknown>,
   workOrderId?: number | null,
-): void {
+): Promise<void> {
   const suffix =
     workOrderId != null
       ? String(workOrderId)
       : `${context.session.sessionId}:${eventName}:${jobId}:${interviewTime ?? 'wait_notice'}`;
-  void recorder.recordEvent({
+  await recorder.recordEvent({
     corpId: context.session.corpId,
     eventName,
     idempotencyKey: suffix,
+    ...(context.session.inputOccurredAt ? { occurredAt: context.session.inputOccurredAt } : {}),
     botImId: context.session.botImId,
     managerName: context.session.botUserId,
     userId: context.session.userId,
@@ -1054,21 +1236,24 @@ async function notifyBooking(
   toolOutput: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await notifier.notifyInterviewBookingResult({
-      candidateName: identity.name,
-      contactName: context.session.contactName,
-      phone: identity.phone,
-      genderLabel: identity.gender,
-      ageText: `${identity.age}岁`,
-      interviewTime: interviewTime ?? '等待通知（面试官电话联系）',
-      interviewType,
-      brandName: job.brandName,
-      storeName: job.storeName,
-      jobName: job.jobName,
-      botUserName: context.session.botUserId,
-      botImId: context.session.botImId,
-      toolOutput,
-    });
+    await notifier.notifyInterviewBookingResult(
+      {
+        candidateName: identity.name,
+        contactName: context.session.contactName,
+        phone: identity.phone,
+        genderLabel: identity.gender,
+        ageText: `${identity.age}岁`,
+        interviewTime: interviewTime ?? '等待通知（面试官电话联系）',
+        interviewType,
+        brandName: job.brandName,
+        storeName: job.storeName,
+        jobName: job.jobName,
+        botUserName: context.session.botUserId,
+        botImId: context.session.botImId,
+        toolOutput,
+      },
+      context.session,
+    );
   } catch (error) {
     logger.error(`面试预约通知发送异常: ${toErrorMessage(error)}`);
   }

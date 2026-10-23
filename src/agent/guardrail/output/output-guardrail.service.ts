@@ -1,3 +1,5 @@
+import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
+import { mergeLegacyGuardBookings } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -12,6 +14,7 @@ import type { TurnFactsSnapshot, TurnLedger } from '@shared-types/turn.types';
 import { resolveActiveLaborFormValue, selectVisibleSessionJobs } from '@resolution/labor-form';
 import { projectTurnHints } from '@resolution/turn-hints/reducer';
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type {
   GuardViolation,
@@ -32,7 +35,7 @@ import {
   buildStudentAcceptanceEvidence,
   type StudentAcceptanceEvidence,
 } from './rules/student-acceptance.rule';
-import type { RuleContradiction } from './output-rule.types';
+import { asRecord, type RuleContradiction } from './output-rule.types';
 import { OutboundReplySanitizer } from './sanitizer/outbound-reply-sanitizer';
 
 const RECENT_USER_TEXTS_LIMIT = 8;
@@ -52,6 +55,8 @@ export class OutputGuardrailService {
     private readonly longTerm?: LongTermService,
     private readonly sessionFacts?: SessionFactsService,
     @Optional() private readonly bookingSnapshot?: BookingSnapshotService,
+    @Optional() private readonly collectionForms?: CollectionFormService,
+    @Optional() private readonly candidateProgress?: CandidateProgressService,
   ) {}
 
   /**
@@ -102,6 +107,7 @@ export class OutputGuardrailService {
     userId: string | undefined,
   ): Promise<readonly ActiveBookingEntry[] | undefined> {
     if (!corpId || !userId) return undefined;
+    if (this.candidateProgress) return this.candidateProgress.readGuardBookings(corpId, userId);
     // 本轮预约快照（prepare 按手机号从海绵查得、按候选人身份镜像 5 分钟）是权威读视图：
     // 候选人在聊 Y 岗时，按快照里有没有 Y 岗的在途工单判断，不再只看 active_booking 指针。
     // 指针仍并入：它带着"另一账号刚建单"的并发窗口；两者按工单号去重。
@@ -109,12 +115,7 @@ export class OutputGuardrailService {
       this.readSnapshotBookings(corpId, userId),
       this.readPointerBookings(corpId, userId),
     ]);
-    if (snapshot === undefined && pointer === undefined) return undefined;
-    const merged = new Map<number, ActiveBookingEntry>();
-    for (const entry of [...(snapshot ?? []), ...(pointer ?? [])]) {
-      if (!merged.has(entry.work_order_id)) merged.set(entry.work_order_id, entry);
-    }
-    return Array.from(merged.values());
+    return mergeLegacyGuardBookings(snapshot, pointer);
   }
 
   private async readSnapshotBookings(
@@ -217,21 +218,72 @@ export class OutputGuardrailService {
     return [...fetchedJobs, ...(attestedFocusJob ? [attestedFocusJob] : [])];
   }
 
+  private async readAdditionalCandidateBooking(
+    input: OutputGuardInput,
+  ): Promise<{ jobId: number; workOrderId?: number; verifiedThisTurn: boolean } | undefined> {
+    const latestPrecheck = [...input.toolCalls]
+      .reverse()
+      .find((call) => call.toolName === 'duliday_interview_precheck');
+    const args = latestPrecheck?.args as { jobId?: number; candidatePhone?: string } | undefined;
+    const jobId = args?.jobId ?? input.memorySnapshot?.currentFocusJob?.jobId;
+    if (!this.collectionForms || !input.corpId || !input.userId || !input.botUserName || !jobId) {
+      return undefined;
+    }
+    try {
+      const form = await this.collectionForms.peekActive({
+        corpId: input.corpId,
+        userId: input.userId,
+        botUserId: input.botUserName,
+        jobId,
+      });
+      if (form?.candidateScope !== 'additional') return undefined;
+      const result = asRecord(latestPrecheck?.result);
+      // 活动表单可能还停在上一位已提交的人，不能替没有经过预检的下一位作证。
+      const verifiedPrecheck =
+        result?.success === true &&
+        result.nextAction === 'already_submitted' &&
+        result.candidateScope === 'additional' &&
+        args?.candidatePhone === form.candidateRef;
+      const precheckIndex = latestPrecheck ? input.toolCalls.indexOf(latestPrecheck) : -1;
+      const verifiedBooking = input.toolCalls.slice(precheckIndex + 1).some((call) => {
+        const booking = asRecord(call.result);
+        const bookingArgs = asRecord(call.args);
+        return (
+          call.toolName === 'duliday_interview_booking' &&
+          booking?.success === true &&
+          booking.candidateScope === 'additional' &&
+          booking.workOrderId === form.workOrderId &&
+          bookingArgs?.jobId === jobId
+        );
+      });
+      const verifiedThisTurn =
+        typeof form.workOrderId === 'number' &&
+        form.workOrderId > 0 &&
+        (verifiedPrecheck || verifiedBooking);
+      return { jobId, workOrderId: form.workOrderId, verifiedThisTurn };
+    } catch (error) {
+      this.logger.warn(`读取追加候选人表单失败，按未知处理: ${toErrorMessage(error)}`);
+      return undefined;
+    }
+  }
+
   async check(input: OutputGuardInput): Promise<OutputGuardDecision> {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const [recent, runtimeConfig, activeBookings, sessionJobEvidence] = await Promise.all([
-      this.readRecentTexts(input.chatId),
-      this.systemConfig.getAgentReplyConfig(),
-      this.readActiveBookings(input.corpId, input.userId),
-      this.readSessionJobEvidence(
-        input.corpId,
-        input.userId,
-        input.sessionId,
-        input.turnLedger?.facts,
-      ),
-    ]);
+    const [recent, runtimeConfig, activeBookings, sessionJobEvidence, additionalCandidateBooking] =
+      await Promise.all([
+        this.readRecentTexts(input.chatId),
+        this.systemConfig.getAgentReplyConfig(),
+        this.readActiveBookings(input.corpId, input.userId),
+        this.readSessionJobEvidence(
+          input.corpId,
+          input.userId,
+          input.sessionId,
+          input.turnLedger?.facts,
+        ),
+        this.readAdditionalCandidateBooking(input),
+      ]);
     const sessionJobs = sessionJobEvidence.jobs;
     const sessionJobFactTexts = formatJobFactProvenanceTexts(sessionJobs);
     const pruned = OutboundReplySanitizer.pruneRepeatedSegments(
@@ -260,6 +312,13 @@ export class OutputGuardrailService {
       turnJobs: this.readTurnJobs(input.turnLedger),
       studentAcceptance: sessionJobEvidence.studentAcceptance,
       activeBookings,
+      pendingAdditionalCandidateJobId:
+        additionalCandidateBooking && !additionalCandidateBooking.verifiedThisTurn
+          ? additionalCandidateBooking.jobId
+          : undefined,
+      submittedAdditionalCandidateBooking: additionalCandidateBooking?.verifiedThisTurn
+        ? additionalCandidateBooking
+        : undefined,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
     });

@@ -53,20 +53,29 @@ function isSameBrand(a: { canonicalName: string; brandId: number | null }, b: Se
 
 /**
  * 只校验模型显式品牌是否曾被提及，不裁决意向、极性或历史状态。
- * null 表示提及集合不可用；目录无法确认的 ID/品牌不新增出处拦截。
+ * 提及集合不可用时保留目录内品牌的既有处理；目录外名称另核对原话出处。
  */
 export function findUnmentionedQueryBrands(
   plan: BrandQueryPlan,
   mentionedBrands: ReadonlySet<string> | null | undefined,
   catalog: readonly BrandItem[],
+  candidateTexts?: readonly string[] | null,
 ): BrandCandidate[] {
-  if (mentionedBrands == null || plan.brandSource !== 'model_input') return [];
+  if (plan.brandSource !== 'model_input') return [];
   const knownNames = new Set(catalog.map((brand) => normalizeBrandNameForComparison(brand.name)));
-  return plan.applied.filter((brand) => {
+  const unmentioned = plan.applied.filter((brand) => {
+    if (mentionedBrands == null) return false;
     if (brand.brandId != null && !catalog.some((item) => item.id === brand.brandId)) return false;
     const name = normalizeBrandNameForComparison(brand.canonicalName);
     return name.length > 0 && knownNames.has(name) && !mentionedBrands.has(name);
   });
+  return [
+    ...unmentioned,
+    ...findUnprovenancedRejectedBrands(plan, candidateTexts, mentionedBrands).map((item) => ({
+      canonicalName: item.input,
+      brandId: null,
+    })),
+  ];
 }
 
 /**
@@ -74,10 +83,106 @@ export function findUnmentionedQueryBrands(
  *
  * unmatched 与 ambiguous/low_confidence 是两种事实：前者说明我们没有与该品牌合作
  * （话术要如实说没合作），后者说明品牌可能存在、只是指代不清（话术仍是澄清/无岗口径）。
- * 只要掺进一个非 unmatched 就不能按"没合作"对候选人下结论。
+ * 只要掺进一个非 unmatched 就不能按"没合作"对候选人下结论。unmatched_id 同样不算：
+ * 目录外的数字 ID 多半是截图读数误差，而不是候选人点名了一个未合作品牌。
  */
 export function allRejectedAsUnmatched(plan: BrandQueryPlan): boolean {
   return plan.rejected.length > 0 && plan.rejected.every((item) => item.reason === 'unmatched');
+}
+
+/** 被拒条目中目录外的品牌 ID（reason=unmatched_id）。 */
+export function rejectedBrandIds(plan: BrandQueryPlan): string[] {
+  return plan.rejected.filter((item) => item.reason === 'unmatched_id').map((item) => item.input);
+}
+
+export interface RejectedIdNeighbor {
+  /** 被拒的目录外 ID 原文 */
+  inputId: string;
+  brandId: number;
+  brandName: string;
+  /** 与被拒 ID 的数字编辑关系：少读一位 / 多读一位 */
+  relation: 'insert_one_digit' | 'delete_one_digit';
+}
+
+/**
+ * 目录外品牌 ID 的数字近邻：只接受与被拒 ID 相差**单个字符插入或删除**的目录 ID
+ * （截图视觉读数把 10006 读成 100006 这类多一位/少一位的误差）。
+ * 替换类差异不纳入——10006 与 10008 是两个真实品牌，猜不得。
+ */
+export function findRejectedIdNeighbors(
+  plan: BrandQueryPlan,
+  catalog: readonly BrandItem[],
+): RejectedIdNeighbor[] {
+  const neighbors: RejectedIdNeighbor[] = [];
+  for (const inputId of rejectedBrandIds(plan)) {
+    for (const brand of catalog) {
+      if (brand.id == null) continue;
+      const candidate = String(brand.id);
+      const relation = singleEditRelation(inputId, candidate);
+      if (relation) neighbors.push({ inputId, brandId: brand.id, brandName: brand.name, relation });
+    }
+  }
+  return neighbors;
+}
+
+function singleEditRelation(
+  input: string,
+  candidate: string,
+): RejectedIdNeighbor['relation'] | null {
+  if (input === candidate) return null;
+  if (candidate.length === input.length - 1 && isSingleDeletion(input, candidate)) {
+    return 'delete_one_digit';
+  }
+  if (candidate.length === input.length + 1 && isSingleDeletion(candidate, input)) {
+    return 'insert_one_digit';
+  }
+  return null;
+}
+
+/** shorter 能否由 longer 删除恰好一个字符得到。 */
+function isSingleDeletion(longer: string, shorter: string): boolean {
+  let i = 0;
+  let j = 0;
+  let skipped = false;
+  while (i < longer.length && j < shorter.length) {
+    if (longer[i] === shorter[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    if (skipped) return false;
+    skipped = true;
+    i += 1;
+  }
+  return true;
+}
+
+/**
+ * 被拒品牌名中缺少候选人原话出处的条目。
+ *
+ * `findUnmentionedQueryBrands` 只核验**目录内**品牌（提及集合只登记目录可归一化的键），
+ * 目录外品牌名（正是模型凭空编品牌的典型形态，生产 trace
+ * batch_6acda349ce406a6aee8d6641_1791862156121 的「星巴克」）需要直接回到候选人原话
+ * 做字面核对：候选人自己说过/截图里出现过的名字才允许进入「没合作」话术；
+ * 没出处的名字视为模型臆造，由工具拒绝并要求清空品牌重查。
+ *
+ * - 无出处材料时也不能生成「没合作」结论；已登记的提及集合可作为补充出处；
+ * - 目录外 ID（unmatched_id）不走本核对：ID 来自截图读数，另有数字近邻处置。
+ */
+export function findUnprovenancedRejectedBrands(
+  plan: BrandQueryPlan,
+  candidateTexts: readonly string[] | null | undefined,
+  mentionedBrands?: ReadonlySet<string> | null,
+): BrandQueryPlan['rejected'] {
+  if (plan.brandSource !== 'model_input') return [];
+  const haystack = (candidateTexts ?? []).map((text) => normalizeBrandNameForComparison(text));
+  return plan.rejected.filter((item) => {
+    if (item.reason === 'unmatched_id') return false;
+    const needle = normalizeBrandNameForComparison(item.input);
+    if (!needle) return false;
+    if (mentionedBrands?.has(needle)) return false;
+    return !haystack.some((text) => text.includes(needle));
+  });
 }
 
 /** 组装 queryMeta.brand 小节（§9 类型化接口）。 */
@@ -122,7 +227,14 @@ export function buildBrandQueryPlan(input: {
   };
 
   // 入口标准化（§6.2）：别名 → 唯一标准品牌；冲突/未命中进 rejected。
-  const aliasOutcome = resolveBrandAliasInputs(input.brandAliasList, catalog);
+  // 数字别名同样按目录 ID 校验，不能变成“未合作品牌”的名称证据。
+  const numericAliases = input.brandAliasList
+    .map((alias) => alias.normalize('NFKC').trim())
+    .filter((alias) => /^\d+$/u.test(alias));
+  const aliasOutcome = resolveBrandAliasInputs(
+    input.brandAliasList.filter((alias) => !/^\d+$/u.test(alias.normalize('NFKC').trim())),
+    catalog,
+  );
   basePlan.rejected = aliasOutcome.rejected;
 
   // 品类展开出的查询品牌列表须先减去会话 excludedBrands（§3.2）；显式点名的品牌不减
@@ -135,15 +247,26 @@ export function buildBrandQueryPlan(input: {
     return !excluded;
   });
 
-  // 模型显式传的 brandIdList 原样采信（API 主键，目录可能缺 id，不做反向校验）；
-  // 目录可回查到名称时补齐 canonicalName 供审计与本地等值过滤。
-  const modelIds = Array.from(new Set(input.brandIdList.filter((id) => Number.isFinite(id))));
+  // 模型显式传的 brandIdList：目录带 ID 时按目录校验，目录外的 ID 进 rejected(unmatched_id)
+  // 而不是用 String(id) 冒充品牌名去查、再把数字念给候选人（生产 trace
+  // batch_6ad1eb74ce406a6aeec80597_1792142350490：视觉把 10006 读成 100006，候选人收到
+  // 「100006在武进区这片暂时没找到」）。目录缺 ID 时同样不能把数字当作品牌名。
+  const rawModelIds = Array.from(
+    new Set(
+      [...input.brandIdList, ...numericAliases.map(Number)].filter((id) => Number.isFinite(id)),
+    ),
+  );
+  const modelIds = rawModelIds.filter((id) => {
+    if (catalog.some((brand) => brand.id === id)) return true;
+    basePlan.rejected.push({ input: String(id), reason: 'unmatched_id' });
+    return false;
+  });
   const idBrands: BrandCandidate[] = modelIds.map((id) => ({
-    canonicalName: catalog.find((brand) => brand.id === id)?.name ?? String(id),
+    canonicalName: catalog.find((brand) => brand.id === id)!.name,
     brandId: id,
   }));
 
-  const inputProvided = input.brandAliasList.length > 0 || modelIds.length > 0;
+  const inputProvided = input.brandAliasList.length > 0 || rawModelIds.length > 0;
 
   // 列表空 + clear / browse_all：无品牌查询（二者语义与审计归因不同）。
   if ((mode === 'clear' || mode === 'browse_all') && !inputProvided) {

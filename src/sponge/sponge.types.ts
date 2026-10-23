@@ -346,9 +346,13 @@ export interface InterviewBookingApplyErrorItem {
   msg: string;
 }
 
+/** 海绵已核实的重复报名拒绝类型，不依赖未确认的返回码。 */
+export type DuplicateSignupReason = 'already_registered' | 'ownership_review';
+
 /** 面试预约响应 */
 export interface InterviewBookingResult {
   success: boolean;
+  duplicateSignupReason?: DuplicateSignupReason;
   code?: number;
   message?: string;
   notice?: string | null;

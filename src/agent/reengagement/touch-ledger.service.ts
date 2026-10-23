@@ -2,6 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { RedisService } from '@infra/redis/redis.service';
 import type { ReserveResult, TouchSlotState } from './follow-up-scheduler.service';
+import type { FollowUpJob } from './follow-up-scheduler.service';
+
+export interface TouchRecovery {
+  jobData: FollowUpJob;
+  replyText: string;
+  batchId: string;
+  sentAt: number;
+}
 
 export interface UnknownTouchSlot {
   key: string;
@@ -83,12 +91,20 @@ export class TouchLedgerService {
     await this.redis.eval(
       `
 redis.call('SETEX', KEYS[1], ARGV[1], 'sent')
-redis.call('RPUSH', KEYS[2], ARGV[2])
+if redis.call('SET', KEYS[4], '1', 'NX', 'EX', ARGV[1]) then
+  redis.call('RPUSH', KEYS[2], ARGV[2])
+end
 redis.call('EXPIRE', KEYS[2], ARGV[3])
-redis.call('SETEX', KEYS[3], ARGV[4], ARGV[2])
+local previous = tonumber(redis.call('GET', KEYS[3]) or '0')
+if tonumber(ARGV[2]) > previous then redis.call('SETEX', KEYS[3], ARGV[4], ARGV[2]) end
 return 1
 `,
-      [this.slotKey(key), this.sentListKey(sessionId), this.lastTouchKey(sessionId)],
+      [
+        this.slotKey(key),
+        this.sentListKey(sessionId),
+        this.lastTouchKey(sessionId),
+        `${this.slotKey(key)}:counted`,
+      ],
       [
         this.SLOT_TTL_S,
         now,
@@ -104,6 +120,14 @@ return 1
     if (state === 'unknown') {
       this.logger.error(`[TouchLedger] 触达状态不明，置 unknown 待补偿: key=${key}`);
     }
+  }
+
+  async saveRecovery(key: string, recovery: TouchRecovery): Promise<void> {
+    await this.redis.setNx(`reengagement:recovery:${key}`, recovery, this.SLOT_TTL_S);
+  }
+
+  async getRecovery(key: string): Promise<TouchRecovery | null> {
+    return this.redis.get<TouchRecovery>(`reengagement:recovery:${key}`);
   }
 
   /** 近 24h 已 **sent** 的触达次数（频控用）。 */
@@ -165,24 +189,49 @@ return 1
    * ReengagementTrackingService.touchKey 同源），不含 Redis 前缀。
    */
   async listUnknownSlots(limit = 100): Promise<UnknownTouchSlot[]> {
+    if (limit <= 0) return [];
     const result: UnknownTouchSlot[] = [];
-    let cursor: string | number = 0;
-    do {
-      const [next, keys] = await this.redis.scan(cursor, {
-        match: 'reengagement:touch:*',
-        count: Math.min(Math.max(limit, 10), 500),
-      });
-      cursor = next;
-      for (const redisKey of keys) {
+    const checkpointKey = 'reengagement:unknown-scan:v2';
+    const checkpoint = await this.redis.get<{ cursor: string | number; pending: string[] }>(
+      checkpointKey,
+    );
+    let cursor: string | number = checkpoint?.cursor ?? 0;
+    let pending = checkpoint?.pending ?? [];
+    const deadline = Date.now() + 5000;
+    let pages = 0;
+    let inspected = 0;
+    while (inspected < 100 && result.length < limit && Date.now() < deadline) {
+      if (pending.length === 0) {
+        if (pages >= 5) break;
+        const [next, keys] = await this.redis.scan(cursor, {
+          match: 'reengagement:touch:*',
+          count: 100,
+        });
+        cursor = next;
+        pending = keys;
+        pages++;
+      }
+      while (
+        pending.length > 0 &&
+        inspected < 100 &&
+        result.length < limit &&
+        Date.now() < deadline
+      ) {
+        const redisKey = pending[0];
         const state = await this.redis.get<TouchSlotState>(redisKey);
-        if (state !== 'unknown') continue;
+        pending.shift();
+        inspected++;
+        if (state !== 'unknown' && state !== 'delivery_attempted') continue;
         result.push({
           key: redisKey.replace(/^reengagement:touch:/, ''),
-          state,
+          state: 'unknown',
         });
-        if (result.length >= limit) return result;
       }
-    } while (String(cursor) !== '0');
+      if (pending.length === 0 && String(cursor) === '0') break;
+    }
+    // SCAN COUNT is a hint. Preserve the unconsumed page so a large page or low
+    // result budget cannot permanently starve its later unknown entries.
+    await this.redis.setex(checkpointKey, this.SLOT_TTL_S, { cursor, pending });
     return result;
   }
 }

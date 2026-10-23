@@ -58,6 +58,10 @@ export interface BookingClaimContext {
   activeBookings?: readonly ActiveBookingEntry[];
   /** 本轮焦点岗位 jobId（会话工作台 currentFocusJob）。 */
   focusJobId?: number;
+  /** 当前追加候选人尚无经本轮身份核实的工单；主候选人的同岗位工单不能为其作证。 */
+  pendingAdditionalCandidateJobId?: number;
+  /** 经本轮 precheck 核实身份的追加候选人已提交表单工单；代报不会写入联系人的 active_booking。 */
+  submittedAdditionalCandidateBooking?: { jobId: number; workOrderId?: number };
 }
 
 /**
@@ -97,7 +101,23 @@ export function detectBookingDoneClaimWithoutSubmission(
 ): RuleContradiction | null {
   if (!text.trim()) return null;
   if (!BOOKING_DONE_CLAIM_PATTERN.test(text)) return null;
+  if (context.pendingAdditionalCandidateJobId !== undefined) {
+    return createOutputRuleFinding(
+      'booking_done_claim_no_work_order',
+      `当前正在办理的追加候选人（岗位 ${context.pendingAdditionalCandidateJobId}）本轮尚未核实独立工单，` +
+        '却宣称报名/预约成功；本轮其他候选人的 booking 调用或同岗位工单不能替此人作证',
+    );
+  }
   if (toolCalls.some((call) => BOOKING_FAMILY_TOOL_NAMES.has(call.toolName))) return null;
+  const submitted = context.submittedAdditionalCandidateBooking;
+  const currentJobId = readPrecheckJobId(toolCalls) ?? context.focusJobId;
+  if (
+    submitted?.workOrderId !== undefined &&
+    submitted.workOrderId > 0 &&
+    submitted.jobId === currentJobId
+  ) {
+    return null;
+  }
   if (hasActiveWorkOrderEvidence(toolCalls)) return null;
 
   // 观察期数据（09-02 起 8 例）证实 observe 档的假阳几乎全是跨轮复述真实工单。长期记忆里

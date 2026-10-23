@@ -25,6 +25,12 @@ export interface PostBookingGroupInviteOutcome {
   /** 是否真的走到了拉群执行（闸门放行后）；false 时看 skippedReason。 */
   attempted: boolean;
   success: boolean;
+  actionStatus?: string;
+  actionId?: string;
+  requestId?: string;
+  localSync?: 'pending' | 'complete';
+  actionDispatched?: boolean;
+  actionReason?: string;
   city?: string;
   groupName?: string;
   delivery?: 'direct_add' | 'invite_card';
@@ -142,6 +148,12 @@ export async function runPostBookingGroupInvite(
               city,
               groupName: result.groupName,
               failureReason: result.reason ?? 'api_failed',
+              actionStatus: result.actionStatus,
+              actionId: result.actionId,
+              requestId: result.requestId,
+              localSync: result.localSync,
+              actionDispatched: result.actionDispatched,
+              actionReason: result.actionReason,
             };
           }
           return {
@@ -149,6 +161,12 @@ export async function runPostBookingGroupInvite(
             success: true,
             city,
             groupName: result.groupName,
+            actionStatus: result.actionStatus,
+            actionId: result.actionId,
+            requestId: result.requestId,
+            localSync: result.localSync,
+            actionDispatched: result.actionDispatched,
+            actionReason: result.actionReason,
             ...(result.alreadyInGroup
               ? { alreadyInGroup: true }
               : { delivery: result.inviteDelivery }),
@@ -171,6 +189,8 @@ const NO_TOOL_REMINDER = '拉群已由系统在本轮处理完毕，不要再调
 
 /** 给模型的群动作说明：只按结果说话。 */
 export function buildPostBookingGroupInviteGuide(outcome: PostBookingGroupInviteOutcome): string {
+  if (outcome.failureReason === 'result_unknown')
+    return '报名已成功；群邀请结果尚待核实，已携带人工核实意图，不要另调 request_handoff，不得声称邀请失败或重新邀请。';
   if (outcome.success) {
     const groupName = outcome.groupName ?? '';
     if (outcome.alreadyInGroup) {
@@ -201,13 +221,16 @@ export function buildPostBookingGroupInviteGuide(outcome: PostBookingGroupInvite
 export function describePostBookingGroupInviteForEvent(
   outcome: PostBookingGroupInviteOutcome,
 ): Record<string, unknown> {
-  const status = outcome.success
-    ? outcome.alreadyInGroup
-      ? 'already_in_group'
-      : 'invited'
-    : outcome.attempted
-      ? `failed:${outcome.failureReason ?? 'unknown'}`
-      : `skipped:${outcome.skippedReason ?? 'unknown'}`;
+  const status =
+    outcome.failureReason === 'result_unknown'
+      ? 'unknown'
+      : outcome.success
+        ? outcome.alreadyInGroup
+          ? 'already_in_group'
+          : 'invited'
+        : outcome.attempted
+          ? `failed:${outcome.failureReason ?? 'unknown'}`
+          : `skipped:${outcome.skippedReason ?? 'unknown'}`;
   return {
     outcome: status,
     attempted: outcome.attempted,
@@ -216,5 +239,28 @@ export function describePostBookingGroupInviteForEvent(
     group_name: outcome.groupName ?? null,
     delivery: outcome.delivery ?? null,
     simulated: outcome.simulated ?? false,
+  };
+}
+
+/** 邀请未知独立于报名成功，先核实原请求；不要把岗位面试群的“补发”指令套在此状态上。 */
+export function buildPostBookingUnknownInviteHandoff(
+  context: ToolBuildContext,
+  outcome: PostBookingGroupInviteOutcome,
+  jobId: number,
+  workOrderId?: number | null,
+): Record<string, unknown> | undefined {
+  if (outcome.failureReason !== 'result_unknown') return undefined;
+  return {
+    kind: 'general_handoff',
+    source: 'agent_tool',
+    origin: 'agent_tool',
+    reasonCode: 'group_invite_failed',
+    alertLabel: '报名成功、群邀请结果待核实',
+    reason: '报名已确认成功，群邀请请求结果未知，禁止未经核实再次邀请。',
+    actionAdvice: '核实原邀请请求是否完成；保持报名成功，不重做报名或直接补发邀请。',
+    workOrderId: workOrderId ?? null,
+    jobId,
+    botImId: context.session.botImId,
+    recordHandoff: true,
   };
 }

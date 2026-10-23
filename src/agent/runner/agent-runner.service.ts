@@ -1,3 +1,5 @@
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
+import { attachReplayEvidence } from '@infra/utils/action-receipt.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
@@ -10,6 +12,7 @@ import type {
 } from '../generator/generator.types';
 import {
   isShortCircuitedToolCall,
+  collectToolReplayEvidence,
   isSideEffectTool,
   isToolSuccess,
 } from '../generator/tool-call-analysis';
@@ -34,6 +37,7 @@ import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
   isInternalReasoningArtifactOnly,
+  isEmptyReplySlotEnvelope,
   isSkipIntentEnvelope,
   isToolCallArtifactOnly,
   stripInternalReasoningArtifacts,
@@ -231,12 +235,47 @@ export class AgentRunnerService {
     ctx: ReviewContext,
   ): Promise<ReviewedRunResult> {
     const first = await this.generator.invoke(params);
+    const generations = [first];
+    const retainGeneration = (result: GeneratorRunResult) => {
+      generations.push(result);
+      return result;
+    };
+    try {
+      return await this.reviewGeneratedResult(params, ctx, first, retainGeneration);
+    } catch (error) {
+      throw attachReplayEvidence(
+        error,
+        collectToolReplayEvidence(generations.flatMap((result) => result.toolCalls ?? [])),
+      );
+    }
+  }
 
+  private async reviewGeneratedResult(
+    params: GeneratorInvokeParams,
+    ctx: ReviewContext,
+    first: GeneratorRunResult,
+    retainGeneration: (result: GeneratorRunResult) => GeneratorRunResult,
+  ): Promise<ReviewedRunResult> {
     // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记，避免噪声进入 LLM 审查
     // 上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
     // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
     let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
+    // 生成器空响应恢复在"候选人已确认待提交资料"节点主动放弃补文本：空正文不是静默，而是转人工
+    // （trace batch_6accb41bce406a6aee72e009_1791805375446，恢复补出"这就帮你提交，约的是周三下午两点"）。
+    const recoveryHandoff = first.recoveryDisposition;
+    if (!firstText && !firstSkipped && recoveryHandoff?.outcome === 'handoff') {
+      this.logger.warn(
+        `[invokeReviewed] 空响应恢复闸要求转人工: reason=${recoveryHandoff.reasonCode}, ` +
+          `precheckNextAction=${recoveryHandoff.precheckNextAction}, traceId=${ctx.traceId ?? '-'}`,
+      );
+      return this.finalizeReviewed(
+        first,
+        PASS_DECISION,
+        { outcome: 'handoff', source: 'output_guardrail', reasonCode: recoveryHandoff.reasonCode },
+        false,
+      );
+    }
     if (!firstText || firstSkipped) {
       return this.finalizeReviewed(first, PASS_DECISION, { outcome: 'skipped' }, false);
     }
@@ -260,7 +299,7 @@ export class AgentRunnerService {
     const firstStep = this.toGuardrailStep('first', decision);
 
     // 首版无可采用正文：元叙述保留有意静默；纯内部产物直接转人工，不进入修复。
-    const silenceReason = this.resolveDirectSilenceReason(decision, firstText);
+    const silenceReason = this.resolveDirectSilenceReason(decision, firstText, first);
     if (silenceReason) {
       const resolution: OutputResolution = {
         outcome: INTENTIONAL_SILENCE_REASON_CODES.has(silenceReason) ? 'skipped' : 'handoff',
@@ -287,7 +326,10 @@ export class AgentRunnerService {
       );
     }
 
-    const shouldRepair = decision.decision !== 'pass' && decision.decision !== 'observe';
+    const shouldRepair =
+      RUNTIME_RETRY_LIMITS.outputRepairRetries > 0 &&
+      decision.decision !== 'pass' &&
+      decision.decision !== 'observe';
     if (!shouldRepair) {
       const resolution: OutputResolution = { outcome: 'reply', reasonCode: decision.reasonCode };
       this.persistReviewRecord(ctx, {
@@ -315,11 +357,12 @@ export class AgentRunnerService {
     // 执行；此时降级为 rewrite 并告警——replan 档规则按定义只在零工具轮命中，走到这里即规则漂移。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     const replanRequested = decision.repairMode === GUARDRAIL_REPAIR_MODE.REPLAN;
-    const replan = replanRequested && committed === '';
+    const replayBlocked = collectToolReplayEvidence(first.toolCalls ?? []);
+    const replan = replanRequested && replayBlocked.length === 0;
     if (replanRequested && !replan) {
       this.logger.warn(
-        `[invokeReviewed] 守卫要求 replan 但首版已提交副作用，降级为 rewrite: ` +
-          `rules=${decision.ruleIds.join(',') || '-'}, committed="${committed}", traceId=${ctx.traceId ?? '-'}`,
+        `[invokeReviewed] 守卫要求 replan 但首版动作禁止重做，降级为 rewrite: ` +
+          `rules=${decision.ruleIds.join(',') || '-'}, actionStates="${replayBlocked.map((item) => `${item.toolName}:${item.status}`).join(',')}", traceId=${ctx.traceId ?? '-'}`,
       );
     }
     // 首版可否 fail-open（回退首版/放行首版）：replan 档的首版整体作废，一律不可。
@@ -365,7 +408,7 @@ export class AgentRunnerService {
         (envelopeUnwrappedText !== null ? '，JSON 信封命中走确定性拆封，跳过 LLM 重写' : ''),
     );
     const revised = replan
-      ? this.attachDiscardedGeneration(first, await this.generator.invoke(params))
+      ? retainGeneration(this.attachDiscardedGeneration(first, await this.generator.invoke(params)))
       : deterministicRepairText !== null
         ? this.buildRepairedResult(first, deterministicRepairText)
         : this.buildRepairedResult(
@@ -835,13 +878,16 @@ export class AgentRunnerService {
   }
 
   /**
-   * 直达静默判据——四类首版进 repair 只会产出另一条不该发的文本：
+   * 首版不进入 repair 的判据：沉默意图收敛为 skipped，纯内部残文收敛为 handoff。
    *
    * - `meta_narration_silenced`：元叙述旁白表达的真实意图就是不回复。
    * - `skip_intent_envelope_silenced`：整条首版是 skip_reply 的参数 JSON
    *   （`{"reason":"候选人回复纯确认词'好'…无新诉求"}`），模型想沉默但没走工具调用；
-   *   与元叙述同型，等效 skip_reply 静默。必须先于残文/拆封判定，否则 reason 里的内部
+   *   仅显式 confirmation_closure、通过历史/消息准入且零工具调用时可静默。先于残文/拆封，否则 reason 内部
    *   理由会被拆封当正文投递（2026-09-16 生产 trace …_1789531804368）。
+   * - `empty_reply_envelope_silenced`：模型自造结构化信封、回复槽位（agent_reply 等）全空、
+   *   其余键只是意图/thought 笔记（2026-10-13 trace …_1791860105040，旧链路把 thought 拆封投递）；
+   *   槽位为空不证明确认收尾意图，始终进入受控修复，不把内部笔记当候选人正文。
    * - `internal_reasoning_artifact_silenced` / `tool_call_artifact_silenced`：整条首版只是
    *   推理独白或工具调用残文；剥离后无正文可供 rewrite 保留，没有事实可依时只能转人工。
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
@@ -849,11 +895,20 @@ export class AgentRunnerService {
   private resolveDirectSilenceReason(
     decision: OutputGuardDecision,
     firstText: string,
+    first: GeneratorRunResult,
   ): string | null {
     if (decision.decision === 'repair') {
       if (this.isOnlyMetaNarration(decision)) return 'meta_narration_silenced';
       if (this.isOnlyInternalOutputLeak(decision) && isSkipIntentEnvelope(firstText)) {
-        return 'skip_intent_envelope_silenced';
+        return first.confirmationClosureEligible === true &&
+          first.toolCalls.length === 0 &&
+          isSkipIntentEnvelope(firstText, 'confirmation_closure')
+          ? 'skip_intent_envelope_silenced'
+          : null;
+      }
+      if (this.isOnlyInternalOutputLeak(decision) && isEmptyReplySlotEnvelope(firstText)) {
+        // 空槽位没有工具级确认收尾意图；短句形状不能证明肯定语义，统一进入修复。
+        return null;
       }
       if (this.isOnlyInternalOutputLeak(decision) && isInternalReasoningArtifactOnly(firstText)) {
         return 'internal_reasoning_artifact_silenced';
@@ -1153,7 +1208,7 @@ export class AgentRunnerService {
       userId: sessionRef.userId,
       pauseTargetId: sessionRef.sessionId || sessionRef.userId,
       scanContent: this.buildInputGuardScanContent(input.text),
-      messageId: context?.messageId,
+      messageId: context?.logicalTurnId ?? context?.messageId,
       contactName: context?.contactName,
       botImId: context?.botImId,
       botUserName: context?.botUserId,
@@ -1165,6 +1220,8 @@ export class AgentRunnerService {
       userId: sessionRef.userId,
       corpId: sessionRef.corpId,
       sessionId: sessionRef.sessionId,
+      logicalTurnId: context?.logicalTurnId,
+      inputOccurredAt: context?.inputOccurredAt,
       messageId: context?.messageId,
       messages: [
         {
@@ -1209,17 +1266,26 @@ export class AgentRunnerService {
 
     // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：无法安全放行→handoff/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
-    const outcome = classifyReviewedOutcome(result, sessionRef, context?.messageId, {
-      userMessage: input.text,
-    });
-    if (outcome.kind === 'handoff' && outcome.guardrail?.phase === 'outbound') {
-      this.logger.warn(
-        `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
-          `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
-          `reason=${result.resolution.reasonCode ?? '-'}`,
+    try {
+      const outcome = classifyReviewedOutcome(
+        result,
+        sessionRef,
+        context?.logicalTurnId ?? context?.messageId,
+        {
+          userMessage: input.text,
+        },
       );
+      if (outcome.kind === 'handoff' && outcome.guardrail?.phase === 'outbound') {
+        this.logger.warn(
+          `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
+            `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
+            `reason=${result.resolution.reasonCode ?? '-'}`,
+        );
+      }
+      return outcome;
+    } catch (error) {
+      throw attachReplayEvidence(error, collectToolReplayEvidence(result.toolCalls ?? []));
     }
-    return outcome;
   }
 
   private buildInputGuardScanContent(userMessage: string): string {

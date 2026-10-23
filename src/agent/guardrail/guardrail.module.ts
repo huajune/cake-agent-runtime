@@ -1,3 +1,4 @@
+import { CandidateProgressModule } from '@biz/candidate-progress/candidate-progress.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { LlmModule } from '@/llm/llm.module';
@@ -16,6 +17,7 @@ import { HardRulesService } from './output/rules/hard-rules.service';
 
 @Module({
   imports: [
+    CandidateProgressModule,
     ConfigModule,
     LlmModule,
     HostingConfigModule,

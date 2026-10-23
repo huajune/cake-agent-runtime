@@ -31,6 +31,7 @@ const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入�
 5. interview_result_inquiry：候选人主动追问面试结果/是否通过/录取通知。**无论 [当前预约信息] 是否已显示「面试通过时间」或「当前状态: 面试成功」都必须调用**——面试结果只能由真人播报，你不得自行告知通过/未通过，更不得接着给出报到、到店时间、带证件等面试后安排
 6. modify_appointment：候选人**主动**要求改时间/取消/重排**已确认的**面试
    - **自助优先（重要）**：改时间先用 duliday_modify_interview_time、取消先用 duliday_cancel_work_order（[当前预约信息] 带「工单号」时即可自助）。**只有这两个工具返回失败、或拿不到工单号时，才用本码转人工**——不要在能自助时直接转人工
+   - 查不到工单不等于没有预约。候选人要求处理已约面试、但系统查不到编号（含真人带外安排）时，用本码请人工先核实再处理；禁止索要内部编号、否认预约或声称已取消，不重新报名
    - **仅查询某个面试时段是否可约，不构成改约请求**：precheck 后直接回答可约时段并等待候选人确认，不调用本工具。严禁把 reasonCode 换成 other 绕过这条规则
    - 首次约面中，候选人从招募经理给出的可选时段里选择时间，继续 booking 流程，不按改期转人工
    - 系统里 active case 的 interview_time 早于今天时，视为过期数据，不得单凭该记录推断候选人要求改期或触发转人工
@@ -42,6 +43,7 @@ const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入�
 11. group_invite_failed：候选人已同意进群，但 invite_to_group 返回接口拒绝（invite.api_rejected / bot 非好友 / bot 不在群 / errcode 异常等，**非群满、非该城市无群**），无法完成拉群，需人工手动邀请或维护
 12. salary_admin_inquiry：**岗位级口径答不上**——候选人问的是岗位/门店的通用规定（薪资范围与阶梯算法、结算周期、发薪主体/合作模式、三方协议、合同/协议条款、签约主体与合同形式、社保、试用期、工作餐、工服、排班上限、体检点/健康证认可机构、发型等），你先用 duliday_job_list 等岗位工具的字段查证，字段确实没有答案时当轮按本码调用本工具。**用本码时必传 missingJobInfo**：逐项列出候选人问到而岗位字段没有答案的信息点——这类问题本质是岗位数据缺口，告警卡片会连同当前岗位一起展示给运营补录。**承诺找人确认时必须当轮调用本工具**，不要复读兜底、不要凭常识编造合同或薪资口径。针对候选人个人账务的问题不用本码，见场景 20
 13. interview_slot_coordination：候选人有明确的硬性时间窗，precheck 确认系统可约场次均无法覆盖且候选人明确不接受现有场次，需人工与门店协调特殊时段。与 modify_appointment 区分：本码用于**尚未预约成功**的时段协调，不是改期
+   - **面试窗口无具体时间 / 需线下提交初筛**：precheck 返回 nextAction=interview_time_manual_handoff（岗位面试窗口只标日期、bookableSlots 全部 bookingAllowed=false）时，系统没有任何可自助提交的时段，资料收齐后按本码调用，reason 写明资料已收齐、面试窗口无具体时间需人工线下提交；严禁自行承诺「我会在截止前帮你提交 / 留意来电」后不转人工
 14. identity_age_exception：候选人身份/年龄处于岗位硬要求边界，或身份变更后登记信息仍导致错误过滤，且你已按"何时不调用"的要求重查替代岗仍无果，需人工裁量能否破例或人工修正登记信息。**残障披露不用此码**：候选人自述听障/残障等身份或问残障者能否应聘时，入站守卫会静默转人工，你不要重查替代岗、不要按本码调用
 15. store_no_show：门店/面试官未履约——约好的电话面试没人打、AI 面试码/面试通知没收到、等通知岗面试官一周不联系、到店后临场协调无果。与 no_reception（到店无人接待）区分：本码覆盖电话/线上/等通知等非到店形态
 16. out_of_band_booking_inquiry：候选人说自己已经约了/报了名（真人手工登记、另一联系人代报、其它渠道），但 [当前预约信息] 与本会话都查不到工单，需人工核实预约归属后再处理
@@ -72,11 +74,15 @@ const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入�
 const inputSchema = z.object({
   // 枚举值域唯一来源：@enums/handoff-reason.enum（toolSelectable 的码，顺序即触发场景编号）
   reasonCode: z.enum(HANDOFF_REASON_CODES).describe('转人工原因代码'),
-  reason: z.string().describe('具体原因：结合候选人原话说明当前阻塞点'),
+  reason: z
+    .string()
+    .describe('具体原因：仅依据候选人原话和工具事实说明阻塞点；未知姓名、手机号或工单号不得补全'),
   actionAdvice: z
     .string()
     .optional()
-    .describe('建议动作：根据当前实际阻塞点，用一句话向招募经理建议明确的下一步动作'),
+    .describe(
+      '建议动作：只写需要人工核实或处理的下一步，不填写姓名、手机号或工单编号。身份和单据由运行时另行携带；资料缺失就建议人工核实，禁止用示例或常见占位值补全',
+    ),
   missingJobInfo: z
     .array(z.string())
     .optional()
@@ -167,19 +173,13 @@ export function buildRequestHandoffTool(
           context.archive.activeBookingJobIds?.[0] ??
           null;
 
-        // 守卫：候选人要求"改期/取消"但根本没有已确认预约 → 这其实是首次约面意向。
-        // 返回 shortCircuited:false（不短路），让 runtime 继续、Agent 按首次约面流程推进。
-        if (isModifyAppointment && workOrderId == null) {
+        // 没查到系统工单不能证明没有真人带外预约。这里只提交人工核实意图，
+        // 不执行取消/改期，也不把模型选中的原因码当成预约已确权的证据。
+        const needsBookingVerification = isModifyAppointment && workOrderId == null;
+        if (needsBookingVerification) {
           logger.log(
-            `request_handoff(modify_appointment) 但无 active_booking，按首次约面继续: chatId=${chatId}`,
+            `request_handoff(modify_appointment) 未查到工单，请人工核实预约: chatId=${chatId}`,
           );
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.HANDOFF_NO_BOOKING,
-            outcome: '候选人尚无已确认预约，不应作为改期转人工',
-            replyInstruction:
-              '候选人尚无已确认的面试预约，这其实是首次约面意向。请按首次约面流程继续：调 duliday_interview_precheck 校验并推进预约，不要转人工，也不要说"帮你改期/取消"。',
-            details: { shortCircuited: false },
-          });
         }
 
         // botImId 缺失时，飞书告警无法 @ 到对应招募负责人（recruitment_cases 废弃后已无 case.bot_im_id
@@ -209,7 +209,9 @@ export function buildRequestHandoffTool(
             source: 'agent_tool',
             alertLabel: HANDOFF_REASON_LABELS[reasonCode] ?? '需人工跟进',
             reasonCode,
-            reason: reason?.trim() || HANDOFF_REASON_LABELS[reasonCode] || '需要人工协助',
+            reason:
+              (needsBookingVerification ? '系统未查到工单，需人工先核实预约再处理。' : '') +
+              (reason?.trim() || HANDOFF_REASON_LABELS[reasonCode] || '需要人工协助'),
             origin: 'agent_tool',
             actionAdvice: actionAdvice?.trim(),
             missingJobInfo: missingJobInfo?.map((item) => item.trim()).filter(Boolean),

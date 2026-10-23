@@ -25,6 +25,8 @@ export interface SessionRef {
 export interface TurnContext
   extends Pick<
     GeneratorInvokeParams,
+    | 'logicalTurnId'
+    | 'inputOccurredAt'
     | 'scenario'
     | 'imageMessageIds'
     | 'visualMessageTypes'

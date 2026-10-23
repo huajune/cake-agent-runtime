@@ -20,6 +20,7 @@ describe('SupabaseStore', () => {
     eq: jest.fn().mockReturnThis(),
     is: jest.fn().mockReturnThis(),
     maybeSingle: mockMaybeSingle,
+    abortSignal: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
   };
@@ -554,6 +555,14 @@ describe('SupabaseStore', () => {
       return store.getActiveBookings('corp1', 'user1');
     };
 
+    it('throws on database failure instead of falsely proving no pointers', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+      await expect(store.getActiveBookings('corp1', 'user1')).rejects.toThrow(
+        'active_booking_read_failed',
+      );
+    });
+
     it('null 形态：返回空列表，[0] 为 undefined', async () => {
       const bookings = await readWith(null);
 
@@ -621,5 +630,124 @@ describe('SupabaseStore', () => {
         job_id: 900,
       });
     });
+  });
+  it('strict repair never reports persistence complete when Supabase is unavailable', async () => {
+    mockSupabaseService.getSupabaseClient.mockReturnValue(null);
+    await expect(store.setActiveBooking('corp', 'user', 42, {}, { strict: true })).rejects.toThrow(
+      'active_booking_store_unavailable',
+    );
+    await expect(store.clearActiveBooking('corp', 'user', 42, { strict: true })).rejects.toThrow(
+      'active_booking_store_unavailable',
+    );
+    await expect(
+      store.upsertProfileFacts(
+        'corp',
+        'user',
+        'bot',
+        { name: profileFact('张三') },
+        undefined,
+        undefined,
+        { strict: true },
+      ),
+    ).rejects.toThrow('memory_profile_store_unavailable');
+  });
+
+  it('routes every pointer mutation through one bounded atomic projection RPC', async () => {
+    const abortSignal = jest.fn().mockResolvedValue({ data: { superseded: false }, error: null });
+    mockRpc.mockReturnValue({ abortSignal });
+    const assertOwned = jest.fn().mockResolvedValue(undefined);
+    await store.setActiveBooking(
+      'corp',
+      'user',
+      42,
+      { job_id: 100, interview_time: '2026-10-23 14:00' },
+      { strict: true, occurredAt: '2026-10-20T00:00:00Z', assertOwned },
+    );
+    expect(mockRpc).toHaveBeenCalledWith('apply_active_booking_projection', {
+      p_corp_id: 'corp',
+      p_user_id: 'user',
+      p_operation: 'set',
+      p_work_order_id: 42,
+      p_occurred_at: '2026-10-20T00:00:00Z',
+      p_job_id: 100,
+      p_interview_time: '2026-10-23 14:00',
+    });
+    expect(assertOwned).toHaveBeenCalledTimes(1);
+    expect(abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(mockRedis.get).not.toHaveBeenCalled();
+    expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    await store.clearActiveBooking('corp', 'user', 42, { occurredAt: '2026-10-21T00:00:00Z' });
+    expect(mockRpc).toHaveBeenLastCalledWith(
+      'apply_active_booking_projection',
+      expect.objectContaining({
+        p_operation: 'clear',
+        p_work_order_id: 42,
+        p_occurred_at: '2026-10-21T00:00:00Z',
+      }),
+    );
+    await store.clearActiveBooking('corp', 'user');
+    expect(mockRpc).toHaveBeenLastCalledWith(
+      'apply_active_booking_projection',
+      expect.objectContaining({
+        p_operation: 'clear',
+        p_work_order_id: null,
+        p_occurred_at: expect.any(String),
+      }),
+    );
+  });
+
+  it('does not dispatch a projection RPC after lease loss', async () => {
+    await expect(
+      store.setActiveBooking(
+        'corp',
+        'user',
+        42,
+        {},
+        {
+          strict: true,
+          assertOwned: async () => {
+            throw new Error('lease_lost');
+          },
+        },
+      ),
+    ).rejects.toThrow('lease_lost');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('strict projection RPC errors leave synchronization pending', async () => {
+    mockRpc.mockReturnValue({
+      abortSignal: jest.fn().mockResolvedValue({ error: { message: 'write failed' } }),
+    });
+    await expect(
+      store.setActiveBooking('corp', 'user', 42, {}, { strict: true }),
+    ).rejects.toMatchObject({ message: 'write failed' });
+  });
+
+  it('reports superseded historical projection so callers do not apply old identity facts', async () => {
+    mockRpc.mockReturnValue({
+      abortSignal: jest.fn().mockResolvedValue({ data: { superseded: true }, error: null }),
+    });
+    expect(await store.setActiveBooking('corp', 'user', 42, {}, { strict: true })).toBe(false);
+    expect(mockRedis.del).toHaveBeenCalledWith('active-booking:corp:user');
+  });
+
+  it('bounds strict reads and profile writes with an abort signal', async () => {
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+    await store.getActiveBookings('corp', 'user', { strict: true });
+    expect(mockEqChain.abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
+    const abortSignal = jest
+      .fn()
+      .mockResolvedValue({ data: { written_fields: [], skipped_fields: [] }, error: null });
+    mockRpc.mockReturnValue({ abortSignal });
+    await store.upsertProfileFacts(
+      'corp',
+      'user',
+      'bot',
+      { name: profileFact('张三') },
+      undefined,
+      undefined,
+      { strict: true },
+    );
+    expect(abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
 });

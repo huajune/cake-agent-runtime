@@ -610,6 +610,39 @@ describe('SpongeService', () => {
   });
 
   describe('bookInterview', () => {
+    it.each([
+      ['用户已报名该岗位或品牌', 'already_registered'],
+      ['用户已报名该品牌！请联系独立日工作人员，确定候选人归属', 'ownership_review'],
+      ['用户已报名其它内容', undefined],
+      ['报名人数已超出上限', undefined],
+    ])('按已核实原文分类重复报名：%s', async (message, duplicateSignupReason) => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
+        json: jest.fn().mockResolvedValue({ code: -9, message, data: null }),
+      } as unknown as Response);
+      const result = await service.bookInterview({ jobId: 100, labelList: [] });
+      expect(result.success).toBe(false);
+      expect(result.duplicateSignupReason).toBe(duplicateSignupReason);
+    });
+
+    it('成功响应即使携带重复文案也不改变成功分类', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
+        json: jest
+          .fn()
+          .mockResolvedValue({
+            code: 0,
+            message: '用户已报名该岗位或品牌',
+            data: { workOrder: { workOrderId: 9 } },
+          }),
+      } as unknown as Response);
+      const result = await service.bookInterview({ jobId: 100, labelList: [] });
+      expect(result.success).toBe(true);
+      expect(result.duplicateSignupReason).toBeUndefined();
+    });
+
     it('should call booking API and return result', async () => {
       const mockResponse = {
         ok: true,

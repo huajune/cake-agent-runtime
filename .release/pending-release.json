@@ -1,10 +1,1072 @@
 {
   "baseVersion": "11.13.2",
-  "nextVersion": "11.13.2",
-  "lastAnalyzedSha": null,
-  "updatedAt": "2026-10-15",
+  "nextVersion": "11.14.0",
+  "updatedAt": "2026-10-23",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1418",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1418",
+      "title": "群机器人 Webhook 地址与密钥只读环境变量",
+      "author": "huajune",
+      "mergedAt": "2026-10-20",
+      "opsNotes": [],
+      "businessUpdates": [
+        "移除 `src/infra/feishu/constants/constants.ts` 中硬编码的 3 组 Webhook URL / SECRET，常量只保留 `ENV_URL_KEY` / `ENV_SECRET_KEY` 键名（落实 CLAUDE.md「禁硬编码密钥（走 ConfigService）」）。",
+        "三个飞书群机器人（告警群 / 群运营通知群 / 私聊监控群）的 Webhook 地址和签名密钥不再写在代码里，只从环境变量读取。",
+        "环境变量已配置时行为不变；未配置时该群通知记 warn 并跳过发送，不影响服务启动。"
+      ],
+      "summary": [
+        "群机器人密钥只读环境变量",
+        "未知通道跳过发送不抛错",
+        "三个飞书群机器人（告警群 / 群运营通知群 / 私聊监控群）的 Webhook 地址和签名密钥不再写在代码里，只从环境变量读取。",
+        "环境变量已配置时行为不变；未配置时该群通知记 warn 并跳过发送，不影响服务启动。",
+        "**旧地址和密钥仍留在 git 历史里，合并后需要人工到飞书轮换（见下方清单）。本 PR 未轮换任何密钥。**",
+        "群机器人 Webhook 地址与密钥只读环境变量"
+      ],
+      "features": [],
+      "fixes": [
+        "移除 `src/infra/feishu/constants/constants.ts` 中硬编码的 3 组 Webhook URL / SECRET，常量只保留 `ENV_URL_KEY` / `ENV_SECRET_KEY` 键名（落实 CLAUDE.md「禁硬编码密钥（走 ConfigService）」）。",
+        "三个飞书群机器人（告警群 / 群运营通知群 / 私聊监控群）的 Webhook 地址和签名密钥不再写在代码里，只从环境变量读取。",
+        "环境变量已配置时行为不变；未配置时该群通知记 warn 并跳过发送，不影响服务启动。"
+      ],
+      "optimizations": [
+        "`FeishuWebhookService` 只通过 ConfigService 读取配置：",
+        "`*_URL` 为空或未设置：记 warn 并跳过发送，`sendMessage` 返回 `false`，不重试、不向告警群补发失败告警；`sendMessageOrThrow` 维持原契约抛「未配置」错误（调用方均已捕获）。",
+        "`*_SECRET` 显式为空：照旧不带签名发送；未设置：首次记 warn 后按不带签名发送。",
+        "告警群本身未配置时，其他通道的失败告警补发直接跳过。",
+        "群任务预览失败提示去掉「或默认 webhook 配置」字样。",
+        "**旧地址和密钥仍留在 git 历史里，合并后需要人工到飞书轮换（见下方清单）。本 PR 未轮换任何密钥。**"
+      ],
+      "ops": [
+        "群机器人密钥只读环境变量",
+        "未知通道跳过发送不抛错"
+      ],
+      "config": [
+        "无新增键。`.env.example` 已有全部 6 个键，补充说明「代码不内置默认值，URL 未配置时跳过发送」。",
+        "本地 `.env.local` / `.env.production` 已核对 6 个键均存在且非空（只核对键名与是否为空，未输出取值）。",
+        "⚠️ 服务器上的 `/data/cake/.env.production` 未能直接核验；合并发版前请确认这 6 个键都在，否则对应群的通知会停发（日志可见 warn）。"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`pnpm run ci:check` 通过（pre-push 全量：518 个测试套件 / 8204 个用例通过，5 个既有 skip；含 build:ci）",
+        "`pnpm run typecheck` 通过",
+        "`pnpm run lint:check` 通过；`pnpm run format:check` 通过",
+        "相关 jest：`tests/infra/feishu`、`tests/notification`、`tests/biz/group-task`、`tests/scripts/send-deploy-notification.spec.ts` 共 44 个套件 511 个用例通过（`--watchman=false`）",
+        "`pnpm run test:di-smoke`（AppModule 依赖注入冒烟）通过",
+        "新增单测：常量不含取值；URL 缺失时 warn + 跳过且不补发告警；`sendMessageOrThrow` 缺配置抛错不发请求；SECRET 未设置时无签名发送且只 warn 一次；告警群未配置时跳过失败告警补发",
+        "关键链路已人工验证（未在真实飞书群发送测试消息）",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
+        "未新增虚构 prompt 示例值",
+        "其他说明：无"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1419",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1419",
+      "title": "沉淀运营版上线通知写法与发送脚本，ship-release 接入 Claude Code",
+      "author": "huajune",
+      "mergedAt": "2026-10-20",
+      "opsNotes": [],
+      "businessUpdates": [
+        "**`ship-release` 新增「运营版上线通知」写法**（`references/ops-release-notice.md`），把 2026-10-15 两轮核查挑出的问题沉淀成规则：",
+        "对比词按起点写；PR「运营说明」只当找漏项的线索，不照搬",
+        "数字、开关取值、迁移是否执行、新数据才生效的过渡期，都现查生产",
+        "发送前用户审阅；拒绝自动 notify 卡片要先经用户同意；已发过卡片的，在通知开头说明以本通知为准",
+        "附 2026-10-15 实际发出的定稿作为范例（只参考结构和文风）",
+        "**新增发送脚本** `scripts/ops-release-notice/send-notice-card.js`，样式与自动发版卡片一致：",
+        "`--dry-run` 打印标题和正文原文，不读凭证、不发送",
+        "参数写错（如 `--dryrun`）直接报错，不会误发",
+        "请求体超过飞书 20 KB 上限、条目自带编号或换行、标题自带 `**` 时拦截；转义 `<` `>`",
+        "发送成功写 `.sent` 标记，挡住重复发送；worktree 里没有 `.env.production` 时回退到主仓库读取",
+        "**`SKILL.md`**：",
+        "补充改发人工通知的两种情况，以及人工通知在内容闸口 7 项上的判定口径",
+        "发布后 checklist 不再要求 notify 被拒的 run 整体全绿",
+        "**`ship-release` 接入 Claude Code**：新增 `.claude/skills/ship-release` 链接，并与用户现行要求对齐：",
+        "PR 默认 ready，用户明确要求才开草稿；",
+        "沉淀运营版上线通知写法与发送脚本，ship-release 接入 Claude Code",
+        "每条两头核实：终点代码成立并能走到，起点按行为搜确实没有；修复条目要证明问题在线上真的出现过"
+      ],
+      "summary": [
+        "沉淀运营版上线通知写法与发送脚本，ship-release 接入 Claude Code",
+        "JSON 预览禁止发送并核实成功回执",
+        "补充部署标签取证来源和缺失处理",
+        "独占发送标记避免并发重复通知",
+        "持有独占锁时对明确限流进行有界退避重试",
+        "**`ship-release` 新增「运营版上线通知」写法**（`references/ops-release-notice.md`），把 2026-10-15 两轮核查挑出的问题沉淀成规则：",
+        "以当天第一次上线前、生产实际在跑的版本为起点写净变化；按 deploy job 而不是 run 整体状态找起点和终点，tag 从运行日志取，不用 `headSha`",
+        "每条两头核实：终点代码成立并能走到，起点按行为搜确实没有；修复条目要证明问题在线上真的出现过",
+        "对比词按起点写；PR「运营说明」只当找漏项的线索，不照搬",
+        "数字、开关取值、迁移是否执行、新数据才生效的过渡期，都现查生产",
+        "发送前用户审阅；拒绝自动 notify 卡片要先经用户同意；已发过卡片的，在通知开头说明以本通知为准",
+        "附 2026-10-15 实际发出的定稿作为范例（只参考结构和文风）",
+        "**新增发送脚本** `scripts/ops-release-notice/send-notice-card.js`，样式与自动发版卡片一致：",
+        "`--dry-run` 打印标题和正文原文，不读凭证、不发送",
+        "参数写错（如 `--dryrun`）直接报错，不会误发",
+        "请求体超过飞书 20 KB 上限、条目自带编号或换行、标题自带 `**` 时拦截；转义 `<` `>`",
+        "发送成功写 `.sent` 标记，挡住重复发送；worktree 里没有 `.env.production` 时回退到主仓库读取",
+        "**`SKILL.md`**：",
+        "补充改发人工通知的两种情况，以及人工通知在内容闸口 7 项上的判定口径",
+        "发布后 checklist 不再要求 notify 被拒的 run 整体全绿",
+        "**`ship-release` 接入 Claude Code**：新增 `.claude/skills/ship-release` 链接，并与用户现行要求对齐：",
+        "PR 默认 ready，用户明确要求才开草稿；",
+        "\"准备发版\"不等于授权发版：合发布 PR、批准部署、推生产迁移各自确认。"
+      ],
+      "features": [
+        "**`ship-release` 新增「运营版上线通知」写法**（`references/ops-release-notice.md`），把 2026-10-15 两轮核查挑出的问题沉淀成规则：",
+        "对比词按起点写；PR「运营说明」只当找漏项的线索，不照搬",
+        "数字、开关取值、迁移是否执行、新数据才生效的过渡期，都现查生产",
+        "发送前用户审阅；拒绝自动 notify 卡片要先经用户同意；已发过卡片的，在通知开头说明以本通知为准",
+        "附 2026-10-15 实际发出的定稿作为范例（只参考结构和文风）",
+        "**新增发送脚本** `scripts/ops-release-notice/send-notice-card.js`，样式与自动发版卡片一致：",
+        "`--dry-run` 打印标题和正文原文，不读凭证、不发送",
+        "参数写错（如 `--dryrun`）直接报错，不会误发",
+        "请求体超过飞书 20 KB 上限、条目自带编号或换行、标题自带 `**` 时拦截；转义 `<` `>`",
+        "发送成功写 `.sent` 标记，挡住重复发送；worktree 里没有 `.env.production` 时回退到主仓库读取",
+        "**`SKILL.md`**：",
+        "补充改发人工通知的两种情况，以及人工通知在内容闸口 7 项上的判定口径",
+        "发布后 checklist 不再要求 notify 被拒的 run 整体全绿",
+        "**`ship-release` 接入 Claude Code**：新增 `.claude/skills/ship-release` 链接，并与用户现行要求对齐：",
+        "PR 默认 ready，用户明确要求才开草稿；",
+        "沉淀运营版上线通知写法与发送脚本，ship-release 接入 Claude Code"
+      ],
+      "fixes": [
+        "每条两头核实：终点代码成立并能走到，起点按行为搜确实没有；修复条目要证明问题在线上真的出现过"
+      ],
+      "optimizations": [],
+      "ops": [
+        "以当天第一次上线前、生产实际在跑的版本为起点写净变化；按 deploy job 而不是 run 整体状态找起点和终点，tag 从运行日志取，不用 `headSha`",
+        "\"准备发版\"不等于授权发版：合发布 PR、批准部署、推生产迁移各自确认。",
+        "JSON 预览禁止发送并核实成功回执",
+        "补充部署标签取证来源和缺失处理",
+        "独占发送标记避免并发重复通知",
+        "持有独占锁时对明确限流进行有界退避重试"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tests/scripts/send-notice-card.spec.ts` 12 个用例通过，覆盖以下几类：",
+        "卡片结构、范例大小、转义；",
+        "换行、编号、超长条目的校验；",
+        "写错参数被拒；",
+        "dry-run 不读凭证、不发送；",
+        "只发一次，飞书报错时不写 `.sent` 标记。",
+        "用范例重新生成的卡片正文，与 2026-10-15 实际发出的卡片逐字一致。",
+        "`ci:check`（push 前 hook）全部通过：lint、format、typecheck、各项校验、build:ci，jest 8211 通过 / 5 跳过。",
+        "文档与脚本经四视角 AI 审查（由 Claude 执行），25 条意见均已处理（`~` 未转义：转义会改动正文字符）；其中“模拟新代理执行”这一视角因网络中断未完成。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1420",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1420",
+      "title": "收录 Jev（TypeSafe System One）可行性调研",
+      "author": "huajune",
+      "mergedAt": "2026-10-20",
+      "opsNotes": [],
+      "businessUpdates": [
+        "收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。",
+        "`docs/README.md` 新增「技术调研 (technical/)」分区与入口。",
+        "修正配置示例和评估上下文保真约束"
+      ],
+      "summary": [
+        "收录 Jev（TypeSafe System One）可行性调研",
+        "核实代码引用并区分建议与正式待办",
+        "纠正人工预览与结构化输出基线",
+        "补齐决策上下文与四周指标留存前提",
+        "修正配置示例和评估上下文保真约束",
+        "收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。",
+        "`docs/README.md` 新增「技术调研 (technical/)」分区与入口。"
+      ],
+      "features": [
+        "收录 2026-10-08 完成的 Jev（TypeSafe System One 决策模型）可行性调研：结论是现在不接入，10 条候选判定点经三路对抗审查全部驳回；文中给出重议的四个前提和各候选的非 Jev 替代修法。",
+        "`docs/README.md` 新增「技术调研 (technical/)」分区与入口。"
+      ],
+      "fixes": [
+        "修正配置示例和评估上下文保真约束"
+      ],
+      "optimizations": [],
+      "ops": [
+        "收录 Jev（TypeSafe System One）可行性调研",
+        "核实代码引用并区分建议与正式待办",
+        "纠正人工预览与结构化输出基线",
+        "补齐决策上下文与四周指标留存前提"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（本地 pre-push 全量通过）",
+        "关键链路已人工验证（纯文档改动，不涉及）",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；如有探测需求，已先走 shadow diff（不涉及）",
+        "新增虚构 prompt 示例值均来自 `src/agent/guardrail/prompt/example-registry.ts`（不涉及）",
+        "其他说明：这份文档此前只在本地 stash 里有一份（2026-10-12 清理时保留），本 PR 原样收录、未改正文。文中生产数字取自 2026-09-24 与 2026-10-08 的取数窗口，引用前请按当时口径理解。按 `docs/README.md` 的文档规范，若日后把结论转写进 `docs/principles/bitter-lessons.md` 等现状文档，本文可随之删除。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1422",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1422",
+      "title": "取消改约防重跑、城市出处确认与远程面试复聊判定",
+      "author": "huajune",
+      "mergedAt": "2026-10-20",
+      "opsNotes": [
+        "**取消改约与城市判断 ✅**",
+        "- 已完成的取消、改约保留结果，减少重试时重复执行；缺少工单号时交人工核实，不直接否认已有预约。",
+        "- 优先采用候选人最新城市，不把他人预约或全国群当作城市依据；电话、视频及 AI 面试避免套用到店时间限制。"
+      ],
+      "businessUpdates": [
+        "无。",
+        "审查补修以当前提交 `e96fe276b4fb6adc70613034f6c2fd9b67e3421f` 为准。",
+        "电话/视频也豁免时间冲突是用户已确认需求，不按审查建议改成 AI-only。"
+      ],
+      "summary": [
+        "取消/改约成功后阻断 replay，工单号缺失回执禁止向候选人索要",
+        "geocode 城市出处被忽略时显式回执，全国搜 unique 与群/预约城市不一致走确认",
+        "AI/线上面试豁免时间不一致判定，放弃判据只认候选人本人与真人经理",
+        "补齐城市确认与复聊来源边界",
+        "更新取消改约提示词兼容性基线",
+        "城市出处排除非本人预约",
+        "补齐城市出处与取消工单审查边界",
+        "取消缺失工单时转人工核实预约",
+        "全国群范围不得作为城市出处",
+        "转人工建议禁止补全未知身份信息",
+        "审查补修以当前提交 `e96fe276b4fb6adc70613034f6c2fd9b67e3421f` 为准。",
+        "电话/视频也豁免时间冲突是用户已确认需求，不按审查建议改成 AI-only。",
+        "取消改约防重跑、城市出处确认与远程面试复聊判定"
+      ],
+      "features": [
+        "无。"
+      ],
+      "fixes": [
+        "审查补修以当前提交 `e96fe276b4fb6adc70613034f6c2fd9b67e3421f` 为准。",
+        "电话/视频也豁免时间冲突是用户已确认需求，不按审查建议改成 AI-only。"
+      ],
+      "optimizations": [
+        "同步必要的状态证据、规则台账及回归覆盖。"
+      ],
+      "ops": [
+        "不合并、不部署、不发业务通知。",
+        "用户已明确批准保存并同步证据。飞书正式资产 32 个场景、2 个脱敏多轮验证已导入，维持禁用自动执行；测试库及生产测试 Dashboard 均回读确认 18 个批次、43 条执行记录：32 通过、2 历史失败、9 无效夹具/初始化跳过，待评审为 0；评审状态、评审来源和评语逐条一致。",
+        "GitHub 的 AI Code Review 工作流此前因未返回有效结构化审查结论而失败并留下 CHANGES_REQUESTED；不把已回复/解决讨论等同于获得批准，不撤销门禁或伪造审查。最新 CI/审查以页面状态为准。",
+        "四个 PR 在各自分支验证，没有合并到组合分支进行交叉验证；后续合并前须处理重叠文件并检查集成结果。",
+        "取消/改约成功后阻断 replay，工单号缺失回执禁止向候选人索要",
+        "geocode 城市出处被忽略时显式回执，全国搜 unique 与群/预约城市不一致走确认",
+        "AI/线上面试豁免时间不一致判定，放弃判据只认候选人本人与真人经理",
+        "补齐城市确认与复聊来源边界",
+        "更新取消改约提示词兼容性基线",
+        "城市出处排除非本人预约",
+        "补齐城市出处与取消工单审查边界",
+        "取消缺失工单时转人工核实预约",
+        "全国群范围不得作为城市出处",
+        "转人工建议禁止补全未知身份信息"
+      ],
+      "config": [
+        "无数据库迁移、环境变量或部署配置变更。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "当前完整 `pnpm run ci:check`：8255 条测试通过；518 个测试文件通过，5 条既有测试跳过，3 个快照通过；包含 lint、format、typecheck、geo/vocab/规则台账及构建。",
+        "11 次真实模型。主回复实际调用 qwen3.8-max；守卫修复及复聊实际调用 deepseek-v4-pro。",
+        "外部海绵、定位、预约、取消和消息发送为受控夹具；未创建真实工单、取消真实预约或发送业务消息。故障注入与自然模型行为分开记录，不能视为生产端到端验收。",
+        "`c-missing-order`：取消诉求查不到工单时走 modify_appointment 人工核实，不索取内部工单号、不否认预约。 执行 `3025cc83-f609-431d-9c9b-4b9645f88809`。",
+        "`c-first-booking`：首次咨询可约时间仍进入正常预检收集，不误转取消人工核实。 执行 `e21f57b5-4dc5-4039-8ef7-587af2c8af18`。",
+        "`c-latest-city`：后出现的北京位置覆盖旧上海确认，实际 geocode 使用北京；不对夹具库存作通过声明。 执行 `4c067b30-6db2-4f79-9a5d-e2f83d8ddfcd`。",
+        "`c-city-confirm`：当前确认佛山后按佛山 geocode，未凭地标常识改为北京。 执行 `fa3e34cc-25b8-4e3a-b1b2-638f63cc410d`。",
+        "`c-national-group`：全国群不充当具体城市；王府井 geocode 不注入全国，唯一北京结果无全国/北京澄清。 执行 `28147650-e476-4550-b7c6-827e106ea543`。",
+        "`c-reminder-AI面试`：远程 AI 面试豁免聊天时间冲突，mismatch=false。 执行 `0e56d03b-07cc-439f-bb0c-8bdbf40dedeb`。",
+        "`c-reminder-电话面试`：电话面试 mismatch=false；实际因已提醒而 skip，不把发送作为通过条件。 执行 `1472f577-7a16-4e46-9fb5-a4e38e391f7c`。",
+        "`c-reminder-视频面试`：视频面试 mismatch=false；实际因已提醒而 skip，不把发送作为通过条件。 执行 `7d24a197-0109-4ed2-b00d-33ab30b7a360`。",
+        "`c-reminder-线下面试`：线下面试保留时间冲突保护，mismatch=true 并阻止提醒。 执行 `f3aadf37-9158-4b5c-be1f-7271248e63b1`。",
+        "`c-automatic-close`：自动关闭不误识别成经理取消，可形成提醒。 执行 `04aea2ec-10fb-4f7a-a47f-5c47d887b0cd`。",
+        "`c-human-change`：经理明确取消仍阻止提醒。 执行 `84db1327-545d-4282-a8a2-5a77516022db`。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1423",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1423",
+      "title": "收口报名恢复、门店选择与静默准入修复",
+      "author": "huajune",
+      "mergedAt": "2026-10-21",
+      "opsNotes": [
+        "**报名确认、面试安排与门店位置 ✅**",
+        "- 多人代报名逐人核对资料和提交结果；没有成功依据时不回复已报名。",
+        "- 没有可直接预约的具体面试时间时交人工协调，不展示为可选时段；面试通知按实际方式说明，不额外承诺短信。",
+        "- 加强品牌与完整门店名称匹配，未知门店不沿用旧岗位地址；位置发送失败不改变已成功报名的结果。"
+      ],
+      "businessUpdates": [
+        "无。",
+        "审查补修以当前提交 `1ed4e5afa7bafd06c722079783920dfef43681c5` 为准。",
+        "保险、社保、公积金仍暂缓，等待上游 AI 接口字段；不重新引入已撤回变更。AI 等通知措辞的运营确认待办保留。",
+        "独立门店同分时清空歧义焦点并解决合并冲突"
+      ],
+      "summary": [
+        "零 booking 假报名回执升 replan，代报下一人先 precheck",
+        "空响应恢复禁将来时承诺，待提交确认节点转人工",
+        "面试窗口无具体时间时转人工，不再让候选人挑时间",
+        "拦截 Provider 鉴权错误文案与标题开场回复外泄",
+        "skip_reply 确认词收尾加运行时准入，首句与非短确认词拒绝沉默",
+        "目录外品牌ID不再当品牌名念",
+        "无出处品牌不生成没合作话术",
+        "等通知回执按面试方式分支",
+        "区分商业保险与社保福利",
+        "发定位前核对品牌门店",
+        "防止空回复信封拆出内部思考",
+        "明确静默准入边界并补齐报错重生成回归",
+        "定位回执区分报名状态",
+        "补齐品牌出处与目录校验边界",
+        "补齐面试回执时限与报名范围",
+        "更新社保咨询规则的提示词基线",
+        "空回复信封复用静默准入并保留工具回执",
+        "排除携带场景控制字段的空回复信封",
+        "拒绝时长和天数短问句的确认静默",
+        "暂缓保险与社保公积金调整",
+        "保留未知信封字段与括号内用户内容",
+        "空回复恢复保留有依据的面试时间",
+        "补齐门店指称与面试展示审查边界",
+        "未转写语音不得作为确认收尾静默",
+        "空响应恢复尊重报名终态与资料授权",
+        "面试通知渠道优先采用流程备注",
+        "拒绝遗漏的短问句静默",
+        "按活动候选人核对报名回执与空响应",
+        "拒绝正反问句误入确认静默",
+        "核对点名门店原文并剥离引用品牌",
+        "保留追加候选人已提交工单的对账凭据",
+        "按完整门店名纠正焦点并核验数字品牌别名",
+        "图片消息不能按简短确认静默收尾",
+        "定位降级先澄清门店并纠正展示岗位记录",
+        "小程序简历卡片保留为待处理内容",
+        "统一规则目录数量说明",
+        "追加候选人回执必须核实本轮身份",
+        "登记追加候选人回执的身份核实边界",
+        "保留独立门店指称并区分品牌目录故障",
+        "隔离多人回执并绑定空响应确认上下文",
+        "过滤回执敏感条件并优先匹配明确门店",
+        "结构化图片禁止确认收尾静默",
+        "同步 develop 并保留静默准入和地理确认台账",
+        "合并静默准入与 develop 并保留报名恢复规则",
+        "独立门店同分时清空歧义焦点并解决合并冲突",
+        "畸形信封静默必须具备明确收尾意图及完整准入",
+        "确认预填资料时不展示人工协调时段为可选项",
+        "审查补修以当前提交 `1ed4e5afa7bafd06c722079783920dfef43681c5` 为准。",
+        "保险、社保、公积金仍暂缓，等待上游 AI 接口字段；不重新引入已撤回变更。AI 等通知措辞的运营确认待办保留。",
+        "收口报名恢复、门店选择与静默准入修复"
+      ],
+      "features": [
+        "无。"
+      ],
+      "fixes": [
+        "审查补修以当前提交 `1ed4e5afa7bafd06c722079783920dfef43681c5` 为准。",
+        "保险、社保、公积金仍暂缓，等待上游 AI 接口字段；不重新引入已撤回变更。AI 等通知措辞的运营确认待办保留。",
+        "独立门店同分时清空歧义焦点并解决合并冲突"
+      ],
+      "optimizations": [
+        "同步必要的状态证据、规则台账及回归覆盖。",
+        "合并静默准入与 develop 并保留报名恢复规则"
+      ],
+      "ops": [
+        "不合并、不部署、不发业务通知。",
+        "用户已明确批准保存并同步证据。飞书正式资产 32 个场景、2 个脱敏多轮验证已导入，维持禁用自动执行；测试库及生产测试 Dashboard 均回读确认 18 个批次、43 条执行记录：32 通过、2 历史失败、9 无效夹具/初始化跳过，待评审为 0；评审状态、评审来源和评语逐条一致。",
+        "GitHub 的 AI Code Review 工作流此前因未返回有效结构化审查结论而失败并留下 CHANGES_REQUESTED；不把已回复/解决讨论等同于获得批准，不撤销门禁或伪造审查。最新 CI/审查以页面状态为准。",
+        "四个 PR 在各自分支验证，没有合并到组合分支进行交叉验证；后续合并前须处理重叠文件并检查集成结果。",
+        "零 booking 假报名回执升 replan，代报下一人先 precheck",
+        "空响应恢复禁将来时承诺，待提交确认节点转人工",
+        "面试窗口无具体时间时转人工，不再让候选人挑时间",
+        "拦截 Provider 鉴权错误文案与标题开场回复外泄",
+        "skip_reply 确认词收尾加运行时准入，首句与非短确认词拒绝沉默",
+        "目录外品牌ID不再当品牌名念",
+        "无出处品牌不生成没合作话术",
+        "等通知回执按面试方式分支",
+        "区分商业保险与社保福利",
+        "发定位前核对品牌门店",
+        "防止空回复信封拆出内部思考",
+        "明确静默准入边界并补齐报错重生成回归",
+        "定位回执区分报名状态",
+        "补齐品牌出处与目录校验边界",
+        "补齐面试回执时限与报名范围",
+        "更新社保咨询规则的提示词基线",
+        "空回复信封复用静默准入并保留工具回执",
+        "排除携带场景控制字段的空回复信封",
+        "拒绝时长和天数短问句的确认静默",
+        "暂缓保险与社保公积金调整",
+        "保留未知信封字段与括号内用户内容",
+        "空回复恢复保留有依据的面试时间",
+        "补齐门店指称与面试展示审查边界",
+        "未转写语音不得作为确认收尾静默",
+        "空响应恢复尊重报名终态与资料授权",
+        "面试通知渠道优先采用流程备注",
+        "拒绝遗漏的短问句静默",
+        "按活动候选人核对报名回执与空响应",
+        "拒绝正反问句误入确认静默",
+        "核对点名门店原文并剥离引用品牌",
+        "保留追加候选人已提交工单的对账凭据",
+        "按完整门店名纠正焦点并核验数字品牌别名",
+        "图片消息不能按简短确认静默收尾",
+        "定位降级先澄清门店并纠正展示岗位记录",
+        "小程序简历卡片保留为待处理内容",
+        "统一规则目录数量说明",
+        "追加候选人回执必须核实本轮身份",
+        "登记追加候选人回执的身份核实边界",
+        "保留独立门店指称并区分品牌目录故障",
+        "隔离多人回执并绑定空响应确认上下文",
+        "过滤回执敏感条件并优先匹配明确门店",
+        "结构化图片禁止确认收尾静默",
+        "同步 develop 并保留静默准入和地理确认台账",
+        "畸形信封静默必须具备明确收尾意图及完整准入",
+        "确认预填资料时不展示人工协调时段为可选项"
+      ],
+      "config": [
+        "无数据库迁移、环境变量或部署配置变更。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "当前完整 `pnpm run ci:check`：8278 条测试通过；518 个测试文件通过，5 条既有测试跳过，3 个快照通过；包含 lint、format、typecheck、geo/vocab/规则台账及构建。",
+        "7 次真实模型。主回复实际调用 qwen3.8-max；守卫修复及复聊实际调用 deepseek-v4-pro。",
+        "外部海绵、定位、预约、取消和消息发送为受控夹具；未创建真实工单、取消真实预约或发送业务消息。故障注入与自然模型行为分开记录，不能视为生产端到端验收。",
+        "`b-ai-process`：受控预约成功回执保留流程首句、当天18:30截止时间及 AI 面试方式。 执行 `665d75b2-4e9c-476f-ac48-29c24d6280b8`。",
+        "`b-ai-booking`：实际调用受控预约工具成功，按 AI 方式返回短信链接回执；本例不验收流程备注。 执行 `fe1260d8-febd-40db-8b79-8549458862f7`。",
+        "`b-store`：发送候选人本轮指定品牌门店的定位；不是旧岗位定位。 执行 `2f7254ba-150a-4b72-a09b-484857fb7885`。",
+        "`b-store-conflict`：品牌与门店冲突先澄清，未发送定位。本次模型主动澄清；工具拒绝分支另由工程回归验证。 执行 `6e83cfe7-d1d7-4502-8b39-4c52c36608d8`。",
+        "`b-brand-id`：模型未把未知100006当有效品牌ID，按品牌名称查目录并说明编号无法核实；非法ID运行时拒绝由工程测试验证。 执行 `95fe100e-2cc3-4a6f-bc83-6838dcd4da1f`。",
+        "`b-ai-inspect`：inspect 工具卡片保留 AI 面试形式，回复没有错误要求电话/到店面试。 执行 `b50f2c51-4dc1-41a0-aec4-d169e83b7bf4`。",
+        "`b-ai-notes-conflict`：AI 枚举与电话备注冲突时遵循备注，不额外承诺短信。 执行 `50748fae-5713-4a27-8183-8ad527190d2a`。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1424",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1424",
+      "title": "修复内部报错外发、首句静默和信封误拆封",
+      "author": "huajune",
+      "mergedAt": "2026-10-21",
+      "opsNotes": [
+        "**回复完整性与内部信息保护 ✅**",
+        "- 收紧不回复的适用范围，保护首次咨询、问题、业务回执及未识别清楚的语音、图片和文件。",
+        "- 清理接口鉴权错误、内部标题和过程文字，保留候选人正常括号内容。"
+      ],
+      "businessUpdates": [
+        "无。",
+        "审查补修以当前提交 `ea5165f469918b85619b73a85e6c812b4de9489d` 为准。",
+        "短句形状只是静默必要条件，开放语义仍由模型判断；不把有限标记集合宣称为完整问句分类器。"
+      ],
+      "summary": [
+        "拦截 Provider 鉴权错误文案与标题开场回复外泄",
+        "skip_reply 确认词收尾加运行时准入，首句与非短确认词拒绝沉默",
+        "防止空回复信封拆出内部思考",
+        "明确静默准入边界并补齐报错重生成回归",
+        "空回复信封复用静默准入并保留工具回执",
+        "排除携带场景控制字段的空回复信封",
+        "拒绝时长和天数短问句的确认静默",
+        "保留未知信封字段与括号内用户内容",
+        "未转写语音不得作为确认收尾静默",
+        "拒绝遗漏的短问句静默",
+        "拒绝正反问句误入确认静默",
+        "图片消息不能按简短确认静默收尾",
+        "小程序简历卡片保留为待处理内容",
+        "统一规则目录数量说明",
+        "结构化图片禁止确认收尾静默",
+        "同步 develop 并保留静默准入和地理确认台账",
+        "审查补修以当前提交 `ea5165f469918b85619b73a85e6c812b4de9489d` 为准。",
+        "短句形状只是静默必要条件，开放语义仍由模型判断；不把有限标记集合宣称为完整问句分类器。",
+        "修复内部报错外发、首句静默和信封误拆封"
+      ],
+      "features": [
+        "无。"
+      ],
+      "fixes": [
+        "审查补修以当前提交 `ea5165f469918b85619b73a85e6c812b4de9489d` 为准。",
+        "短句形状只是静默必要条件，开放语义仍由模型判断；不把有限标记集合宣称为完整问句分类器。"
+      ],
+      "optimizations": [
+        "同步必要的状态证据、规则台账及回归覆盖。"
+      ],
+      "ops": [
+        "不合并、不部署、不发业务通知。",
+        "用户已明确批准保存并同步证据。飞书正式资产 32 个场景、2 个脱敏多轮验证已导入，维持禁用自动执行；测试库及生产测试 Dashboard 均回读确认 18 个批次、43 条执行记录：32 通过、2 历史失败、9 无效夹具/初始化跳过，待评审为 0；评审状态、评审来源和评语逐条一致。",
+        "GitHub 的 AI Code Review 工作流此前因未返回有效结构化审查结论而失败并留下 CHANGES_REQUESTED；不把已回复/解决讨论等同于获得批准，不撤销门禁或伪造审查。最新 CI/审查以页面状态为准。",
+        "四个 PR 在各自分支验证，没有合并到组合分支进行交叉验证；后续合并前须处理重叠文件并检查集成结果。",
+        "拦截 Provider 鉴权错误文案与标题开场回复外泄",
+        "skip_reply 确认词收尾加运行时准入，首句与非短确认词拒绝沉默",
+        "防止空回复信封拆出内部思考",
+        "明确静默准入边界并补齐报错重生成回归",
+        "空回复信封复用静默准入并保留工具回执",
+        "排除携带场景控制字段的空回复信封",
+        "拒绝时长和天数短问句的确认静默",
+        "保留未知信封字段与括号内用户内容",
+        "未转写语音不得作为确认收尾静默",
+        "拒绝遗漏的短问句静默",
+        "拒绝正反问句误入确认静默",
+        "图片消息不能按简短确认静默收尾",
+        "小程序简历卡片保留为待处理内容",
+        "统一规则目录数量说明",
+        "结构化图片禁止确认收尾静默",
+        "同步 develop 并保留静默准入和地理确认台账"
+      ],
+      "config": [
+        "无数据库迁移、环境变量或部署配置变更。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "当前完整 `pnpm run ci:check`：8334 条测试通过；518 个测试文件通过，5 条既有测试跳过，3 个快照通过；包含 lint、format、typecheck、geo/vocab/规则台账及构建。",
+        "9 次真实模型。主回复实际调用 qwen3.8-max；守卫修复及复聊实际调用 deepseek-v4-pro。",
+        "外部海绵、定位、预约、取消和消息发送为受控夹具；未创建真实工单、取消真实预约或发送业务消息。故障注入与自然模型行为分开记录，不能视为生产端到端验收。",
+        "`a-fault-auth`：模型生成后注入内部鉴权错误，真实守卫修复为安全正常回复。 执行 `d8842bbb-f967-4a73-834c-8843c5df5505`。",
+        "`a-fault-empty-first`：首轮注入空信封必须修复，不直接静默。 执行 `9faa29c8-10c2-4c54-a670-8da2a8c67987`。",
+        "`a-fault-empty-confirm`：合法确认收尾的空信封可以静默。 执行 `8a6b2fdb-8702-4ead-8e41-7e460ec16d40`。",
+        "`a-source-02`：原始决定点的纯确认可合法静默；不泄露内部判定旁白。 执行 `3f29bb5e-48ff-43d5-a411-dcdd1d7ca10b`。",
+        "`a-source-05`：原始首句自我介绍得到非空回复。 执行 `80e246f5-32f5-4fa0-b87b-9d70fccb6a79`。",
+        "`a-source-12`：原始确认收尾合法静默，不发内部说明。 执行 `ac75f8ab-33ce-4588-b10d-33da600966d2`。",
+        "`a-first-greeting`：首句正常回复，不误用 skip_reply。 执行 `9b639750-aa93-4004-bf8c-9254fb4cf35e`。",
+        "`a-question-empty`：有没有五险注入空信封后仍正常答复或询问具体岗位，不静默。 执行 `4e8b88f5-7042-4c6a-8d1a-162ca732884f`。",
+        "`a-voice-empty`：未转写语音注入空信封后返回非空回复，不按确认词静默。 执行 `28575fb0-3598-42f3-b173-d81bcd03f3bd`。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1432",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1432",
+      "title": "六阶段改造 A — 正确认领重复报名回执",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**重复报名处理 ✅**",
+        "- 区分新报名、已有报名、跨账号报名和结果未知；已有记录不误说本次新建，也不误暂停托管。",
+        "- 查不到对应工单时如实说明并交人工核实。"
+      ],
+      "businessUpdates": [
+        "恢复重复报名的真实回执",
+        "转人工前保留已有报名的确定性回执",
+        "核实重复报名身份并隔离跨岗位表单状态",
+        "六阶段改造 A — 正确认领重复报名回执"
+      ],
+      "summary": [
+        "恢复重复报名的真实回执",
+        "转人工前保留已有报名的确定性回执",
+        "核实重复报名身份并隔离跨岗位表单状态",
+        "六阶段改造 A — 正确认领重复报名回执"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "恢复重复报名的真实回执",
+        "转人工前保留已有报名的确定性回执",
+        "核实重复报名身份并隔离跨岗位表单状态"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "3 个定向测试套件、155 项通过；类型检查、lint、格式化通过。",
+        "仅提交本阶段文件，未纳入根工作区已有未提交改动。",
+        "当前分支完整 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39547823883) 通过。",
+        "受控真实模型回归完成三个有效场景，使用虚构数据与本地业务替身；发现的两处回执问题已修复并离线回放。未做共享测试资产/生产 Dashboard 发布验收。",
+        "合并与生产发布未执行；默认观察档与既有在途工单口径保持不变。",
+        "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
+        "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
+      ],
+      "level": "minor"
+    },
+    {
+      "number": "1433",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1433",
+      "title": "六阶段改造 B — 集中工具动作契约",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**工具结果与动作证据 ✅**",
+        "- 统一工具执行结果、成功依据和外部影响记录，为回复与重试提供一致事实。"
+      ],
+      "businessUpdates": [
+        "将动态工具契约接入连接与运行时策略"
+      ],
+      "summary": [
+        "以工具动作契约统一运行时策略",
+        "将动态工具契约接入连接与运行时策略",
+        "规范 MCP 成功回执并统一动态调用上限提示",
+        "六阶段改造 B — 集中工具动作契约"
+      ],
+      "features": [
+        "将动态工具契约接入连接与运行时策略"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "以工具动作契约统一运行时策略",
+        "规范 MCP 成功回执并统一动态调用上限提示"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "工具契约、工具注册、调用分析与门禁目录的定向测试通过；类型检查、lint、格式化通过。",
+        "仅提交本阶段文件，未纳入根工作区已有未提交改动。",
+        "当前分支完整 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39546913644) 通过。",
+        "受控真实模型回归完成三个有效场景，使用虚构数据与本地业务替身；发现的两处回执问题已修复并离线回放。未做共享测试资产/生产 Dashboard 发布验收。",
+        "合并与生产发布未执行；默认观察档与既有在途工单口径保持不变。",
+        "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
+        "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1434",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1434",
+      "title": "六阶段改造 F — 统一进度视图与行动许可",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**候选人进度与操作许可 ✅**",
+        "- 读取工单失败保留暂时无法确认，不直接当作没有报名。",
+        "- 执行前检查当前操作许可，减少状态变化后继续推进。"
+      ],
+      "businessUpdates": [
+        "统一候选人进度读视图与聊天行动许可",
+        "不从缓存查询推断当前账号工单归属",
+        "优先候选人黑名单并短期缓存托管名单",
+        "去重黑名单处置并补齐队列消费时的执行",
+        "六阶段改造 F — 统一进度视图与行动许可"
+      ],
+      "summary": [
+        "统一候选人进度读视图与聊天行动许可",
+        "不从缓存查询推断当前账号工单归属",
+        "优先候选人黑名单并短期缓存托管名单",
+        "去重黑名单处置并补齐队列消费时的执行",
+        "六阶段改造 F — 统一进度视图与行动许可"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "统一候选人进度读视图与聊天行动许可",
+        "不从缓存查询推断当前账号工单归属",
+        "优先候选人黑名单并短期缓存托管名单",
+        "去重黑名单处置并补齐队列消费时的执行"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "81 个相关测试套件、1,353 项通过；最终 6 套件 62 项和 AppModule 装配测试通过；类型检查、lint、格式化通过。",
+        "仅提交本阶段文件，未纳入根工作区已有未提交改动。",
+        "当前分支完整 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39546921117) 通过。",
+        "受控真实模型回归完成三个有效场景，使用虚构数据与本地业务替身；发现的两处回执问题已修复并离线回放。未做共享测试资产/生产 Dashboard 发布验收。",
+        "合并与生产发布未执行；默认观察档与既有在途工单口径保持不变。",
+        "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
+        "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1435",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1435",
+      "title": "六阶段改造 G — 统一后台作业与可靠写入",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**关键后台任务可靠性 ✅**",
+        "- 完善关键事件、人工介入任务和复聊排程的重试、失败处理与告警。",
+        "- 错过的定时群发只告警，不自动补发。"
+      ],
+      "businessUpdates": [
+        "统一后台租约与关键业务恢复队列",
+        "用有索引边界的游标分页轮询报名工单",
+        "海绵轮询查询失败时保留分页游标",
+        "覆盖群发送等待窗口并隔离投递后排程故障",
+        "merge: integrate develop permissions with background job recovery",
+        "六阶段改造 G — 统一后台作业与可靠写入"
+      ],
+      "summary": [
+        "统一后台租约与关键业务恢复队列",
+        "用有索引边界的游标分页轮询报名工单",
+        "海绵轮询查询失败时保留分页游标",
+        "覆盖群发送等待窗口并隔离投递后排程故障",
+        "merge: integrate develop permissions with background job recovery",
+        "六阶段改造 G — 统一后台作业与可靠写入"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "统一后台租约与关键业务恢复队列",
+        "用有索引边界的游标分页轮询报名工单",
+        "海绵轮询查询失败时保留分页游标",
+        "覆盖群发送等待窗口并隔离投递后排程故障",
+        "merge: integrate develop permissions with background job recovery"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "30 个相关套件 441 项通过，后续定向与 DI 通过；查询优化 2 套件 6 项通过。在隔离 PostgreSQL 的 60 万合成行上执行 EXPLAIN，范围分页命中部分索引。",
+        "仅提交本阶段文件，未纳入根工作区已有未提交改动。",
+        "当前分支完整 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39546928235) 通过。",
+        "受控真实模型回归完成三个有效场景，使用虚构数据与本地业务替身；发现的两处回执问题已修复并离线回放。未做共享测试资产/生产 Dashboard 发布验收。",
+        "合并与生产发布未执行；默认观察档与既有在途工单口径保持不变。",
+        "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
+        "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
+      ],
+      "level": "minor"
+    },
+    {
+      "number": "1436",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1436",
+      "title": "六阶段改造 C — 持久外部动作与核实补账",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**外部动作记录 ✅／执行接管 ⏳**",
+        "- 本次以 observe 记录已接入动作的身份、状态、结果及潜在重复。",
+        "- 持久防重复、后台核实和本地补账的 execute 接管尚未启用，不会按观察时长自动切换。"
+      ],
+      "businessUpdates": [
+        "为业务外部动作接入持久执行边界",
+        "接入报名取消改约事件的可靠补账",
+        "修正外部动作权限通知身份与终态重放"
+      ],
+      "summary": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "为业务外部动作接入持久执行边界",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "原子保护补账投影版本与取消墓碑",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "接入报名取消改约事件的可靠补账",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "修正外部动作权限通知身份与终态重放",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "merge: 同步 develop 已验证基础改造与版本元数据",
+        "六阶段改造 C — 持久外部动作与核实补账"
+      ],
+      "features": [
+        "为业务外部动作接入持久执行边界",
+        "接入报名取消改约事件的可靠补账"
+      ],
+      "fixes": [
+        "修正外部动作权限通知身份与终态重放"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "原子保护补账投影版本与取消墓碑",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "merge: 同步 develop 已验证基础改造与版本元数据"
+      ],
+      "config": [
+        "新增 `20261021090000_agent_action_records.sql`（动作、证据、人工审计）、`20261021093000_action_ops_event_projection.sql`（业务成功事件补账）和 `20261021130000_version_booking_projections.sql`（预约指针版本、取消墓碑与旧身份保护）。投影 RPC 依赖现有长期记忆表，观察档部署也必须先完成这些迁移。已在真实旧依赖上完成五迁移冷启动、SQL故障/权限及双连接竞争验证，未执行共享测试库或生产库迁移。",
+        "`ACTION_EXECUTION_MODE` 默认 `observe`；执行档必填 `ACTION_EXECUTION_CUTOVER_AT`。回退时必须保留切换边界，已有执行义务继续受保护。",
+        "生产迁移、部署和切档仍待单独确认。外部供应商尚无经过验证的终态查询/幂等能力时保留人工核实，不承诺全局恰好一次。"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "动作登记/领取/fence、未知禁止重发、已成功仅补账、晚到证据与人工审计的定向测试通过。",
+        "隔离 PostgreSQL 15 真实事务、权限与双连接竞争验证通过；未连接业务数据库。",
+        "最终集成 `ci:check`：543 个套件、8,870 项测试、3 项快照通过；既有 1 个套件/5 项测试跳过。完整 DI 通过，重复代码 0.58%。",
+        "真实模型受控回归完成三个有效场景，实际业务写入为零。两处回执问题已修复并离线重放；未追加修复后模型请求。",
+        "[验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。",
+        "合并、共享库迁移、生产发布及执行档切换均未执行。",
+        "发版底账：N/A（本次仅实现与评审）。"
+      ],
+      "level": "minor"
+    },
+    {
+      "number": "1437",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1437",
+      "title": "六阶段改造 D — 原计划回复与后台恢复",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**持久回复与任务恢复 ⏳**",
+        "- 已加入原回复计划、分段发送及群任务和复聊恢复的基础实现；本次 observe 不启用完整跨重启恢复。"
+      ],
+      "businessUpdates": [
+        "为业务外部动作接入持久执行边界",
+        "为群任务分段与复聊未知结果接入持久恢复",
+        "接入报名取消改约事件的可靠补账",
+        "修正外部动作权限通知身份与终态重放",
+        "保留直接消息并修复回复恢复与记账边界",
+        "隔离预览通知故障并修正空文本回执",
+        "merge: 同步已验证的前置改造及恢复兼容修复"
+      ],
+      "summary": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "为业务外部动作接入持久执行边界",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "持久化逻辑回合与不可变回复分段恢复",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-actions-integrated' into codex/runtime-de…",
+        "为群任务分段与复聊未知结果接入持久恢复",
+        "持久回合等待锚点入队与补账成功",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "保留回复恢复追踪与本地补账边界",
+        "原子保护补账投影版本与取消墓碑",
+        "仅凭全段真实成功补记触达",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "接入报名取消改约事件的可靠补账",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "持久恢复复聊投影并校验本地补账归属",
+        "修正外部动作权限通知身份与终态重放",
+        "保留直接消息并修复回复恢复与记账边界",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "隔离预览通知故障并修正空文本回执",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "Merge remote-tracking branch 'origin/codex/runtime-delivery-integrate…",
+        "排程失败时保留持久回复计划待恢复状态",
+        "merge: 同步 develop 已验证基础改造与版本元数据",
+        "merge: 同步已验证的前置改造及恢复兼容修复",
+        "六阶段改造 D — 原计划回复与后台恢复"
+      ],
+      "features": [
+        "为业务外部动作接入持久执行边界",
+        "为群任务分段与复聊未知结果接入持久恢复",
+        "接入报名取消改约事件的可靠补账"
+      ],
+      "fixes": [
+        "修正外部动作权限通知身份与终态重放",
+        "保留直接消息并修复回复恢复与记账边界",
+        "隔离预览通知故障并修正空文本回执",
+        "merge: 同步已验证的前置改造及恢复兼容修复"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "持久化逻辑回合与不可变回复分段恢复",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-actions-integrated' into codex/runtime-de…",
+        "持久回合等待锚点入队与补账成功",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "保留回复恢复追踪与本地补账边界",
+        "原子保护补账投影版本与取消墓碑",
+        "仅凭全段真实成功补记触达",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "持久恢复复聊投影并校验本地补账归属",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "Merge remote-tracking branch 'origin/codex/runtime-delivery-integrate…",
+        "排程失败时保留持久回复计划待恢复状态",
+        "merge: 同步 develop 已验证基础改造与版本元数据"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "原计划冻结、部分确认、新旧输入分离、回调落账、未知分段和群任务故障测试通过。",
+        "隔离 PostgreSQL 15 验证真实状态转换、不可变计划、权限、晚到回调与输入归属竞争。",
+        "最终集成 `ci:check`：543 个套件、8,870 项测试、3 项快照通过；既有 1 个套件/5 项测试跳过。完整 DI 通过，重复代码 0.58%。",
+        "真实模型受控回归完成三个有效场景，实际业务写入为零。两处回执问题已修复并离线重放；未追加修复后模型请求。",
+        "[验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。",
+        "未合并、未迁移共享库、未部署、未切执行档，未发出真实业务消息。",
+        "发版底账：N/A（本次仅实现与评审）。"
+      ],
+      "level": "minor"
+    },
+    {
+      "number": "1438",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1438",
+      "title": "六阶段改造 E — 统一重试与动作证据保护",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**重试中的动作保护 ✅**",
+        "- 模型重试、降级或回复修复时保留已提交及结果未知的动作证据，减少整轮重做。",
+        "- 区分成功、未知和未执行，不把不能重试误当作已经成功。"
+      ],
+      "businessUpdates": [
+        "为业务外部动作接入持久执行边界",
+        "为群任务分段与复聊未知结果接入持久恢复",
+        "接入报名取消改约事件的可靠补账",
+        "修正外部动作权限通知身份与终态重放",
+        "保留直接消息并修复回复恢复与记账边界",
+        "隔离预览通知故障并修正空文本回执",
+        "merge: 同步已验证的前置改造及恢复兼容修复"
+      ],
+      "summary": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "为业务外部动作接入持久执行边界",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "持久化逻辑回合与不可变回复分段恢复",
+        "收敛八层重试并阻断外部动作盲重放",
+        "对齐发位置动作的重放围栏断言",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-actions-integrated' into codex/runtime-de…",
+        "为群任务分段与复聊未知结果接入持久恢复",
+        "持久回合等待锚点入队与补账成功",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "保留回复恢复追踪与本地补账边界",
+        "Merge branch 'codex/runtime-delivery-integrated' into codex/runtime-r…",
+        "原子保护补账投影版本与取消墓碑",
+        "仅凭全段真实成功补记触达",
+        "整理运行能力职责与恢复边界",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "接入报名取消改约事件的可靠补账",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "持久恢复复聊投影并校验本地补账归属",
+        "汇合动作补账与回复恢复的最终边界",
+        "增加真实依赖迁移冷启动与并发核验入口",
+        "整理六阶段交付与最终验证记录",
+        "修正外部动作权限通知身份与终态重放",
+        "保留直接消息并修复回复恢复与记账边界",
+        "保留混合动作回执中的报名成功证据",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "隔离预览通知故障并修正空文本回执",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "Merge remote-tracking branch 'origin/codex/runtime-delivery-integrate…",
+        "排程失败时保留持久回复计划待恢复状态",
+        "merge: 同步 develop 已验证基础改造与版本元数据",
+        "merge: 同步已验证的前置改造及恢复兼容修复",
+        "六阶段改造 E — 统一重试与动作证据保护"
+      ],
+      "features": [
+        "为业务外部动作接入持久执行边界",
+        "为群任务分段与复聊未知结果接入持久恢复",
+        "接入报名取消改约事件的可靠补账"
+      ],
+      "fixes": [
+        "修正外部动作权限通知身份与终态重放",
+        "保留直接消息并修复回复恢复与记账边界",
+        "隔离预览通知故障并修正空文本回执",
+        "merge: 同步已验证的前置改造及恢复兼容修复"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "持久化逻辑回合与不可变回复分段恢复",
+        "收敛八层重试并阻断外部动作盲重放",
+        "对齐发位置动作的重放围栏断言",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-actions-integrated' into codex/runtime-de…",
+        "持久回合等待锚点入队与补账成功",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "保留回复恢复追踪与本地补账边界",
+        "Merge branch 'codex/runtime-delivery-integrated' into codex/runtime-r…",
+        "原子保护补账投影版本与取消墓碑",
+        "仅凭全段真实成功补记触达",
+        "整理运行能力职责与恢复边界",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "持久恢复复聊投影并校验本地补账归属",
+        "汇合动作补账与回复恢复的最终边界",
+        "增加真实依赖迁移冷启动与并发核验入口",
+        "整理六阶段交付与最终验证记录",
+        "保留混合动作回执中的报名成功证据",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "Merge remote-tracking branch 'origin/codex/runtime-delivery-integrate…",
+        "排程失败时保留持久回复计划待恢复状态",
+        "merge: 同步 develop 已验证基础改造与版本元数据"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "11 个定向套件 356 项通过；新增 SDK 并发/复用调用号用例通过。",
+        "合并后逻辑回合与错误证据均保留；发位置防重放的契约断言已同步。",
+        "最终集成 `ci:check`：543 个套件、8,870 项测试、3 项快照通过；既有 1 个套件/5 项测试跳过。完整 DI 通过，重复代码 0.58%。",
+        "真实模型受控回归完成三个有效场景，实际业务写入为零。两处回执问题已修复并离线重放；未追加修复后模型请求。",
+        "[验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。",
+        "未合并、未迁移共享库、未部署、未切执行档。",
+        "发版底账：N/A（本次仅实现与评审）。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1445",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1445",
+      "title": "修复运行时清理积压与暂停托管回执",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**暂停托管结果核实 ✅**",
+        "- 数据库和共享缓存均写入失败时不返回已暂停；人工建议要求核对实际暂停状态和通知结果。"
+      ],
+      "businessUpdates": [
+        "修复观察记录清理和批量积压"
+      ],
+      "summary": [
+        "修复观察记录清理和批量积压",
+        "按实际清理条数记录任务监控",
+        "核实暂停托管持久化结果后返回回执",
+        "人工处理建议不预设暂停和通知成功",
+        "修复运行时清理积压与暂停托管回执"
+      ],
+      "features": [],
+      "fixes": [
+        "修复观察记录清理和批量积压"
+      ],
+      "optimizations": [],
+      "ops": [
+        "按实际清理条数记录任务监控",
+        "核实暂停托管持久化结果后返回回执",
+        "人工处理建议不预设暂停和通知成功"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.13.2",
     "date": "2026-10-15",
@@ -136,5 +1198,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "4ba781a92bd154b341c293e469bc92dc6346aece"
 }

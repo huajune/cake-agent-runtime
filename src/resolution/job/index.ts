@@ -39,12 +39,21 @@ export function extractPresentedJobs(
   const normalizedReply = normalizeForMatch(assistantText);
   if (!normalizedReply || candidatePool.length === 0) return [];
 
-  return candidatePool
-    .map((job) => ({ job, score: scoreJobReference(job, normalizedReply) }))
-    .filter(({ score }) => score >= 5)
-    .sort((a, b) => b.score - a.score)
-    .map(({ job }) => job)
-    .slice(0, 3);
+  const referenced = candidatePool.map((job) => ({
+    job,
+    score: scoreJobReference(job, normalizedReply),
+    spans: storeReferenceSpans(job, normalizedReply),
+  }));
+  const allSpans = referenced.flatMap(({ spans }) => spans);
+  return (
+    referenced
+      // 短别名只出现在更长店名内部时，不算展示过该门店；独立提及短店名仍保留。
+      .filter(({ spans }) => spans.length === 0 || hasIndependentStoreReference(spans, allSpans))
+      .filter(({ score }) => score >= 5)
+      .sort((a, b) => b.score - a.score)
+      .map(({ job }) => job)
+      .slice(0, 3)
+  );
 }
 
 /**
@@ -72,9 +81,18 @@ export function resolveCurrentFocusJob(
   const knownJobs = dedupeJobsById([...presented, ...candidatePool]);
 
   const matchedPresented = pickBestReferencedJob(presented, normalizedUserText);
-  if (matchedPresented) return matchedPresented;
-
   const matchedPool = pickBestReferencedJob(knownJobs, normalizedUserText);
+  // 明确点名却无法唯一判定时清空旧焦点，不能回退到已展示的单个门店。
+  if (!matchedPool && knownJobs.some((job) => matchesStoreReference(job, normalizedUserText)))
+    return null;
+  if (
+    matchedPresented &&
+    (!matchedPool ||
+      storeReferenceSpecificity(matchedPresented, normalizedUserText) >=
+        storeReferenceSpecificity(matchedPool, normalizedUserText))
+  )
+    return matchedPresented;
+
   if (matchedPool) return matchedPool;
 
   if (focusIntent && presented.length === 1) return presented[0];
@@ -115,14 +133,13 @@ export function resolveAssistantAnchoredFocusJob(
 function scoreJobReference(job: RecommendedJobSummary, normalizedText: string): number {
   let score = 0;
 
-  const storeName = normalizeForMatch(job.storeName);
   const jobName = normalizeForMatch(job.jobName);
   const brandName = normalizeForMatch(job.brandName);
   const laborForm = normalizeForMatch(job.laborForm);
   const partTimeJobType = normalizeForMatch(job.partTimeJobType);
   const salaryDesc = normalizeForMatch(job.salaryDesc);
 
-  if (storeName && normalizedText.includes(storeName)) score += 5;
+  if (matchesStoreReference(job, normalizedText)) score += 5;
   if (jobName && normalizedText.includes(jobName)) score += 4;
   score += scoreJobCategoryReference(job.jobCategoryName, normalizedText);
   if (brandName && normalizedText.includes(brandName)) score += 1;
@@ -152,12 +169,125 @@ function scoreJobCategoryReference(
   return Math.min(matchedSegments * 2, 4);
 }
 
-function pickBestReferencedJob(
-  jobs: RecommendedJobSummary[],
-  normalizedUserText: string,
+/** 只规整海绵门店元数据；不把城市、负责人或门店编码当成门店指称。 */
+function storeReferenceNames(job: RecommendedJobSummary): string[] {
+  const raw = job.storeName?.normalize('NFKC').trim() ?? '';
+  const withoutCode = raw.replace(/(?:DT)?-[A-Z]{2,6}\d{3,}$/iu, '');
+  const parts = withoutCode.split('-');
+  const city = normalizeForMatch(job.cityName).replace(/市$/u, '');
+  if (city && normalizeForMatch(parts[0]).replace(/市$/u, '') === city) {
+    parts.shift();
+    if (parts.length >= 2 && /^[\u4e00-\u9fa5]{2,4}$/u.test(parts[0])) parts.shift();
+  }
+  const name = parts.join('-');
+  return [raw, name, name.replace(/店$/u, '')]
+    .map(normalizeForMatch)
+    .filter((value, index, values) => value.length >= 2 && values.indexOf(value) === index);
+}
+
+type StoreReferenceSpan = { start: number; end: number };
+
+function storeReferenceSpans(job: RecommendedJobSummary, text: string): StoreReferenceSpan[] {
+  return storeReferenceNames(job).flatMap((name) => {
+    const spans: StoreReferenceSpan[] = [];
+    for (let start = text.indexOf(name); start >= 0; start = text.indexOf(name, start + 1)) {
+      spans.push({ start, end: start + name.length });
+    }
+    return spans;
+  });
+}
+
+function hasIndependentStoreReference(
+  spans: StoreReferenceSpan[],
+  allSpans: StoreReferenceSpan[],
+): boolean {
+  return spans.some(
+    (span) =>
+      !allSpans.some(
+        (other) =>
+          other.start <= span.start &&
+          other.end >= span.end &&
+          other.end - other.start > span.end - span.start,
+      ),
+  );
+}
+
+/** 显式门店限定先于岗位/薪资打分，避免嵌在长店名内的短别名借职位分数胜出。 */
+function restrictToReferencedStores(
+  jobs: readonly RecommendedJobSummary[],
+  text: string,
+): readonly RecommendedJobSummary[] {
+  const referenced = jobs.map((job) => ({ job, spans: storeReferenceSpans(job, text) }));
+  const allSpans = referenced.flatMap(({ spans }) => spans);
+  const matches = referenced
+    .filter(({ spans }) => hasIndependentStoreReference(spans, allSpans))
+    .map(({ job }) => job);
+  return matches.length > 0 ? matches : jobs;
+}
+
+function matchesStoreReference(job: RecommendedJobSummary, normalizedText: string): boolean {
+  return storeReferenceSpecificity(job, normalizedText) > 0;
+}
+
+function storeReferenceSpecificity(job: RecommendedJobSummary, text: string): number {
+  return Math.max(
+    0,
+    ...storeReferenceNames(job)
+      .filter((name) => text.includes(name))
+      .map((name) => name.length),
+  );
+}
+
+/** 模型提取的点名原文须整体对上品牌或门店别名，不能只因品牌相同就吞掉未知店名。 */
+export function matchesExplicitStoreReference(job: RecommendedJobSummary, text: string): boolean {
+  const normalized = normalizeForMatch(text);
+  const brand = normalizeForMatch(job.brandName);
+  if (!normalized) return false;
+  if (brand && normalized === brand) return true;
+  const store = brand && normalized.startsWith(brand) ? normalized.slice(brand.length) : normalized;
+  return storeReferenceNames(job).some((name) => name === normalized || name === store);
+}
+
+/** 品牌与门店联合约束；冲突返回双方候选供澄清，不能用门店分数覆盖显式品牌。 */
+export function findStoreReferencedJobs(
+  jobs: readonly RecommendedJobSummary[],
+  userText: string,
+): RecommendedJobSummary[] {
+  const text = normalizeForMatch(userText);
+  const unique = dedupeJobsById([...jobs]);
+  const brandMatches = unique.filter((job) => {
+    const brand = normalizeForMatch(job.brandName);
+    return brand && text.includes(brand);
+  });
+  const referenced = unique.map((job) => ({ job, spans: storeReferenceSpans(job, text) }));
+  const allSpans = referenced.flatMap(({ spans }) => spans);
+  // 只抑制嵌在长店名内的别名；独立提及的短店名仍须参与歧义判断。
+  const storeMatches = referenced
+    .filter(({ spans }) => hasIndependentStoreReference(spans, allSpans))
+    .map(({ job }) => job);
+  if (brandMatches.length === 0) return storeMatches;
+  if (storeMatches.length === 0) return brandMatches;
+  const joint = storeMatches.filter((job) =>
+    brandMatches.some((brandJob) => brandJob.jobId === job.jobId),
+  );
+  return joint.length > 0 ? joint : dedupeJobsById([...brandMatches, ...storeMatches]);
+}
+
+export function pickBestReferencedJob(
+  jobs: readonly RecommendedJobSummary[],
+  userText: string,
+  scope: 'job' | 'store' = 'job',
 ): RecommendedJobSummary | null {
-  const scored = jobs
-    .map((job) => ({ job, score: scoreJobReference(job, normalizedUserText) }))
+  if (scope === 'store') {
+    const matches = findStoreReferencedJobs(jobs, userText);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  const normalizedUserText = normalizeForMatch(userText);
+  const scored = restrictToReferencedStores(jobs, normalizedUserText)
+    .map((job) => ({
+      job,
+      score: scoreJobReference(job, normalizedUserText),
+    }))
     .filter(({ score }) => score >= 4)
     .sort((a, b) => b.score - a.score);
 
@@ -176,7 +306,7 @@ function pickDominantReferencedJob(
   jobs: RecommendedJobSummary[],
   normalizedText: string,
 ): RecommendedJobSummary | null {
-  const scored = jobs
+  const scored = restrictToReferencedStores(jobs, normalizedText)
     .map((job) => ({ job, score: scoreJobReference(job, normalizedText) }))
     .filter(({ score }) => score >= 8)
     .sort((a, b) => b.score - a.score);

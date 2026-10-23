@@ -50,7 +50,7 @@ export class MemoryConfig {
    * `factsv2:` hash 的实际 TTL（秒）：咨询生命周期基准 + 12 小时沉淀读取余量。
    *
    * Redis hash 不支持字段级 TTL，因此同 key 中的 facts 与 workbench 投影会一起享有
-   * 这段余量；`stage:` 与 collection-form 仍严格使用 `sessionTtl`。
+   * 这段余量；`stage:` 随 hash 写入同步续期，collection-form 仍使用 `sessionTtl`。
    */
   readonly sessionFactsTtl: number;
 

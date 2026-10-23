@@ -1,3 +1,13 @@
+import { BUILT_IN_TOOL_CONTRACTS } from '@tools/tool-contracts';
+import {
+  resolveToolsForMode,
+  wrapToolsWithTiming,
+} from '@agent/generator/preparation/tool-context.builder';
+import {
+  blocksReplay,
+  findSucceededSideEffectTools,
+  findToolsExceedingLimit,
+} from '@agent/generator/tool-call-analysis';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext, type ToolContextOverrides } from '../helpers/tool-context.fixture';
@@ -38,6 +48,7 @@ function buildRegistry(
     { invalidate: jest.fn(), load: jest.fn(), peekForCandidate: jest.fn() } as never,
     // phoneSessionIndexService（手机号→会话索引：报名成功写入）
     { record: jest.fn() } as never,
+    {} as never,
   );
 }
 
@@ -67,6 +78,15 @@ async function serializeProviderToolPrefix(tools: ToolSet): Promise<string> {
 }
 
 describe('ToolRegistryService', () => {
+  it('declares every registered and dynamic tool, and rejects undeclared MCP tools', () => {
+    const registry = buildRegistry();
+    for (const name of [...registry.list(), 'save_image_description', 'read_resume_attachment']) {
+      expect(registry.getContract(name)).toBeDefined();
+    }
+    expect(() => registry.registerMcpTool('undeclared', {} as never, 'test')).toThrow(
+      'no action contract',
+    );
+  });
   it('keeps normal text-turn provider tool serialization byte-identical', async () => {
     const registry = buildRegistry();
     const first = registry.buildForScenario(
@@ -291,5 +311,39 @@ describe('ToolRegistryService', () => {
       sheet,
     );
     jest.useRealTimers();
+  });
+});
+
+describe('dynamic tool runtime policy', () => {
+  it('applies the registered contract to filtering, tracing, limits and replay after disconnect', async () => {
+    const registry = buildRegistry();
+    const name = 'mcp_test_booking';
+    const definition = { execute: jest.fn().mockResolvedValue({ success: true }) };
+    registry.registerMcpTool(name, definition as never, 'server', {
+      ...BUILT_IN_TOOL_CONTRACTS.duliday_interview_booking,
+      maxCallsPerTurn: 1,
+    });
+    const tools = registry.buildSubset([name], baseContext());
+    expect(resolveToolsForMode(tools, 'readonly')).toEqual({});
+    const tracer = { emit: jest.fn() };
+    const wrapped = wrapToolsWithTiming(tools, new Map(), tracer as never);
+    await wrapped[name].execute!({}, { toolCallId: 'one', messages: [] } as never);
+    expect(tracer.emit).toHaveBeenCalledWith(expect.objectContaining({ sideEffect: true }));
+    expect(findToolsExceedingLimit([{ toolCalls: [{ toolName: name }] }])).toEqual([name]);
+    expect(
+      findSucceededSideEffectTools([
+        { toolResults: [{ toolName: name, output: { success: true } }] },
+      ]),
+    ).toEqual([name]);
+    registry.removeByMcpServer('server');
+    expect(blocksReplay({ toolName: name, result: { success: true } })).toBe(true);
+    expect(() =>
+      registry.registerMcpTool(
+        name,
+        definition as never,
+        'server',
+        BUILT_IN_TOOL_CONTRACTS.recall_history,
+      ),
+    ).toThrow('cannot change');
   });
 });

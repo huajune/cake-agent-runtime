@@ -1,4 +1,5 @@
 import { MemoryService } from '@memory/memory.service';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('MemoryService', () => {
   const mockWorkbench = {
@@ -67,6 +68,28 @@ describe('MemoryService', () => {
   });
 
   describe('proactive follow-up recall', () => {
+    it('preserves source metadata for consumers to distinguish manual and automated replies', async () => {
+      const messages = [
+        StorageMessageSource.MOBILE_PUSH,
+        StorageMessageSource.AGGREGATED_CHAT_MANUAL,
+        StorageMessageSource.AI_REPLY,
+        undefined,
+      ].map((source) => ({
+        role: 'assistant',
+        content: '这次改推另一个岗位',
+        source,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+      }));
+      mockLifecycle.onTurnStart.mockResolvedValue({
+        shortTerm: { messageWindow: messages, sessionState: null },
+      });
+
+      const recall = await service.recallForProactiveFollowUp('corp1', 'user1', 'sess1');
+
+      expect(recall.recentMessages).toEqual(messages);
+    });
+
     it('keeps the full Generator-trimmed message window without a second fixed limit', async () => {
       mockLifecycle.onTurnStart.mockResolvedValue({
         shortTerm: {

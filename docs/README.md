@@ -27,6 +27,8 @@
 
 ### 运行时核心
 
+- **[运行能力与恢复边界](architecture/runtime-capabilities.md)** — 动作契约、持久执行、逻辑回合、重试、进度窗口和后台作业的职责与部署边界
+- **[重试职责与故障矩阵](architecture/runtime-retry-boundaries.md)** — 八层重试的责任、上限和动作证据保护
 - **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐ — 主干：分层所有权、Runner/Generator、Preparation 与 Prompt、工具、记忆、Provider、消息链路、四个防线作用位和运行时不变量
 - **[Agent 运营手册](product/agent-for-operations.md)** 👉 — 上文的业务语言版（运营向，收录在 product/）
 - **[企微消息服务架构](architecture/message-service-architecture.md)** — 消息管道：去重→过滤→存储→聚合→Agent→投递
@@ -85,6 +87,14 @@
 - **[飞书通知系统](infrastructure/feishu-alert-system.md)** — 飞书 Webhook 机器人集成
 - **[人工告警触发场景清单](infrastructure/human-alert-triggers.md)** — 需要人工介入的告警触发场景
 - **[Bull Queue 使用指南](infrastructure/bull-queue-guide.md)** — 消息聚合队列的使用与排障
+
+---
+
+## 🔬 技术调研 (technical/)
+
+> 外部技术/供应商的可行性调研：结论先行、证据分级、带来源；只写约束与判定，不写愿景。
+
+- **[Jev（TypeSafe System One）可行性调研 2026-10-08](technical/jev-feasibility-research-2026-10-08.md)** — 10 条候选三路对抗审查全部驳回；热路径被 T-1/T-2/T-4/T-6/M-rt-1 封死，冷路径每处有零新供应商替代；重议四前提与各候选的非 Jev 正解
 
 ---
 

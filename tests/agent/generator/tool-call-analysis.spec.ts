@@ -11,11 +11,11 @@ import {
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
   hasCommittedSideEffect,
+  buildSkipReplyRejectedNotice,
+  findRejectedSkipReplyErrorType,
   hasRejectedSkipReply,
   isAcceptedSkipReplyResult,
   isShortCircuitedToolCall,
-  isForbiddenDuringRevise,
-  isForbiddenForProactive,
   isGuardrailRejected,
   isSideEffectCommitted,
   isSideEffectTool,
@@ -23,7 +23,6 @@ import {
   MAX_PRECHECK_CALLS_PER_TURN,
   MAX_SAME_TOOL_CALLS_PER_TURN,
   REPLAY_BLOCKING_TOOLS,
-  REVISION_FORBIDDEN_TOOLS,
   SIDE_EFFECT_TOOLS,
   TOOL_GUARDRAIL_IDS,
 } from '@agent/generator/tool-call-analysis';
@@ -274,6 +273,56 @@ describe('tool-call-analysis', () => {
         hasRejectedSkipReply([{ toolResults: [{ toolName: 'geocode', output: rejected }] }]),
       ).toBe(false);
     });
+
+    it('findRejectedSkipReplyErrorType 返回第一个被拒绝 skip_reply 的错误码', () => {
+      expect(findRejectedSkipReplyErrorType([])).toBeNull();
+      expect(
+        findRejectedSkipReplyErrorType([
+          { toolResults: [{ toolName: 'skip_reply', output: accepted }] },
+        ]),
+      ).toBeNull();
+      expect(
+        findRejectedSkipReplyErrorType([
+          { toolResults: [{ toolName: 'skip_reply', output: rejected }] },
+        ]),
+      ).toBe(TOOL_ERROR_TYPES.SKIP_REPLY_HUMAN_TAKEOVER_NOT_ACTIVE);
+      expect(
+        findRejectedSkipReplyErrorType([
+          {
+            toolResults: [
+              {
+                toolName: 'skip_reply',
+                output: buildToolError({
+                  errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN,
+                  replyInstruction: '首句须正常回复',
+                  details: { skipped: false },
+                }),
+              },
+            ],
+          },
+        ]),
+      ).toBe(TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN);
+      expect(
+        findRejectedSkipReplyErrorType([
+          { toolResults: [{ toolName: 'skip_reply', output: { skipped: false } }] },
+        ]),
+      ).toBe('unknown');
+    });
+
+    it('buildSkipReplyRejectedNotice 按错误码分支，未登记码用通用说明', () => {
+      expect(
+        buildSkipReplyRejectedNotice(TOOL_ERROR_TYPES.SKIP_REPLY_HUMAN_TAKEOVER_NOT_ACTIVE),
+      ).toMatch(/已被拒绝.*真人正在沟通/);
+      expect(
+        buildSkipReplyRejectedNotice(TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN),
+      ).toMatch(/已被拒绝.*首句/);
+      expect(
+        buildSkipReplyRejectedNotice(TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK),
+      ).toMatch(/已被拒绝.*运行时准入/);
+      const generic = buildSkipReplyRejectedNotice('unknown');
+      expect(generic).toMatch(/已被拒绝/);
+      expect(generic).not.toMatch(/真人|首句|确认词/);
+    });
   });
 
   describe('findToolsExceedingLimit', () => {
@@ -384,7 +433,7 @@ describe('tool-call-analysis', () => {
     it('keeps side-effect, replay, revise, and proactive policy in one helper module', () => {
       expect(isSideEffectTool('duliday_interview_booking')).toBe(true);
       expect(REPLAY_BLOCKING_TOOLS.has('duliday_interview_booking')).toBe(true);
-      expect(blocksReplay({ toolName: 'duliday_interview_booking', result: {} })).toBe(false);
+      expect(blocksReplay({ toolName: 'duliday_interview_booking', result: {} })).toBe(true);
       expect(
         blocksReplay({
           toolName: 'duliday_interview_booking',
@@ -392,9 +441,32 @@ describe('tool-call-analysis', () => {
         }),
       ).toBe(true);
       expect(blocksReplay({ toolName: 'advance_stage', result: { success: true } })).toBe(false);
-      expect(REVISION_FORBIDDEN_TOOLS.has('duliday_interview_booking')).toBe(true);
-      expect(isForbiddenDuringRevise('duliday_interview_booking')).toBe(true);
-      expect(isForbiddenForProactive('invite_to_group')).toBe(true);
+    });
+
+    it('取消/改约成功后阻断 replay（badcase [03]：首版已取消工单，重跑版向候选人要工单号）', () => {
+      // 首版 duliday_cancel_work_order 成功取消 472980 后候选人补发消息触发 replay，整轮被丢弃
+      // 重跑；重跑 prompt 里预约快照已空、工单号不在上下文，模型调 cancel(workOrderId=0) 被拒
+      // 后向候选人索要工单号。副作用既成的取消/改约与 booking/invite 同级，必须阻断 replay。
+      for (const toolName of ['duliday_cancel_work_order', 'duliday_modify_interview_time']) {
+        expect(REPLAY_BLOCKING_TOOLS.has(toolName)).toBe(true);
+        expect(
+          blocksReplay({
+            toolName,
+            result: { success: true, errorType: null, workOrderId: 472980 },
+          }),
+        ).toBe(true);
+        // 失败的取消/改约没有改变外部状态，照常吸收 pending 并 replay。
+        expect(
+          blocksReplay({
+            toolName,
+            result: buildToolError({
+              errorType: TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID,
+              outcome: '缺少有效工单号',
+              replyInstruction: 'x',
+            }),
+          }),
+        ).toBe(false);
+      }
     });
 
     it('reads the minimal side-effect and guardrail result fields when tools provide them', () => {

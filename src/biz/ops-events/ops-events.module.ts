@@ -1,3 +1,5 @@
+import { BullModule } from '@nestjs/bull';
+import { CriticalEventProcessor, CRITICAL_OPS_EVENT_QUEUE } from './critical-event.processor';
 import { Global, Module } from '@nestjs/common';
 import { SpongeModule } from '@sponge/sponge.module';
 import { JobDataAuditCronService } from './crons/job-data-audit.cron';
@@ -9,6 +11,7 @@ import { OpsEventsRepository } from './repositories/ops-events.repository';
 import { BotGroupResolverService } from './services/bot-group-resolver.service';
 import { DailyOpsReportService } from './services/daily-ops-report.service';
 import { OpsEventsRecorderService } from './services/ops-events-recorder.service';
+import { ActionOpsEventService } from './services/action-ops-event.service';
 
 /**
  * 运营事件底账模块（写入侧）。
@@ -24,10 +27,12 @@ import { OpsEventsRecorderService } from './services/ops-events-recorder.service
  */
 @Global()
 @Module({
-  imports: [SpongeModule],
+  imports: [SpongeModule, BullModule.registerQueue({ name: CRITICAL_OPS_EVENT_QUEUE })],
   providers: [
     OpsEventsRepository,
+    CriticalEventProcessor,
     OpsEventsRecorderService,
+    ActionOpsEventService,
     BotGroupResolverService,
     SpongeStatusPollService,
     DailyOpsReportRepository,
@@ -37,6 +42,7 @@ import { OpsEventsRecorderService } from './services/ops-events-recorder.service
     JobDataAuditCronService,
   ],
   exports: [
+    ActionOpsEventService,
     OpsEventsRepository,
     OpsEventsRecorderService,
     BotGroupResolverService,

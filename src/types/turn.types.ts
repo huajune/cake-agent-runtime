@@ -30,6 +30,12 @@ export interface CityAttestation {
   district?: string | null;
   evidence: string;
   source: 'geocode_unique' | 'location_share';
+  /**
+   * geocode 以 city=null 全国搜索得到的 unique（模型没传 city 或传入 city 无出处被忽略）。
+   * 这种确权只是「该地名全国唯一」，不是候选人在该城市的证据：轮末入档只记 medium，
+   * 不得压过候选人亲口陈述（BadCase 复核 [17]：全国搜「王府井」写入 pref.city=北京 high）。
+   */
+  nationwideSearch?: boolean;
 }
 
 /**
@@ -41,6 +47,8 @@ export interface GeoResolutionRecord extends GeocodeResolvedAnchor {
   /** attestation 的证据文本；city 非空时必填。 */
   evidence?: string;
   source: CityAttestation['source'];
+  /** 见 CityAttestation.nationwideSearch。 */
+  nationwideSearch?: boolean;
 }
 
 /** geocode 使用的本轮可信位置锚点。 */
@@ -91,6 +99,8 @@ export interface TurnJobsSnapshot {
   readonly scheduleConstraint?: StoredScheduleConstraint;
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */
   bookingSucceeded: boolean | undefined;
+  /** 本轮已确认报名成功的具体岗位，供后续定位等工具使用；不因另一次报名失败而清空。 */
+  confirmedBookingJobIds?: number[];
   /**
    * 报名成功后由运行时执行的拉群结果（PRD R3）。booking 工具写入；`invite_to_group`
    * 同轮据此短路，不重复邀请。undefined 表示本轮没有走过报名后拉群。
