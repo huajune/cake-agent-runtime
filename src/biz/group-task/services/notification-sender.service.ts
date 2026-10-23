@@ -159,7 +159,11 @@ export class NotificationSenderService {
   }
 
   async previewPrepared(group: GroupContext, message: string, type: GroupTaskType): Promise<void> {
-    await this.sendFeishuPreview(group, message, type, true);
+    try {
+      await this.sendFeishuPreview(group, message, type, false);
+    } catch (error) {
+      this.notifyFeishuSendFailure(GROUP_TASK_TYPE_NAMES[type] || type, group, error, false);
+    }
   }
 
   /**

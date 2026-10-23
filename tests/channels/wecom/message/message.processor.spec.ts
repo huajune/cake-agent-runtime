@@ -1,4 +1,5 @@
 import { QueueFailureService } from '@infra/queue/queue-failure.service';
+import { CandidateBlacklistFilterRule } from '@channels/wecom/message/application/filter-rules/message-filter.rules';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
@@ -57,6 +58,7 @@ describe('MessageProcessor', () => {
     getMessageMergeEnabled: jest.fn().mockResolvedValue(true),
   };
 
+  const blacklistFilter = { evaluate: jest.fn().mockResolvedValue({ historyOnly: true }) };
   const mockActionPermitService = {
     evaluate: jest.fn().mockResolvedValue({ allowed: true }),
   };
@@ -78,6 +80,7 @@ describe('MessageProcessor', () => {
       providers: [
         { provide: QueueFailureService, useValue: { exhausted: jest.fn() } },
         MessageProcessor,
+        { provide: CandidateBlacklistFilterRule, useValue: blacklistFilter },
         MessageWorkerManagerService,
         { provide: getQueueToken('message-merge'), useValue: mockQueue },
         { provide: MessagePipelineService, useValue: mockPipeline },
@@ -261,5 +264,20 @@ describe('MessageProcessor', () => {
       maxConcurrency: 20,
       messageMergeEnabled: true,
     });
+  });
+  it('enforces a blacklist added after intake before acknowledging the worker batch', async () => {
+    const message = { chatId: 'chat', messageId: 'message', imBotId: 'bot' } as never;
+    mockActionPermitService.evaluate.mockResolvedValueOnce({
+      allowed: false,
+      reason: 'candidate_blacklisted',
+    });
+    const drop = processor as unknown as {
+      dropIfHostingPaused(chat: string, messages: unknown[], job: string): Promise<boolean>;
+    };
+    expect(await drop.dropIfHostingPaused('chat', [message], 'job')).toBe(true);
+    expect(blacklistFilter.evaluate).toHaveBeenCalledWith(message);
+    expect(blacklistFilter.evaluate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDeduplicationService.markMessageAsProcessedAsync.mock.invocationCallOrder[0],
+    );
   });
 });

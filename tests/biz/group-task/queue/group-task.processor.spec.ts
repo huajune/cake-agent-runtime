@@ -483,6 +483,21 @@ describe('GroupTaskProcessor', () => {
       nowSpy.mockRestore();
     });
 
+    it('attempts the auxiliary preview once across retries and tolerates preview outages', async () => {
+      const job = { data: { ...baseSend }, update: jest.fn().mockResolvedValue(undefined) };
+      const preview = processor as unknown as {
+        previewPreparedOnce(job: unknown, message: string, type: GroupTaskType): Promise<void>;
+      };
+      notificationSender.previewPrepared.mockRejectedValueOnce(new Error('webhook offline'));
+      await preview.previewPreparedOnce(job, 'content', baseSend.type);
+      await preview.previewPreparedOnce(job, 'content', baseSend.type);
+      expect(job.data.previewAttempted).toBe(true);
+      expect(notificationSender.previewPrepared).toHaveBeenCalledTimes(1);
+      expect(job.update.mock.invocationCallOrder[0]).toBeLessThan(
+        notificationSender.previewPrepared.mock.invocationCallOrder[0],
+      );
+    });
+
     it('should serialize concurrent send jobs for the same bot', async () => {
       let lockOwner: string | null = null;
       let lastDispatchAt: number | null = null;

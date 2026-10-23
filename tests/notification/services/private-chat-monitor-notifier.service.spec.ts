@@ -130,4 +130,28 @@ describe('PrivateChatMonitorNotifierService', () => {
     expect(mockPrivateChatChannel.sendOnce).toHaveBeenCalledTimes(1);
     expect(mockPrivateChatChannel.send).not.toHaveBeenCalled();
   });
+  it('keeps distinct cards in one turn distinct while replaying the same card identity', async () => {
+    const execute = jest.fn().mockResolvedValue({ status: 'succeeded' });
+    service = new PrivateChatMonitorNotifierService(
+      mockPrivateChatChannel as never,
+      mockRenderer,
+      mockHostingMemberConfig as never,
+      { execute } as never,
+    );
+    const session = {
+      corpId: 'corp',
+      userId: 'user',
+      sessionId: 'chat',
+      botImId: 'bot',
+      logicalTurnId: 'turn',
+    };
+    mockRenderer.buildInterviewCancellationCard.mockImplementation(({ workOrderId }) => ({
+      workOrderId,
+    }));
+    await service.notifyInterviewCancellation({ workOrderId: 42 }, session);
+    await service.notifyInterviewCancellation({ workOrderId: 43 }, session);
+    await service.notifyInterviewCancellation({ workOrderId: 42 }, session);
+    expect(execute.mock.calls[0][0].target).not.toBe(execute.mock.calls[1][0].target);
+    expect(execute.mock.calls[0][0].target).toBe(execute.mock.calls[2][0].target);
+  });
 });

@@ -212,11 +212,11 @@ describe('ReengagementAnchorService', () => {
     await settled;
     expect(order).toEqual(['cleared', 'booked']);
 
-    // 终态写失败也不 reject（内部兜错），调用方可以安全 then 串联
+    // 终态写失败必须上抛，持久回合才能保留补写责任。
     session.saveTerminalState.mockRejectedValue(new Error('redis down'));
     await expect(
       buildService().handleToolAnchors({ toolCalls: [bookingCall] }, context),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow('redis down');
     await expect(
       buildService().handleToolAnchors(
         { toolCalls: [bookingCall] },

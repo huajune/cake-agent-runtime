@@ -804,6 +804,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
       ['用户已报名该品牌！请联系独立日工作人员，确定候选人归属', 'ownership_review'],
     ] as const;
     const order = {
+      candidateName: '兮兮',
       workOrderId: 9002,
       jobId: 100,
       brandName: JOB.basicInfo.brandName,
@@ -885,6 +886,19 @@ describe('duliday_interview_booking（form → labelList）', () => {
       },
     );
 
+    it.each(['他人', undefined])('姓名 %s 未核实不能认领或披露工单时间', async (candidateName) => {
+      rejectAsDuplicate(...duplicateMessages[0]);
+      sponge.fetchSignupWorkOrders
+        .mockResolvedValueOnce({ workOrders: [] })
+        .mockResolvedValueOnce({ workOrders: [order] })
+        .mockResolvedValueOnce({ workOrders: [{ ...order, candidateName }] });
+      const result = await execute({ jobId: 100 });
+      expect(result.crossAccount).toBe(true);
+      expect(result._existingInterviewTimeHuman).toBeUndefined();
+      expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+      expect(verdictOf(currentForm)).toBe('ready');
+    });
+
     it('同品牌另一岗位只写真实工单岗位，不把当前岗位标为已约', async () => {
       currentForm.scheduleDraft = { sourceText: '希望明天下午面试' };
       rejectAsDuplicate(...duplicateMessages[0]);
@@ -900,7 +914,8 @@ describe('duliday_interview_booking（form → labelList）', () => {
         interview_time: order.interviewTime,
       });
       expect(context.ledger.jobs.confirmedBookingJobIds).toEqual([200]);
-      expect(currentForm.scheduleDraft).toBeUndefined();
+      expect(currentForm.scheduleDraft).toEqual({ sourceText: '希望明天下午面试' });
+      expect(verdictOf(currentForm)).toBe('ready');
     });
 
     it('代报朋友用朋友自己的手机号核实，且不改本人的工单指针', async () => {
@@ -1255,6 +1270,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
         message: '用户已报名该岗位或品牌',
       });
       const order = {
+        candidateName: '兮兮',
         workOrderId: 9002,
         jobId: 100,
         currentStatus: '约面成功',

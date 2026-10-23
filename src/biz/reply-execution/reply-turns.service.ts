@@ -40,6 +40,7 @@ export class ReplyTurnsService {
     inputOccurredAt: string,
     recovery: Record<string, unknown> = {},
   ): Promise<ReplyTurn | undefined> {
+    if (this.mode !== 'execute' && this.cutover === null) return undefined;
     const occurred = Date.parse(inputOccurredAt);
     if (
       this.mode === 'execute' &&

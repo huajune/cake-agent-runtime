@@ -46,6 +46,7 @@ describe('durable reply input boundaries', () => {
     const { service, repository } = setup('observe', null);
     repository.transition.mockRejectedValue(new Error('unavailable'));
     expect(await service.open(scope, ['a'], now)).toBeUndefined();
+    expect(repository.transition).not.toHaveBeenCalled();
   });
   it('does not promote an observation record into an executable identity', async () => {
     const { service, repository } = setup();

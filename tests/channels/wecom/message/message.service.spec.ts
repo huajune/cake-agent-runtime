@@ -148,6 +148,41 @@ describe('MessageService', () => {
       expect(replyRecords.appendCallback).not.toHaveBeenCalled();
     });
 
+    it('accepts a trusted matching callback with an inferred source', async () => {
+      await service.handleMessage({
+        ...validMessageData,
+        isSelf: true,
+        source: MessageSource.AGGREGATED_CHAT_MANUAL,
+        _sourceInferred: true,
+        externalRequestId: 'cake_registered_request',
+      });
+      expect(replyRecords.appendCallback).toHaveBeenCalledTimes(1);
+      await flushAsync();
+    });
+    it('does not treat explicit manual source as managed callback', async () => {
+      await service.handleMessage({
+        ...validMessageData,
+        isSelf: true,
+        source: MessageSource.AGGREGATED_CHAT_MANUAL,
+        _sourceInferred: false,
+        externalRequestId: 'cake_registered_request',
+      });
+      expect(replyRecords.appendCallback).not.toHaveBeenCalled();
+      await flushAsync();
+    });
+    it('uses text when callback pureText is empty', async () => {
+      await service.handleMessage({
+        ...validMessageData,
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        externalRequestId: 'cake_registered_request',
+        payload: { pureText: '', text: 'sent text' },
+      });
+      expect(replyRecords.appendCallback).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'sent text' }),
+      );
+      await flushAsync();
+    });
     it('persists managed callback evidence before acknowledging it', async () => {
       let release!: (value: boolean) => void;
       replyRecords.appendCallback.mockImplementation(

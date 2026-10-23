@@ -68,6 +68,7 @@ export class SpongeStatusPollService {
     );
 
     let passed = 0;
+    let incomplete = false;
     for (const wo of pending) {
       await budget?.checkpoint(1);
       // 必须按工单所属托管账号（botImId）解析 Duliday-Token：多账号下各账号只能查到
@@ -75,7 +76,11 @@ export class SpongeStatusPollService {
       const workOrder = await this.spongeService
         .getCachedWorkOrderById(wo.workOrderId, { botImId: wo.botImId })
         .catch(() => null);
-      if (!workOrder) continue;
+      if (!workOrder) {
+        incomplete = true;
+        this.logger.warn(`海绵工单查询未完成，保留本页游标: ${wo.workOrderId}`);
+        continue;
+      }
 
       if (workOrder.interviewPassTime) {
         const inserted = await this.opsEventsRecorder.recordEvent({
@@ -96,7 +101,11 @@ export class SpongeStatusPollService {
     }
 
     this.logger.log(`海绵状态轮询完成: 扫描=${pending.length}, 新通过=${passed}`);
-    return { scanned: pending.length, passed, nextCursor };
+    return {
+      scanned: pending.length,
+      passed,
+      nextCursor: incomplete ? (cursor ?? null) : nextCursor,
+    };
   }
 
   private isReadOnlyPreview(): boolean {

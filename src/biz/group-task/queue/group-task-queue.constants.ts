@@ -103,6 +103,8 @@ export interface PrepareJobData {
 export interface SendJobData {
   startedAt?: number;
   dispatchPlan?: GroupTaskDispatchPlan;
+  /** Persisted before the optional preview call; unknown sends are not repeated. */
+  previewAttempted?: boolean;
   execId: string;
   type: GroupTaskType;
   timeSlot?: TimeSlot;

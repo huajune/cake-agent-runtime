@@ -6,6 +6,7 @@ import { CandidateBlacklistService } from '@biz/candidate-blacklist/services/can
 import {
   BOT_ACCOUNT_PROVIDER,
   type BotAccountProvider,
+  type BotAccountInfo,
 } from '@biz/ops-events/providers/bot-account.provider';
 
 export type PermittedAction = 'reply' | 'proactive' | 'tool';
@@ -30,6 +31,10 @@ export type ActionPermit =
 
 @Injectable()
 export class ActionPermitService {
+  // Bound roster staleness to five seconds; pause/blacklist/switch are always rechecked.
+  private roster?: { expiresAt: number; bots: BotAccountInfo[] };
+  private rosterRequest?: Promise<BotAccountInfo[]>;
+
   constructor(
     private readonly hosting: UserHostingService,
     private readonly systemConfig: SystemConfigService,
@@ -40,11 +45,6 @@ export class ActionPermitService {
 
   async evaluate(input: ActionPermitInput): Promise<ActionPermit> {
     try {
-      const enabled =
-        input.action === 'proactive'
-          ? (await this.systemConfig.getAgentReplyConfig()).reengagementEnabled
-          : await this.systemConfig.getAiReplyEnabled();
-      if (!enabled) return { allowed: false, reason: 'global_disabled' };
       // 接管作用域是聊天，A bot 对话接管不得暂停同一候选人的 B bot 对话。
       const pause = await this.hosting.getChatPause(input.chatId);
       if (pause.paused)
@@ -52,9 +52,14 @@ export class ActionPermitService {
       if (await this.blacklist.matchBlacklisted([input.chatId, ...(input.candidateIds ?? [])])) {
         return { allowed: false, reason: 'candidate_blacklisted' };
       }
+      const enabled =
+        input.action === 'proactive'
+          ? (await this.systemConfig.getAgentReplyConfig()).reengagementEnabled
+          : await this.systemConfig.getAiReplyEnabled();
+      if (!enabled) return { allowed: false, reason: 'global_disabled' };
       if (!input.botImId?.trim()) return { allowed: false, reason: 'receiving_bot_not_hosted' };
       const botId = input.botImId.trim();
-      const bots = await this.bots.getConfiguredBotList();
+      const bots = await this.getRoster();
       const bot = bots.find((entry) =>
         [entry.wxid, entry.id, entry.weixin, entry.wecomUserId].some((id) => id?.trim() === botId),
       );
@@ -71,6 +76,19 @@ export class ActionPermitService {
       return { allowed: true };
     } catch {
       return { allowed: false, reason: 'permit_unavailable' };
+    }
+  }
+  private async getRoster(): Promise<BotAccountInfo[]> {
+    if (this.roster && this.roster.expiresAt > Date.now()) return this.roster.bots;
+    if (this.rosterRequest) return this.rosterRequest;
+    this.rosterRequest = this.bots.getConfiguredBotList().then((bots) => {
+      this.roster = { bots, expiresAt: Date.now() + 5_000 };
+      return bots;
+    });
+    try {
+      return await this.rosterRequest;
+    } finally {
+      this.rosterRequest = undefined;
     }
   }
 }

@@ -151,6 +151,9 @@ export class ReplyWorkflowService {
     } catch (error) {
       if (error instanceof ReplyDeferredError) {
         this.logger.warn(error.message);
+        // Direct mode has no pending input/job. Retain the exact new message for
+        // retry instead of silently dropping it while an earlier turn is unresolved.
+        await this.simpleMergeService.addMessage(messageData);
         return;
       }
       const errorType = this.processingFailureService.inferErrorType(error, 'message');
@@ -675,10 +678,18 @@ export class ReplyWorkflowService {
         );
         // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
         // storePresentationRounds，否则第一轮可能被误判为升档。
-        await this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
-          ...reengagementAnchorContext,
-          suppressAddressMissing: replyKind !== 'reply',
-        });
+        await this.reengagementAnchors
+          .handleDeliveredReplyAnchors(agentResult, {
+            ...reengagementAnchorContext,
+            suppressAddressMissing: replyKind !== 'reply',
+          })
+          .catch((error: unknown) => {
+            // Durable plans retain pending local work for recovery of the same reply.
+            if (durableTurn) throw error;
+            // Delivery is already confirmed. An auxiliary queue outage must not send
+            // a second, contradictory fallback reply through the generic error path.
+            this.logger.error(`已投递回复的复聊排程失败: ${toErrorMessage(error)}`);
+          });
       }
 
       // 投递结局已知：仅当回复真实送达才把助手轮次投影进记忆；托管暂停/失败丢弃时

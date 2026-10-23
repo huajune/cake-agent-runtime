@@ -79,4 +79,26 @@ describe('SpongeStatusPollService.runOnce', () => {
     expect(result).toEqual({ scanned: 1, passed: 0, nextCursor: null });
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalled();
   });
+  it.each(['null', 'throw'])(
+    'does not advance past a %s lookup while processing other rows',
+    async (failure) => {
+      const cursor = { occurredAt: '2026-05-01', id: 'before' };
+      opsEventsRepository.findWorkOrdersPendingPass.mockResolvedValue({
+        pending: [pendingWo, { ...pendingWo, workOrderId: 9002 }],
+        nextCursor: { occurredAt: '2026-05-02', id: 'after' },
+      });
+      if (failure === 'null') spongeService.getCachedWorkOrderById.mockResolvedValueOnce(null);
+      else spongeService.getCachedWorkOrderById.mockRejectedValueOnce(new Error('timeout'));
+      spongeService.getCachedWorkOrderById.mockResolvedValueOnce({
+        interviewPassTime: '2026-05-20 10:00:00',
+      });
+      const result = await service.runOnce(undefined, cursor as never);
+      expect(result).toEqual({ scanned: 2, passed: 1, nextCursor: cursor });
+      spongeService.getCachedWorkOrderById.mockResolvedValue({ interviewPassTime: null });
+      expect((await service.runOnce(undefined, cursor as never)).nextCursor).toEqual({
+        occurredAt: '2026-05-02',
+        id: 'after',
+      });
+    },
+  );
 });

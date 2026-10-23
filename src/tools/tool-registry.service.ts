@@ -52,7 +52,11 @@ import { sleep } from '@infra/utils/async.util';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import type { ToolActionContract } from '@shared-types/tool-action.contract';
-import { BUILT_IN_TOOL_CONTRACTS, validateToolContract } from './tool-contracts';
+import {
+  BUILT_IN_TOOL_CONTRACTS,
+  publishToolContract,
+  validateToolContract,
+} from './tool-contracts';
 
 /**
  * 统一工具注册表
@@ -287,7 +291,11 @@ export class ToolRegistryService {
     if (this.registry[name] || name in BUILT_IN_TOOL_CONTRACTS) {
       throw new Error(`MCP tool ${name} shadows a built-in tool`);
     }
-    this.mcpTools.set(name, { name, source: 'mcp', tool, mcpServer, contract });
+    const existing = this.mcpTools.get(name);
+    if (existing && existing.mcpServer !== mcpServer)
+      throw new Error(`MCP tool ${name} is already registered`);
+    const published = publishToolContract(name, contract);
+    this.mcpTools.set(name, { name, source: 'mcp', tool, mcpServer, contract: published });
     this.logger.log(`MCP工具已注册: ${name} (server: ${mcpServer})`);
   }
 

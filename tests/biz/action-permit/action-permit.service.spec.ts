@@ -13,15 +13,18 @@ describe('ActionPermitService', () => {
   const groups = { isGroupBlacklisted: jest.fn() };
   const blacklist = { matchBlacklisted: jest.fn() };
   const bots = { getConfiguredBotList: jest.fn() };
-  const service = new ActionPermitService(
-    hosting as never,
-    config as never,
-    groups as never,
-    blacklist as never,
-    bots as never,
-  );
+  let service: ActionPermitService;
+  const createService = () =>
+    new ActionPermitService(
+      hosting as never,
+      config as never,
+      groups as never,
+      blacklist as never,
+      bots as never,
+    );
   beforeEach(() => {
     jest.resetAllMocks();
+    service = createService();
     hosting.getChatPause.mockResolvedValue({ paused: false });
     config.getAiReplyEnabled.mockResolvedValue(true);
     config.getAgentReplyConfig.mockResolvedValue({ reengagementEnabled: true });
@@ -72,7 +75,40 @@ describe('ActionPermitService', () => {
   it('fails closed for removed accounts and unavailable permission sources', async () => {
     bots.getConfiguredBotList.mockResolvedValue([]);
     expect(await service.evaluate(input)).toMatchObject({ reason: 'receiving_bot_not_hosted' });
+    service = createService();
     bots.getConfiguredBotList.mockRejectedValue(new Error('unavailable'));
     expect(await service.evaluate(input)).toMatchObject({ reason: 'permit_unavailable' });
+  });
+  it.each(['disabled', 'unavailable'])(
+    'prioritizes blacklist when the switch is %s',
+    async (state) => {
+      blacklist.matchBlacklisted.mockResolvedValue({ target_id: 'candidate' });
+      if (state === 'disabled') config.getAiReplyEnabled.mockResolvedValue(false);
+      else config.getAiReplyEnabled.mockRejectedValue(new Error('offline'));
+      expect(await service.evaluate(input)).toMatchObject({ reason: 'candidate_blacklisted' });
+      expect(config.getAiReplyEnabled).not.toHaveBeenCalled();
+    },
+  );
+  it('coalesces roster reads but rechecks other gates and refreshes after TTL', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(10000);
+    try {
+      await Promise.all([service.evaluate(input), service.evaluate(input)]);
+      await service.evaluate(input);
+      expect(bots.getConfiguredBotList).toHaveBeenCalledTimes(1);
+      expect(blacklist.matchBlacklisted).toHaveBeenCalledTimes(3);
+      now.mockReturnValue(15001);
+      bots.getConfiguredBotList.mockRejectedValue(new Error('offline'));
+      expect(await service.evaluate(input)).toMatchObject({ reason: 'permit_unavailable' });
+      bots.getConfiguredBotList.mockResolvedValue([]);
+      expect(await service.evaluate(input)).toMatchObject({ reason: 'receiving_bot_not_hosted' });
+    } finally {
+      now.mockRestore();
+    }
+  });
+  it('does not repeat blacklist enforcement on an already paused chat', async () => {
+    hosting.getChatPause.mockResolvedValue({ paused: true, expiresAt: null });
+    blacklist.matchBlacklisted.mockResolvedValue({ target_id: 'candidate' });
+    expect(await service.evaluate(input)).toMatchObject({ reason: 'hosting_paused' });
+    expect(blacklist.matchBlacklisted).not.toHaveBeenCalled();
   });
 });

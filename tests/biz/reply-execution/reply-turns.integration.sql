@@ -23,6 +23,9 @@ begin
   assert response->>'conflict'='unresolved_reply_segments','cannot ack missing segments';
   response:=public.transition_agent_reply_turn('open',base||'{"inputIds":["task:follow-up"],"logicalTurnId":"task-new","recovery":{"task":{"kind":"reengagement"}}}');
   assert response->>'conflict'='different_reply_intent_pending','proactive task cannot borrow an ordinary reply plan';
+  response:=public.transition_agent_reply_turn('open',base||'{"inputIds":["unrelated-direct-input"],"logicalTurnId":"direct-new"}');
+  assert response->>'conflict'='different_reply_intent_pending','direct input cannot borrow an unrelated plan';
+
 
   insert into public.agent_action_records(corp_id,action_id,account_id,chat_id,logical_turn_id,kind,resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,status,owner,dispatch_attempt_id,fence,attempts,recovery_deadline,review_required)
     select 'd-test','segment-'||n,'bot','chat','turn-1','wecom.reply_segment','resource-'||n,'hash-'||n,'request-'||n,
@@ -66,6 +69,8 @@ begin
   response:=public.transition_agent_reply_turn('open',base||'{"inputIds":["m2","new-input"],"mode":"off"}');
   assert response->'turn'->>'status'='settled','ack failure restores ack-only state';
   response:=public.transition_agent_reply_turn('ack',base);
+  response:=public.transition_agent_reply_turn('defer',base);
+  assert response->'turn'->>'status'='acked','defer is harmless after recovery acknowledgement';
   response:=public.transition_agent_reply_turn('ack',base);
   assert response->'turn'->>'status'='acked','ack is repeatable';
   response:=public.transition_agent_reply_turn('open',base||'{"inputIds":["new-input"],"logicalTurnId":"turn-2"}');
@@ -101,5 +106,15 @@ begin
   assert response->'turn'->>'projection_status'='complete','projection completion is separate from delivery ack';
   response:=public.transition_agent_reply_turn('project',base);
   assert response->'turn'->>'projection_status'='complete','projection completion is idempotent';
+end $$;
+rollback;
+
+begin;
+do $$
+declare response jsonb;
+begin
+ response:=public.transition_agent_reply_turn('open',jsonb_build_object('corpId','observe-test','accountId','bot','chatId','chat','logicalTurnId','observe','inputIds',jsonb_build_array('input'),'inputOccurredAt',now(),'mode','observe','recovery',jsonb_build_object('primary','private input')));
+ assert response->'turn'='null'::jsonb;
+ assert not exists(select 1 from public.agent_reply_turns where corp_id='observe-test');
 end $$;
 rollback;
