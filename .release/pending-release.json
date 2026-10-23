@@ -613,6 +613,56 @@
         "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1435",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1435",
+      "title": "六阶段改造 G — 统一后台作业与可靠写入",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**后台任务可靠性** ⏳ 待发布",
+        "- 关键业务事件、介入任务和复聊排程失败后有重试与告警。",
+        "- 暂停托管未成功时不再显示已暂停；错过的定时群发只告警，不自动补发。"
+      ],
+      "businessUpdates": [
+        "统一后台租约与关键业务恢复队列",
+        "用有索引边界的游标分页轮询报名工单",
+        "海绵轮询查询失败时保留分页游标",
+        "覆盖群发送等待窗口并隔离投递后排程故障",
+        "merge: integrate develop permissions with background job recovery",
+        "六阶段改造 G — 统一后台作业与可靠写入"
+      ],
+      "summary": [
+        "统一后台租约与关键业务恢复队列",
+        "用有索引边界的游标分页轮询报名工单",
+        "海绵轮询查询失败时保留分页游标",
+        "覆盖群发送等待窗口并隔离投递后排程故障",
+        "merge: integrate develop permissions with background job recovery",
+        "六阶段改造 G — 统一后台作业与可靠写入"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "统一后台租约与关键业务恢复队列",
+        "用有索引边界的游标分页轮询报名工单",
+        "海绵轮询查询失败时保留分页游标",
+        "覆盖群发送等待窗口并隔离投递后排程故障",
+        "merge: integrate develop permissions with background job recovery"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "30 个相关套件 441 项通过，后续定向与 DI 通过；查询优化 2 套件 6 项通过。在隔离 PostgreSQL 的 60 万合成行上执行 EXPLAIN，范围分页命中部分索引。",
+        "仅提交本阶段文件，未纳入根工作区已有未提交改动。",
+        "当前分支完整 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39546928235) 通过。",
+        "受控真实模型回归完成三个有效场景，使用虚构数据与本地业务替身；发现的两处回执问题已修复并离线回放。未做共享测试资产/生产 Dashboard 发布验收。",
+        "合并与生产发布未执行；默认观察档与既有在途工单口径保持不变。",
+        "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
+        "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -747,5 +797,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "4ddb1c5f61b31277cb6c9d2ad8841f1212657e65"
+  "lastAnalyzedSha": "4942ee0a763a3b0cfd8ec81a63826a504577c7fd"
 }
