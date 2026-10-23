@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.14.0] - 2026-10-23
 
-**预计版本**: `v11.14.0`
-**最近更新**: `2026-10-23`
 **来源分支**: `develop`
-**累计 PR**: 14
 
 ### 运营说明
 **取消改约与城市判断 ✅**
@@ -688,7 +684,6 @@
 - PR #1438 [验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。
 - PR #1438 未合并、未迁移共享库、未部署、未切执行档。
 - PR #1438 发版底账：N/A（本次仅实现与评审）。
-<!-- release:pending:end -->
 
 ## [11.13.2] - 2026-10-15
 
