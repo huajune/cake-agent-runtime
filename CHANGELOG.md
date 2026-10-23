@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.14.1] - 2026-10-23
 
-**预计版本**: `v11.14.1`
-**最近更新**: `2026-10-23`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 运营说明
 **会话记忆与健康证口径** ⏳ 代码待本 PR 发布，历史清洗已完成
@@ -71,7 +67,6 @@
 - PR #1451 批次：`603c4075-4f0d-4b44-8500-b5513bdd021e`、`bab18b93-a18a-43c8-a034-caaadae3844b`。
 - PR #1451 最终提交 `f2fb255e` 的 GitHub 主 CI 已通过，包含全量测试及 AppModule DI smoke test：[CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39927453771)。
 - PR #1451 未新增基于开放自然语言的拒绝门；新增形状校验与健康证映射均为明确闭集，未知留空。
-<!-- release:pending:end -->
 
 ## [11.14.0] - 2026-10-23
 
