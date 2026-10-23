@@ -1,6 +1,6 @@
 {
   "baseVersion": "11.13.2",
-  "nextVersion": "11.13.3",
+  "nextVersion": "11.14.0",
   "updatedAt": "2026-10-23",
   "sourceBranch": "develop",
   "entries": [
@@ -567,7 +567,7 @@
         "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
         "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
       ],
-      "level": "patch"
+      "level": "minor"
     },
     {
       "number": "1433",
@@ -705,7 +705,7 @@
         "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
         "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
       ],
-      "level": "patch"
+      "level": "minor"
     },
     {
       "number": "1436",
@@ -792,7 +792,7 @@
         "合并、共享库迁移、生产发布及执行档切换均未执行。",
         "发版底账：N/A（本次仅实现与评审）。"
       ],
-      "level": "patch"
+      "level": "minor"
     },
     {
       "number": "1437",
@@ -902,7 +902,7 @@
         "未合并、未迁移共享库、未部署、未切执行档，未发出真实业务消息。",
         "发版底账：N/A（本次仅实现与评审）。"
       ],
-      "level": "patch"
+      "level": "minor"
     },
     {
       "number": "1438",
@@ -1199,5 +1199,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "9682644a9790550cd07e81925c05463adfb23d4e"
+  "lastAnalyzedSha": "4ba781a92bd154b341c293e469bc92dc6346aece"
 }
