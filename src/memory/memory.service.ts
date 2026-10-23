@@ -139,8 +139,9 @@ export class MemoryService {
     userId: string,
     sessionId: string,
     record: InvitedGroupRecord,
+    options?: { requireExisting?: boolean },
   ): Promise<void> {
-    await this.session.saveInvitedGroup(corpId, userId, sessionId, record);
+    await this.session.saveInvitedGroup(corpId, userId, sessionId, record, options);
   }
 
   /** 写入当前程序阶段，供 advance_stage 等外部模块调用。 */

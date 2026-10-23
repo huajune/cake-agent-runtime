@@ -94,4 +94,13 @@ describe('PhoneSessionIndexService', () => {
     await expect(service.lookupByChat('chat-1')).resolves.toBeNull();
     await expect(service.lookupByPhone('bad')).resolves.toBeNull();
   });
+  it('strict repair propagates index failure and permits a later local-only retry', async () => {
+    const service = new PhoneSessionIndexService(redis as never);
+    redis.setex.mockRejectedValueOnce(new Error('redis unavailable'));
+    await expect(service.record('18271421690', ref, { strict: true })).rejects.toThrow(
+      'redis unavailable',
+    );
+    await expect(service.record('18271421690', ref, { strict: true })).resolves.toBeUndefined();
+    expect(redis.setex).toHaveBeenCalledTimes(4);
+  });
 });

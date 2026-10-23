@@ -123,6 +123,40 @@ describe('RedisStore', () => {
     });
   });
 
+  it('retains exact field bytes in a CAS snapshot instead of reserializing parsed data', async () => {
+    const raw = '{ "name": "张三" }';
+    mockRedis.eval.mockResolvedValueOnce({ raw, generation: 'generation' });
+    expect(await store.readHashFieldSnapshot('hash', 'facts')).toEqual({
+      raw,
+      generation: 'generation',
+      value: { name: '张三' },
+    });
+  });
+
+  it('passes generation, original bytes and expiry policy to the atomic comparison', async () => {
+    mockRedis.eval.mockResolvedValueOnce(0);
+    expect(
+      await store.compareHashField(
+        'hash',
+        'facts',
+        {
+          raw: '{ "old":true }',
+          generation: 'generation',
+          value: { old: true },
+        },
+        { fresh: true },
+        90,
+        ['stage'],
+        { requireExisting: true },
+      ),
+    ).toBe(false);
+    expect(mockRedis.eval).toHaveBeenCalledWith(
+      expect.stringContaining('_projection_generation'),
+      ['hash', 'stage'],
+      ['facts', '1', '{ "old":true }', 'generation', '{"fresh":true}', 90, '0', expect.any(String)],
+    );
+  });
+
   describe('patchHash', () => {
     it('should update fields and refresh TTL in one Lua eval', async () => {
       await store.patchHash(

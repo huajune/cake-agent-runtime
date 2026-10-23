@@ -38,6 +38,8 @@ describe('SessionStateService（S1-S6）', () => {
   const redis = {
     get: jest.fn().mockResolvedValue(null),
     getHash: jest.fn(),
+    readHashFieldSnapshot: jest.fn(),
+    compareHashField: jest.fn(),
     patchHash: jest.fn(),
     backfillHash: jest.fn().mockResolvedValue(undefined),
     del: jest.fn().mockResolvedValue(true),
@@ -61,6 +63,16 @@ describe('SessionStateService（S1-S6）', () => {
     redis.getHash.mockImplementation(async () =>
       Object.keys(hash).length > 0 ? { ...hash } : null,
     );
+    redis.readHashFieldSnapshot.mockImplementation(async (_key, field: string) => ({
+      raw: JSON.stringify(hash[field]) ?? null,
+      generation: Object.keys(hash).length ? 'test-generation' : null,
+      value: hash[field] ?? null,
+    }));
+    redis.compareHashField.mockImplementation(async (_key, field: string, snapshot, value) => {
+      if ((JSON.stringify(hash[field]) ?? null) !== snapshot.raw) return false;
+      hash[field] = value;
+      return true;
+    });
     redis.patchHash.mockImplementation(async (_key, patch: Record<string, unknown>) => {
       hash = { ...hash, ...patch };
     });
@@ -1002,6 +1014,48 @@ describe('SessionStateService（S1-S6）', () => {
     const saved = await service.getFacts('corp-1', 'user-1', 'session-1');
     expect(saved?.interview_info.name?.value).toBe('兮兮');
     expect(saved?.preferences.position?.value).toEqual(['服务员']);
+  });
+
+  it('late completed identity cannot replace newer identity or its timestamp', async () => {
+    const newer = sessionFactValue('新姓名', {
+      confidence: 'high',
+      source: 'candidate_quote',
+      evidence: 'new',
+      extractedAt: '2026-10-21T02:00:00Z',
+    });
+    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', { name: newer });
+    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', {
+      name: sessionFactValue('旧姓名', {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: 'old',
+        extractedAt: '2026-10-21T01:00:00Z',
+      }),
+    });
+    expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.name).toEqual(
+      newer,
+    );
+  });
+
+  it('completion CAS conflict fails for local repair instead of overwriting or retrying', async () => {
+    redis.compareHashField.mockResolvedValueOnce(false);
+    await expect(
+      service.saveCompletedCollectionFacts(
+        'corp-1',
+        'user-1',
+        'session-1',
+        {
+          name: sessionFactValue('旧姓名', {
+            confidence: 'high',
+            source: 'candidate_quote',
+            evidence: 'old',
+          }),
+        },
+        { requireExisting: true },
+      ),
+    ).rejects.toThrow('changed_or_expired');
+    expect(redis.compareHashField).toHaveBeenCalledTimes(1);
+    expect(redis.patchHash).not.toHaveBeenCalled();
   });
 
   it('轮末 LLM 纯偏好提取不会覆盖 booking high 身份字段', async () => {

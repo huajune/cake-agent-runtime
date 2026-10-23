@@ -1,3 +1,4 @@
+import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { retainedJobs } from '@infra/queue/queue-policy';
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
@@ -31,6 +32,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
  */
 @Module({
   imports: [
+    ActionPermitModule,
     SpongeModule,
     LlmModule,
     HostingConfigModule,

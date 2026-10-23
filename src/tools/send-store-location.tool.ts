@@ -1,3 +1,5 @@
+import type { ToolActionService } from './actions/tool-action.service';
+import { actionReceiptFields, unresolvedActionReceipt } from './actions/business-action.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
@@ -241,6 +243,7 @@ export function buildSendStoreLocationTool(
   spongeService: SpongeService,
   messageSenderService: MessageSenderService,
   geocodingService?: GeocodingService,
+  actions?: ToolActionService,
 ): ToolBuilder {
   return (context) =>
     tool({
@@ -484,16 +487,30 @@ export function buildSendStoreLocationTool(
               }
               if (!geocoded) {
                 const fixedReply = `面试地点和工作门店不是同一个地方：工作门店是 ${storeLabel}，这次面试请去 ${interviewAddress}。暂时无法发出可靠的面试定位，我再请同事帮你确认。`;
-                await messageSenderService.sendMessage({
-                  token: context.session.token,
-                  imBotId: context.session.botImId,
-                  imContactId: context.session.imContactId,
-                  imRoomId: context.session.imRoomId,
-                  chatId: context.session.chatId ?? context.session.sessionId,
-                  messageType: SendMessageType.TEXT,
-                  payload: { text: fixedReply },
-                  _apiType: context.session.apiType,
-                });
+                const send = (externalRequestId?: string) =>
+                  messageSenderService.sendMessage({
+                    token: context.session.token,
+                    imBotId: context.session.botImId,
+                    imContactId: context.session.imContactId,
+                    imRoomId: context.session.imRoomId,
+                    chatId: context.session.chatId ?? context.session.sessionId,
+                    messageType: SendMessageType.TEXT,
+                    payload: { text: fixedReply },
+                    _apiType: context.session.apiType,
+                    externalRequestId,
+                  });
+                const sent = actions
+                  ? await actions.executeMessage(
+                      context,
+                      'message.interview_address',
+                      `store:${resolvedJobId}:${resolvedDestination}`,
+                      { text: fixedReply },
+                      send,
+                    )
+                  : undefined;
+                if (sent && sent.status !== 'succeeded')
+                  return unresolvedActionReceipt(context, sent, '发送定位', resolvedJobId);
+                if (!actions) await send();
                 return buildToolError({
                   errorType: TOOL_ERROR_TYPES.STORE_LOCATION_INTERVIEW_GEOCODE_FAILED,
                   outcome: '面试地址无法解析为可靠坐标',
@@ -507,6 +524,7 @@ export function buildSendStoreLocationTool(
                     interviewAddress,
                     addressConflict,
                     fallbackTextSent: true,
+                    ...(sent ? actionReceiptFields(sent) : {}),
                   },
                 });
               }
@@ -517,22 +535,41 @@ export function buildSendStoreLocationTool(
             }
           }
 
-          await messageSenderService.sendMessage({
-            token: context.session.token,
-            imBotId: context.session.botImId,
-            imContactId: context.session.imContactId,
-            imRoomId: context.session.imRoomId,
-            chatId: context.session.chatId ?? context.session.sessionId,
-            messageType: SendMessageType.LOCATION,
-            payload: {
-              accuracy: 15,
-              address: targetAddress,
-              latitude: targetLatitude,
-              longitude: targetLongitude,
-              name: targetName,
-            },
-            _apiType: context.session.apiType,
-          });
+          const send = (externalRequestId?: string) =>
+            messageSenderService.sendMessage({
+              token: context.session.token,
+              imBotId: context.session.botImId,
+              imContactId: context.session.imContactId,
+              imRoomId: context.session.imRoomId,
+              chatId: context.session.chatId ?? context.session.sessionId,
+              messageType: SendMessageType.LOCATION,
+              payload: {
+                accuracy: 15,
+                address: targetAddress,
+                latitude: targetLatitude,
+                longitude: targetLongitude,
+                name: targetName,
+              },
+              _apiType: context.session.apiType,
+              externalRequestId,
+            });
+          const sent = actions
+            ? await actions.executeMessage(
+                context,
+                'message.location',
+                `store:${resolvedJobId}:${resolvedDestination}`,
+                {
+                  address: targetAddress,
+                  latitude: targetLatitude,
+                  longitude: targetLongitude,
+                  name: targetName,
+                },
+                send,
+              )
+            : undefined;
+          if (sent && sent.status !== 'succeeded')
+            return unresolvedActionReceipt(context, sent, '发送定位', resolvedJobId);
+          if (!actions) await send();
 
           logger.log(
             `门店定位发送成功: jobId=${resolvedJobId}, store=${store.storeName}, session=${context.session.sessionId}`,
@@ -562,6 +599,7 @@ export function buildSendStoreLocationTool(
             interviewModeGuide;
 
           return {
+            ...(sent ? actionReceiptFields(sent) : {}),
             success: true,
             jobId: resolvedJobId,
             destination: resolvedDestination,

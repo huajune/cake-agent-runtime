@@ -21,6 +21,7 @@ import { AgentModule } from './agent/agent.module';
 import { WecomModule } from '@channels/wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
 import { OpsEventsModule } from '@biz/ops-events/ops-events.module';
+import { ActionExecutionModule } from '@biz/action-execution/action-execution.module';
 import { HostingMemberConfigModule } from '@biz/hosting-config/hosting-member-config.module';
 import { HandoffEventsModule } from '@biz/handoff-events/handoff-events.module';
 import { HuajuneModule } from '@biz/huajune/huajune.module';
@@ -68,6 +69,7 @@ import { HttpExceptionFilter } from '@infra/server/response/filters/http-excepti
 
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
     BizModule,
+    ActionExecutionModule,
     OpsEventsModule, // 运营事件底账（@Global，写入侧统一入口 OpsEventsRecorderService）
     HostingMemberConfigModule, // 托管成员统一配置（@Global，飞书接收人 + 海绵 token，按 botImId 索引）
     HandoffEventsModule, // 转人工触发底账（@Global，写入侧入口 HandoffRecorderService）

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ToolActionService } from './actions/tool-action.service';
 import { MemoryService } from '@memory/memory.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
@@ -99,6 +100,7 @@ export class ToolRegistryService {
     collectionFormService: CollectionFormService,
     bookingSnapshotService: BookingSnapshotService,
     phoneSessionIndexService: PhoneSessionIndexService,
+    actions: ToolActionService,
   ) {
     this.registry = {
       // ===== 阶段工具 =====
@@ -137,6 +139,7 @@ export class ToolRegistryService {
           longTermService,
           opsEventsRecorder,
           {
+            actions,
             observer: agentTracer,
             collectionForms: collectionFormService,
             sessionFacts: sessionService,
@@ -175,7 +178,7 @@ export class ToolRegistryService {
           opsEventsRecorder,
           longTermService,
           privateChatMonitorNotifier,
-          { bookingSnapshot: bookingSnapshotService },
+          { bookingSnapshot: bookingSnapshotService, actions },
         ),
       }),
 
@@ -185,6 +188,7 @@ export class ToolRegistryService {
         description:
           '修改约面时间（候选人主动要求把已确认的面试改到新时间时调用，真正调海绵改约接口；workOrderId 取自 [当前预约信息]）',
         create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder, longTermService, {
+          actions,
           bookingSnapshot: bookingSnapshotService,
         }),
       }),
@@ -200,7 +204,12 @@ export class ToolRegistryService {
         name: 'send_store_location',
         contract: BUILT_IN_TOOL_CONTRACTS.send_store_location,
         description: '向候选人发送面试地点或工作门店的企微位置消息（已约面后默认优先面试地点）',
-        create: buildSendStoreLocationTool(spongeService, messageSenderService, geocodingService),
+        create: buildSendStoreLocationTool(
+          spongeService,
+          messageSenderService,
+          geocodingService,
+          actions,
+        ),
       }),
 
       invite_to_group: createToolDefinition({

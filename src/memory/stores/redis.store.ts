@@ -1,3 +1,9 @@
+import { randomUUID } from 'node:crypto';
+import {
+  COMPARE_HASH_FIELD_SCRIPT,
+  READ_HASH_FIELD_SNAPSHOT_SCRIPT,
+  type HashFieldSnapshot,
+} from './hash-field-cas';
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import type { MemoryEntry, MemoryStore } from './store.types';
@@ -80,6 +86,56 @@ export class RedisStore implements MemoryStore {
   async getHash(key: string): Promise<Record<string, unknown> | null> {
     const fields = await this.redis.hgetall(key);
     return fields && Object.keys(fields).length > 0 ? fields : null;
+  }
+
+  async readHashFieldSnapshot(key: string, field: string): Promise<HashFieldSnapshot> {
+    const result = await this.redis.eval(
+      READ_HASH_FIELD_SNAPSHOT_SCRIPT,
+      [key],
+      [field, randomUUID()],
+    );
+    const envelope = (typeof result === 'string' ? JSON.parse(result) : result) as {
+      raw: string | null;
+      generation: string | null;
+    };
+    let value: unknown = envelope.raw;
+    if (envelope.raw !== null) {
+      try {
+        value = JSON.parse(envelope.raw);
+      } catch {
+        /* Non-JSON scalar fields remain strings. */
+      }
+    }
+    return { ...envelope, value };
+  }
+
+  async compareHashField(
+    key: string,
+    field: string,
+    snapshot: HashFieldSnapshot,
+    value: unknown,
+    ttl?: number,
+    renewKeys: readonly string[] = [],
+    options?: { requireExisting?: boolean },
+  ): Promise<boolean> {
+    return (
+      Number(
+        await this.redis.eval(
+          COMPARE_HASH_FIELD_SCRIPT,
+          [key, ...renewKeys],
+          [
+            field,
+            snapshot.raw === null ? '0' : '1',
+            snapshot.raw ?? '',
+            snapshot.generation ?? '',
+            this.serializeRedisValue(value),
+            ttl ?? 0,
+            options?.requireExisting ? '0' : '1',
+            randomUUID(),
+          ],
+        ),
+      ) === 1
+    );
   }
 
   /** 原子写入 patch 中的字段（其余字段不受影响），并续期 TTL。 */

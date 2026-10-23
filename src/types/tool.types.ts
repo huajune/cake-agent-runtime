@@ -31,6 +31,8 @@ export interface ToolSessionContext {
   botImId?: string;
   groupId?: string;
   turnId?: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
   contactName?: string;
 }
 
