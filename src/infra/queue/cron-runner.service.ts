@@ -136,6 +136,32 @@ export class CronRunnerService implements OnApplicationBootstrap {
     }
   }
 
+  /** Drain bounded batches under one distributed lease; counts are processed rows, not side effects. */
+  async runBatches(
+    id: string,
+    limits: { timeMs: number; maxRows: number; batchSize: number },
+    batch: (limit: number) => Promise<number>,
+  ): Promise<number | undefined> {
+    if (!Number.isSafeInteger(limits.batchSize) || limits.batchSize <= 0)
+      throw new Error('Batch size must be a positive integer');
+    return this.run(id, limits, async (budget) => {
+      const deadline = Date.now() + limits.timeMs;
+      let processed = 0;
+      while (processed < limits.maxRows && Date.now() < deadline) {
+        const size = Math.min(limits.batchSize, limits.maxRows - processed);
+        await budget.checkpoint(size);
+        const count = await batch(size);
+        if (!Number.isSafeInteger(count) || count < 0 || count > size)
+          throw new Error('Invalid processed batch count');
+        processed += count;
+        if (count < size) break;
+      }
+      if (processed >= limits.maxRows || Date.now() >= deadline)
+        this.logger.warn(`${id}: retention budget reached; remaining rows resume next tick`);
+      return processed;
+    });
+  }
+
   private async event(id: string, status: string, startedAt: number, rows: number): Promise<void> {
     const event = { id, status, startedAt, updatedAt: Date.now(), rows };
     this.logger.log(JSON.stringify(event));

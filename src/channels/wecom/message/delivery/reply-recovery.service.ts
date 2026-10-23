@@ -1,3 +1,4 @@
+import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,7 @@ export class ReplyRecoveryService {
     private readonly workflow: ReplyWorkflowService,
     private readonly leases: ReplyRecoveryLeaseService,
     private readonly config: ConfigService,
+    private readonly crons: CronRunnerService,
     @Optional() private readonly incidents?: IncidentReporterService,
   ) {}
 
@@ -69,9 +71,13 @@ export class ReplyRecoveryService {
     }
   }
 
-  @Cron('27 3 * * *', { timeZone: 'Asia/Shanghai' })
+  @Cron('47 */10 * * * *', { timeZone: 'Asia/Shanghai' })
   async retainTombstones(): Promise<void> {
-    await this.turns.repository.redact().catch(() => this.logger.error('reply.retention_failed'));
+    await this.crons.runBatches(
+      'reply-retention',
+      { timeMs: 30_000, maxRows: 10_000, batchSize: 100 },
+      (limit) => this.turns.repository.redact(limit),
+    );
   }
 
   private manualReview(logicalTurnId: string, reason: string): void {

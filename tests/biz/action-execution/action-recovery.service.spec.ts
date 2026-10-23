@@ -25,6 +25,7 @@ function setup(row = record) {
     })),
     defer: jest.fn(),
     markSynced: jest.fn(),
+    redactCompleted: jest.fn().mockResolvedValue(0),
   };
   const handler = {
     reconcile: jest.fn().mockResolvedValue({
@@ -35,15 +36,32 @@ function setup(row = record) {
   };
   const registry = { get: jest.fn().mockReturnValue(handler) };
   const localSync = { run: jest.fn(async (r, h) => h.sync?.(r)) };
+  const crons = { runBatches: jest.fn(async (_id, _limits, batch) => batch(100)) };
   return {
+    crons,
     records,
     handler,
     registry,
     localSync,
-    service: new ActionRecoveryService(records as never, registry as never, localSync as never),
+    service: new ActionRecoveryService(
+      records as never,
+      registry as never,
+      localSync as never,
+      crons as never,
+    ),
   };
 }
 describe('bounded action reconciliation', () => {
+  it('cleans action payloads through bounded distributed batches', async () => {
+    const { service, crons, records } = setup();
+    await service.retainTombstones();
+    expect(crons.runBatches).toHaveBeenCalledWith(
+      'action-retention',
+      { timeMs: 30_000, maxRows: 10_000, batchSize: 100 },
+      expect.any(Function),
+    );
+    expect(records.redactCompleted).toHaveBeenCalledWith(100);
+  });
   it('keeps an unresolved request unknown when only its goal is satisfied', async () => {
     const { service, records, handler } = setup();
     await service.recoverDue();

@@ -106,6 +106,7 @@ new = [
  '20261021100000_reply_turns.sql',
  '20261021110000_booking_poll_seek_index.sql',
  '20261021130000_version_booking_projections.sql',
+ '20261023060000_runtime_retention_batches.sql',
 ]
 for name in new:
     apply(name, source('supabase/migrations/' + name, delivery='reply_turns' in name))
@@ -113,6 +114,7 @@ for name in new:
 for path in [
  'tests/biz/action-execution/action-records.postgres.sql',
  'tests/biz/action-execution/action-review.postgres.sql',
+ 'tests/biz/action-execution/action-retention.postgres.sql',
  'tests/biz/action-execution/booking-projection.postgres.sql',
  'tests/biz/reply-execution/reply-turns.integration.sql',
 ]:
@@ -130,6 +132,6 @@ for path, argv in [
     print(result.strip(), flush=True)
 
 (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2))
-print('PASS: cold dependency chain, five runtime migrations, SQL fault/permission assertions, and real concurrent transaction checks')
+print('PASS: cold dependency chain, runtime migrations, SQL fault/permission assertions, and real concurrent transaction checks')
 print('Results:', args.output)
 print('Database retained for inspection:', args.database)

@@ -70,4 +70,71 @@ describe('CronRunnerService', () => {
     );
     expect(leases.acquire).not.toHaveBeenCalled();
   });
+
+  it('drains more than one page and stops on a short page', async () => {
+    const batch = jest
+      .fn()
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(100)
+      .mockResolvedValueOnce(5);
+    expect(
+      await runner.runBatches(
+        'retention',
+        { timeMs: 30_000, maxRows: 1000, batchSize: 100 },
+        batch,
+      ),
+    ).toBe(205);
+    expect(batch).toHaveBeenCalledTimes(3);
+    expect(leases.acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('limits rows and releases ownership only after the last batch', async () => {
+    const batch = jest.fn(async (size) => size);
+    expect(
+      await runner.runBatches('retention', { timeMs: 30_000, maxRows: 250, batchSize: 100 }, batch),
+    ).toBe(250);
+    expect(batch.mock.calls.map(([size]) => size)).toEqual([100, 100, 50]);
+    expect(leases.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops batching when time expires or ownership is lost', async () => {
+    let now = 0;
+    const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const batch = jest.fn(async () => {
+        now = 30_001;
+        return 100;
+      });
+      expect(
+        await runner.runBatches(
+          'retention',
+          { timeMs: 30_000, maxRows: 1000, batchSize: 100 },
+          batch,
+        ),
+      ).toBe(100);
+      expect(batch).toHaveBeenCalledTimes(1);
+      now = 0;
+      leases.renew.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      const next = jest.fn().mockResolvedValue(100);
+      await runner.runBatches('retention', { timeMs: 30_000, maxRows: 1000, batchSize: 100 }, next);
+      expect(next).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('does not continue after a failed or invalid batch', async () => {
+    for (const batch of [
+      jest.fn().mockRejectedValue(new Error('database down')),
+      jest.fn().mockResolvedValue(101),
+    ]) {
+      await runner.runBatches(
+        'retention',
+        { timeMs: 30_000, maxRows: 1000, batchSize: 100 },
+        batch,
+      );
+      expect(batch).toHaveBeenCalledTimes(1);
+    }
+    expect(failures.report).toHaveBeenCalledTimes(2);
+  });
 });
