@@ -121,17 +121,17 @@ await reengagementQueue.add(
   `chat_messages.history_only_reason`（入站即命中，或合并窗口内被暂停后由 Bull 丢弃时补记）。最近一条候选人消息带该原因
   且覆盖 `lastCandidateMessageAt` 时，不算无人搭理（processor 取最近候选人消息传入 `shouldStop`）。
 
-### 4.3 带外工单核验（`oob-work-order.ts`）
+### 4.3 候选人进度与带外工单核验（`biz/candidate-progress`）
 
 真人招募经理的带外操作（手工约面、拒绝面试）或候选人已面试的事实**只存在于海绵工单里**。`pre_booking` 类场景若只认 Agent 自建的 terminal 态，会对带外工单全盲——已被经理拒面 / 已面试过的候选人仍被持续追问。
 
-该模块把同一 source of truth（海绵工单）接到 `pre_booking` 侧；`post_booking` 场景另有到点核验 `checkBookingInvalidAtFire`。
+`CandidateProgressService` 按人跨账号读取工单，手机号可从当前托管账号的长期档案回落；旧 3 天/30 天窗口集中在 `legacy-progress.policies.ts`，只并行记录与其他窗口的差异，不切换统一口径。该服务把海绵工单接到 `pre_booking` 侧；`post_booking` 场景另有到点核验 `checkBookingInvalidAtFire`。
 
 > **面试时间口径**：工单 `interviewTime` 只是窗口起点；带外核验只看工单是否在途/已推进。拦截即终局，不补发。
 
 ### 4.4 报名后场景停止条件表（`post_booking`：面试提醒 / 前 2 天确认档 / 回访）
 
-报名后场景**只看工单和聊天记录**：不看托管暂停状态、不看当轮回合结局、不设「真人手打过就停」的闸（2026-09 裁定整道删除，真人几分钟前刚手打过话也不顺延）。执行顺序与 reason 码：
+报名后场景的业务停止条件只看工单和聊天记录，不看当轮回合结局、不设「真人手打过就停」的闸。统一行动许可另在生成前、投递前与分段间检查聊天暂停、复聊总开关、候选人黑名单及账号托管状态；小组屏蔽仍豁免主动提醒。内部工单核验/排程恢复不因候选人触达暂停而被丢弃。执行顺序与 reason 码：
 
 | 顺序 | 判据                                                                                                                                | reason                                                                                                                | 居所                                        |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
@@ -217,11 +217,11 @@ src/agent/reengagement/
 ├── follow-up.processor.ts      # @Processor：到点 → 停止条件 → compose → deliver；含 interviewSlotCheck / onboardingCheck 复核分派与不暂停托管的运营任务出口
 ├── reengagement.agent.ts       # 专用生成器（LlmExecutor + zod schema，不复用主 generator）
 ├── touch-ledger.service.ts     # 触达底账（频控 + outbox 幂等状态机，Redis）
-├── oob-work-order.ts           # pre_booking 带外工单核验
 └── booking-context.ts          # 面试上下文装配
 
 依赖：BullModule(REENGAGEMENT_QUEUE) | SessionService（复聊会话快照）| LlmExecutorService
       | ReengagementTrackingService（底账落库）| SystemConfigService（运行时开关）
+      | CandidateProgressService（只读进度）| ActionPermitService（聊天级行动许可）
       | ChannelDeliveryPort（可选注入）
 ```
 

@@ -46,7 +46,7 @@ describe('MessageFilterRules', () => {
 
   it('PausedUserFilterRule should downgrade paused users to history-only handling', async () => {
     const userHostingService = {
-      isAnyPaused: jest.fn().mockResolvedValue({ paused: true, matchedId: 'external-user-1' }),
+      evaluate: jest.fn().mockResolvedValue({ allowed: false, reason: 'hosting_paused' }),
     };
     const rule = new PausedUserFilterRule(userHostingService as never);
 
@@ -62,7 +62,9 @@ describe('MessageFilterRules', () => {
       historyOnly: true,
       reason: FilterReason.USER_PAUSED,
       details: {
-        userId: 'external-user-1',
+        chatId: 'chat-1',
+        actionPermitReason: 'hosting_paused',
+        pauseExpiresAt: undefined,
       },
     });
   });

@@ -300,9 +300,15 @@ export class LongTermService {
    * 同 getActiveBookings，但读失败返回 null 而不是空数组——出站守卫据此区分
    * "确证没有工单"与"读不到"，后者不得升档误拦。
    */
-  async tryGetActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[] | null> {
+  async tryGetActiveBookings(
+    corpId: string,
+    userId: string,
+    options?: { bypassCache?: boolean },
+  ): Promise<ActiveBookingEntry[] | null> {
     try {
-      return await this.supabaseStore.getActiveBookings(corpId, userId);
+      return options
+        ? await this.supabaseStore.getActiveBookings(corpId, userId, options)
+        : await this.supabaseStore.getActiveBookings(corpId, userId);
     } catch (error) {
       this.logger.warn('获取 active_bookings 失败', error);
       return null;

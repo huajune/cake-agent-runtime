@@ -66,11 +66,15 @@ describe('FollowUpProcessor', () => {
   let handoffRecorder: { record: jest.Mock };
   let handoffNotifier: { notify: jest.Mock };
   let configService: { get: jest.Mock };
+  let actionPermit: { evaluate: jest.Mock };
+  let candidateProgress: { read: jest.Mock };
   let delivery: { deliver: jest.Mock };
   let requestContext: { get: jest.Mock; run: jest.Mock };
 
   beforeEach(() => {
     jest.useRealTimers();
+    actionPermit = { evaluate: jest.fn().mockResolvedValue({ allowed: true }) };
+    candidateProgress = { read: jest.fn().mockResolvedValue({ active: 'unknown' }) };
     requestContext = {
       get: jest.fn().mockReturnValue({}),
       run: jest.fn((_ctx: unknown, fn: () => unknown) => fn()),
@@ -202,9 +206,35 @@ describe('FollowUpProcessor', () => {
       handoffRecorder as never,
       handoffNotifier as never,
       configService as never,
+      actionPermit as never,
+      candidateProgress as never,
       withDelivery ? (delivery as never) : undefined,
       requestContext as never,
     );
+
+  it('paused proactive action stops before model generation', async () => {
+    actionPermit.evaluate.mockResolvedValue({ allowed: false, reason: 'hosting_paused' });
+    await buildProcessor().process(makeJob());
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'action_permit:hosting_paused',
+    );
+  });
+
+  it('derived progress stops pre-booking reminders even after session booked marker expires', async () => {
+    candidateProgress.read.mockResolvedValue({
+      active: 'yes',
+      outOfBandVerdict: { reason: 'oob_work_order_active:约面成功' },
+    });
+    await buildProcessor().process(makeJob());
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'oob_work_order_active:约面成功',
+    );
+  });
 
   it('registers the configured follow-up job name', () => {
     buildProcessor().onModuleInit();

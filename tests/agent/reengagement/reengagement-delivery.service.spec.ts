@@ -10,16 +10,16 @@ describe('ReengagementDeliveryService', () => {
       totalTime: 0,
     }),
   };
-  const botService = {
-    getConfiguredBotList: jest.fn().mockResolvedValue([{ wxid: 'bot-1' }]),
+  const actionPermit = {
+    evaluate: jest.fn().mockResolvedValue({ allowed: true }),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    botService.getConfiguredBotList.mockResolvedValue([{ wxid: 'bot-1' }]);
+    actionPermit.evaluate.mockResolvedValue({ allowed: true });
   });
 
-  const service = () => new ReengagementDeliveryService(delivery as never, botService as never);
+  const service = () => new ReengagementDeliveryService(delivery as never, actionPermit as never);
 
   it('uses the passive message delivery pipeline without duplicate monitoring', async () => {
     await service().deliver(
@@ -75,7 +75,7 @@ describe('ReengagementDeliveryService', () => {
   });
 
   it('skips delivery when the receiving bot is no longer hosted', async () => {
-    botService.getConfiguredBotList.mockResolvedValue([]);
+    actionPermit.evaluate.mockResolvedValue({ allowed: false, reason: 'receiving_bot_not_hosted' });
 
     const result = await service().deliver(
       { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
@@ -99,7 +99,7 @@ describe('ReengagementDeliveryService', () => {
   });
 
   it('fails closed when the receiving bot hosting lookup fails', async () => {
-    botService.getConfiguredBotList.mockRejectedValue(new Error('hosting api unavailable'));
+    actionPermit.evaluate.mockResolvedValue({ allowed: false, reason: 'permit_unavailable' });
 
     const result = await service().deliver(
       { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
@@ -117,7 +117,7 @@ describe('ReengagementDeliveryService', () => {
     );
 
     expect(result).toEqual(
-      expect.objectContaining({ skipped: true, skipReason: 'receiving_bot_not_hosted' }),
+      expect.objectContaining({ skipped: true, skipReason: 'permit_unavailable' }),
     );
     expect(delivery.deliverReply).not.toHaveBeenCalled();
   });

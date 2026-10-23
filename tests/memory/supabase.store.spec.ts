@@ -554,6 +554,14 @@ describe('SupabaseStore', () => {
       return store.getActiveBookings('corp1', 'user1');
     };
 
+    it('throws on database failure instead of falsely proving no pointers', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+      await expect(store.getActiveBookings('corp1', 'user1')).rejects.toThrow(
+        'active_booking_read_failed',
+      );
+    });
+
     it('null 形态：返回空列表，[0] 为 undefined', async () => {
       const bookings = await readWith(null);
 
