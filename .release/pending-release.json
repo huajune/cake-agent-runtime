@@ -989,6 +989,42 @@
         "发版底账：N/A（本次仅实现与评审）。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1445",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1445",
+      "title": "修复运行时清理积压与暂停托管回执",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**历史记录维护 ✅**",
+        "- 修复过期对话正文未按期清理的问题。",
+        "- 自动分批处理历史积压，保留防重复操作所需的身份记录，不清理尚未确认结果或待补账的操作。"
+      ],
+      "businessUpdates": [
+        "修复观察记录清理和批量积压"
+      ],
+      "summary": [
+        "修复观察记录清理和批量积压",
+        "按实际清理条数记录任务监控",
+        "核实暂停托管持久化结果后返回回执",
+        "人工处理建议不预设暂停和通知成功",
+        "修复运行时清理积压与暂停托管回执"
+      ],
+      "features": [],
+      "fixes": [
+        "修复观察记录清理和批量积压"
+      ],
+      "optimizations": [],
+      "ops": [
+        "按实际清理条数记录任务监控",
+        "核实暂停托管持久化结果后返回回执",
+        "人工处理建议不预设暂停和通知成功"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -1123,5 +1159,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "57bf7d41121babf106f4f4fab082875521f44733"
+  "lastAnalyzedSha": "79762d3cdb0f10562ace0b13ba12ba02c710cb84"
 }
