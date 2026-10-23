@@ -5,7 +5,8 @@ import {
   COLLECTION_FORM_TTL_SECONDS,
   CollectionFormStore,
 } from '@tools/collection/collection-form.store';
-import { createForm, type ContractFieldDef } from '@resolution/collection';
+import { createHash } from 'crypto';
+import { createForm, markSubmitted, type ContractFieldDef } from '@resolution/collection';
 
 const FIELD: ContractFieldDef = {
   labelId: 769,
@@ -20,6 +21,7 @@ const SCOPE = { corpId: 'corp1', userId: 'user1', botUserId: 'wecom-user-A', job
 describe('CollectionFormStore', () => {
   const redis = {
     get: jest.fn(),
+    eval: jest.fn().mockResolvedValue(1),
     setex: jest.fn().mockResolvedValue(undefined),
     del: jest.fn().mockResolvedValue(1),
   };
@@ -179,5 +181,49 @@ describe('CollectionFormStore', () => {
 
     expect(redis.del).toHaveBeenCalledTimes(1);
     expect(redis.del).not.toHaveBeenCalledWith(buildCollectionFormLocatorKey(SCOPE));
+  });
+  it('background repair is CAS conditional, preserves TTL and leaves locators unchanged', async () => {
+    const form = createForm({ jobId: SCOPE.jobId, contract: [FIELD] });
+    const entry = { key: 'entity', content: form, updatedAt: '2026-10-21' };
+    redis.get.mockResolvedValue(entry);
+    redis.eval.mockResolvedValue(1);
+    const digest = createHash('sha256').update(JSON.stringify(form)).digest('hex');
+    expect(
+      await store.markSubmittedIfUnchanged({ ...SCOPE, candidateRef: 'session' }, digest, 42),
+    ).toBe(true);
+    expect(redis.eval).toHaveBeenCalledWith(
+      expect.stringContaining('KEEPTTL'),
+      [buildCollectionFormKey({ ...SCOPE, candidateRef: 'session' })],
+      [JSON.stringify(entry), expect.any(String)],
+    );
+    expect(redis.setex).not.toHaveBeenCalled();
+    redis.eval.mockResolvedValue(0);
+    expect(
+      await store.markSubmittedIfUnchanged({ ...SCOPE, candidateRef: 'session' }, digest, 42),
+    ).toBe(false);
+  });
+
+  it('expired or changed forms are never recreated, including an already submitted but edited form', async () => {
+    const form = createForm({ jobId: SCOPE.jobId, contract: [FIELD] });
+    const digest = createHash('sha256').update(JSON.stringify(form)).digest('hex');
+    redis.get.mockResolvedValue(null);
+    expect(
+      await store.markSubmittedIfUnchanged({ ...SCOPE, candidateRef: 'session' }, digest, 42),
+    ).toBe(false);
+    redis.get.mockResolvedValue({ content: { ...form, candidateRef: 'new-person' } });
+    expect(
+      await store.markSubmittedIfUnchanged({ ...SCOPE, candidateRef: 'session' }, digest, 42),
+    ).toBe(false);
+    redis.get.mockResolvedValue({ content: markSubmitted(form, 42) });
+    expect(
+      await store.markSubmittedIfUnchanged({ ...SCOPE, candidateRef: 'session' }, digest, 42),
+    ).toBe(true);
+    redis.get.mockResolvedValue({
+      content: { ...markSubmitted(form, 42), candidateRef: 'new-person' },
+    });
+    expect(
+      await store.markSubmittedIfUnchanged({ ...SCOPE, candidateRef: 'session' }, digest, 42),
+    ).toBe(false);
+    expect(redis.eval).not.toHaveBeenCalled();
   });
 });

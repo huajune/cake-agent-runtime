@@ -1,9 +1,9 @@
 /**
  * 收资表单快照的 Redis 存储（蓝图 §4）。
  *
- * 形态裁定（v3-lean §0）：**整实体 JSON 快照，无版本锁、无 CAS**。
+ * 形态裁定（v3-lean §0）：**整实体 JSON 快照，回合写入无版本锁**。
  * 并发安全不靠乐观锁，靠消息处理的 90s 回合租约（心跳续期）——同一会话同一时刻
- * 只有一个 worker 在跑回合，表单只在回合内写。为不存在的并发建 CAS 是白付往返。
+ * 只有一个 worker 在跑回合。后台动作补账使用单独的条件办结写，禁止覆盖回合内新资料。
  *
  * ⚠️ **本 key 属「丢了算事故」清单**：表单是收资进度的唯一事实源。丢了不是"少一段
  * 记忆"，是候选人已经答过的每一格都要重问一遍——正是本改造要根治的那个病。
@@ -11,6 +11,8 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { markSubmitted } from '@resolution/collection';
 import { RedisService } from '@infra/redis/redis.service';
 import type { BookingCollectionForm } from '@resolution/collection';
 
@@ -81,6 +83,43 @@ export class CollectionFormStore {
     const content = entry?.content;
     if (!content || typeof content !== 'object') return null;
     return content as unknown as BookingCollectionForm;
+  }
+
+  /** 后台补账只办结原版表单，不覆盖新资料、不重新创建已过期表单，也不修改活动人键。 */
+  async markSubmittedIfUnchanged(
+    params: {
+      corpId: string;
+      userId: string;
+      botUserId: string;
+      candidateRef: string;
+      jobId: number;
+    },
+    expectedDigest: string,
+    workOrderId: number,
+  ): Promise<boolean> {
+    const key = buildCollectionFormKey(params);
+    const entry = await this.redis.get<CollectionFormStoreEntry>(key);
+    if (!entry?.content) return false;
+    const form = entry.content as unknown as BookingCollectionForm;
+    const originalForm = { ...form };
+    if (form.workOrderId === workOrderId) delete originalForm.workOrderId;
+    if (form.workOrderId === workOrderId)
+      return (
+        createHash('sha256').update(JSON.stringify(originalForm)).digest('hex') === expectedDigest
+      );
+    if (createHash('sha256').update(JSON.stringify(form)).digest('hex') !== expectedDigest)
+      return false;
+    const replacement = {
+      ...entry,
+      content: markSubmitted(form, workOrderId),
+      updatedAt: new Date().toISOString(),
+    };
+    const changed = await this.redis.eval(
+      "if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end; redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL'); return 1",
+      [key],
+      [JSON.stringify(entry), JSON.stringify(replacement)],
+    );
+    return changed === 1;
   }
 
   async readCurrentCandidateRef(params: {

@@ -38,6 +38,16 @@ describe('SessionStateService reengagement store presentation state', () => {
     };
     const redisStore = {
       getHash: jest.fn(async () => ({ ...hashState })),
+      readHashFieldSnapshot: jest.fn(async (_key: string, field: string) => ({
+        raw: JSON.stringify(hashState[field]) ?? null,
+        generation: 'test-generation',
+        value: hashState[field] ?? null,
+      })),
+      compareHashField: jest.fn(async (_key: string, field: string, snapshot, value) => {
+        if ((JSON.stringify(hashState[field]) ?? null) !== snapshot.raw) return false;
+        hashState[field] = value;
+        return true;
+      }),
       get: jest.fn().mockResolvedValue(null),
       patchHash: jest.fn(async (_key: string, patch: Record<string, unknown>) => {
         Object.assign(hashState, patch);
@@ -90,5 +100,14 @@ describe('SessionStateService reengagement store presentation state', () => {
     await service.dropInvalidatedJobs('corp-1', 'user-1', 'sess-1', [job.jobId]);
     expect(hashState.presentedJobs).toEqual([]);
     expect(hashState.storePresentationRounds).toBe(2);
+  });
+  it('late invite repair preserves the newer same-group observation', async () => {
+    const newer = { groupName: '上海兼职群', city: '上海', invitedAt: '2026-10-21T02:00:00Z' };
+    hashState.invitedGroups = [newer];
+    await service.saveInvitedGroup('corp-1', 'user-1', 'sess-1', {
+      ...newer,
+      invitedAt: '2026-10-20T02:00:00Z',
+    });
+    expect(hashState.invitedGroups).toEqual([newer]);
   });
 });

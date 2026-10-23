@@ -234,7 +234,7 @@ export class SessionFactsService {
 
   /**
    * 只写 patch 中的字段（HSET），其余字段不受影响。
-   * 所有 save* 必须经此出口写入，禁止回到"读整份-写整份"。
+   * 普通 save* 经此出口；收资办结与邀请记录改用字段 CAS，禁止回到"读整份-写整份"。
    */
   async patchSessionState(
     corpId: string,
@@ -348,20 +348,41 @@ export class SessionFactsService {
     userId: string,
     sessionId: string,
     interviewInfo: Partial<SessionFacts['interview_info']>,
+    options?: { requireExisting?: boolean },
   ): Promise<void> {
     for (const [field, raw] of Object.entries(interviewInfo)) {
       if (raw !== null && (!isSessionFactValue(raw) || raw.confidence !== 'high')) {
         throw new Error(`collection form fact must be high: ${field}`);
       }
     }
-    const state = await this.getSessionState(corpId, userId, sessionId);
-    const base = state.facts ?? (SessionFactsSchema.parse(FALLBACK_EXTRACTION) as SessionFacts);
-    const merged = SessionFactsSchema.parse({
-      interview_info: { ...base.interview_info, ...interviewInfo },
-      preferences: base.preferences,
-      brand: base.brand,
-    }) as SessionFacts;
-    await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
+    const key = buildSessionFactsHashKey(corpId, userId, sessionId);
+    const snapshot = await this.redisStore.readHashFieldSnapshot(key, 'facts');
+    const base =
+      snapshot.value == null
+        ? SessionFactsSchema.parse(FALLBACK_EXTRACTION)
+        : SessionFactsSchema.parse(snapshot.value);
+    const identity = { ...base.interview_info };
+    for (const [field, incoming] of Object.entries(interviewInfo)) {
+      if (!isSessionFactValue(incoming)) continue;
+      const previous = identity[field as keyof typeof identity];
+      if (
+        isSessionFactValue(previous) &&
+        Date.parse(previous.extractedAt) >= Date.parse(incoming.extractedAt)
+      )
+        continue;
+      Object.assign(identity, { [field]: incoming });
+    }
+    const merged = SessionFactsSchema.parse({ ...base, interview_info: identity });
+    const saved = await this.redisStore.compareHashField(
+      key,
+      'facts',
+      snapshot,
+      merged,
+      this.config.sessionFactsTtl,
+      [`stage:${corpId}:${userId}:${sessionId}`],
+      options,
+    );
+    if (!saved) throw new Error('completed_collection_facts_changed_or_expired');
   }
 
   /**
@@ -610,18 +631,32 @@ export class SessionFactsService {
     userId: string,
     sessionId: string,
     record: InvitedGroupRecord,
+    options?: { requireExisting?: boolean },
   ): Promise<void> {
-    const state = await this.getSessionState(corpId, userId, sessionId);
+    const key = buildSessionFactsHashKey(corpId, userId, sessionId);
+    const snapshot = await this.redisStore.readHashFieldSnapshot(key, 'invitedGroups');
     const validated = InvitedGroupRecordSchema.parse(record) as InvitedGroupRecord;
-    const existing = state.invitedGroups ?? [];
+    const existing =
+      snapshot.value == null ? [] : z.array(InvitedGroupRecordSchema).parse(snapshot.value);
     // 按群名去重；新记录在前，超上限裁最旧（该数组会全量渲染进 prompt 的
     // "已邀入群"段，正常会话个位数，cap 只是防单调增长的安全阀）。
     const MAX_INVITED_GROUPS = 20;
     const merged = [validated, ...existing]
+      // 后台恢复旧邀请只补历史，不能把同群较新的邀请时间回退。
+      .sort((left, right) => Date.parse(right.invitedAt) - Date.parse(left.invitedAt))
       .filter((g, i, arr) => arr.findIndex((item) => item.groupName === g.groupName) === i)
       .slice(0, MAX_INVITED_GROUPS);
 
-    await this.patchSessionState(corpId, userId, sessionId, { invitedGroups: merged });
+    const saved = await this.redisStore.compareHashField(
+      key,
+      'invitedGroups',
+      snapshot,
+      merged,
+      this.config.sessionFactsTtl,
+      [`stage:${corpId}:${userId}:${sessionId}`],
+      options,
+    );
+    if (!saved) throw new Error('invited_groups_changed_or_expired');
   }
 
   /**

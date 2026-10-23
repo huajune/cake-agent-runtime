@@ -1,3 +1,4 @@
+import type { BookingProjectionOptions } from '../stores/supabase.store';
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStore } from '../stores/supabase.store';
 import type { CandidateFactProducer } from '@resolution/candidate/types';
@@ -133,6 +134,7 @@ export class LongTermService {
       workOrderId: number;
     },
     origin: Required<FactOrigin>,
+    options?: { strict?: boolean; occurredAt?: string },
   ): Promise<void> {
     try {
       const profile: Partial<UserProfile> = {
@@ -148,14 +150,26 @@ export class LongTermService {
         evidence: `收资表单办结并报名成功（jobId=${data.jobId}, workOrderId=${data.workOrderId}）`,
         originSessionId: origin.sessionId,
         originBotId: origin.botImId,
+        updatedAt: options?.occurredAt,
       });
 
-      await this.supabaseStore.upsertProfileFacts(corpId, userId, botUserId, profileFacts);
+      if (options?.strict)
+        await this.supabaseStore.upsertProfileFacts(
+          corpId,
+          userId,
+          botUserId,
+          profileFacts,
+          undefined,
+          undefined,
+          options,
+        );
+      else await this.supabaseStore.upsertProfileFacts(corpId, userId, botUserId, profileFacts);
       this.logger.log(
         `[writeFromBooking] Profile 写入成功: corpId=${corpId}, userId=${userId}, name=${data.name}`,
       );
     } catch (error) {
       this.logger.warn('[writeFromBooking] 写入 Profile 失败', error);
+      if (options?.strict) throw error;
     }
   }
 
@@ -323,11 +337,20 @@ export class LongTermService {
     userId: string,
     workOrderId: number,
     metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
-  ): Promise<void> {
+    options?: BookingProjectionOptions,
+  ): Promise<boolean> {
     try {
-      await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, metadata);
+      return await this.supabaseStore.setActiveBooking(
+        corpId,
+        userId,
+        workOrderId,
+        metadata,
+        options,
+      );
     } catch (error) {
       this.logger.warn('写入 active_booking 失败', error);
+      if (options?.strict) throw error;
+      return false;
     }
   }
 
@@ -338,11 +361,19 @@ export class LongTermService {
     corpId: string,
     userId: string,
     expectedWorkOrderId?: number,
-  ): Promise<void> {
+    options?: BookingProjectionOptions,
+  ): Promise<boolean> {
     try {
-      await this.supabaseStore.clearActiveBooking(corpId, userId, expectedWorkOrderId);
+      return await this.supabaseStore.clearActiveBooking(
+        corpId,
+        userId,
+        expectedWorkOrderId,
+        options,
+      );
     } catch (error) {
       this.logger.warn('清空 active_booking 失败', error);
+      if (options?.strict) throw error;
+      return false;
     }
   }
 
@@ -366,9 +397,10 @@ export class LongTermService {
       evidence: string;
       originSessionId?: string;
       originBotId?: string;
+      updatedAt?: string;
     },
   ): Partial<UserProfileFacts> {
-    const updatedAt = new Date().toISOString();
+    const updatedAt = defaults.updatedAt ?? new Date().toISOString();
     const facts: Partial<UserProfileFacts> = {};
 
     for (const key of USER_PROFILE_FIELD_KEYS) {

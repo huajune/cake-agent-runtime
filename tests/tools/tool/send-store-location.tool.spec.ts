@@ -367,6 +367,37 @@ describe('buildSendStoreLocationTool', () => {
     },
   );
 
+  it('unresolved location action does not claim sent or call transport again', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+    const actions = {
+      executeMessage: jest
+        .fn()
+        .mockResolvedValue({
+          status: 'unknown',
+          actionId: 'action',
+          requestId: 'request',
+          localSync: 'complete',
+          dispatched: true,
+        }),
+    };
+    const tool = buildSendStoreLocationTool(
+      mockSpongeService as never,
+      mockMessageSenderService as never,
+      mockGeocodingService as never,
+      actions as never,
+    )(buildContext());
+    const result = await tool.execute!(
+      { jobId: 100 } as never,
+      { toolCallId: 'location-test', messages: [] } as never,
+    );
+    expect(result).toMatchObject({
+      actionStatus: 'unknown',
+      errorType: 'action.result_unresolved',
+    });
+    expect(result).not.toHaveProperty('success', true);
+    expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+  });
+
   it('should send location message for explicit jobId', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJob()],
