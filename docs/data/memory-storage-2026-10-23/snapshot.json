@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "snapshot_at": "2026-10-23T10:39:20.830Z",
+  "timezone": "Asia/Shanghai",
+  "source": "production.public.agent_long_term_memories",
+  "scope": "聚合快照；无候选人明细；Redis 本次未重新采样",
+  "code_baseline": "v11.14.1",
+  "row_count": 34916,
+  "relation_total_bytes": 65609728,
+  "integrity_constraint_validated": true,
+  "groups": [
+    {
+      "scope": "legacy_shared",
+      "rows": 14923,
+      "metadata_empty": 2012,
+      "profile_rows": 1290,
+      "intent_rows": 488,
+      "summary_rows": 1122,
+      "summaries": 1688,
+      "booking_rows": 1686,
+      "invalid_rows": 0
+    },
+    {
+      "scope": "bot_relation",
+      "rows": 19993,
+      "metadata_empty": 5,
+      "profile_rows": 2159,
+      "intent_rows": 8403,
+      "summary_rows": 10540,
+      "summaries": 11359,
+      "booking_rows": 0,
+      "invalid_rows": 0
+    }
+  ],
+  "health_certificate_bot_relations": [
+    {
+      "state": null,
+      "rows": 19286
+    },
+    {
+      "state": "有本地有效健康证",
+      "rows": 375
+    },
+    {
+      "state": "无本地有效健康证，接受办理",
+      "rows": 318
+    },
+    {
+      "state": "办理中",
+      "rows": 11
+    },
+    {
+      "state": "无本地有效健康证，不接受办理",
+      "rows": 3
+    }
+  ],
+  "columns": [
+    {
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "corp_id",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "semantic_profile",
+      "data_type": "jsonb",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "episodic_session_summaries",
+      "data_type": "jsonb",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "message_metadata",
+      "data_type": "jsonb",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "active_booking",
+      "data_type": "jsonb",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "semantic_job_intent",
+      "data_type": "jsonb",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "bot_user_id",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "consolidation_watermarks",
+      "data_type": "jsonb",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "active_booking_versions",
+      "data_type": "jsonb",
+      "is_nullable": "NO"
+    }
+  ],
+  "definitions": {
+    "profile_rows": "semantic_profile 至少一个信封 value 非 SQL NULL 且非 JSON null",
+    "intent_rows": "semantic_job_intent 至少一个信封 value 非 SQL NULL 且非 JSON null",
+    "summary_rows": "episodic_session_summaries 数组长度大于 0",
+    "summaries": "摘要数组长度合计",
+    "booking_rows": "active_booking 非 SQL NULL 且不等于空对象；不代表实时有效工单数",
+    "metadata_empty": "message_metadata 为 SQL NULL 或空对象；非空不等于字段齐全",
+    "invalid_rows": "memory_fact_columns_valid 返回 false 的行数；不是语义错误率",
+    "relation_total_bytes": "pg_total_relation_size，含索引及 TOAST；不是纯正文体积"
+  },
+  "limitations": [
+    "关系行不是独立候选人数；内容覆盖率可重叠，不能相加。",
+    "健康证 null 包含未采集及未知；未进入收资不能直接算漏采。",
+    "legacy 画像不参与当前按 bot 召回；预约指针共享行仍可能有效。",
+    "单次快照不提供发布后延迟改善或语义准确率结论。"
+  ]
+}

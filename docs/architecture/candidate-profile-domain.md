@@ -1,6 +1,6 @@
 # 候选人档案域架构
 
-**最后更新**：2026-10-14
+**最后更新**：2026-10-23
 **代码居所**：`src/resolution/{candidate,notary,turn-hints,brand,geo}/`、`src/memory/`、
 `src/agent/generator/preparation/`
 
@@ -104,7 +104,7 @@ candidate_quote / rule / model / system / manual / archive
 
 ### 5.1 Session facts
 
-`factsv2:{corpId}:{userId}:{sessionId}` 保存当前会话认知与工作台，业务 TTL 为 3 天并带
+`factsv2:{corpId}:{userId}:{sessionId}` 保存当前会话认知与工作台，业务 TTL 为 7 天并带
 consolidation 安全余量。
 
 - 表单逐格落定的身份字段写 medium，社会身份（`is_student`）例外写 high；
@@ -172,6 +172,9 @@ tools/collection → memory → Redis / Supabase
 6. booking payload 异常：只查持久表单与本轮 ready 凭据，不从 Prompt 或 profile 反推。
 
 ## 10. 相关文档
+
+- [记忆与候选人状态设计详解（含架构图）](./memory-candidate-state-design.md)
+- [候选人进度只读视图](../../src/biz/candidate-progress/README.md)
 
 - [Memory 当前实现](../../src/memory/README.md)
 - [记忆系统架构与数据流](./memory-architecture.md)

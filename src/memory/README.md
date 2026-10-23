@@ -94,6 +94,7 @@ interface MemoryRecallContext {
   turnHints: TurnHints | null;
   longTerm: {
     semantic: SemanticMemory;
+    recentSessionSummary?: SummaryEntry | null;
   };
   _warnings?: string[];
 }
@@ -102,7 +103,7 @@ interface MemoryRecallContext {
 - `shortTerm.sessionState` 是 `factsv2:` hash 的结构化投影。
 - `shortTerm.stage` 是会话状态部件；因为仍使用独立 `stage:` key，所以并列注入。
 - `turnHints` 只在当前轮生效，必须经过回合末验证与置信度合并后才能成为持久事实。
-- episodic 摘要不进默认召回；需要时显式调用 `recall_history`。
+- 回访首轮注入最近一段有效摘要（最多 300 码点）；更早摘要显式调用 `recall_history`，不每轮注入完整数组。
 
 Prompt 内的 `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等标签是模型可见契约，代码字段重排不改变这些文本。
 
@@ -125,7 +126,7 @@ Prompt 内的 `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等�
 Redis 契约：
 
 - `factsv2:{corpId}:{userId}:{sessionId}`：facts + workbench，基准 7 天，实际带 12 小时沉淀余量；
-- `stage:{corpId}:{userId}:{sessionId}`：阶段指针，7 天。
+- `stage:{corpId}:{userId}:{sessionId}`：阶段指针，业务基准 7 天，实际写入与续期同为 7 天 + 12 小时。
 
 Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench 共同享有 12 小时余量。
 
@@ -238,7 +239,7 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 摘要 LLM 输出首行为「范围：求职 / 非求职 / 无实质内容」，随后四节固定为「标题：正文」纯文本；`parseSummaryOutput`
 在写入前做确定性格式归一（去范围行、Markdown 标题与加粗统一为「标题：」），不改内容。范围为
-非求职（在职工时/工资/排班等事务、闲聊）或无实质内容时不写摘要、只推进水位；范围行缺失按求职处理。
+非求职（在职工时/工资/排班等事务、闲聊）可写有据事实但不写摘要、推进水位；无实质内容直接推进水位并返回，不提拔本次事实。范围行缺失按求职处理。
 缺失的标识符直接省略，不再写「无」填充句。
 
 ## 回合生命周期
