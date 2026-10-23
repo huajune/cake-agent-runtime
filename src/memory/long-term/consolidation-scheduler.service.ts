@@ -50,6 +50,12 @@ export class ConsolidationSchedulerService {
         delayMs === undefined &&
         (state === 'delayed' || state === 'waiting' || state === 'paused')
       ) {
+        // 首轮身份可能尚未解析；复用到期时间时仍须补齐后续已确认的身份。
+        const botUserId = input.botUserId || existing.data.botUserId;
+        const botImId = input.botImId || existing.data.botImId;
+        if (botUserId !== existing.data.botUserId || botImId !== existing.data.botImId) {
+          await existing.update({ ...existing.data, botUserId, botImId });
+        }
         return baseJobId;
       }
       if (state === 'active') {
