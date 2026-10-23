@@ -64,6 +64,8 @@ export interface GeneratorInvokeParams {
   sessionId: string;
   /** 请求级 trace/message ID，用于写回 turn-end post-processing 状态。 */
   messageId?: string;
+  logicalTurnId?: string;
+  inputOccurredAt?: string;
   /**
    * WECOM 聚合/重跑的短期记忆截止时间。
    *

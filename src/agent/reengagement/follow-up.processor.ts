@@ -1,7 +1,12 @@
 import { isHumanHandledHistoryReason } from '@enums/message-filter.enum';
+import { randomUUID } from 'node:crypto';
 import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { toErrorMessage } from '@infra/utils/error.util';
+import { Cron } from '@nestjs/schedule';
+import { CronRunnerService } from '@infra/queue/cron-runner.service';
+import { QueueFailureService } from '@infra/queue/queue-failure.service';
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
@@ -51,7 +56,7 @@ import {
   resolveVariantConfigKey,
   shouldStop,
 } from './scenario-registry';
-import { TouchLedgerService } from './touch-ledger.service';
+import { TouchLedgerService, type TouchRecovery } from './touch-ledger.service';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ChatInterviewTimeMismatch, ReengagementAgentExecution } from './reengagement.agent';
 import {
@@ -65,6 +70,15 @@ import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.u
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
 export interface ReengagementDeliveryPort<TOutcome = unknown, TResult = unknown> {
+  pendingReplyTasks?(): Promise<ReplyTurn[]>;
+  finishReplyTask?(turn: ReplyTurn): Promise<void>;
+  deferReplyTask?(turn: ReplyTurn): Promise<void>;
+  withReplyRecovery?<T>(
+    turn: ReplyTurn,
+    task: (assertOwned: () => Promise<void>) => Promise<T>,
+  ): Promise<T | undefined>;
+  completeConfirmedReply?(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<boolean>;
+  beginReply?(context: DeliveryContext): Promise<ReplyTurn | undefined>;
   deliver(
     outcome: TOutcome,
     options?: { idempotencyKey?: string; context?: unknown },
@@ -79,6 +93,29 @@ export class ReengagementDeliveryService
     private readonly delivery: MessageDeliveryService,
     private readonly actionPermit: ActionPermitService,
   ) {}
+
+  beginReply(context: DeliveryContext): Promise<ReplyTurn | undefined> {
+    return this.delivery.beginReply(context);
+  }
+
+  completeConfirmedReply(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<boolean> {
+    return this.delivery.completeConfirmedReply(turn, assertOwned);
+  }
+  pendingReplyTasks(): Promise<ReplyTurn[]> {
+    return this.delivery.pendingReplyTasks();
+  }
+  finishReplyTask(turn: ReplyTurn): Promise<void> {
+    return this.delivery.finishReplyTask(turn);
+  }
+  deferReplyTask(turn: ReplyTurn): Promise<void> {
+    return this.delivery.deferReplyTask(turn);
+  }
+  withReplyRecovery<T>(
+    turn: ReplyTurn,
+    task: (assertOwned: () => Promise<void>) => Promise<T>,
+  ): Promise<T | undefined> {
+    return this.delivery.withReplyRecovery(turn, task);
+  }
 
   async deliver(
     outcome: TurnOutcome,
@@ -171,6 +208,8 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
     @Optional()
     private readonly requestContext?: RequestContextService,
+    @Optional() private readonly cronRunner?: CronRunnerService,
+    @Optional() private readonly queueFailures?: QueueFailureService,
   ) {}
 
   onModuleInit(): void {
@@ -180,7 +219,180 @@ export class FollowUpProcessor implements OnModuleInit {
     );
   }
 
-  async process(job: Job<FollowUpJob>): Promise<void> {
+  /** Bounded local projection/plan recovery. Provider evidence is reconciled by the shared action handler. */
+  @Cron('*/1 * * * *')
+  async recoverUnknownTouches(): Promise<void> {
+    if (!this.cronRunner || !this.delivery?.beginReply) return;
+    await this.cronRunner.run(
+      'reengagement-touch-recovery',
+      { timeMs: 25_000, maxRows: 25 },
+      async (budget) => {
+        const durableKeys = new Set<string>();
+        // SQL pending projection survives Redis slot/recovery expiry and process death after delivery.
+        for (const turn of (await this.delivery!.pendingReplyTasks?.()) ?? []) {
+          await budget.checkpoint(1);
+          const saved = turn.recovery.task as { data?: TouchRecovery } | undefined;
+          const recovery = saved?.data;
+          if (!recovery?.jobData?.sessionRef || !Number.isFinite(recovery.sentAt)) {
+            await this.queueFailures?.report(
+              'reengagement.touch_manual_review',
+              turn.logicalTurnId,
+              'Invalid persisted recovery metadata',
+            );
+            await this.delivery!.deferReplyTask?.(turn);
+            continue;
+          }
+          const identity = this.recoveryIdentity(recovery.jobData);
+          const key = ReengagementTrackingService.touchKey(identity);
+          durableKeys.add(key);
+          if (!this.delivery!.withReplyRecovery)
+            throw new ReplyDeferredError('task_recovery_lease_unavailable');
+          await this.delivery!.withReplyRecovery(turn, async (owned) => {
+            const assertOwned = async () => {
+              await budget.checkpoint();
+              await owned();
+            };
+            try {
+              await assertOwned();
+              if (!turn.plan) {
+                await this.queueFailures?.report(
+                  'reengagement.touch_manual_review',
+                  key,
+                  'Interrupted generation; no automatic model replay',
+                );
+                return;
+              }
+              if (await this.delivery!.completeConfirmedReply?.(turn, assertOwned)) {
+                await this.completeTouch(
+                  recovery.jobData,
+                  identity,
+                  key,
+                  recovery.sentAt,
+                  recovery.batchId,
+                  turn.plan.text,
+                  false,
+                  assertOwned,
+                  true,
+                );
+                await assertOwned();
+                await this.delivery!.finishReplyTask?.(turn);
+              } else if (turn.status === 'settled' || turn.status === 'acked') {
+                await assertOwned();
+                await this.touchLedger.markFailedOrUnknown(key, 'failed');
+                await assertOwned();
+                await this.delivery!.finishReplyTask?.(turn);
+              } else if (this.dispatchWindowOpen(recovery.jobData)) {
+                await this.process({ data: recovery.jobData } as Job<FollowUpJob>, {
+                  ...recovery,
+                  turn,
+                  assertOwned,
+                });
+              } else {
+                await this.queueFailures?.report(
+                  'reengagement.touch_manual_review',
+                  key,
+                  'Original touch is stale; terminal evidence remains eligible for local repair',
+                );
+              }
+            } catch (error) {
+              if (!(error instanceof ReplyDeferredError))
+                await this.queueFailures?.report('reengagement.touch_recovery_failed', key, error);
+            } finally {
+              await assertOwned();
+              await this.delivery!.deferReplyTask?.(turn);
+            }
+          });
+        }
+        for (const slot of await this.touchLedger.listUnknownSlots(25)) {
+          if (durableKeys.has(slot.key)) continue;
+          await budget.checkpoint(1);
+          const recovery = await this.touchLedger.getRecovery(slot.key);
+          if (!recovery) {
+            await this.queueFailures?.report(
+              'reengagement.touch_manual_review',
+              slot.key,
+              'Legacy unknown touch has no immutable reply plan',
+            );
+            continue;
+          }
+          const { jobData, sentAt } = recovery;
+          const identity: ReengagementTouchIdentity = {
+            sessionId: jobData.sessionRef.sessionId,
+            corpId: jobData.sessionRef.corpId,
+            userId: jobData.sessionRef.userId,
+            scenarioCode: jobData.scenarioCode,
+            anchorAt: jobData.anchorAt,
+            anchorEventId: jobData.anchorEventId,
+            ...jobData.channelIdentity,
+          };
+          try {
+            const turn = await this.delivery!.beginReply!(
+              this.buildDeliveryContext(identity, identity.sessionId, recovery.batchId),
+            );
+            // Durable task projections are recovered by their indexed SQL queue with chat ownership.
+            if (turn?.recovery?.task) continue;
+            if (!turn?.plan) {
+              await this.queueFailures?.report(
+                'reengagement.touch_manual_review',
+                slot.key,
+                'No authoritative stored plan; no resend',
+              );
+              continue;
+            }
+            // Settled/acked also covers cancellation. Only authoritative
+            // success of every original segment proves a completed touch.
+            const confirmed = await this.delivery!.completeConfirmedReply?.(turn);
+            if (confirmed) {
+              await this.completeTouch(
+                jobData,
+                identity,
+                slot.key,
+                sentAt,
+                turn.logicalTurnId,
+                turn.plan.text,
+                false,
+              );
+              continue;
+            }
+            if (turn.status === 'settled' || turn.status === 'acked') {
+              await this.queueFailures?.report(
+                'reengagement.touch_manual_review',
+                slot.key,
+                'Finalized reply was not fully delivered; do not count a successful touch',
+              );
+              continue;
+            }
+            if (!this.dispatchWindowOpen(jobData)) {
+              await this.queueFailures?.report(
+                'reengagement.touch_manual_review',
+                slot.key,
+                'Original touch is stale; reconcile confirmed segments only',
+              );
+              continue;
+            }
+            // Re-run the same current permissions, authoritative work-order,
+            // candidate-reply, timing and frequency gates as the original job.
+            // The immutable plan bypasses generation, never the business gates.
+            await this.process({ data: jobData } as Job<FollowUpJob>, { ...recovery, turn });
+          } catch (error) {
+            await this.touchLedger.markFailedOrUnknown(slot.key, 'unknown').catch(() => undefined);
+            if (!(error instanceof ReplyDeferredError))
+              await this.queueFailures?.report(
+                'reengagement.touch_recovery_failed',
+                slot.key,
+                error,
+              );
+          }
+        }
+      },
+    );
+  }
+
+  async process(
+    job: Job<FollowUpJob>,
+    recovery?: TouchRecovery & { turn: ReplyTurn; assertOwned?: () => Promise<void> },
+  ): Promise<void> {
+    await recovery?.assertOwned?.();
     const { sessionRef, scenarioCode, anchorAt, anchorEventId } = job.data;
     const scenario = getScenario(scenarioCode);
     if (!scenario) {
@@ -228,6 +440,16 @@ export class FollowUpProcessor implements OnModuleInit {
 
       if (job.data.onboardingCheck) {
         await this.handleOnboardingCheck(job.data, identity, bookingContext);
+        return;
+      }
+
+      if (recovery && ['上岗失败', '已离职'].includes(bookingContext.currentStatus ?? '')) {
+        await recovery.assertOwned?.();
+        await this.queueFailures?.report(
+          'reengagement.touch_manual_review',
+          recovery.turn.logicalTurnId,
+          'Work order changed; reply recovery cannot authorize a new intervention',
+        );
         return;
       }
 
@@ -502,6 +724,7 @@ export class FollowUpProcessor implements OnModuleInit {
         job.data.touchVariant,
       );
       if (expectedFireAt - now > BOOKING_SCHEDULE_TOLERANCE_MS) {
+        await recovery?.assertOwned?.();
         await this.scheduleTimeChangedReplacement(
           job.data,
           state,
@@ -551,11 +774,20 @@ export class FollowUpProcessor implements OnModuleInit {
     const inviteRolloutEnabled =
       job.data.escalateToGroupInvite === true &&
       resolveRolloutEnabled(scenario, runtime, undefined, 'invite');
-    const effectiveJobData: FollowUpJob = inviteRolloutEnabled
-      ? job.data
-      : { ...job.data, escalateToGroupInvite: false };
+    const effectiveJobData: FollowUpJob = {
+      ...job.data,
+      // Bull's original timestamp + delay is immutable for deployed legacy jobs.
+      // Missing schedule evidence stays missing; never open a new window from Date.now().
+      dispatchDueAt:
+        job.data.dispatchDueAt ??
+        (Number.isFinite(job.timestamp) && Number.isFinite(job.opts?.delay)
+          ? job.timestamp + job.opts.delay!
+          : undefined),
+      escalateToGroupInvite: inviteRolloutEnabled,
+    };
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
+      if (recovery) return;
       const batchId = `batch_${sessionRef.sessionId}_${now}`;
       const execution = await this.runProactiveTurn(
         effectiveJobData,
@@ -613,6 +845,16 @@ export class FollowUpProcessor implements OnModuleInit {
     // 与 Bull job / 追踪底账共用稳定锚点。anchorAt 可能在两个并发工单解析时落在同一
     // 毫秒，不能作为多面试场景的幂等身份，否则第二场提醒会被误判成重复触达。
     const key = ReengagementTrackingService.touchKey(identity);
+    const originalBatchId = recovery?.batchId ?? `batch_${sessionRef.sessionId}_${randomUUID()}`;
+    const deliveryContext = {
+      ...this.buildDeliveryContext(identity, sessionRef.sessionId, originalBatchId),
+      taskRecovery: {
+        kind: 'reengagement' as const,
+        data: this.persistableRecovery(effectiveJobData, identity, originalBatchId, now),
+      },
+    };
+    const replyTurn = recovery?.turn ?? (await this.delivery.beginReply?.(deliveryContext));
+    await recovery?.assertOwned?.();
     const slot = await this.touchLedger.reserve(key);
     if (slot === 'duplicate_sent') {
       // 之前那次触达已送达，但**本次生成的文本**没发出去——不投影本次文本。
@@ -620,7 +862,7 @@ export class FollowUpProcessor implements OnModuleInit {
       this.tracking.trackDuplicate(identity, slot);
       return;
     }
-    if (slot === 'duplicate_inflight') {
+    if (slot === 'duplicate_inflight' && !replyTurn?.plan && replyTurn?.status !== 'preparing') {
       this.logger.warn(`[reengagement] 触达已在途/状态不明，跳过重投 key=${key}`);
       this.tracking.trackDuplicate(identity, slot);
       return;
@@ -629,15 +871,31 @@ export class FollowUpProcessor implements OnModuleInit {
 
     // 投递路径的主动回合在消息处理流水落一行（message_id = batchId），
     // 追溯页凭触达记录上的 batch_id 直接跳到该回合的完整生成轨迹。
-    const batchId = `batch_${sessionRef.sessionId}_${now}`;
-    const execution = await this.runProactiveTurn(
-      effectiveJobData,
-      state,
-      scenario,
-      batchId,
-      { rolloutEnabled, shadow },
-      bookingContext,
-    );
+    // Recovery gets its own trace; the persisted original batch retains the generation evidence.
+    const batchId = replyTurn
+      ? replyTurn.plan
+        ? `recovery_${sessionRef.sessionId}_${randomUUID()}`
+        : originalBatchId
+      : `batch_${sessionRef.sessionId}_${now}`;
+    const execution = replyTurn?.plan
+      ? {
+          outcome: {
+            kind: 'reply',
+            reply: { text: replyTurn.plan.text },
+            toolCalls: [],
+            scenarioCode,
+          } as TurnOutcome,
+          aiStartAt: now,
+          aiEndAt: now,
+        }
+      : await this.runProactiveTurn(
+          effectiveJobData,
+          state,
+          scenario,
+          batchId,
+          { rolloutEnabled, shadow },
+          bookingContext,
+        );
     const { outcome } = execution;
     if (outcome.kind !== 'reply' || !outcome.reply) {
       this.logger.log(
@@ -687,10 +945,12 @@ export class FollowUpProcessor implements OnModuleInit {
       execution,
       key,
       sessionRef.sessionId,
-      now,
+      recovery?.sentAt ?? now,
       identity,
       batchId,
       effectiveJobData,
+      replyTurn,
+      recovery?.assertOwned,
     );
   }
 
@@ -1069,6 +1329,8 @@ export class FollowUpProcessor implements OnModuleInit {
     identity: ReengagementTouchIdentity,
     batchId: string,
     jobData: FollowUpJob,
+    replyTurn?: ReplyTurn,
+    assertOwned?: () => Promise<void>,
   ): Promise<void> {
     const { outcome } = execution;
     const sessionRef = { sessionId, userId: identity.userId ?? '', corpId: identity.corpId ?? '' };
@@ -1081,13 +1343,26 @@ export class FollowUpProcessor implements OnModuleInit {
       externalUserId: identity.externalUserId,
     };
     let deliveryStartAt = 0;
+    let externallyConfirmed = false;
     try {
+      await assertOwned?.();
+      await this.touchLedger.saveRecovery(key, {
+        jobData: { ...jobData, channelIdentity },
+        replyText: outcome.reply?.text ?? '',
+        batchId,
+        sentAt: now,
+      });
+      await assertOwned?.();
       await this.touchLedger.markDeliveryAttempted(key);
       this.tracking.trackDeliveryAttempted(identity);
       deliveryStartAt = Date.now();
       const deliveryResult = (await this.delivery!.deliver(outcome, {
         idempotencyKey: key,
-        context: this.buildDeliveryContext(identity, sessionId, batchId),
+        context: {
+          ...this.buildDeliveryContext(identity, sessionId, batchId),
+          replyTurn,
+          assertOwned,
+        },
       })) as ProactiveDeliveryResult;
       const deliveryEndAt = Date.now();
       const deliveredSegments = deliveryResult.deliveredSegments ?? deliveryResult.segmentCount;
@@ -1096,7 +1371,8 @@ export class FollowUpProcessor implements OnModuleInit {
           ? `delivery_skipped:${deliveryResult.skipReason}`
           : 'delivery_skipped';
         this.tracking.trackOutcomeNotReply(identity, 'delivery_skipped', batchId, reason);
-        await this.touchLedger.markFailedOrUnknown(key, 'failed');
+        await assertOwned?.();
+        await this.touchLedger.markFailedOrUnknown(key, replyTurn?.plan ? 'unknown' : 'failed');
         if (scenario) {
           this.messageTracking.recordProactiveTurn(
             this.buildProactiveTurnRecord({
@@ -1116,18 +1392,21 @@ export class FollowUpProcessor implements OnModuleInit {
         }
         return;
       }
-      await this.touchLedger.markSent(key, sessionId, now);
-      this.tracking.trackSent(identity, outcome.reply?.text, batchId);
-      if (scenario?.code === 'post_interview_onboarding' && jobData.workOrderId != null) {
-        await this.scheduler.scheduleOnboardingCheck({
-          sessionRef: jobData.sessionRef,
-          workOrderId: jobData.workOrderId,
-          anchorAt: Date.now(),
-          channelIdentity: jobData.channelIdentity,
-        });
-      }
-      if (jobData.escalateToGroupInvite === true) {
-        await this.handleEscalatedGroupInvite(jobData, identity, batchId);
+      externallyConfirmed = true;
+      await this.completeTouch(
+        jobData,
+        identity,
+        key,
+        now,
+        batchId,
+        outcome.reply?.text,
+        !assertOwned,
+        assertOwned,
+        Boolean(replyTurn),
+      );
+      if (replyTurn) {
+        await assertOwned?.();
+        await this.delivery!.finishReplyTask?.(replyTurn);
       }
       if (scenario) {
         this.messageTracking.recordProactiveTurn(
@@ -1150,6 +1429,18 @@ export class FollowUpProcessor implements OnModuleInit {
         );
       }
     } catch (error) {
+      // Losing ownership is not permission to perform another recovery write.
+      await assertOwned?.();
+      if (error instanceof ReplyDeferredError || externallyConfirmed) {
+        // Known external success with pending projection is not a new failed send.
+        await this.touchLedger.markFailedOrUnknown(key, 'unknown').catch(() => undefined);
+        this.tracking.trackDeliveryUnknown(
+          identity,
+          externallyConfirmed ? 'local_sync_pending' : (error as ReplyDeferredError).reason,
+          batchId,
+        );
+        return;
+      }
       const deliveryEndAt = Date.now();
       // deliver 后状态不明 → unknown，交补偿，不盲重投。送达与否未知时按未送达处理：
       // 宁可下一轮重复跟进语气，也不能让记忆引用候选人可能没收到的文本（HC-4）。
@@ -1184,6 +1475,107 @@ export class FollowUpProcessor implements OnModuleInit {
       throw error;
     }
     this.logger.log(`[reengagement] 已投递 key=${key}`);
+  }
+
+  private async completeTouch(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    key: string,
+    sentAt: number,
+    batchId: string,
+    text?: string,
+    allowGroupInvite = true,
+    assertOwned?: () => Promise<void>,
+    durable = false,
+  ): Promise<void> {
+    if (!durable) {
+      await this.touchLedger.markSent(key, identity.sessionId, sentAt);
+      this.tracking.trackSent(identity, text, batchId);
+    }
+    if (jobData.scenarioCode === 'post_interview_onboarding' && jobData.workOrderId != null) {
+      await assertOwned?.();
+      const result = await this.scheduler.scheduleOnboardingCheck({
+        sessionRef: jobData.sessionRef,
+        workOrderId: jobData.workOrderId,
+        anchorAt: sentAt,
+        channelIdentity: jobData.channelIdentity,
+      });
+      if (result.reason === 'enqueue_error')
+        throw new Error('Onboarding follow-up scheduling not persisted');
+    }
+    if (jobData.escalateToGroupInvite === true) {
+      await assertOwned?.();
+      if (allowGroupInvite)
+        await this.handleEscalatedGroupInvite(jobData, identity, durable ? key : batchId);
+      else
+        await this.queueFailures?.report(
+          'reengagement.invite_manual_review',
+          key,
+          'Touch confirmed; local repair cannot authorize a new group invitation',
+        );
+    }
+    // Complete only after dependent local work. Crash or enqueue failure remains recoverable.
+    if (durable) {
+      await assertOwned?.();
+      await this.touchLedger.markSent(key, identity.sessionId, sentAt);
+      await assertOwned?.();
+      this.tracking.trackSent(identity, text, batchId);
+    }
+  }
+
+  private recoveryIdentity(job: FollowUpJob): ReengagementTouchIdentity {
+    return {
+      sessionId: job.sessionRef.sessionId,
+      corpId: job.sessionRef.corpId,
+      userId: job.sessionRef.userId,
+      scenarioCode: job.scenarioCode,
+      anchorAt: job.anchorAt,
+      anchorEventId: job.anchorEventId,
+      ...job.channelIdentity,
+    };
+  }
+
+  private dispatchWindowOpen(job: FollowUpJob): boolean {
+    const due = job.dispatchDueAt;
+    return (
+      typeof due === 'number' &&
+      Number.isFinite(due) &&
+      due >= job.anchorAt &&
+      due <= Date.now() + 60_000 &&
+      due > Date.now() - 24 * 3600_000
+    );
+  }
+
+  private persistableRecovery(
+    job: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    batchId: string,
+    sentAt: number,
+  ): Record<string, unknown> {
+    // Explicit allowlist: never persist tokens, conversation history, or stale interview snapshots.
+    const jobData: FollowUpJob = {
+      sessionRef: {
+        corpId: job.sessionRef.corpId,
+        userId: job.sessionRef.userId,
+        sessionId: job.sessionRef.sessionId,
+      },
+      scenarioCode: job.scenarioCode,
+      anchorEventId: job.anchorEventId,
+      anchorAt: job.anchorAt,
+      dispatchDueAt: job.dispatchDueAt,
+      channelIdentity: {
+        candidateName: identity.candidateName,
+        managerName: identity.managerName,
+        botImId: identity.botImId,
+        imContactId: identity.imContactId,
+        externalUserId: identity.externalUserId,
+      },
+      workOrderId: job.workOrderId,
+      touchVariant: job.touchVariant,
+      escalateToGroupInvite: job.escalateToGroupInvite,
+      collectionAwaitingConfirmation: job.collectionAwaitingConfirmation,
+    };
+    return { jobData, batchId, sentAt };
   }
 
   private async handleEscalatedGroupInvite(
@@ -1541,8 +1933,11 @@ export class FollowUpProcessor implements OnModuleInit {
       messageId: batchId,
       chatId: sessionId,
       externalRequestId: batchId,
-      action: 'proactive',
+      corpId: identity.corpId,
+      logicalTurnId: ReengagementTrackingService.touchKey(identity),
+      inputOccurredAt: new Date(identity.anchorAt).toISOString(),
       _apiType: 'enterprise',
+      action: 'proactive',
     };
   }
 

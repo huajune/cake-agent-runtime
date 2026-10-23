@@ -54,6 +54,7 @@ export class OpsNotifierService {
     successCount: number;
     failedCount: number;
     skippedCount: number;
+    pendingCount?: number;
     durationSeconds: number;
     details: GroupTaskExecutionDetail[];
     errors: GroupTaskExecutionError[];

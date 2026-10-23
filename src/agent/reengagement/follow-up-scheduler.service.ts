@@ -43,6 +43,8 @@ export interface FollowUpJob {
   scenarioCode: FollowUpScenarioCode;
   anchorEventId: string;
   anchorAt: number;
+  /** Original scheduled dispatch time, frozen once; distinct from the business anchor. */
+  dispatchDueAt?: number;
   /** 渠道身份快照（排程时冻结，观测用；存量任务可能缺失） */
   channelIdentity?: ReengagementChannelIdentity;
   /**
@@ -281,6 +283,7 @@ export class FollowUpSchedulerService {
           scenarioCode: input.scenarioCode,
           anchorEventId: input.anchorEventId,
           anchorAt: input.anchorAt,
+          dispatchDueAt: fireAt,
           ...(input.workOrderId != null ? { workOrderId: input.workOrderId } : {}),
           ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
           ...(input.touchVariant ? { touchVariant: input.touchVariant } : {}),

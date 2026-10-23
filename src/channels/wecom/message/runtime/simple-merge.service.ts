@@ -226,6 +226,26 @@ export class SimpleMergeService implements OnModuleInit {
     throw new Error(String(lastError));
   }
 
+  /** Atomic acknowledgement by durable membership; repeated/partial acks cannot trim new input. */
+  async ackPendingMessageIds(chatId: string, messageIds: readonly string[]): Promise<void> {
+    if (!messageIds.length) return;
+    const acknowledged = await this.redisService.eval(
+      `
+      local wanted = {}
+      for _, id in ipairs(cjson.decode(ARGV[1])) do wanted[id] = true end
+      local rows = redis.call('LRANGE', KEYS[1], 0, -1)
+      for _, row in ipairs(rows) do
+        local ok, item = pcall(cjson.decode, row)
+        if ok and wanted[item.messageId] then redis.call('LREM', KEYS[1], 0, row) end
+      end
+      return 1
+    `,
+      [RedisKeyBuilder.pending(chatId)],
+      [JSON.stringify(messageIds)],
+    );
+    if (acknowledged !== 1) throw new Error('reply_pending_ack_unconfirmed');
+  }
+
   async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
     return Boolean(
       await this.leases.acquire(RedisKeyBuilder.lock(chatId), this.PROCESSING_LOCK_TTL_SECONDS, {

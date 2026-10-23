@@ -71,6 +71,24 @@ describe('OpsCardRenderer', () => {
     expect(card.content as string).toContain('Webhook timeout');
   });
 
+  it('labels unknown results as pending without claiming success or failure', () => {
+    const card = renderer.buildGroupTaskReportCard({
+      typeName: '兼职',
+      dryRun: false,
+      totalGroups: 1,
+      successCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      pendingCount: 1,
+      durationSeconds: 1,
+      details: [{ groupKey: '上海', groupCount: 1, status: 'pending', dataSummary: '等待回调' }],
+      errors: [],
+    });
+    expect(card.title).toContain('结果待核对');
+    expect(card.title).not.toMatch(/全部成功|全部失败/);
+    expect(card.content).toContain('不自动重发');
+  });
+
   it('should render reply fact contradiction cards with candidate and trace context', () => {
     const card = renderer.buildReplyFactContradictionAlertCard({
       chatId: 'chat-1',
