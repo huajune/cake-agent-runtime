@@ -1,7 +1,7 @@
 {
   "baseVersion": "11.13.2",
-  "nextVersion": "11.13.3",
-  "updatedAt": "2026-10-21",
+  "nextVersion": "11.14.0",
+  "updatedAt": "2026-10-23",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -522,6 +522,50 @@
         "`a-voice-empty`：未转写语音注入空信封后返回非空回复，不按确认词静默。 执行 `28575fb0-3598-42f3-b173-d81bcd03f3bd`。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1432",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1432",
+      "title": "六阶段改造 A — 正确认领重复报名回执",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**重复报名处理** ⏳ 待发布",
+        "- 系统确认已报过名时，按已有报名处理，不再误说报名失败或误暂停托管。",
+        "- 查不到对应工单时如实说明并交人工核实。"
+      ],
+      "businessUpdates": [
+        "恢复重复报名的真实回执",
+        "转人工前保留已有报名的确定性回执",
+        "核实重复报名身份并隔离跨岗位表单状态",
+        "六阶段改造 A — 正确认领重复报名回执"
+      ],
+      "summary": [
+        "恢复重复报名的真实回执",
+        "转人工前保留已有报名的确定性回执",
+        "核实重复报名身份并隔离跨岗位表单状态",
+        "六阶段改造 A — 正确认领重复报名回执"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "恢复重复报名的真实回执",
+        "转人工前保留已有报名的确定性回执",
+        "核实重复报名身份并隔离跨岗位表单状态"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "3 个定向测试套件、155 项通过；类型检查、lint、格式化通过。",
+        "仅提交本阶段文件，未纳入根工作区已有未提交改动。",
+        "当前分支完整 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39547823883) 通过。",
+        "受控真实模型回归完成三个有效场景，使用虚构数据与本地业务替身；发现的两处回执问题已修复并离线回放。未做共享测试资产/生产 Dashboard 发布验收。",
+        "合并与生产发布未执行；默认观察档与既有在途工单口径保持不变。",
+        "AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。",
+        "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -656,5 +700,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "f26bb6725c539b6094e5c626f0927da1612f9f81"
+  "lastAnalyzedSha": "c28116d92b7b2b05e8ba2991a59a68c22ae27e81"
 }
