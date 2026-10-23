@@ -115,7 +115,8 @@ export function buildBookingFailureRecordIntent(params: {
     alertLabel: HANDOFF_REASON_LABELS[reasonCode] ?? '报名失败',
     reasonCode,
     reason: reasonParts.join('｜'),
-    actionAdvice: '报名工具已暂停托管并发过预约失败卡片；本条只记底账，按卡片处理即可。',
+    actionAdvice:
+      '请核对托管暂停状态及预约失败通知是否送达，并跟进报名失败；本条仅记录，不代表暂停或通知已成功。',
     workOrderId: null,
     jobId,
     stage: context.archive.currentStage ?? null,

@@ -604,6 +604,9 @@ describe('duliday_interview_booking（form → labelList）', () => {
     hosting.pauseUser.mockResolvedValueOnce(false);
     const result = await execute({ jobId: 100 });
     expect(result.hostingPaused).toBe(false);
+    expect(result.sideEffect).toEqual(
+      expect.objectContaining({ actionAdvice: expect.stringContaining('核对托管暂停状态') }),
+    );
     expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
     expect(notifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({ toolOutput: expect.objectContaining({ hostingPaused: false }) }),
