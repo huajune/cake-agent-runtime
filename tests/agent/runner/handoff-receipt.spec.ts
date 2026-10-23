@@ -15,6 +15,67 @@ describe('buildPreHandoffReceipt', () => {
     result: { dispatched: true, shortCircuited: true, reasonCode: 'salary_admin_inquiry' },
   };
 
+  it.each(['job', 'brand'])(
+    'keeps a cross-account precheck receipt (%s) before handoff',
+    (matchedBy) => {
+      const receipt = buildPreHandoffReceipt([
+        {
+          toolName: 'duliday_interview_precheck',
+          args: { jobId: 100 },
+          result: {
+            success: true,
+            nextAction: 'already_booked',
+            duplicateBookingGuard: {
+              workOrderId: 888001,
+              crossAccount: true,
+              matchedBy,
+            },
+          },
+        },
+        requestHandoff,
+      ]);
+      expect(receipt?.text).toContain(matchedBy === 'job' ? '已报过这个岗位' : '已报过这个品牌');
+      expect(receipt?.text).toContain('本次没有重复提交');
+      expect(receipt?.text).not.toContain('提交成功');
+      expect(receipt?.sources).toEqual(['duliday_interview_precheck']);
+    },
+  );
+
+  it('keeps a provider duplicate rejection receipt without inventing a verified appointment', () => {
+    const receipt = buildPreHandoffReceipt([
+      {
+        toolName: 'duliday_interview_booking',
+        args: { jobId: 100, interviewTime: '2099-01-01 10:00' },
+        result: {
+          success: false,
+          errorType: 'booking.already_booked',
+          alreadyBookedSource: 'sponge_duplicate_signup',
+          crossAccount: true,
+        },
+      },
+    ]);
+    expect(receipt?.text).toContain('系统显示你已报过这个岗位或品牌');
+    expect(receipt?.text).not.toContain('2099');
+    expect(receipt?.text).toContain('核实已有报名和面试安排');
+  });
+
+  it('does not turn unknown or unverified precheck data into an existing-booking receipt', () => {
+    expect(
+      buildPreHandoffReceipt([
+        {
+          toolName: 'duliday_interview_precheck',
+          args: {},
+          result: { success: true, nextAction: 'already_booked' },
+        },
+        {
+          toolName: 'duliday_interview_booking',
+          args: {},
+          result: { success: false, errorType: 'action.result_unresolved' },
+        },
+      ]),
+    ).toBeUndefined();
+  });
+
   it('booking success with interview time → 岗位 + 时间', () => {
     const receipt = buildPreHandoffReceipt([
       {
@@ -162,6 +223,40 @@ describe('classifyReviewedOutcome — request_handoff 之前的已提交动作�
       _confirmedInterviewTimeHuman: '8月28日（周五）10:00',
     },
   };
+
+  it('carries an existing-booking receipt through the actual handoff classifier', () => {
+    const outcome = classify([
+      {
+        toolName: 'duliday_interview_precheck',
+        args: { jobId: 100 },
+        result: {
+          success: true,
+          nextAction: 'already_booked',
+          duplicateBookingGuard: {
+            workOrderId: 888001,
+            matchedBy: 'job',
+            crossAccount: true,
+          },
+        },
+      },
+      {
+        toolName: 'request_handoff',
+        args: { reasonCode: 'duplicate_signup' },
+        result: {
+          dispatched: true,
+          shortCircuited: true,
+          sideEffect: {
+            kind: 'general_handoff',
+            source: 'agent_tool',
+            reasonCode: 'duplicate_signup',
+            reason: '核实已有报名',
+          },
+        },
+      },
+    ]);
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.preHandoffReceipt?.text).toContain('已报过这个岗位');
+  });
 
   it('handoff outcome carries preHandoffReceipt when booking succeeded in the same turn', () => {
     const outcome = classify([

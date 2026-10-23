@@ -1,5 +1,6 @@
 import { parseDayWorkTime, WorkTimeContractError } from './work-time.types';
 import { SpongeResponseContractError } from './response-contract.error';
+import { classifyDuplicateSignup } from './interview-booking-result.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
@@ -398,6 +399,9 @@ export class SpongeService {
 
     return {
       success: isSuccess,
+      ...(!isSuccess && classifyDuplicateSignup(parsed.data.message)
+        ? { duplicateSignupReason: classifyDuplicateSignup(parsed.data.message) }
+        : {}),
       code: parsed.data.code,
       message: parsed.data.message,
       notice: parsed.data.data?.notice ?? null,
