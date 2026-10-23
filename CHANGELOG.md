@@ -14,7 +14,7 @@
 **预计版本**: `v11.14.0`
 **最近更新**: `2026-10-23`
 **来源分支**: `develop`
-**累计 PR**: 11
+**累计 PR**: 12
 
 ### 运营说明
 已实现并完成本轮定向回归，待合入。**本次不合并、不部署。**
@@ -48,6 +48,10 @@
 - 回复按原内容和原分段恢复；发送结果未知时先核实，不追加另一套回复。
 - 群任务主消息、小程序和附加消息分别记录，已确认成功的部分不重发。
 - 复聊触达未知时保留待核实，已确认发送的触达只修复本地结局。
+
+**重试时保留已办结果** ⏳ 待发布
+- 报名、取消、改约、邀请和发位置已有成功或未决结果时，后续生成异常不再整轮重做这些动作。
+- 成功、未知和未执行分别表达，避免把“不能重试”误报成“已经成功”。
 
 ### 更新摘要
 - PR #1418 群机器人密钥只读环境变量
@@ -239,6 +243,48 @@
 - PR #1437 merge: 同步 develop 已验证基础改造与版本元数据
 - PR #1437 merge: 同步已验证的前置改造及恢复兼容修复
 - PR #1437 六阶段改造 D — 原计划回复与后台恢复
+- PR #1438 Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…
+- PR #1438 增加外部动作持久执行与核实恢复基础
+- PR #1438 为业务外部动作接入持久执行边界
+- PR #1438 完善动作核实补账与人工审计边界
+- PR #1438 Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…
+- PR #1438 Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…
+- PR #1438 持久化逻辑回合与不可变回复分段恢复
+- PR #1438 收敛八层重试并阻断外部动作盲重放
+- PR #1438 对齐发位置动作的重放围栏断言
+- PR #1438 Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…
+- PR #1438 Merge branch 'codex/runtime-actions-integrated' into codex/runtime-de…
+- PR #1438 为群任务分段与复聊未知结果接入持久恢复
+- PR #1438 持久回合等待锚点入队与补账成功
+- PR #1438 Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…
+- PR #1438 未决动作回执不提前宣称人工交接完成
+- PR #1438 保留回复恢复追踪与本地补账边界
+- PR #1438 Merge branch 'codex/runtime-delivery-integrated' into codex/runtime-r…
+- PR #1438 原子保护补账投影版本与取消墓碑
+- PR #1438 仅凭全段真实成功补记触达
+- PR #1438 整理运行能力职责与恢复边界
+- PR #1438 以字段CAS保护会话补账和过期边界
+- PR #1438 将业务成功事件纳入可靠本地补账
+- PR #1438 冻结延迟任务的恢复时间窗
+- PR #1438 接入报名取消改约事件的可靠补账
+- PR #1438 补齐事件补账的部署依赖
+- PR #1438 持久保留同目标新意图的前序动作关联
+- PR #1438 持久恢复复聊投影并校验本地补账归属
+- PR #1438 汇合动作补账与回复恢复的最终边界
+- PR #1438 增加真实依赖迁移冷启动与并发核验入口
+- PR #1438 整理六阶段交付与最终验证记录
+- PR #1438 修正外部动作权限通知身份与终态重放
+- PR #1438 保留直接消息并修复回复恢复与记账边界
+- PR #1438 保留混合动作回执中的报名成功证据
+- PR #1438 阻止缺少工单身份的已接受报名被再次提交
+- PR #1438 隔离预览通知故障并修正空文本回执
+- PR #1438 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1438 Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…
+- PR #1438 Merge remote-tracking branch 'origin/codex/runtime-delivery-integrate…
+- PR #1438 排程失败时保留持久回复计划待恢复状态
+- PR #1438 merge: 同步 develop 已验证基础改造与版本元数据
+- PR #1438 merge: 同步已验证的前置改造及恢复兼容修复
+- PR #1438 六阶段改造 E — 统一重试与动作证据保护
 
 ### 新功能
 - PR #1422 无。
@@ -267,6 +313,9 @@
 - PR #1437 为业务外部动作接入持久执行边界
 - PR #1437 为群任务分段与复聊未知结果接入持久恢复
 - PR #1437 接入报名取消改约事件的可靠补账
+- PR #1438 为业务外部动作接入持久执行边界
+- PR #1438 为群任务分段与复聊未知结果接入持久恢复
+- PR #1438 接入报名取消改约事件的可靠补账
 
 ### 问题修复
 - PR #1418 移除 `src/infra/feishu/constants/constants.ts` 中硬编码的 3 组 Webhook URL / SECRET，常量只保留 `ENV_URL_KEY` / `ENV_SECRET_KEY` 键名（落实 CLAUDE.md「禁硬编码密钥（走 ConfigService）」）。
@@ -286,6 +335,10 @@
 - PR #1437 保留直接消息并修复回复恢复与记账边界
 - PR #1437 隔离预览通知故障并修正空文本回执
 - PR #1437 merge: 同步已验证的前置改造及恢复兼容修复
+- PR #1438 修正外部动作权限通知身份与终态重放
+- PR #1438 保留直接消息并修复回复恢复与记账边界
+- PR #1438 隔离预览通知故障并修正空文本回执
+- PR #1438 merge: 同步已验证的前置改造及恢复兼容修复
 
 ### 优化调整
 - PR #1418 `FeishuWebhookService` 只通过 ConfigService 读取配置：
@@ -451,6 +504,40 @@
 - PR #1437 Merge remote-tracking branch 'origin/codex/runtime-delivery-integrate…
 - PR #1437 排程失败时保留持久回复计划待恢复状态
 - PR #1437 merge: 同步 develop 已验证基础改造与版本元数据
+- PR #1438 Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…
+- PR #1438 增加外部动作持久执行与核实恢复基础
+- PR #1438 完善动作核实补账与人工审计边界
+- PR #1438 Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…
+- PR #1438 Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…
+- PR #1438 持久化逻辑回合与不可变回复分段恢复
+- PR #1438 收敛八层重试并阻断外部动作盲重放
+- PR #1438 对齐发位置动作的重放围栏断言
+- PR #1438 Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…
+- PR #1438 Merge branch 'codex/runtime-actions-integrated' into codex/runtime-de…
+- PR #1438 持久回合等待锚点入队与补账成功
+- PR #1438 Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…
+- PR #1438 未决动作回执不提前宣称人工交接完成
+- PR #1438 保留回复恢复追踪与本地补账边界
+- PR #1438 Merge branch 'codex/runtime-delivery-integrated' into codex/runtime-r…
+- PR #1438 原子保护补账投影版本与取消墓碑
+- PR #1438 仅凭全段真实成功补记触达
+- PR #1438 整理运行能力职责与恢复边界
+- PR #1438 以字段CAS保护会话补账和过期边界
+- PR #1438 将业务成功事件纳入可靠本地补账
+- PR #1438 冻结延迟任务的恢复时间窗
+- PR #1438 补齐事件补账的部署依赖
+- PR #1438 持久保留同目标新意图的前序动作关联
+- PR #1438 持久恢复复聊投影并校验本地补账归属
+- PR #1438 汇合动作补账与回复恢复的最终边界
+- PR #1438 增加真实依赖迁移冷启动与并发核验入口
+- PR #1438 整理六阶段交付与最终验证记录
+- PR #1438 保留混合动作回执中的报名成功证据
+- PR #1438 阻止缺少工单身份的已接受报名被再次提交
+- PR #1438 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1438 Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…
+- PR #1438 Merge remote-tracking branch 'origin/codex/runtime-delivery-integrate…
+- PR #1438 排程失败时保留持久回复计划待恢复状态
+- PR #1438 merge: 同步 develop 已验证基础改造与版本元数据
 
 ### 配置变更
 - PR #1418 无新增键。`.env.example` 已有全部 6 个键，补充说明「代码不内置默认值，URL 未配置时跳过发送」。
@@ -467,6 +554,7 @@
 - PR #1418 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 - PR #1436 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 - PR #1437 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+- PR #1438 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #1418 `pnpm run ci:check` 通过（pre-push 全量：518 个测试套件 / 8204 个用例通过，5 个既有 skip；含 build:ci）
@@ -564,6 +652,13 @@
 - PR #1437 [验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。
 - PR #1437 未合并、未迁移共享库、未部署、未切执行档，未发出真实业务消息。
 - PR #1437 发版底账：N/A（本次仅实现与评审）。
+- PR #1438 11 个定向套件 356 项通过；新增 SDK 并发/复用调用号用例通过。
+- PR #1438 合并后逻辑回合与错误证据均保留；发位置防重放的契约断言已同步。
+- PR #1438 最终集成 `ci:check`：543 个套件、8,870 项测试、3 项快照通过；既有 1 个套件/5 项测试跳过。完整 DI 通过，重复代码 0.58%。
+- PR #1438 真实模型受控回归完成三个有效场景，实际业务写入为零。两处回执问题已修复并离线重放；未追加修复后模型请求。
+- PR #1438 [验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。
+- PR #1438 未合并、未迁移共享库、未部署、未切执行档。
+- PR #1438 发版底账：N/A（本次仅实现与评审）。
 <!-- release:pending:end -->
 
 ## [11.13.2] - 2026-10-15
