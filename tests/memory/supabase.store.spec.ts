@@ -99,6 +99,24 @@ describe('SupabaseStore', () => {
   });
 
   describe('getProfile', () => {
+    it('缓存中的健康证旧值与长 evidence 经读边界归一，来源不变', async () => {
+      const original = profileFact('有（未领证）', {
+        confidence: 'medium',
+        source: 'candidate_quote',
+        evidence: '原'.repeat(201),
+      });
+      mockRedis.get.mockResolvedValue({
+        semantic_profile: { has_health_certificate: original, name: profileFact('张三') },
+      });
+      const result = await store.getProfile('corp1', 'user1', BOT_USER_ID);
+      expect(result?.has_health_certificate).toEqual({
+        ...original,
+        value: '办理中',
+        evidence: `${'原'.repeat(199)}…`,
+      });
+      expect(result?.name?.value).toBe('张三');
+    });
+
     it('should return from Redis cache if available', async () => {
       const cached = {
         semantic_profile: {
@@ -350,7 +368,7 @@ describe('SupabaseStore', () => {
         age: '25',
         is_student: false,
         education: '本科',
-        has_health_certificate: '有',
+        has_health_certificate: '有本地有效健康证',
         height: '163',
         weight: '46',
       } as const;
@@ -428,6 +446,57 @@ describe('SupabaseStore', () => {
       expect(mockRpc).toHaveBeenCalledWith(
         'upsert_long_term_profile_facts',
         expect.objectContaining({ p_preference_facts: { location: tombstone } }),
+      );
+    });
+
+    it('RPC 写边界统一健康证，截断画像和意向证据，并保留墓碑及 100kg 原值', async () => {
+      mockRpc.mockResolvedValue({ data: { written_fields: [], skipped_fields: [] }, error: null });
+      const health = profileFact('无本地有效健康证，接受办理', {
+        confidence: 'medium',
+        source: 'candidate_quote',
+        evidence: '证'.repeat(509),
+      });
+      const city = profileFact(null, { evidence: '😀'.repeat(201) });
+      await store.upsertProfileFacts(
+        'corp1',
+        'user1',
+        BOT_USER_ID,
+        {
+          // 模拟旧版调用方绕过当前 TypeScript 闭集后抵达运行时写边界。
+          has_health_certificate: health as never,
+          weight: profileFact('100'),
+        },
+        undefined,
+        { city },
+      );
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_long_term_profile_facts',
+        expect.objectContaining({
+          p_profile_facts: {
+            has_health_certificate: {
+              ...health,
+              value: '无本地有效健康证，接受办理',
+              evidence: `${'证'.repeat(199)}…`,
+            },
+            weight: profileFact('100'),
+          },
+          p_preference_facts: { city: { ...city, evidence: `${'😀'.repeat(199)}…` } },
+        }),
+      );
+      expect(health.evidence).toHaveLength(509);
+    });
+
+    it('未知健康证不会写入或影响同批其他画像字段', async () => {
+      mockRpc.mockResolvedValue({ data: { written_fields: [], skipped_fields: [] }, error: null });
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {
+        has_health_certificate: profileFact('以后看情况') as never,
+        name: profileFact('张三'),
+      });
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_long_term_profile_facts',
+        expect.objectContaining({
+          p_profile_facts: { name: profileFact('张三') },
+        }),
       );
     });
 

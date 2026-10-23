@@ -57,6 +57,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       { sessionId: 'session-A', botImId: 'bot-A' },
     );
 
+    expect(store.upsertProfileFacts.mock.calls[0][4]).toEqual({ imBotId: 'bot-A' });
     const facts = store.upsertProfileFacts.mock.calls[0][3];
     expect(facts.name).toEqual(
       expect.objectContaining({
@@ -144,7 +145,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
           source: 'candidate_quote',
         }),
       },
-      undefined,
+      { imBotId: 'bot-A' },
       {},
     );
   });

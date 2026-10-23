@@ -1,3 +1,4 @@
+import { normalizeHealthCertificateState } from '@resolution/candidate/health-certificate-state';
 import { scheduledJob, flexibleJob } from '../../helpers/job-schedule.fixture';
 import { buildJobListTool, shortenSearchJobName } from '@tools/duliday-job-list.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
@@ -1984,7 +1985,12 @@ describe('buildJobListTool', () => {
         {
           ...mockContext,
           sessionFacts: {
-            interview_info: view.facts!.interview,
+            interview_info: {
+              ...view.facts!.interview,
+              has_health_certificate: normalizeHealthCertificateState(
+                view.facts!.interview.has_health_certificate,
+              ),
+            },
             preferences: view.facts!.preferences,
             reasoning: 'resolved turn constraints',
           },

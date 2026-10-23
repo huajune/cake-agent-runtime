@@ -131,7 +131,7 @@ function cityValue(city: CityFact | string | null | undefined): string | undefin
 }
 
 function toGeocodeAnchor(
-  facts: GeocodeEntityExtractionResult | null | undefined,
+  facts: Pick<GeocodeEntityExtractionResult, 'preferences'> | null | undefined,
   source: GeocodeLocationAnchor['source'],
   evidence: string,
   referenceText?: string,

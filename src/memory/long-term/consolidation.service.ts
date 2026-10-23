@@ -21,7 +21,7 @@ import {
 const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与候选人的对话和提取事实压缩为结构化短摘要。
 
 输出格式（纯文本，不用 Markdown 标题、列表或加粗）：
-范围：求职 或 非求职
+范围：求职 或 非求职 或 无实质内容
 求职目标：…
 关键约束：…
 进展与结果：…
@@ -29,6 +29,7 @@ const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与�
 
 要求：
 - 首行「范围」：对话围绕找工作、看岗位、约面、报名写「求职」；候选人已入职后的工时、工资、排班、离职等在职事务，或与找工作无关的闲聊写「非求职」
+- 只有问候、助手单方面询问但候选人未提供信息、且没有求职进展或待办时写「无实质内容」；候选人表达拒绝、推迟或约束属于实质信息，不能丢弃
 - 必须严格输出四节，标题依次为「求职目标」「关键约束」「进展与结果」「未决事项」，每节一行，标题后用中文冒号
 - 保留可检索标识符，包括 jobId、门店名、日期；没有的信息直接省略，不写表示信息缺失的填充句
 - 拒绝品牌、不可接受的岗位/地点/时间等必须写入「关键约束」
@@ -46,7 +47,7 @@ const SUMMARY_MAX_MESSAGES = 120;
  *
  * ## 设计约束
  *
- * 每回合结束由 ConsolidationSchedulerService 刷新约 7 天的 Bull delayed job；本服务
+ * 每回合结束由 ConsolidationSchedulerService 确保 7 天的 Bull delayed job 存在；本服务
  * 到点后用 chat_messages 最新时间复核闲置，避免旧任务与新消息竞态。facts key 比
  * 沉淀阈值多 12 小时余量，使本服务在状态过期前完成读取。
  *
@@ -196,6 +197,28 @@ export class ConsolidationService {
     const { facts, botUserId, lastSettledMessageAt, sessionEndAt, messages, botImId, brandState } =
       params;
 
+    // 无候选人消息、无已采信事实的单方触达不需 LLM；有候选人内容的语义三态由模型判断。
+    const flatFacts = facts ? unwrapSessionFacts(facts) : null;
+    const hasFacts =
+      flatFacts &&
+      [flatFacts.interview_info, flatFacts.preferences].some((group) =>
+        Object.values(group).some((value) => value !== null && value !== undefined),
+      );
+    if (
+      !messages.some((message) => message.role === 'user' && message.content.trim()) &&
+      !hasFacts &&
+      !brandState?.currentBrand
+    ) {
+      await this.longTerm.markLastSettledMessageAt(
+        corpId,
+        userId,
+        botUserId,
+        sessionEndAt,
+        sessionId,
+      );
+      return;
+    }
+
     // 分页扫描后咨询段可能很长，摘要只取末尾一段，避免 LLM prompt 失控。
     const summarizedMessages = messages.slice(-SUMMARY_MAX_MESSAGES);
     const conversationText = summarizedMessages
@@ -216,8 +239,19 @@ export class ConsolidationService {
 
     const parsed = parseSummaryOutput(result.text ?? '');
     const summary = parsed.body;
-    if (!summary) {
+    if (!summary && parsed.scope !== 'empty' && parsed.scope !== 'other') {
       throw new Error(`memory_consolidation_summary_empty:${sessionId}`);
+    }
+
+    if (parsed.scope === 'empty') {
+      await this.longTerm.markLastSettledMessageAt(
+        corpId,
+        userId,
+        botUserId,
+        sessionEndAt,
+        sessionId,
+      );
+      return;
     }
 
     const firstMsgTime = summarizedMessages[0]
@@ -241,6 +275,7 @@ export class ConsolidationService {
         sessionId,
         botImId,
         brandState: brandState ?? null,
+        sessionEndAt,
       });
     }
 
@@ -255,7 +290,7 @@ export class ConsolidationService {
         sessionId,
       );
       this.logger.log(
-        `[consolidation] 非求职段不写摘要，仅推进水位: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
+        `[consolidation] ${parsed.scope} 不写摘要，仅推进水位: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
       );
       return;
     }

@@ -11,6 +11,7 @@ import {
   type JobIntentFacts,
   type JobIntentFieldKey,
   type UserProfileFacts,
+  type SummaryEntry,
 } from '@memory/long-term/long-term.types';
 import {
   type EntityExtractionResult,
@@ -27,6 +28,7 @@ import type {
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import type { PromptModel } from '../../context.types';
 import type { PromptSection } from '../section';
+import { truncateEvidence } from '@memory/fact-evidence';
 
 export interface RealtimeGroupStatus {
   groupName: string;
@@ -70,6 +72,7 @@ export type BookingPromptSnapshot =
 
 /** MemorySection 消费的类型化视图；所有事实已经在 preparation/resolution 层裁决。 */
 export interface MemoryPromptView {
+  recentSessionSummary?: SummaryEntry | null;
   adjudication: PromptMemoryAdjudication;
   booking: BookingPromptSnapshot;
   realtimeGroups: RealtimeGroupStatus[];
@@ -113,6 +116,9 @@ function buildMemoryCoreBlock(memory: MemoryPromptView): string {
     formatContactCityHint(memory.contactCityHint) +
     formatProfile(adjudication.profile) +
     formatLongTermJobIntent(adjudication.jobIntent) +
+    (memory.recentSessionSummary
+      ? `\n\n[最近一次咨询摘要]\n[${memory.recentSessionSummary.endTime?.slice(0, 10) ?? '历史'}] ${truncateEvidence(memory.recentSessionSummary.summary, 300)}\n`
+      : '') +
     formatConflictAnnotations(adjudication.conflicts) +
     (adjudication.sessionState
       ? formatSessionFacts(

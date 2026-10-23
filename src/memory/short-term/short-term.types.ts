@@ -10,6 +10,14 @@ import type { PersistedBrandState } from '@resolution/brand/brand-resolution.typ
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
 import { CANDIDATE_FACT_PRODUCERS, type CandidateFactProducer } from '@resolution/candidate/types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from '../confidence-rank';
+import {
+  StoredHealthCertificateStateSchema,
+  type HealthCertificateState,
+} from '@resolution/candidate/health-certificate-state';
+import { truncateEvidence } from '../fact-evidence';
+import { isExpiredTemporalFact } from '../temporal-facts';
+
+export { MAX_FACT_EVIDENCE_CHARS, truncateEvidence } from '../fact-evidence';
 
 // ==================== 0. 结构总览（从这里读） ====================
 
@@ -124,7 +132,9 @@ export const InterviewInfoSchema = z.object({
   age: z.string().nullable().describe('年龄'),
   is_student: z.boolean().nullable().describe('是否学生'),
   education: z.string().nullable().describe('学历'),
-  has_health_certificate: z.string().nullable().describe('健康证'),
+  has_health_certificate: StoredHealthCertificateStateSchema.describe(
+    '健康证与收资表单共用四态：有本地有效、无但接受办理、无且不接受办理、办理中；无法确认对应选项时为 null',
+  ),
   experience: z.string().nullable().optional().describe('过往工作经历（公司/岗位/年限）'),
   upload_resume: z.string().nullable().optional().describe('简历附件 URL'),
   height: z.string().nullable().optional().describe('身高（cm）'),
@@ -327,11 +337,6 @@ function toEmbeddedJsonSchema(schema: z.ZodType): Record<string, unknown> {
 export const LLMPreferencesSchema = z.object({
   // brands 已删：本轮品牌意图统一走 brand_intents（带极性与指代链接），
   // 再让模型填一个当场被丢弃的 brands 只是多一条会打架的通道。
-  brand_ids: z
-    .array(z.number().int())
-    .nullable()
-    .optional()
-    .describe('意向品牌ID（Boss 岗位标题中的 [brand_id] 数字）'),
   salary: z.string().nullable().describe('意向薪资'),
   position: z.array(z.string()).nullable().describe('意向岗位'),
   schedule: z.string().nullable().describe('意向班次'),
@@ -532,21 +537,6 @@ export interface SessionFactValue<T> {
   extractedAt?: string;
 }
 
-/**
- * evidence 入库前截断。
- *
- * evidence 只服务排障（memory_snapshot / Supabase 查询），不是给模型看的。
- * 不截断时，LLM 提取 reasoning 全文会被当 evidence 存进每个字段，经沉淀永久写入长期画像，
- * 最终整段重复注入 system prompt（badcase 张漪：单轮 prompt 被撑到 27K+ 字符）。
- */
-export const MAX_FACT_EVIDENCE_CHARS = 200;
-
-export function truncateEvidence(evidence: string, maxChars = MAX_FACT_EVIDENCE_CHARS): string {
-  const trimmed = evidence.trim();
-  if (trimmed.length <= maxChars) return trimmed;
-  return `${trimmed.slice(0, maxChars)}…`;
-}
-
 export type SessionFactMaybeValue<T> = SessionFactValue<T | null> | null;
 
 export interface SessionInterviewInfo {
@@ -556,7 +546,7 @@ export interface SessionInterviewInfo {
   age: SessionFactMaybeValue<string>;
   is_student: SessionFactMaybeValue<boolean>;
   education: SessionFactMaybeValue<string>;
-  has_health_certificate: SessionFactMaybeValue<string>;
+  has_health_certificate: SessionFactMaybeValue<HealthCertificateState>;
   experience?: SessionFactMaybeValue<string>;
   upload_resume?: SessionFactMaybeValue<string>;
   height?: SessionFactMaybeValue<string>;
@@ -605,7 +595,7 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
     value: valueSchema,
     confidence: SessionFactConfidenceSchema,
     source: StoredCandidateFactProducerSchema,
-    evidence: z.string(),
+    evidence: z.string().transform((value) => truncateEvidence(value)),
     extractedAt: z.string().optional(),
   });
 
@@ -649,7 +639,9 @@ export const SessionInterviewInfoSchema = z.object({
   age: NullableSessionFactSchema(z.string()),
   is_student: NullableSessionFactSchema(z.boolean()),
   education: NullableSessionFactSchema(z.string()),
-  has_health_certificate: NullableSessionFactSchema(z.string()),
+  has_health_certificate: NullableSessionFactSchema(StoredHealthCertificateStateSchema).transform(
+    (fact) => (fact?.value == null ? null : fact),
+  ),
   experience: NullableSessionFactSchema(z.string()).optional(),
   upload_resume: NullableSessionFactSchema(z.string()).optional(),
   height: NullableSessionFactSchema(z.string()).optional(),
@@ -658,7 +650,11 @@ export const SessionInterviewInfoSchema = z.object({
 });
 
 export const SessionPreferencesSchema = z.object({
-  brand_ids: NullableSessionPreferenceFactSchema(z.array(z.number().int())).optional(),
+  // 旧键只接受后丢弃，不把退役信封或墓碑重新写进 Redis。
+  brand_ids: z
+    .unknown()
+    .transform(() => undefined)
+    .optional(),
   salary: NullableSessionPreferenceFactSchema(z.string()),
   position: NullableSessionPreferenceFactSchema(z.array(z.string())),
   schedule: NullableSessionPreferenceFactSchema(z.string()),
@@ -666,12 +662,16 @@ export const SessionPreferencesSchema = z.object({
   district: NullableSessionPreferenceFactSchema(z.array(z.string())),
   location: NullableSessionPreferenceFactSchema(z.array(z.string())),
   labor_form: NullableSessionPreferenceFactSchema(z.string()),
-  delayed_intent: NullableSessionPreferenceFactSchema(DelayedIntentSchema),
+  delayed_intent: NullableSessionPreferenceFactSchema(DelayedIntentSchema).transform((fact) =>
+    fact && isExpiredTemporalFact('delayed_intent', fact) ? null : fact,
+  ),
   short_term: NullableSessionPreferenceFactSchema(z.boolean()),
   open_position: NullableSessionPreferenceFactSchema(z.boolean()),
   time_windows: NullableSessionPreferenceFactSchema(z.array(z.string())),
   schedule_constraint: NullableSessionPreferenceFactSchema(ScheduleConstraintFactSchema),
-  available_after: NullableSessionPreferenceFactSchema(AvailableAfterFactSchema),
+  available_after: NullableSessionPreferenceFactSchema(AvailableAfterFactSchema).transform(
+    (fact) => (fact && isExpiredTemporalFact('available_after', fact) ? null : fact),
+  ),
 });
 
 /**
@@ -749,7 +749,8 @@ function assertFieldKeysMirrorSchemas(): void {
     },
     {
       label: 'LLMPreferencesSchema',
-      expected: PREFERENCE_FIELD_KEYS,
+      // brand_ids 只兼容旧投影，模型不再生成；品牌唯一状态为 facts.brand。
+      expected: PREFERENCE_FIELD_KEYS.filter((key) => key !== 'brand_ids'),
       shape: LLMPreferencesSchema.shape,
     },
     {
@@ -799,7 +800,7 @@ export function sessionFactValue<T>(
     extractedAt?: string;
   },
 ): SessionFactValue<T> {
-  return { value, ...meta };
+  return { value, ...meta, evidence: truncateEvidence(meta.evidence) };
 }
 
 export function unwrapSessionFactValue<T>(

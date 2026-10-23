@@ -1,235 +1,179 @@
 #!/usr/bin/env node
+'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
+const { parseEnv } = require('node:util');
 const { createClient } = require('@supabase/supabase-js');
 
-const CONTACT_TYPE_TO_NUM = {
-  UNKNOWN: 0,
-  PERSONAL_WECHAT: 1,
-  OFFICIAL_ACCOUNT: 2,
-  ENTERPRISE_WECHAT: 3,
-};
+const FIELDS = [
+  'botId',
+  'imBotId',
+  'imContactId',
+  'contactType',
+  'contactName',
+  'externalUserId',
+  'avatar',
+];
+const CONTACT_TYPES = { UNKNOWN: 0, PERSONAL_WECHAT: 1, OFFICIAL_ACCOUNT: 2, ENTERPRISE_WECHAT: 3 };
+const hasValue = (value) =>
+  value !== null && value !== undefined && !(typeof value === 'string' && !value.trim());
 
-function parseArgs(argv) {
-  const args = {
-    env: '.env.local',
-    dryRun: true,
-    limit: null,
-  };
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const key = argv[i];
-    const value = argv[i + 1];
-
-    if (key === '--env' && value) {
-      args.env = value;
-      i += 1;
-    } else if (key === '--limit' && value) {
-      args.limit = Number(value);
-      i += 1;
-    } else if (key === '--apply') {
-      args.dryRun = false;
-    } else if (key === '--dry-run') {
-      args.dryRun = true;
-    } else if (key === '--help' || key === '-h') {
-      printUsage();
-      process.exit(0);
-    }
-  }
-
-  return args;
+function sessionIds(row) {
+  return [
+    ...new Set(
+      [
+        ...Object.keys(row.consolidation_watermarks?.bySession ?? {}),
+        ...(Array.isArray(row.episodic_session_summaries)
+          ? row.episodic_session_summaries
+          : []
+        ).map((s) => s?.sessionId),
+        ...Object.values(row.semantic_profile ?? {}).map((f) => f?.originSessionId),
+        ...Object.values(row.semantic_job_intent ?? {}).map((f) => f?.originSessionId),
+      ].filter((s) => typeof s === 'string' && s.trim()),
+    ),
+  ];
 }
 
-function printUsage() {
-  console.log(`Usage:
-  node scripts/backfill-agent-long-term-message-metadata.js [options]
-
-Options:
-  --env <file>    Env file to load, default .env.local
-  --dry-run       Count recoverable rows only, default
-  --apply         Update agent_long_term_memories.message_metadata
-  --limit <n>     Limit rows scanned
-
-Notes:
-  The script rebuilds message_metadata from the latest matching chat_messages
-  row. It prints counts only and does not print candidate values.
-`);
-}
-
-function loadEnvFile(filePath) {
-  const absolute = path.resolve(filePath);
-  if (!fs.existsSync(absolute)) return;
-
-  const lines = fs.readFileSync(absolute, 'utf8').split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-    if (!match) continue;
-
-    const [, key, rawValue] = match;
-    if (process.env[key] !== undefined) continue;
-
-    let value = rawValue.trim();
+/** 只接受记忆自带血缘的会话、相同候选人和稳定 bot；旧行必须只有一个确定的 bot。 */
+function buildPatch(row, messages) {
+  const sessions = new Set(sessionIds(row));
+  const existing = row.message_metadata;
+  if (existing != null && (typeof existing !== 'object' || Array.isArray(existing))) return null;
+  const matches = messages.filter(
+    (m) =>
+      sessions.has(m.chat_id) &&
+      m.role === 'user' &&
+      !m.is_self &&
+      !m.is_room &&
+      (m.im_contact_id === row.user_id || m.external_user_id === row.user_id) &&
+      hasValue(m.manager_name) &&
+      hasValue(m.im_bot_id) &&
+      (!row.bot_user_id || m.manager_name === row.bot_user_id),
+  );
+  const bots = new Set(matches.map((m) => `${m.manager_name}\0${m.im_bot_id}`));
+  if (bots.size !== 1) return null;
+  matches.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  // 标识冲突不得拼出一个不存在的跨系统身份；已有外部标识与消息冲突也跳过。
+  for (const [field, column] of [
+    ['imBotId', 'im_bot_id'],
+    ['imContactId', 'im_contact_id'],
+    ['externalUserId', 'external_user_id'],
+  ]) {
+    const values = new Set(matches.map((m) => m[column]).filter(hasValue));
     if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
+      values.size > 1 ||
+      (hasValue(existing?.[field]) && values.size && !values.has(existing[field]))
+    )
+      return null;
+  }
+  const patch = {};
+  for (const m of matches) {
+    const candidate = {
+      imBotId: m.im_bot_id,
+      imContactId: m.im_contact_id,
+      contactType:
+        typeof m.contact_type === 'string' ? CONTACT_TYPES[m.contact_type] : m.contact_type,
+      contactName: m.candidate_name,
+      externalUserId: m.external_user_id,
+      avatar: m.avatar,
+    };
+    for (const [key, value] of Object.entries(candidate)) {
+      if (!hasValue(existing?.[key]) && !hasValue(patch[key]) && hasValue(value))
+        patch[key] = value;
     }
-
-    process.env[key] = value;
   }
-}
-
-function requireEnv(name, fallbackName) {
-  const value = process.env[name] || (fallbackName ? process.env[fallbackName] : undefined);
-  if (!value) {
-    throw new Error(`Missing env ${name}${fallbackName ? ` or ${fallbackName}` : ''}`);
-  }
-  return value;
-}
-
-function hasValue(value) {
-  return value !== null && value !== undefined && !(typeof value === 'string' && !value.trim());
-}
-
-function compactObject(value) {
-  const result = {};
-  for (const [key, fieldValue] of Object.entries(value)) {
-    if (hasValue(fieldValue)) result[key] = fieldValue;
-  }
-  return Object.keys(result).length > 0 ? result : null;
-}
-
-function buildMetadata(message) {
-  return compactObject({
-    botId: message.bot_id,
-    imBotId: message.im_bot_id,
-    imContactId: message.im_contact_id,
-    contactType:
-      typeof message.contact_type === 'string'
-        ? CONTACT_TYPE_TO_NUM[message.contact_type]
-        : message.contact_type,
-    contactName: message.candidate_name,
-    externalUserId: message.external_user_id,
-    avatar: message.avatar,
-  });
-}
-
-async function findLatestChatMessage(client, row) {
-  const selectors = ['im_contact_id', 'external_user_id', 'chat_id'];
-  const candidates = [];
-
-  for (const selector of selectors) {
-    let query = client
-      .from('chat_messages')
-      .select(
-        'chat_id,org_id,bot_id,im_bot_id,im_contact_id,contact_type,candidate_name,external_user_id,avatar,timestamp',
-      )
-      .eq(selector, row.user_id)
-      .order('timestamp', { ascending: false })
-      .limit(1);
-
-    if (row.corp_id && row.corp_id !== 'default') {
-      query = query.eq('org_id', row.corp_id);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    if (data?.[0]) candidates.push(data[0]);
-  }
-
-  candidates.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  return candidates[0] ?? null;
-}
-
-async function fetchTargetRows(client, limit) {
-  let query = client
-    .from('agent_long_term_memories')
-    .select('corp_id,user_id')
-    .is('message_metadata', null)
-    .order('updated_at', { ascending: false });
-
-  if (limit != null) query = query.limit(limit);
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return data ?? [];
-}
-
-async function applyMetadata(client, row, metadata) {
-  const { error } = await client
-    .from('agent_long_term_memories')
-    .update({
-      message_metadata: metadata,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('corp_id', row.corp_id)
-    .eq('user_id', row.user_id)
-    .is('message_metadata', null);
-
-  if (error) throw error;
+  // chat_messages 没有 bot_id；不能把 manager_name/wecomUserId 猜成 botId。
+  return Object.keys(patch).length ? patch : null;
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  loadEnvFile(args.env);
-
-  const url = requireEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL');
-  const serviceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
-  const client = createClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
-  const stats = {
-    mode: args.dryRun ? 'dry-run' : 'apply',
-    scannedRows: 0,
-    matchedChatRows: 0,
-    recoverableRows: 0,
-    updatedRows: 0,
-    missingChatRows: 0,
-    emptyMetadataRows: 0,
-    errors: 0,
-  };
-
-  const rows = await fetchTargetRows(client, args.limit);
-  for (const row of rows) {
-    stats.scannedRows += 1;
-    try {
-      const message = await findLatestChatMessage(client, row);
-      if (!message) {
-        stats.missingChatRows += 1;
-        continue;
+  const args = process.argv.slice(2);
+  const option = (name, fallback) =>
+    args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
+  const apply = args.includes('--apply');
+  const limit = Number(option('--limit', '40000'));
+  if (!Number.isInteger(limit) || limit < 1 || limit > 40000)
+    throw new Error('limit must be 1..40000');
+  const config = parseEnv(fs.readFileSync(path.resolve(option('--env', '.env.local')), 'utf8'));
+  const client = createClient(
+    config.SUPABASE_URL || config.NEXT_PUBLIC_SUPABASE_URL,
+    config.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { persistSession: false },
+    },
+  );
+  const backup = option('--backup', null);
+  if (apply && !backup) throw new Error('--apply requires --backup <new private JSONL path>');
+  const fd = apply ? fs.openSync(path.resolve(backup), 'wx', 0o600) : null;
+  const stats = { scanned: 0, recoverable: 0, updated: 0, concurrentSkipped: 0, unresolvable: 0 };
+  let cursor = null;
+  try {
+    while (stats.scanned < limit) {
+      let q = client
+        .from('agent_long_term_memories')
+        .select('*')
+        .order('id')
+        .limit(Math.min(100, limit - stats.scanned));
+      if (cursor) q = q.gt('id', cursor);
+      const { data: rows, error } = await q;
+      if (error) throw error;
+      if (!rows.length) break;
+      for (const row of rows) {
+        stats.scanned++;
+        cursor = row.id;
+        if (FIELDS.every((f) => hasValue(row.message_metadata?.[f]))) continue;
+        const messages = [];
+        for (const chatId of sessionIds(row)) {
+          const { data, error: lookupError } = await client
+            .from('chat_messages')
+            .select(
+              'id,chat_id,role,is_self,is_room,manager_name,im_bot_id,im_contact_id,external_user_id,contact_type,candidate_name,avatar,timestamp',
+            )
+            .eq('chat_id', chatId)
+            .eq('role', 'user')
+            .order('timestamp', { ascending: false })
+            .limit(20);
+          if (lookupError) throw lookupError;
+          messages.push(...data);
+        }
+        const patch = buildPatch(row, messages);
+        if (!patch) {
+          stats.unresolvable++;
+          continue;
+        }
+        stats.recoverable++;
+        if (!apply) continue;
+        fs.writeSync(
+          fd,
+          JSON.stringify({ before: row, patch, sourceMessageIds: messages.map((m) => m.id) }) +
+            '\n',
+        );
+        fs.fsyncSync(fd);
+        let update = client
+          .from('agent_long_term_memories')
+          .update({ message_metadata: { ...row.message_metadata, ...patch } })
+          .eq('id', row.id)
+          .eq('updated_at', row.updated_at);
+        update =
+          row.message_metadata == null
+            ? update.is('message_metadata', null)
+            : update.eq('message_metadata', JSON.stringify(row.message_metadata));
+        const { data: written, error: writeError } = await update.select('id');
+        if (writeError) throw writeError;
+        if (written.length) stats.updated++;
+        else stats.concurrentSkipped++;
       }
-      stats.matchedChatRows += 1;
-
-      const metadata = buildMetadata(message);
-      if (!metadata) {
-        stats.emptyMetadataRows += 1;
-        continue;
-      }
-      stats.recoverableRows += 1;
-
-      if (!args.dryRun) {
-        await applyMetadata(client, row, metadata);
-        stats.updatedRows += 1;
-      }
-    } catch (error) {
-      stats.errors += 1;
-      console.error(
-        `[backfill-agent-long-term-message-metadata] row failed: corp=${row.corp_id} user=${row.user_id} reason=${error.message}`,
-      );
     }
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
   }
-
-  console.log(JSON.stringify(stats, null, 2));
-  if (stats.errors > 0) process.exitCode = 1;
+  console.log(JSON.stringify(stats));
 }
 
-main().catch((error) => {
-  console.error(`[backfill-agent-long-term-message-metadata] ${error.message}`);
-  process.exit(1);
-});
+module.exports = { buildPatch, sessionIds };
+if (require.main === module)
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });

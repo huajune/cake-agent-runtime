@@ -8,6 +8,7 @@ import {
 import { MemoryConfig } from '../memory.config';
 import { RedisStore } from '../stores/redis.store';
 import { SessionFactsService } from './facts.service';
+import { compactCandidatePool } from './candidate-pool';
 import {
   type JobListQueryRecord,
   JobListQueryRecordSchema,
@@ -66,10 +67,7 @@ export class SessionWorkbenchService {
     sessionId: string,
     jobs: RecommendedJobSummary[],
   ): Promise<void> {
-    const MAX_CANDIDATE_POOL_SIZE = 30;
-    const validatedJobs = jobs
-      .slice(0, MAX_CANDIDATE_POOL_SIZE)
-      .map((job) => RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary);
+    const validatedJobs = compactCandidatePool(jobs);
     await this.facts.patchSessionState(corpId, userId, sessionId, {
       lastCandidatePool: validatedJobs,
     });

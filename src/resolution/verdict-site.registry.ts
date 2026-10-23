@@ -32,6 +32,14 @@ export interface VerdictSiteRegistration {
  */
 export const VERDICT_SITE_REGISTRY = [
   {
+    id: 'memory_health_certificate_closed_state',
+    authority: 'closed_form',
+    effect: 'mark_missing',
+    source: 'src/resolution/candidate/health-certificate-state.ts#normalizeHealthCertificateState',
+    rationale:
+      '只匹配健康证固定状态、封闭表单选项和已核查别名；未知值归缺席，不推断资格或办理意愿。',
+  },
+  {
     id: 'collection_citation_verification',
     authority: 'notary',
     effect: 'reject',

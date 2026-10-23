@@ -527,7 +527,7 @@ describe('mentioned brands at turn start', () => {
     expect(collect(snapshot, [], '肯德基-小朱')).toEqual(new Set(['肯德基', '麦当劳', 'mstand']));
   });
 
-  it('includes short-term brand IDs and archived long-term brand values', () => {
+  it('ignores retired preference brand IDs and retains archived brand values', () => {
     const snapshot = sources();
     snapshot.memory.shortTerm.sessionState = {
       facts: sessionFactsOf({ preferences: { brand_ids: [1] } }),
@@ -541,7 +541,7 @@ describe('mentioned brands at turn start', () => {
         updatedAt: '',
       },
     };
-    expect(collect(snapshot)).toEqual(new Set(['肯德基', '麦当劳']));
+    expect(collect(snapshot)).toEqual(new Set(['麦当劳']));
   });
 
   it('includes all three historical job pools used by archive.recentBrandPool', () => {

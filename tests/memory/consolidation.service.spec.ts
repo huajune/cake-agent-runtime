@@ -171,7 +171,12 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       'user-1',
       BOT_USER_ID,
       facts,
-      { sessionId: 'session-1', botImId: 'bot-1', brandState: facts.brand },
+      {
+        sessionId: 'session-1',
+        botImId: 'bot-1',
+        brandState: facts.brand,
+        sessionEndAt: '2026-08-22T12:00:00.000Z',
+      },
     );
   });
 
@@ -240,6 +245,14 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       new Date(latestAt).toISOString(),
       'session-1',
     );
+  });
+
+  it('无实质内容只推进水位，不写事实或摘要', async () => {
+    llm.generate.mockResolvedValue({ text: '范围：无实质内容' });
+    await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
+    expect(longTerm.appendSummary).not.toHaveBeenCalled();
+    expect(longTerm.writeFromConsolidation).not.toHaveBeenCalled();
+    expect(longTerm.markLastSettledMessageAt).toHaveBeenCalledTimes(1);
   });
 
   it('超长咨询段只摘要末 120 条，并在 SummaryEntry 标注覆盖范围', async () => {

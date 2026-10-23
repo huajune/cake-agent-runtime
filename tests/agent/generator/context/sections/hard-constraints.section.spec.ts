@@ -151,7 +151,7 @@ describe('HardConstraintsSection', () => {
         interview_info: {
           gender: '男',
           age: '25-40',
-          has_health_certificate: '已办',
+          has_health_certificate: '有本地有效健康证',
           education: '高中',
           is_student: false,
         },
@@ -160,7 +160,7 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('性别: 男');
     expect(output).toContain('年龄: 25-40');
-    expect(output).toContain('健康证: 已办');
+    expect(output).toContain('健康证: 有本地有效健康证');
     expect(output).toContain('学历: 高中');
     expect(output).toContain('是否学生: 否');
   });
@@ -310,15 +310,14 @@ describe('HardConstraintsSection', () => {
     expect(output).not.toContain('排斥品牌');
   });
 
-  it('renders Boss title brand ids as brandIdList hints', () => {
+  it('does not render retired persisted brand ids', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { brand_ids: [10239] } }),
     });
 
-    expect(output).toContain('意向品牌ID: 10239');
-    expect(output).toContain('来自 Boss 岗位标题 [brand_id]');
-    expect(output).toContain('brandIdList');
+    expect(output).not.toContain('意向品牌ID: 10239');
+    expect(output).not.toContain('来自 Boss 岗位标题 [brand_id]');
   });
 
   it('本轮高置信值覆盖旧 session 值（Phase 0 第 2 条：与工具层合并口径统一）', () => {

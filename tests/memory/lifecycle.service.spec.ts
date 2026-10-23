@@ -24,6 +24,7 @@ describe('MemoryLifecycleService', () => {
   };
 
   const mockConsolidationScheduler = {
+    idleGapMs: 7 * 86400000,
     schedule: jest.fn().mockResolvedValue('memory-consolidation:sess-1'),
   };
 
@@ -80,6 +81,30 @@ describe('MemoryLifecycleService', () => {
       mockMessageProcessing as never,
       mockBrandState as never,
     );
+  });
+
+  it('回访首轮只取本 bot 最近摘要，连续下一轮不再自动注入', async () => {
+    const summary = {
+      sessionId: 'old-chat',
+      summary: '上次希望周末兼职',
+      startTime: '2026-01-01',
+      endTime: '2026-01-02',
+    };
+    mockLongTerm.getSessionSummaries.mockResolvedValueOnce([summary]);
+    const first = await service.onTurnStart('corp-1', 'user-1', 'session-1', '继续看看', {
+      botUserId: 'bot-1',
+      includeShortTerm: false,
+    });
+    expect(first.longTerm.recentSessionSummary).toEqual(summary);
+    mockSessionService.getSessionState.mockResolvedValueOnce({
+      lastProcessedCandidateMessageAt: new Date().toISOString(),
+    });
+    const second = await service.onTurnStart('corp-1', 'user-1', 'session-1', '好的', {
+      botUserId: 'bot-1',
+      includeShortTerm: false,
+    });
+    expect(second.longTerm.recentSessionSummary).toBeUndefined();
+    expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledTimes(1);
   });
 
   it('should load full runtime memory on turn start', async () => {
@@ -168,7 +193,11 @@ describe('MemoryLifecycleService', () => {
 
     expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1', 'wecom-user-B');
     expect(mockLongTerm.getPreferences).toHaveBeenCalledWith('corp-1', 'user-1', 'wecom-user-B');
-    expect(mockLongTerm.getSessionSummaries).not.toHaveBeenCalled();
+    expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'wecom-user-B',
+    );
     expect(ctx.longTerm.semantic.profile?.name).toEqual(expect.objectContaining({ value: '兮兮' }));
   });
 

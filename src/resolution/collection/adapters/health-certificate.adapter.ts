@@ -5,11 +5,12 @@
  * 从改写 knownFieldMap['健康证情况'] 转岗为"把候选人自然语言裁决成健康证标签的
  * optionCode"。
  *
- * 五态分流（蓝图 §1）：
- * - 三确定态 → optionCode
+ * 四个确定态与两个待确认态：
+ * - 四确定态 → 实际契约 optionCode
  *   · `local_valid`            → 有本地有效健康证
  *   · `accepts_local_application` → 无本地有效健康证，接受办理
  *   · `rejects_local_application` → 无本地有效健康证，不接受办理
+ *   · `processing` → 办理中（契约确实提供该选项时才填写）
  * - 两不定态 → **留空追问**，不猜
  *   · `non_local_needs_confirmation`（持异地证，尚未表态是否重办——resolver 自带
  *      recommendedQuestion，调用方拿去问）
@@ -30,20 +31,10 @@ import {
 import { findOptionBySemantics } from '../option-matching';
 import type { ContractOption } from '../form.types';
 import type { AdapterInput, SlotProposal } from './adapter.types';
-
-/** 语义判据表：三确定态各自认哪种 optionLabel。判据写在标签词面，不写 ID。 */
-const LABEL_MATCHERS: Record<
-  'local_valid' | 'accepts_local_application' | 'rejects_local_application',
-  (label: string) => boolean
-> = {
-  // 「有…健康证」且不以「无/没」开头。
-  local_valid: (label) => /^有.*健康证$/u.test(label),
-  // 「无…健康证，接受办理」——「不接受」由下一条认领，这里排除。
-  accepts_local_application: (label) =>
-    /^(?:无|没有).*健康证/u.test(label) && /(?<!不)接受办理/u.test(label),
-  rejects_local_application: (label) =>
-    /^(?:无|没有).*健康证/u.test(label) && /不接受办理/u.test(label),
-};
+import {
+  HEALTH_CERTIFICATE_LABELS,
+  normalizeHealthCertificateState,
+} from '@resolution/candidate/health-certificate-state';
 
 export function proposeHealthCertificate(input: AdapterInput): SlotProposal | null {
   const { field, candidateText, historicalValues, answerBound } = input;
@@ -60,6 +51,7 @@ export function proposeHealthCertificate(input: AdapterInput): SlotProposal | nu
   // 时不产提案——出处门无论如何都会拒收无出处的值，这里提前退出省一次审计噪音。
   let status: LocalHealthCertificateEligibilityStatus = eligibility.status;
   let excerpt = parseHealthCertificateMatch(candidateText)?.excerpt ?? null;
+  if (status === 'processing' && answerBound) excerpt = candidateText.trim();
   if (!excerpt && answerBound) {
     // 值已绑定到本槽位（表单行「有无本地健康证：有」拆行后、fieldValueProposals 定位后）：
     // 裸短答不带「健康证」三个字也能读——绑定关系就是语境。未绑定的自由语料不走这里，
@@ -82,7 +74,7 @@ export function proposeHealthCertificate(input: AdapterInput): SlotProposal | nu
   };
 }
 
-type DeterminateStatus = keyof typeof LABEL_MATCHERS;
+type DeterminateStatus = keyof typeof HEALTH_CERTIFICATE_LABELS;
 
 /**
  * 绑定语境下的裸短答（0902 实测被值词表门拒收 8 条：「有」「有本地」「无,接受办理」）。
@@ -111,8 +103,11 @@ function resolveOption(
   field: AdapterInput['field'],
   status: LocalHealthCertificateEligibilityStatus,
 ): ContractOption | null {
-  const matcher = LABEL_MATCHERS[status as keyof typeof LABEL_MATCHERS];
+  const label = HEALTH_CERTIFICATE_LABELS[status as DeterminateStatus];
   // 两不定态（non_local_needs_confirmation / unknown）落不到表里 → 留空追问。
-  if (!matcher) return null;
-  return findOptionBySemantics(field, matcher);
+  if (!label) return null;
+  return findOptionBySemantics(
+    field,
+    (optionLabel) => normalizeHealthCertificateState(optionLabel) === label,
+  );
 }
