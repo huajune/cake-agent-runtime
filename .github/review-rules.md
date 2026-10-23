@@ -6,26 +6,26 @@ This repository contains two codebases. Apply the relevant rules based on which 
 
 ## Backend (`src/`)
 
-**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Bull Queue | Redis (Upstash) | Supabase
+**Tech Stack**: NestJS 10 | TypeScript 5 | Node.js 22+ | Bull Queue | Redis (Upstash) | Supabase
 
 ### Architecture
 
 DDD layered architecture:
 
-- `core/` — infrastructure (HTTP client, Redis, Supabase, alert). **Cannot import from `biz/`, `wecom/`, or `agent/`**
+- `infra/` — infrastructure (HTTP client, Redis, Supabase, alert). **Cannot import from `biz/`, `channels/`, or `agent/`**
 - `agent/` — AI Agent domain
 - `biz/` — business domain (monitoring, user, message, hosting-config)
-- `wecom/` — WeChat Enterprise domain
+- `channels/` — WeChat Enterprise domain
 
 ### Backend Critical (must block PR)
 
 - Bugs and logic errors
 - Security vulnerabilities (hardcoded secrets, SQL injection, XSS)
 - Unhandled exceptions or missing error handling
-- Layer violations: `core/` importing `biz/`, `wecom/`, or `agent/`
+- Layer violations: `infra/` importing `biz/`, `channels/`, or `agent/`
 - Hardcoded secrets or credentials
 - Using `console.log` instead of NestJS `Logger`
-- **New `.ts` files (services, controllers, utils, etc.) must have a corresponding `*.spec.ts` unit test file. Block the PR if tests are missing.**
+- Missing regression coverage is blocking when it leaves a concrete correctness or security risk unverified. Do not require mirrored test files for types, DTOs, or trivial wiring.
 
 ### Backend Code Quality (should fix)
 
@@ -93,13 +93,13 @@ DDD layered architecture:
 
 ## Review Output Format
 
-- Use `gh pr review` with inline comments for specific line-level issues
-- Use `gh pr comment` for an overall summary
-- Categorize findings by severity: Critical / Should Fix / Suggestion
-- Only post GitHub comments — do not output review text as plain messages
+Return exactly one JSON object matching the schema supplied by the workflow:
+`decision`, `summary`, and `blocking_findings`. Do not call `gh`, submit reviews,
+or publish comments. The workflow validates and publishes the decision.
 
-## Review Decision
-
-- If there are **Critical** issues: use `gh pr review --request-changes`
-- If there are **no Critical** issues (only Should Fix / Suggestions or no issues): use `gh pr review --approve`
-- Always include a brief summary in the review body explaining the decision
+- `APPROVE`: no Critical findings; `blocking_findings` must be empty.
+- `REQUEST_CHANGES`: at least one concrete Critical finding, with file/line,
+  trigger, impact, and proposed correction in `blocking_findings`.
+- Explain the decision briefly in `summary`; label non-blocking suggestions clearly.
+- If a tool or runtime failure prevents reviewing the diff, report failure; never
+  manufacture an approval or claim that unperformed checks passed.

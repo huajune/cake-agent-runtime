@@ -10,6 +10,7 @@ import {
   HttpStatus,
   Res,
   Header,
+  HttpCode,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -26,6 +27,7 @@ import { CuratedDatasetImportService } from './services/curated-dataset-import.s
 import {
   TestChatRequestDto,
   BatchTestRequestDto,
+  SubmitBatchTestRequestDto,
   CreateBatchRequestDto,
   UpdateReviewRequestDto,
   ImportFromFeishuRequestDto,
@@ -95,6 +97,13 @@ export class TestSuiteController {
   }
 
   // ==================== 批量测试 ====================
+
+  @Post('batch/submit')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: '提交并行测试到持久队列，返回批次 ID 查询结果' })
+  async submitBatchTest(@Body() request: SubmitBatchTestRequestDto) {
+    return { success: true, data: await this.queueService.submitBatch(request) };
+  }
 
   @Post('batch')
   @ApiOperation({ summary: '批量执行测试' })
