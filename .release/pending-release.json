@@ -663,6 +663,93 @@
         "发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。"
       ],
       "level": "minor"
+    },
+    {
+      "number": "1436",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1436",
+      "title": "六阶段改造 C — 持久外部动作与核实补账",
+      "author": "huajune",
+      "mergedAt": "2026-10-23",
+      "opsNotes": [
+        "**外部动作核实与补账** ⏳ 待发布",
+        "- 报名、改约、取消、邀请或通知的结果未知时保留待核实，不把超时直接说成失败并重做。",
+        "- 外部已成功但本地保存失败时保留成功结果，只恢复本地状态。"
+      ],
+      "businessUpdates": [
+        "为业务外部动作接入持久执行边界",
+        "接入报名取消改约事件的可靠补账",
+        "修正外部动作权限通知身份与终态重放"
+      ],
+      "summary": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "为业务外部动作接入持久执行边界",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "原子保护补账投影版本与取消墓碑",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "接入报名取消改约事件的可靠补账",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "修正外部动作权限通知身份与终态重放",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "merge: 同步 develop 已验证基础改造与版本元数据",
+        "六阶段改造 C — 持久外部动作与核实补账"
+      ],
+      "features": [
+        "为业务外部动作接入持久执行边界",
+        "接入报名取消改约事件的可靠补账"
+      ],
+      "fixes": [
+        "修正外部动作权限通知身份与终态重放"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…",
+        "增加外部动作持久执行与核实恢复基础",
+        "完善动作核实补账与人工审计边界",
+        "Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…",
+        "Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…",
+        "Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…",
+        "Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…",
+        "未决动作回执不提前宣称人工交接完成",
+        "原子保护补账投影版本与取消墓碑",
+        "以字段CAS保护会话补账和过期边界",
+        "将业务成功事件纳入可靠本地补账",
+        "冻结延迟任务的恢复时间窗",
+        "补齐事件补账的部署依赖",
+        "持久保留同目标新意图的前序动作关联",
+        "阻止缺少工单身份的已接受报名被再次提交",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…",
+        "merge: 同步 develop 已验证基础改造与版本元数据"
+      ],
+      "config": [
+        "新增 `20261021090000_agent_action_records.sql`（动作、证据、人工审计）、`20261021093000_action_ops_event_projection.sql`（业务成功事件补账）和 `20261021130000_version_booking_projections.sql`（预约指针版本、取消墓碑与旧身份保护）。投影 RPC 依赖现有长期记忆表，观察档部署也必须先完成这些迁移。已在真实旧依赖上完成五迁移冷启动、SQL故障/权限及双连接竞争验证，未执行共享测试库或生产库迁移。",
+        "`ACTION_EXECUTION_MODE` 默认 `observe`；执行档必填 `ACTION_EXECUTION_CUTOVER_AT`。回退时必须保留切换边界，已有执行义务继续受保护。",
+        "生产迁移、部署和切档仍待单独确认。外部供应商尚无经过验证的终态查询/幂等能力时保留人工核实，不承诺全局恰好一次。"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "动作登记/领取/fence、未知禁止重发、已成功仅补账、晚到证据与人工审计的定向测试通过。",
+        "隔离 PostgreSQL 15 真实事务、权限与双连接竞争验证通过；未连接业务数据库。",
+        "最终集成 `ci:check`：543 个套件、8,870 项测试、3 项快照通过；既有 1 个套件/5 项测试跳过。完整 DI 通过，重复代码 0.58%。",
+        "真实模型受控回归完成三个有效场景，实际业务写入为零。两处回执问题已修复并离线重放；未追加修复后模型请求。",
+        "[验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。",
+        "合并、共享库迁移、生产发布及执行档切换均未执行。",
+        "发版底账：N/A（本次仅实现与评审）。"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -797,5 +884,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "4942ee0a763a3b0cfd8ec81a63826a504577c7fd"
+  "lastAnalyzedSha": "6308da428f4442897df9bbfd5c1a6dadc50935fb"
 }
