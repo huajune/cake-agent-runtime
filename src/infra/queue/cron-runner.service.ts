@@ -47,6 +47,8 @@ export const MANAGED_CRONS: readonly CronDefinition[] = [
 export interface CronBudget {
   /** Call before each next page / external write. Does not pretend to cancel an in-flight HTTP call. */
   checkpoint(rows?: number): Promise<void>;
+  /** Account for completed rows without starting or authorizing another batch. */
+  recordProcessed(rows: number): void;
 }
 
 @Injectable()
@@ -111,6 +113,11 @@ export class CronRunnerService implements OnApplicationBootstrap {
     const startedAt = Date.now();
     let rows = 0;
     const budget: CronBudget = {
+      recordProcessed: (count) => {
+        if (!Number.isSafeInteger(count) || count < 0 || rows + count > limits.maxRows)
+          throw new Error('Invalid processed row count');
+        rows += count;
+      },
       checkpoint: async (count = 0) => {
         rows += count;
         if (Date.now() - startedAt >= limits.timeMs || rows > limits.maxRows) {
@@ -149,10 +156,11 @@ export class CronRunnerService implements OnApplicationBootstrap {
       let processed = 0;
       while (processed < limits.maxRows && Date.now() < deadline) {
         const size = Math.min(limits.batchSize, limits.maxRows - processed);
-        await budget.checkpoint(size);
+        await budget.checkpoint();
         const count = await batch(size);
         if (!Number.isSafeInteger(count) || count < 0 || count > size)
           throw new Error('Invalid processed batch count');
+        budget.recordProcessed(count);
         processed += count;
         if (count < size) break;
       }

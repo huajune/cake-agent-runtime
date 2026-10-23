@@ -85,7 +85,25 @@ describe('CronRunnerService', () => {
       ),
     ).toBe(205);
     expect(batch).toHaveBeenCalledTimes(3);
+    expect(redis.setex).toHaveBeenLastCalledWith(
+      'cron:lifecycle:retention',
+      90 * 86400,
+      expect.objectContaining({ status: 'completed', rows: 205 }),
+    );
     expect(leases.acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('records zero actual rows for an empty batch', async () => {
+    await runner.runBatches(
+      'retention',
+      { timeMs: 30_000, maxRows: 1000, batchSize: 100 },
+      async () => 0,
+    );
+    expect(redis.setex).toHaveBeenLastCalledWith(
+      'cron:lifecycle:retention',
+      90 * 86400,
+      expect.objectContaining({ status: 'completed', rows: 0 }),
+    );
   });
 
   it('limits rows and releases ownership only after the last batch', async () => {
