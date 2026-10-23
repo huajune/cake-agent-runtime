@@ -14,7 +14,7 @@
 **预计版本**: `v11.14.0`
 **最近更新**: `2026-10-23`
 **来源分支**: `develop`
-**累计 PR**: 9
+**累计 PR**: 10
 
 ### 运营说明
 已实现并完成本轮定向回归，待合入。**本次不合并、不部署。**
@@ -39,6 +39,10 @@
 **后台任务可靠性** ⏳ 待发布
 - 关键业务事件、介入任务和复聊排程失败后有重试与告警。
 - 暂停托管未成功时不再显示已暂停；错过的定时群发只告警，不自动补发。
+
+**外部动作核实与补账** ⏳ 待发布
+- 报名、改约、取消、邀请或通知的结果未知时保留待核实，不把超时直接说成失败并重做。
+- 外部已成功但本地保存失败时保留成功结果，只恢复本地状态。
 
 ### 更新摘要
 - PR #1418 群机器人密钥只读环境变量
@@ -174,6 +178,28 @@
 - PR #1435 覆盖群发送等待窗口并隔离投递后排程故障
 - PR #1435 merge: integrate develop permissions with background job recovery
 - PR #1435 六阶段改造 G — 统一后台作业与可靠写入
+- PR #1436 Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…
+- PR #1436 增加外部动作持久执行与核实恢复基础
+- PR #1436 为业务外部动作接入持久执行边界
+- PR #1436 完善动作核实补账与人工审计边界
+- PR #1436 Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…
+- PR #1436 Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…
+- PR #1436 Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…
+- PR #1436 Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…
+- PR #1436 未决动作回执不提前宣称人工交接完成
+- PR #1436 原子保护补账投影版本与取消墓碑
+- PR #1436 以字段CAS保护会话补账和过期边界
+- PR #1436 将业务成功事件纳入可靠本地补账
+- PR #1436 冻结延迟任务的恢复时间窗
+- PR #1436 接入报名取消改约事件的可靠补账
+- PR #1436 补齐事件补账的部署依赖
+- PR #1436 持久保留同目标新意图的前序动作关联
+- PR #1436 修正外部动作权限通知身份与终态重放
+- PR #1436 阻止缺少工单身份的已接受报名被再次提交
+- PR #1436 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1436 Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…
+- PR #1436 merge: 同步 develop 已验证基础改造与版本元数据
+- PR #1436 六阶段改造 C — 持久外部动作与核实补账
 
 ### 新功能
 - PR #1422 无。
@@ -197,6 +223,8 @@
 - PR #1420 `docs/README.md` 新增「技术调研 (technical/)」分区与入口。
 - PR #1423 无。
 - PR #1424 无。
+- PR #1436 为业务外部动作接入持久执行边界
+- PR #1436 接入报名取消改约事件的可靠补账
 
 ### 问题修复
 - PR #1418 移除 `src/infra/feishu/constants/constants.ts` 中硬编码的 3 组 Webhook URL / SECRET，常量只保留 `ENV_URL_KEY` / `ENV_SECRET_KEY` 键名（落实 CLAUDE.md「禁硬编码密钥（走 ConfigService）」）。
@@ -211,6 +239,7 @@
 - PR #1423 独立门店同分时清空歧义焦点并解决合并冲突
 - PR #1424 审查补修以当前提交 `ea5165f469918b85619b73a85e6c812b4de9489d` 为准。
 - PR #1424 短句形状只是静默必要条件，开放语义仍由模型判断；不把有限标记集合宣称为完整问句分类器。
+- PR #1436 修正外部动作权限通知身份与终态重放
 
 ### 优化调整
 - PR #1418 `FeishuWebhookService` 只通过 ConfigService 读取配置：
@@ -332,6 +361,24 @@
 - PR #1435 海绵轮询查询失败时保留分页游标
 - PR #1435 覆盖群发送等待窗口并隔离投递后排程故障
 - PR #1435 merge: integrate develop permissions with background job recovery
+- PR #1436 Merge branches 'codex/runtime-duplicate-signup', 'codex/runtime-tool-…
+- PR #1436 增加外部动作持久执行与核实恢复基础
+- PR #1436 完善动作核实补账与人工审计边界
+- PR #1436 Merge branch 'codex/runtime-background-jobs' into codex/runtime-found…
+- PR #1436 Merge branch 'codex/runtime-foundations' into codex/runtime-actions-i…
+- PR #1436 Merge branch 'codex/runtime-candidate-progress' into codex/runtime-fo…
+- PR #1436 Merge branch 'codex/runtime-duplicate-signup' into codex/runtime-foun…
+- PR #1436 未决动作回执不提前宣称人工交接完成
+- PR #1436 原子保护补账投影版本与取消墓碑
+- PR #1436 以字段CAS保护会话补账和过期边界
+- PR #1436 将业务成功事件纳入可靠本地补账
+- PR #1436 冻结延迟任务的恢复时间窗
+- PR #1436 补齐事件补账的部署依赖
+- PR #1436 持久保留同目标新意图的前序动作关联
+- PR #1436 阻止缺少工单身份的已接受报名被再次提交
+- PR #1436 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1436 Merge remote-tracking branch 'origin/codex/runtime-actions-integrated…
+- PR #1436 merge: 同步 develop 已验证基础改造与版本元数据
 
 ### 配置变更
 - PR #1418 无新增键。`.env.example` 已有全部 6 个键，补充说明「代码不内置默认值，URL 未配置时跳过发送」。
@@ -340,9 +387,13 @@
 - PR #1422 无数据库迁移、环境变量或部署配置变更。
 - PR #1423 无数据库迁移、环境变量或部署配置变更。
 - PR #1424 无数据库迁移、环境变量或部署配置变更。
+- PR #1436 新增 `20261021090000_agent_action_records.sql`（动作、证据、人工审计）、`20261021093000_action_ops_event_projection.sql`（业务成功事件补账）和 `20261021130000_version_booking_projections.sql`（预约指针版本、取消墓碑与旧身份保护）。投影 RPC 依赖现有长期记忆表，观察档部署也必须先完成这些迁移。已在真实旧依赖上完成五迁移冷启动、SQL故障/权限及双连接竞争验证，未执行共享测试库或生产库迁移。
+- PR #1436 `ACTION_EXECUTION_MODE` 默认 `observe`；执行档必填 `ACTION_EXECUTION_CUTOVER_AT`。回退时必须保留切换边界，已有执行义务继续受保护。
+- PR #1436 生产迁移、部署和切档仍待单独确认。外部供应商尚无经过验证的终态查询/幂等能力时保留人工核实，不承诺全局恰好一次。
 
 ### 环境变量提醒
 - PR #1418 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+- PR #1436 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #1418 `pnpm run ci:check` 通过（pre-push 全量：518 个测试套件 / 8204 个用例通过，5 个既有 skip；含 build:ci）
@@ -426,6 +477,13 @@
 - PR #1435 合并与生产发布未执行；默认观察档与既有在途工单口径保持不变。
 - PR #1435 AI Code Review 未返回有效结构化结论，当前为阻塞评审；未绕过门禁，不能记为评审通过。
 - PR #1435 发版底账：N/A（用户未要求发布）。生产配置/迁移/通知检查：N/A（未进入发布）。
+- PR #1436 动作登记/领取/fence、未知禁止重发、已成功仅补账、晚到证据与人工审计的定向测试通过。
+- PR #1436 隔离 PostgreSQL 15 真实事务、权限与双连接竞争验证通过；未连接业务数据库。
+- PR #1436 最终集成 `ci:check`：543 个套件、8,870 项测试、3 项快照通过；既有 1 个套件/5 项测试跳过。完整 DI 通过，重复代码 0.58%。
+- PR #1436 真实模型受控回归完成三个有效场景，实际业务写入为零。两处回执问题已修复并离线重放；未追加修复后模型请求。
+- PR #1436 [验证记录](https://github.com/huajune/cake-agent-runtime/blob/codex/runtime-retries-integrated/docs/technical/runtime-systematization-validation.md)包含可复验数据库入口和能力限制。
+- PR #1436 合并、共享库迁移、生产发布及执行档切换均未执行。
+- PR #1436 发版底账：N/A（本次仅实现与评审）。
 <!-- release:pending:end -->
 
 ## [11.13.2] - 2026-10-15
