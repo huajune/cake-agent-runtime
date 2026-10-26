@@ -114,8 +114,8 @@
 - PR #1458 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支。
 - PR #1458 未新增虚构 prompt 示例值；N/A。
 - PR #1458 本地 `pnpm run ci:check` 全部通过：lint / format / typecheck / geo / vocab / quality-ledger / 前后端构建 / 全量测试；548 个测试套件通过、1 个跳过，8971 项测试通过、5 项跳过。
-- PR #1458 GitHub Actions 及 DI smoke：等待远端检查。
-- PR #1458 真实 Agent 链路及逐条业务评审、正式资产与 Dashboard 对账：未执行，不以单测代替业务回归；合并／发布前仍需完成。
+- PR #1458 GitHub CI Checks 40294098559 已通过。合并后的完整 ci:check：550 套 / 8992 项通过，原有 1 套 / 5 项跳过，3 个快照通过。
+- PR #1458 真实模型、Runner、Guardrail、ToolActionService 受控回归 2/2 业务通过：30058 / 30049 均 failed、仅调用一次、保留资料、一个分类人工介入意图、回复不声称成功。海绵响应与表单为受控 fixture，不执行真实报名或通知送达；两条正式资产默认不参与普通动态批跑。批次 edcb9490-9574-496f-af0f-7a8399f84d25 已评审、同步生产 Dashboard，warnings=[]，API 全量对账完成。
 - PR #1458 生产关键链路验证：未上线。
 - PR #1456 自审最终 diff、错误处理、资源释放、上下文传递；无凭据或候选人原始数据入库。
 - PR #1456 定向单测 12 项；真实 HTTP 拒绝空数组、重复 ID、parallel:false，均为 400。
