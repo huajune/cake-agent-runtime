@@ -62,7 +62,7 @@ function parseRedisUrl(redisUrl: string): {
  * 获取 Bull 队列前缀，确保多环境共用同一个 Upstash Redis 时队列物理隔离。
  * 优先 RUNTIME_ENV，其次 NODE_ENV，缺省 development。
  */
-function resolveBullPrefix(configService: ConfigService): string {
+export function resolveBullPrefix(configService: ConfigService): string {
   const env = (
     configService.get<string>('RUNTIME_ENV') ||
     configService.get<string>('NODE_ENV') ||

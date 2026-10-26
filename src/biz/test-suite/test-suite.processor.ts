@@ -1,8 +1,12 @@
+import type { TestChatRequestDto } from './dto/test-chat.dto';
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
+import BullQueue = require('bull');
 import { Queue, Job } from 'bull';
+import { resolveBullPrefix } from '@infra/queue/bull.module';
+import { QUEUE_WORKER_SETTINGS } from '@infra/queue/queue-policy';
 import { TestBatchService } from './services/test-batch.service';
 import { TestExecutionService } from './services/test-execution.service';
 import { TestBatch } from './entities/test-batch.entity';
@@ -21,6 +25,7 @@ import type {
  * 测试任务 Job 数据结构
  */
 export interface TestJobData {
+  request?: TestChatRequestDto;
   batchId: string;
   caseId: string;
   caseName: string;
@@ -97,9 +102,11 @@ export interface ExecutionRecordUpdate {
 }
 
 @Injectable()
-export class TestSuiteProcessor implements OnModuleInit {
+export class TestSuiteProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TestSuiteProcessor.name);
 
+  private readonly workers: Queue<TestJobData>[] = [];
+  private readonly workerConnections: Queue['client'][] = [];
   private readonly concurrency: number;
   private readonly jobTimeoutMs: number;
 
@@ -126,7 +133,6 @@ export class TestSuiteProcessor implements OnModuleInit {
   async onModuleInit() {
     await this.waitForQueueReady();
     this.registerWorkers();
-    this.setupQueueEventListeners();
 
     this.logger.log(
       `TestSuiteProcessor 已初始化（并发数: ${this.concurrency}, 超时: ${this.jobTimeoutMs}ms）`,
@@ -160,31 +166,78 @@ export class TestSuiteProcessor implements OnModuleInit {
   }
 
   private registerWorkers(): void {
-    this.logger.log(`[TestSuite] 注册 Worker，并发数: ${this.concurrency}...`);
-
-    this.testQueue.process('execute-test', this.concurrency, async (job: Job<TestJobData>) => {
-      return this.handleTestJob(job);
-    });
-
-    this.logger.log('[TestSuite] ✅ Worker 已注册');
+    // 托管 Redis 会延迟同一阻塞连接上流水化 BRPOPLPUSH 的回复，导致任务
+    // 已移入 active 却尚未拿到 Bull 锁。每个并发槽使用独立 bclient，普通
+    // client 复用生产者，subscriber 在本组 worker 间共享。
+    if (this.testQueue.client.options.host?.endsWith('.upstash.io')) {
+      const subscriber = this.testQueue.client.duplicate({
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+      });
+      this.workerConnections.push(subscriber);
+      for (let index = 0; index < this.concurrency; index++) {
+        const worker = new BullQueue<TestJobData>(this.testQueue.name, {
+          prefix: resolveBullPrefix(this.configService),
+          settings: QUEUE_WORKER_SETTINGS,
+          createClient: (type) => {
+            if (type === 'client') return this.testQueue.client;
+            if (type === 'subscriber') return subscriber;
+            const blocking = this.testQueue.client.duplicate({
+              maxRetriesPerRequest: null,
+              enableReadyCheck: false,
+            });
+            this.workerConnections.push(blocking);
+            return blocking;
+          },
+        });
+        this.workers.push(worker);
+        this.setupQueueEventListeners(worker);
+        worker.process('execute-test', 1, (job) => this.handleTestJob(job));
+      }
+    } else {
+      this.setupQueueEventListeners(this.testQueue);
+      this.testQueue.process('execute-test', this.concurrency, (job) => this.handleTestJob(job));
+    }
+    this.logger.log(`[TestSuite] Worker 已注册，并发数: ${this.concurrency}`);
   }
 
-  private setupQueueEventListeners(): void {
-    this.testQueue.on('completed', (job: Job<TestJobData>, result: TestJobResult) => {
+  async onModuleDestroy(): Promise<void> {
+    await Promise.all(this.workers.map((worker) => worker.close()));
+    await Promise.all(this.workerConnections.map((connection) => connection.quit()));
+  }
+
+  private setupQueueEventListeners(queue: Queue<TestJobData>): void {
+    queue.on('error', (error: Error) => {
+      this.logger.error(`[TestSuite Queue] worker 连接异常: ${toErrorMessage(error)}`);
+    });
+    queue.on('completed', (job: Job<TestJobData>, result: TestJobResult) => {
       this.onJobCompleted(job, result);
     });
 
-    this.testQueue.on('failed', (job: Job<TestJobData>, error: Error) => {
+    queue.on('failed', (job: Job<TestJobData>, error: Error) => {
       this.onJobFailed(job, error);
     });
 
-    this.testQueue.on('active', (job: Job<TestJobData>) => {
+    queue.on('active', (job: Job<TestJobData>) => {
       this.logger.log(`[TestSuite] 🔄 任务 ${job.id} 开始: ${job.data.caseName}`);
     });
 
-    this.testQueue.on('stalled', (job: Job<TestJobData>) => {
+    queue.on('stalled', (job: Job<TestJobData>) => {
       this.logger.warn(`[TestSuite] ⚠️ 任务 ${job.id} 卡住: ${job.data.caseName}`);
     });
+  }
+
+  private async waitForBatchAdmission(batchId: string): Promise<void> {
+    // Bounded wait: a crashed submitter must never authorize partially admitted work.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const batch = await this.batchService.getBatch(batchId);
+      if (batch?.status === BatchStatus.RUNNING) return;
+      if (!batch || batch.status !== BatchStatus.CREATED) {
+        throw new Error('批次尚未完成入队、已取消或不存在');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    throw new Error('等待批次完整入队超时');
   }
 
   private async handleTestJob(job: Job<TestJobData>): Promise<TestJobResult> {
@@ -212,9 +265,13 @@ export class TestSuiteProcessor implements OnModuleInit {
     );
 
     try {
+      if (job.data.request) {
+        await this.waitForBatchAdmission(batchId);
+      }
       await job.progress(10);
 
       const result = await this.executionService.executeTest({
+        ...job.data.request,
         message,
         history,
         caseId,
@@ -229,8 +286,8 @@ export class TestSuiteProcessor implements OnModuleInit {
         memoryAssertions: memoryAssertions ?? undefined,
         batchId,
         saveExecution: false,
-        userId: `${userId}-${caseId}`,
-        sessionId,
+        userId: job.data.request?.userId ?? `${userId}-${caseId}`,
+        sessionId: job.data.request?.sessionId ?? sessionId,
       });
 
       await job.progress(80);
@@ -407,6 +464,8 @@ export class TestSuiteProcessor implements OnModuleInit {
     this.logger.debug(`[TestSuite] 批次 ${batchId} 进度: ${dbStats.total}/${totalCases} 完成`);
 
     if (dbStats.total >= totalCases) {
+      const batch = await this.batchService.getBatch(batchId);
+      if (!batch || batch.status !== BatchStatus.RUNNING) return;
       this.logger.log(
         `[TestSuite] 📊 批次 ${batchId} 全部完成: ${dbStats.success}/${totalCases} 成功`,
       );
@@ -442,6 +501,44 @@ export class TestSuiteProcessor implements OnModuleInit {
       removeOnComplete: true,
       removeOnFail: false,
     });
+  }
+
+  async addPreparedBatchJobs(
+    batchId: string,
+    cases: Array<TestChatRequestDto & { caseId: string; caseName: string }>,
+  ): Promise<Job<TestJobData>[]> {
+    await this.setProgressCache(batchId, {
+      completedCases: 0,
+      successCount: 0,
+      failureCount: 0,
+      durations: [],
+    });
+    // 所有执行记录先持久化；等待每个入队请求结束后再返回或报告失败。
+    const admitted = await Promise.allSettled(
+      cases.map((request, caseIndex) =>
+        this.testQueue.add(
+          'execute-test',
+          {
+            ...request,
+            message: request.message ?? '',
+            request,
+            batchId,
+            totalCases: cases.length,
+            caseIndex,
+          },
+          {
+            jobId: `${batchId}-${caseIndex}`,
+            attempts: 1,
+            timeout: this.jobTimeoutMs,
+            removeOnComplete: true,
+            removeOnFail: false,
+          },
+        ),
+      ),
+    );
+    const failure = admitted.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+    return admitted.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
   }
 
   async addBatchTestJobs(

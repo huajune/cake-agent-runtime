@@ -68,14 +68,14 @@
 | ---------------------------------------------------------------------- | ----- | ---------------------------------------- | ---------------------- | ------------------------------------------------- |
 | `memory:short_term:chat:{chatId}`                                      | list  | 原始消息 JSON 条目热缓存                 | 7 天                   | `MessageWindowService`                            |
 | `factsv2:{corpId}:{userId}:{sessionId}`                                | hash  | facts + workbench                        | 7 天 + 12 小时安全余量 | `SessionFactsService` / `SessionWorkbenchService` |
-| `stage:{corpId}:{userId}:{sessionId}`                                  | value | `{ currentStage }`                       | 7 天                   | `SessionWorkbenchService`                         |
+| `stage:{corpId}:{userId}:{sessionId}`                                  | value | `{ currentStage }`                       | 7 天 + 12 小时                   | `SessionWorkbenchService`                         |
 | `long-term:{corpId}:{userId}:{botUserId}`                              | value | 当前候选人 × bot 的长期关系行缓存        | 2 小时                 | `LongTermService`                                 |
 | `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | value | 完整 `BookingCollectionForm` 快照        | 7 天                   | `CollectionFormStore`（tools）                    |
 | `collection-form-primary:{corpId}:{userId}:{botUserId}:{jobId}`        | value | 主候选人的 `candidateRef` 定位指针       | 7 天                   | `CollectionFormStore`（tools）                    |
 | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | value | booking 活动候选人的 `candidateRef` 指针 | 7 天                   | `CollectionFormStore`（tools）                    |
 
 `factsv2:` 使用 hash 字段级原子写，但 Redis 不支持 hash field TTL，所以同一 key 内的 facts 与
-workbench 一起享有 12 小时安全余量。`stage:` 和 collection form 严格按 7 天过期。
+workbench 一起享有 12 小时安全余量。`stage:` 写入与 Hash 续期使用同一 7 天 + 12 小时 TTL，只续期已有 key；collection form 独立按 7 天过期。
 
 消息热缓存也按 7 天过期，但它不是回看窗口的权威来源。缓存 miss 时，
 `MessageWindowService` 从 `chat_messages` 取最近 N 条（硬上限 300）原子回填；命中与 miss 都在内存里
@@ -98,7 +98,7 @@ current 指针允许追加候选人临时成为同轮 booking 的活动表单，
 | `chat_messages`                                       | `chatId` + message                | 原始聊天事实源                 | short-term 每轮取最近 N 条再套滚动 7 天窗；consolidation 按水位扫描 |
 | `agent_long_term_memories.semantic_profile`           | `(corp_id, user_id, bot_user_id)` | 9 字段候选人身份档案           | 每轮默认召回                                                        |
 | `agent_long_term_memories.semantic_job_intent`        | 同上                              | 最新求职意向快照               | 每轮默认召回                                                        |
-| `agent_long_term_memories.episodic_session_summaries` | 同上                              | 求职咨询摘要裸数组，最多 20 段 | 仅 `recall_history` 显式读取                                        |
+| `agent_long_term_memories.episodic_session_summaries` | 同上                              | 求职咨询摘要裸数组，最多 20 段 | 回访首轮最近一段；更早由 `recall_history` 读取                                        |
 | `agent_long_term_memories.consolidation_watermarks`   | 同上，内部再按 `sessionId`        | 已处理消息边界                 | 只供 consolidation 幂等控制                                         |
 | `agent_long_term_memories.active_booking`             | `(corp_id, user_id)`              | 候选人级当前工单索引           | preparation 结合业务系统实时状态生成预约上下文                      |
 | `message_processing_records.post_processing_status`   | message / processing record       | 回合末各写入步骤状态           | 排障与告警                                                          |
@@ -115,7 +115,7 @@ current 指针允许追加候选人临时成为同轮 booking 的活动表单，
 
 回合开始和消息元数据读取不创建长期关系行。非空 profile、intent、求职摘要、consolidation
 水位或预约办结等实际业务写入才创建或更新状态。摘要首行 scope 为非求职时不追加
-episodic 条目，但事实仍写入并推进水位；scope 缺失时按求职段处理。
+episodic 条目，但可写有据事实并推进水位；无实质内容段直接推进水位返回，不提拔本次事实。scope 缺失时按求职段处理。
 
 `active_booking` 是按 `(corpId, userId)` 管理、跨托管账号共享的候选人级业务索引，不进入
 `MemoryRecallContext` 的 semantic 契约，也不属于三维长期关系档；preparation 单独读取它并
@@ -146,7 +146,7 @@ episodic 条目，但事实仍写入并推进水位；scope 缺失时按求职�
 | workbench          | `SessionStateService`     | 岗位 provenance、防复读、焦点岗位            | 岗位池、查询签名、助手投影、失效岗位剔除        |
 | stage              | `SessionWorkbenchService` | 当前阶段策略、`advance_stage`                | `advance_stage` 校验后立即覆盖写                |
 | profile / intent   | `LongTermService`         | Prompt；profile high 供工具                  | consolidation；profile 另有报名 high 写入       |
-| episodic summaries | 默认不读                  | `recall_history` 按需                        | 闲置 7 天后的求职段 consolidation               |
+| episodic summaries | 回访首轮最近一段                  | `recall_history` 按需                        | 闲置 7 天后的求职段 consolidation               |
 | watermarks         | consolidation 任务读      | 不进入 Prompt / 工具                         | 求职段与摘要原子推进；非求职段单独推进          |
 | collection form    | collection tools          | 预检、报名、修改流程                         | collection tools 整实体覆盖写                   |
 
@@ -163,7 +163,7 @@ episodic 条目，但事实仍写入并推进水位；scope 缺失时按求职�
 | 品牌反复或串值            | `facts.brand`                               | `apply_brand_state` trace、三条品牌解析输入                  |
 | 档案存在但当前账号读不到  | 三维 long-term cache key                    | Supabase `bot_user_id`、调用方是否误传 `imBotId`             |
 | profile 旧值不被覆盖      | 字段 confidence                             | medium 不覆盖 high 的 SQL rank 守卫                          |
-| 意向清除失败              | 本段快照是否生成显式空值                    | consolidation 的整组覆盖写入                                 |
+| 意向清除失败              | 本段快照是否生成显式空值                    | consolidation 字段时间合并与显式墓碑                                 |
 | 摘要未生成或重复          | delayed job、DB 最新消息时间                | `consolidation_watermarks.bySession`、Bull 重试与失败事件    |
 | 收资进度丢失              | `collection-form:` 实体 key                 | primary/current 两类指针及 tools 写路径                      |
 | Prompt 与工具看到的值不同 | `promptBlocks` 与 ToolBuildContext          | Prompt 可展示待确认值，工具默认只采 high，这是刻意的信任差异 |
@@ -180,6 +180,8 @@ episodic 条目，但事实仍写入并推进水位；scope 缺失时按求职�
 - collection form 属于 tools，具有显式 bot 维、7 天 TTL、primary/current 双指针与事故恢复责任。
 
 ## 相关文档
+
+- [记忆与候选人状态设计详解](./memory-candidate-state-design.md)
 
 - [Memory 当前实现权威](../../src/memory/README.md)
 - [记忆系统架构与数据流](./memory-architecture.md)

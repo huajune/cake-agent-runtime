@@ -185,7 +185,7 @@ description: 抽样分析 Agent 生产对话或 BadCase / GoodCase 反馈样本�
 **测试套件接口踩坑提示**：
 
 - `POST /test-suite/batches/quick-create` 会**整表**读飞书测试集（没有 priority / category / sourceType 过滤），不要用它来跑"P1 批次/P2 批次/某 source 子集"这类目标批次——会拉到 119 条全表，不只你要的子集
-- 想跑特定子集时，先按目标筛选 case 列表，再调 `POST /test-suite/batch`，在 `cases` 中传完整 `TestChatRequestDto`；`POST /test-suite/batches` 只创建批次元数据，不接受 `caseIds`，不能用来执行子集
+- 想跑特定子集时，先按目标筛选 case 列表，再调 `POST /test-suite/batch/submit`（1–100 条独立用例，并行执行），在 `cases` 中传完整 `TestChatRequestDto`；`POST /test-suite/batches` 只创建批次元数据，不接受 `caseIds`，不能用来执行子集
 - 目标批次的 `batchName` 必须显式包含目标维度（如 "2026-04-29 P2 用例测试 30 条"），避免和 quick-create 全表批次在列表里混淆
 - 真实链路 fixture、静默断言、预约工具证据与并发策略见 `references/test-execution-fixtures.md`；执行预约/身份/真人接管类 case 前必须读该文件
 
@@ -345,7 +345,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 
 先读 `references/test-suite-api.md`、`references/test-execution-fixtures.md` 和 `references/observability-troubleshooting.md`，再按批次类型执行：
 
-- 定向 scenario 子集：`POST /test-suite/batch`，请求会等待全部 case 完成后同步返回结果，不需要再轮询
+- 定向独立 scenario 子集：`POST /test-suite/batch/submit` 返回 HTTP 202 和 `data.batchId`；轮询 `GET /test-suite/batches/:id/executions` 直到执行记录都非 pending，再逐条评审。提交不代表业务通过。此接口仅并行执行，`parallel:false` 会拒绝；依赖前序状态的多轮用例使用 conversation queue。旧 `/batch` 同步接口保留兼容，长批次可能遇到网关 504，不要据此重提整批。
 - 飞书整表 quick-create 或 conversation queue：按返回的 batch/source ID 轮询进度
 
 输出：
