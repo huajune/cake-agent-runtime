@@ -1,3 +1,4 @@
+// business-rules: GP-10
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 
 /**

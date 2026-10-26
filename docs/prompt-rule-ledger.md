@@ -33,6 +33,17 @@
 
 ## 居所索引（终态）
 
+2026-10-23 全主题维护重构（基线 `12090e6f`，本次结构调整、无新增业务裁定）：
+跨工具手册按 [七个业务主题](business-rules/README.md) 拆成 `procedural/rules/{ib,sw,id,sh,geo,gp,ho}.md`，
+`candidate-consultation.md` 保留共通规程与片段顺序。加载后模型可见正文仍为 55,988 UTF-8 字节，
+SHA-256 `f2e59fec2118593b57fd82244c01f22a51b3f2219e07c903f163bc7f8c7f3b44`；
+`tests/agent/generator/context/manual-loader.spec.ts` 校验迁移等价性。未迁移已有工具、守卫、final-check、复聊或 DB 策略的执行职责。
+本台账继续作为 prompt 居所总目录；主题文档是业务口径与实现/测试关联入口，维护摘要而非第二份模型指令。
+Guardrail 与 final-check 定义新增仅用于审计的 `businessRule`；技术机制使用 null 并注明原因。
+`pnpm run business-rules:validate` 校验主题、落点、测试和反向关联，CI 同步执行。
+敏感条件婉拒与禁止无证据声称招满的冲突已记录于 [ID 未决项](business-rules/id.md)，按用户裁定保持行为。
+
+
 2026-10-23 健康证记忆契约收敛：`short-term.types.ts#InterviewInfoSchema` 的健康证字段说明与
 `resolution/candidate/health-certificate-state.ts` 四态闭集保持一致：有本地有效健康证、无本地有效健康证且接受办理、无本地有效健康证且不接受办理、办理中；未知值为 null，不能补全有效性或办理意愿。
 这是身份事实存储/兼容 schema；当前 `LLMEntityExtractionResultSchema` 不提取身份字段，仍由收资专用入口写入。
@@ -694,6 +705,8 @@ FC 编号保留为历史别名：
 - 定位回执状态分支（来源：BadCase timtd8ru / rcr398e5，2026-10-19；长期有效）：未报名提示先登记约面，远程面试说明不用到店，仅已报名且线下面试可保留“别走错”。同轮已成功报名按账本中具体岗位判定，不能用其他岗位的成功状态替代。
 
 ### 报名回执输出边界（2026-09-24）
+
+- 已确认的报名业务拒绝按海绵 code 判定：30058（名额已满）与 30049（时段不符合要求）保留明确失败结果、原始诊断及已收资料，由统一出口分别按 booking_capacity_full / interview_slot_coordination 转人工。禁止把这两类变成结果未知、重收资料、重试原请求或宣称面试已安排；未知 code 和无终态响应继续保守核实。来源：2026-10-26 生产动作底账排查及用户修复要求。
 
 - 重复报名回执（来源：六阶段运行能力改造方案阶段一，用户 2026-10-21 确认；长期有效）：海绵两条已核实的重复报名原文不再报告“预约失败”。当前账号工单已核实时，复述已有报名和工单时间；归属文案、其他账号、查询无结果或查询异常时，仅告知系统显示已报过，由统一出口按 `duplicate_signup` 转人工核实，不编造此次申请时间已约上，不补收资料或重试报名。模型收到回执内置的人工意图时不再另调 `request_handoff`，保留真实回执。
 

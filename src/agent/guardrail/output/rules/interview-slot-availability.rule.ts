@@ -1,3 +1,4 @@
+// business-rules: IB-10
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { asRecord, type RuleContradiction } from '../output-rule.types';

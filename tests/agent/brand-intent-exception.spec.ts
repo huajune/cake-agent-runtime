@@ -1,3 +1,4 @@
+import { readCandidateManual } from '../helpers/candidate-manual';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -5,10 +6,7 @@ describe('agent-recommended brand intent exception', () => {
   const root = process.cwd();
 
   it('keeps agent-recommended jobs from being treated as candidate hard brand intent', () => {
-    const candidatePrompt = readFileSync(
-      join(root, 'src/agent/generator/context/sections/procedural/candidate-consultation.md'),
-      'utf8',
-    );
+    const candidatePrompt = readCandidateManual(root);
     const jobListTool = readFileSync(join(root, 'src/tools/duliday-job-list.tool.ts'), 'utf8');
     const handoffTool = readFileSync(join(root, 'src/tools/request-handoff.tool.ts'), 'utf8');
 

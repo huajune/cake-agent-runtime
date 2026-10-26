@@ -1,3 +1,4 @@
+import type { BusinessRuleLink } from '@shared-types/business-rule.types';
 import {
   GUARDRAIL_ACTION,
   GUARDRAIL_DATA_SENSITIVITY,
@@ -17,7 +18,9 @@ import {
  * observe 哨兵只落档不改变出站裁决；新规则一律 observe
  * 入场，升档须 ≥2 周判例且精确率 ≥90%。
  */
-interface OutputRuleCatalogDefinition<Id extends string> extends OutputRulePolicy {
+interface OutputRuleCatalogDefinition<Id extends string>
+  extends OutputRulePolicy,
+    BusinessRuleLink {
   id: Id;
   action: GuardrailRuleAction;
   priority: GuardrailPriority;
@@ -71,6 +74,8 @@ const V = 'tests/agent/guardrail/output/rules/hard-rules.service.spec.ts';
 const OUTPUT_RULE_CATALOG_SEEDS = [
   {
     id: 'invalid_model_output',
+    businessRule: null,
+    mechanismReason: '输出协议与内部信息隔离机制；不裁定招聘业务口径。',
     source: 'agent/guardrail/output/rules/invalid-model-output.rule.ts',
     entrypoint: 'detectInvalidModelOutput',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -92,6 +97,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'internal_output_leak',
+    businessRule: null,
+    mechanismReason: '输出协议与内部信息隔离机制；不裁定招聘业务口径。',
     source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
     entrypoint: 'detectInternalOutputLeak',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -107,6 +114,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'meta_narration_reply',
+    businessRule: null,
+    mechanismReason: '输出协议与内部信息隔离机制；不裁定招聘业务口径。',
     source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
     entrypoint: 'detectMetaNarrationReply',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -120,6 +129,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'meta_narration_unwrapped',
+    businessRule: null,
+    mechanismReason: '输出协议与内部信息隔离机制；不裁定招聘业务口径。',
     source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
     entrypoint: 'detectUnwrappedMetaNarration',
     // 2026-10-19 复核 [12]（trace …_1791860105040）：信封拆封把 thought「候选人回复"好"是纯确认词…应沉默收尾」
@@ -135,6 +146,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'identity_misregistration_coaching',
+    businessRule: 'ID-05',
     source: 'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts',
     entrypoint: 'detectIdentityMisregistrationCoaching',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -147,6 +159,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'experience_fraud_coaching',
+    businessRule: 'ID-07',
     source: 'agent/guardrail/output/rules/experience-fraud-coaching.rule.ts',
     entrypoint: 'detectExperienceFraudCoaching',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -159,6 +172,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'discriminatory_screening_leak',
+    businessRule: 'ID-08',
     source: 'agent/guardrail/output/rules/discrimination-leaks.rule.ts',
     entrypoint: 'DISCRIMINATION_LEAK_RULES',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -174,6 +188,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'sensitive_origin_probe',
+    businessRule: 'ID-08',
     source: 'agent/guardrail/output/rules/discrimination-leaks.rule.ts',
     entrypoint: 'DISCRIMINATION_LEAK_RULES',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -189,6 +204,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'quota_promise',
+    businessRule: 'IB-02',
     source: 'agent/guardrail/output/rules/false-promises.rule.ts',
     entrypoint: 'FALSE_PROMISE_RULES',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -202,6 +218,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'online_interview_location_claim',
+    businessRule: 'IB-06',
     source: 'agent/guardrail/output/rules/online-interview-location.rule.ts',
     entrypoint: 'detectOnlineInterviewLocationClaim',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -215,6 +232,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'unsupported_store_status_speculation',
+    businessRule: 'IB-05',
     source: 'agent/guardrail/output/rules/store-status-speculation.rule.ts',
     entrypoint: 'detectUnsupportedStoreStatusSpeculation',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -236,6 +254,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'booking_receipt_mismatch',
+    businessRule: 'IB-04',
     source: 'agent/guardrail/output/rules/booking-receipt.rule.ts',
     entrypoint: 'detectBookingReceiptMismatch',
     feedbackSource: 'per_hit',
@@ -249,6 +268,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'interview_slot_availability_mismatch',
+    businessRule: 'IB-10',
     source: 'agent/guardrail/output/rules/interview-slot-availability.rule.ts',
     entrypoint: 'detectInterviewSlotAvailabilityMismatch',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -263,6 +283,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'interview_time_change_unconfirmed',
+    businessRule: 'IB-09',
     source: 'agent/guardrail/output/rules/booking-receipt.rule.ts',
     entrypoint: 'detectBookingReceiptMismatch',
     feedbackSource: 'per_hit',
@@ -279,6 +300,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'brand_alias_fuzzy_match_ignored',
+    businessRule: 'GP-03',
     source: 'agent/guardrail/output/rules/brand-name-errors.rule.ts',
     entrypoint: 'detectBrandAliasFuzzyMatchIgnored',
     action: GUARDRAIL_ACTION.REPAIR,
@@ -292,6 +314,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   // ——以下为 数据复核恢复的规则（规则简化改造的定点回补，非整体回滚）——
   {
     id: 'human_service_phrase_leak',
+    businessRule: 'HO-02',
     source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
     entrypoint: 'detectHumanServicePhraseLeak',
     // observe 入场；升 repair：两周 5 判例全真阳性零误报。
@@ -312,6 +335,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'booking_done_claim_without_submission',
+    businessRule: 'IB-04',
     source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
     entrypoint: 'detectBookingDoneClaimWithoutSubmission',
     // 新哨兵：接替已删 booking_promise_without_booking 的完成时态缺口（将来时口径
@@ -327,6 +351,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'booking_done_claim_no_work_order',
+    businessRule: 'IB-11',
     source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
     entrypoint: 'detectBookingDoneClaimWithoutSubmission',
     // 2026-10-19 升 REPLAN（badcase x1soque5 / trace batch_6accbaa4ce406a6aee50a95b_1792057074005）：
@@ -357,6 +382,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_query_claim_without_query',
+    businessRule: 'GP-01',
     source: 'agent/guardrail/output/rules/job-fact-reconciliation.rule.ts',
     entrypoint: 'detectJobQueryClaimWithoutQuery',
     action: GUARDRAIL_ACTION.REPLAN,
@@ -372,6 +398,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_fact_without_provenance',
+    businessRule: 'GP-04',
     source: 'agent/guardrail/output/rules/job-fact-reconciliation.rule.ts',
     entrypoint: 'detectJobFactWithoutProvenance',
     action: GUARDRAIL_ACTION.REPLAN,
@@ -397,6 +424,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'cancel_done_claim_without_submission',
+    businessRule: 'IB-12',
     source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
     entrypoint: 'detectCancelDoneClaimWithoutSubmission',
     // 与 booking_done_claim_without_submission 同族同风险：跨轮合法提醒会命中，observe 入场。
@@ -413,6 +441,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'cancel_done_claim_failed_tool',
+    businessRule: 'IB-12',
     source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
     entrypoint: 'detectCancelDoneClaimWithoutSubmission',
     // 硬矛盾：本轮工具自证失败，不存在跨轮复述的解释空间，故直接 repair。
@@ -429,6 +458,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'requested_brand_mismatch',
+    businessRule: 'GP-03',
     source: 'agent/guardrail/output/rules/brand-name-errors.rule.ts',
     entrypoint: 'detectRequestedBrandMismatch',
     // 降 observe：结构化标题解析可能把门店名当品牌名，确定性修复易改坏正确回复。
@@ -442,6 +472,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'settlement_cycle_mismatch',
+    businessRule: 'SW-07',
     source: 'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts',
     entrypoint: 'detectSettlementCycleMismatch',
     // 否定语序和补充结算语境会制造假阳，保持 observe；重新满足准入门槛才能申请动手权。
@@ -455,6 +486,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'student_acceptance_contradiction',
+    businessRule: 'ID-06',
     source: 'agent/guardrail/output/rules/student-acceptance.rule.ts',
     entrypoint: 'detectStudentAcceptanceContradiction',
     // 新哨兵按发牌纪律 observe 入场；教侧唯一居所是 duliday_job_list 说明「学生安排只服从岗位数据」，
@@ -475,6 +507,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'proactive_insurance_policy_mention',
+    businessRule: 'SW-02',
     source: 'agent/guardrail/output/rules/insurance-policy-claims.rule.ts',
     entrypoint: 'detectProactiveInsurancePolicyMention',
     action: GUARDRAIL_ACTION.OBSERVE,
@@ -487,6 +520,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'part_time_salary_display_mismatch',
+    businessRule: 'SW-05',
     source: 'agent/guardrail/output/rules/part-time-salary-display.rule.ts',
     entrypoint: 'detectPartTimeSalaryDisplayMismatch',
     // 新规则按发牌纪律 observe 入场：先累计判例看多岗混排/口语月收入的误报占比，再议升档。

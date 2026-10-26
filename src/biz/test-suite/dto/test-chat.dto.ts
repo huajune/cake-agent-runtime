@@ -11,6 +11,7 @@ import {
   IsInt,
   Min,
   ArrayMaxSize,
+  ArrayMinSize,
   Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -483,6 +484,30 @@ export class ResetChatSessionRequestDto {
 /**
  * 批量测试请求 DTO
  */
+/** 持久队列并行提交；返回批次 ID 后通过批次 API 查询结果。 */
+export class SubmitBatchTestRequestDto {
+  @ApiPropertyOptional({
+    description: '此接口只执行独立并行用例；串行多轮使用对话测试接口',
+    enum: [true],
+  })
+  @IsOptional()
+  @IsIn([true])
+  parallel?: true;
+
+  @ApiProperty({ description: '独立测试用例（并行执行，最多 100 条）', type: [TestChatRequestDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => TestChatRequestDto)
+  cases: TestChatRequestDto[];
+
+  @ApiPropertyOptional({ description: '批次名称' })
+  @IsOptional()
+  @IsString()
+  batchName?: string;
+}
+
 export class BatchTestRequestDto {
   @ApiProperty({ description: '测试用例数组', type: [TestChatRequestDto] })
   @IsArray()

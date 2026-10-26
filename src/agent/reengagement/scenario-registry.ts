@@ -1,3 +1,4 @@
+// business-rules: GP-10, IB-13
 import { legacyTerminalStops } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import type { ReengagementSessionState } from '@memory/recall.types';
 import { parseInterviewMethod } from '@sponge/interview-method';

@@ -33,6 +33,8 @@ function definePromptInjectionRule<Id extends string>(
 ) {
   return {
     id,
+    businessRule: null,
+    mechanismReason: '输入注入检测属于协议安全机制，不裁定招聘业务口径。',
     layer: 'input',
     stage: 'input_pre_agent',
     action: 'observe',
@@ -195,6 +197,7 @@ function defineInputRiskRule<Risk extends InputRiskType>(
 ) {
   return {
     id: riskType,
+    businessRule: 'HO-04',
     riskType,
     layer: 'input',
     stage: 'input_pre_agent',

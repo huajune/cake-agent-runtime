@@ -1,12 +1,20 @@
 # 文档中心
 
+招聘业务规则按 [七个主题](business-rules/README.md) 维护；运行时手册在 `src`，Claude/Codex 共用 [维护 skill](../src/skills/maintain-business-rules/SKILL.md)。
+
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-09-11
+**最后更新**：2026-10-23
 
 ---
 
 ## 🧭 我该读哪份？
+
+- 展示存储数据：[离线图表与 JSON 数据包](data/memory-storage-2026-10-23/README.md)。
+- 编辑架构图：[五张 Excalidraw 源文件](architecture/diagrams/README.md)。
+
+- 同步记忆现状：[记忆系统现状与健康报告（2026-10-23）](product/memory-system-status-2026-10-23.md)。
+- 讲清设计与运行：[记忆与候选人状态设计详解（含四张图）](architecture/memory-candidate-state-design.md)。
 
 | 角色 / 目标         | 建议入口                                                                                                                                                   |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |

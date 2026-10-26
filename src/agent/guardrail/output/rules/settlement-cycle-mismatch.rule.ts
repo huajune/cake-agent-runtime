@@ -1,3 +1,4 @@
+// business-rules: SW-07
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import type { RuleContradiction } from '../output-rule.types';

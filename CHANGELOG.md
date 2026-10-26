@@ -8,6 +8,136 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.14.2`
+**最近更新**: `2026-10-26`
+**来源分支**: `develop`
+**累计 PR**: 3
+
+### 运营说明
+- 无；本次仅整理业务规则维护结构，现有招聘业务行为保持不变。
+
+**报名失败原因准确提示** ✅ 已实现，待上线
+- 岗位名额已满时，明确告知并交人工协调，不再提示报名结果未知。
+- 面试时段被拒时，交人工核实可约时间，保留已收资料，不要求候选人重复填写。
+- 告警保留原始失败原因，方便运营处理。
+
+- 无；本次修复内部测试队列与审阅诊断，不改变候选人业务口径。
+
+### 更新摘要
+- PR #1457 按七主题统一业务规则与共享维护流程
+- PR #1457 按七主题重构业务规则与 Claude/Codex 共用维护流程
+- PR #1458 按业务返回码区分报名失败与结果未知
+- PR #1458 修复明确业务拒绝被默认归为 unknown 的问题：报名接口 code 30058（名额已满）、30049（时段不符合要求）判为 failed，保留禁止原请求自动重试的约束。
+- PR #1458 新分类仅用于报名；observe / execute 均使用同一判定，取消与改约不套用这些 code。
+- PR #1458 两类拒绝通过统一人工介入出口提交暂停与通知，分别归为 booking_capacity_full / interview_slot_coordination，保留 code、原始文案及上游 traceId。
+- PR #1456 修复异步批量执行与审阅诊断
+- PR #1456 补齐记忆状态分析与可视化数据导出
+- PR #1456 保护批次入队边界与并行身份隔离
+- PR #1456 处理记忆残留并修复异步测试与审阅诊断
+
+### 新功能
+- PR #1457 增加主题关联校验与按主题执行局部契约测试的命令，校验直接读取 Markdown 索引和现有规则定义，已接入本地 ci:check 与 GitHub CI。
+- PR #1457 Codex 的 .agents/skills 和 Claude 的 .claude/skills 链接同一维护源文件，增加 AGENTS.md 入口。
+- PR #1458 无。
+
+### 问题修复
+- PR #1457 规则资产缺失、重复、未引用或格式错误时阻断启动，避免静默丢失手册。
+- PR #1457 已知敏感条件婉拒与禁止无证据声称招满的冲突按用户裁定仅记录，保持行为。
+- PR #1458 修复明确业务拒绝被默认归为 unknown 的问题：报名接口 code 30058（名额已满）、30049（时段不符合要求）判为 failed，保留禁止原请求自动重试的约束。
+- PR #1458 新分类仅用于报名；observe / execute 均使用同一判定，取消与改约不套用这些 code。
+- PR #1458 两类拒绝通过统一人工介入出口提交暂停与通知，分别归为 booking_capacity_full / interview_slot_coordination，保留 code、原始文案及上游 traceId。
+- PR #1456 新异步接口避免在网关连接中等待模型完整执行；持久化或入队失败明确报错。
+- PR #1456 修正自动审阅规则与 workflow 的冲突：模型仅返回结构化裁决，由 workflow 写回，不再要求模型执行 gh 或评论。
+- PR #1456 自动审阅故障仅输出固定错误分类和耗时/轮数，禁止公开原始执行 transcript；保持原有 fail-closed 与人工审批要求。此前模型两秒即失败的底层原因尚未确认，不能宣称远端自动审阅恢复。
+- PR #1456 修复异步批量执行与审阅诊断
+
+### 优化调整
+- PR #1457 candidate-consultation.md 保留共通规程与原始顺序引用；七份主题正文位于 src/agent/generator/context/sections/procedural/rules/，docs 只维护业务摘要、来源、实现/测试关联及未决事项。
+- PR #1457 Guardrail / final-check 增加仅供审计的业务编号，通用机制显式注明豁免理由；工具、守卫与复聊的执行职责留在原消费者处。
+- PR #1457 同步 prompt 台账、现有文案断言和词表校验。47 个业务实现文件去除新增审计字段后的编译结果与基线一致。
+- PR #1457 模型可见手册与基线 12090e6f 逐字节一致：55,988 UTF-8 字节，SHA-256 f2e59fec2118593b57fd82244c01f22a51b3f2219e07c903f163bc7f8c7f3b44；构建产物与源码一致。
+- PR #1458 同步报名回执规则台账；分类采用 code，不依赖接口文案匹配。
+
+### 运维与流程
+- PR #1457 编号稳定，当前实现归档为“现行基线”，不冒充新的业务裁定；未裁定/废止规则不得接入执行。
+- PR #1457 静态关联校验不等于业务语义正确；文档的测试链接不宣称覆盖全部分支。
+- PR #1457 本次为正式待审 PR，目标 develop；未合并、未部署。
+- PR #1457 按七主题统一业务规则与共享维护流程
+- PR #1458 本 PR 仅包含报名分类修复，不包含其他分支的记忆或 test-suite 改动。
+- PR #1458 不回写历史动作底账，不触发真实报名。历史 unknown 仍需按实际回执核实。
+- PR #1458 发版底账：N/A，本次仅提交实现 PR。
+- PR #1458 合并、部署、生产验收与通知：未执行，本次范围为创建 PR。
+- PR #1458 按业务返回码区分报名失败与结果未知
+- PR #1456 补齐记忆状态分析与可视化数据导出
+- PR #1456 保护批次入队边界与并行身份隔离
+
+### 配置变更
+- PR #1457 无数据库 migration/schema/RPC、环境变量或运行时业务配置变更。
+- PR #1457 不新增配置化、自动飞书同步或发版底账。用户后来追加授权将规则按领域同步到指定飞书目录，用于运营讨论；这是一次文档快照同步，仓库仍为准。真实冒烟仍仅测试环境，未将测试记录导入飞书测试表或同步生产 Dashboard。
+- PR #1458 N/A：无数据库迁移、环境变量、运行时配置、权限或基础设施变更；无需额外配置同步。
+
+### 环境变量提醒
+- PR #1456 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #1457 已核对仓库规范、完整 diff、任务文件范围和目标分支；未包含凭据、临时测试产物或其他会话改动。
+- PR #1457 business-rules:validate：55 条规则、七个主题通过。
+- PR #1457 全主题关联测试：37 套、1,140 条通过。
+- PR #1457 pnpm run ci:check：lint、格式、类型、地理/词表/质量台账/规则校验、前后端构建通过；550 套 / 8,974 条测试通过，仓库原有 1 套 / 5 条因本地真实数据 fixture 缺失而跳过，3 个快照通过。
+- PR #1457 最终加载边界与 prompt 扫描定向复核：12 条通过；最终 lint、后端重建和打包正文核对通过。
+- PR #1457 duplication:check：0.57%；test:di-smoke：通过；skill quick_validate：通过；git diff --check：通过。
+- PR #1457 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；新正则仅解析维护标记。
+- PR #1457 未新增模型教学示例。
+- PR #1457 真实 Agent 业务评审全通过：**未满足**，详见下方。不能将运行成功写成业务通过。
+- PR #1457 补充检查 scripts/tsconfig.json 全量 tsc 时发现基线四个旧脚本的 8 条既有导入错误（eval/replay-reengagement、import-badcase-to-feishu、test-evaluation-cases）；相关文件未改，本次维护脚本经 ts-node 类型检查和执行通过。仓库要求的 typecheck/ci:check 全部通过。
+- PR #1457 合并、发布、生产迁移/配置、通知、发布后核查：N/A，本次交付包括实现、验证、正式 PR 与按用户追加要求进行的一次飞书文档同步。
+- PR #1457 IB、ID、SH、GEO、HO：通过对应冒烟检查；不代表完整预约/拉群副作用链覆盖。
+- PR #1457 SW（a44ec4cf-3b34-4fd7-b316-c3f3d20f2c04）：本人银行卡口径正确，但额外承诺办卡当天可取、不会影响报名入职，实际输入与工具无依据；记 failed，记录到 SW 未决项。模型正文未变，不在本次结构重构中暗改行为，也不声称已证明是此次重构导致。
+- PR #1457 GP（f1f6da14-e949-4e7d-8127-0f699d06e070）：我设计的“美团外卖未合作”前提缺少合作状态依据，记 skipped / 测试资产不可评估，不据此新增不合作规则。
+- PR #1457 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39941876158)：通过，覆盖 lint、格式、类型、重复率、业务规则校验、构建、单元测试与 DI 冒烟。
+- PR #1457 [AI Code Review](https://github.com/huajune/cake-agent-runtime/actions/runs/39941876107)：首次与一次失败任务重试均未返回 structured_output，没有产生代码 findings。工作流按失败关闭策略保留 CHANGES_REQUESTED；不能宣称审查通过，未绕过或改动门禁。
+- PR #1457 [导航与讨论说明](https://gingjqcjzc.feishu.cn/wiki/GQLRwsi1yig0rGkgtLScMrVinIb)
+- PR #1457 [IB 面试与报名](https://gingjqcjzc.feishu.cn/wiki/Fghfwz2Hdiv30OkPsQ1c7dHOnVc)
+- PR #1457 [SW 薪资福利与社保](https://gingjqcjzc.feishu.cn/wiki/ESG4wXKCbigTVpkBJl1cmpDQnCe)
+- PR #1457 [ID 身份与资格](https://gingjqcjzc.feishu.cn/wiki/UtCawzVSIiEO0VkfieockDWnnsh)
+- PR #1457 [SH 班次与出勤](https://gingjqcjzc.feishu.cn/wiki/Ua8gwTdUYixLSLkrVNCcqnognDc)
+- PR #1457 [GEO 地理与城市](https://gingjqcjzc.feishu.cn/wiki/GZQRw71MniUrwckuLlgc8pqRnYc)
+- PR #1457 [GP 岗位与拉群](https://gingjqcjzc.feishu.cn/wiki/ITTBwSbOCie022koQOLctzyPnyg)
+- PR #1457 [HO 人工介入边界](https://gingjqcjzc.feishu.cn/wiki/QcQMw29sGir9jgkKjrrcvtTKnbd)
+- PR #1458 两组定向测试：96 项通过，覆盖 observe / execute 下的两种业务拒绝、回执分流、字段保留及取消动作隔离。
+- PR #1458 TypeScript 类型检查。
+- PR #1458 修改源码的 ESLint、Prettier 检查及 git diff --check。
+- PR #1458 已审阅改动范围、异常处理、原始原因保留及未知结果保护。
+- PR #1458 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支。
+- PR #1458 未新增虚构 prompt 示例值；N/A。
+- PR #1458 本地 `pnpm run ci:check` 全部通过：lint / format / typecheck / geo / vocab / quality-ledger / 前后端构建 / 全量测试；548 个测试套件通过、1 个跳过，8971 项测试通过、5 项跳过。
+- PR #1458 GitHub CI Checks 40294098559 已通过。合并后的完整 ci:check：550 套 / 8992 项通过，原有 1 套 / 5 项跳过，3 个快照通过。
+- PR #1458 真实模型、Runner、Guardrail、ToolActionService 受控回归 2/2 业务通过：30058 / 30049 均 failed、仅调用一次、保留资料、一个分类人工介入意图、回复不声称成功。海绵响应与表单为受控 fixture，不执行真实报名或通知送达；两条正式资产默认不参与普通动态批跑。批次 edcb9490-9574-496f-af0f-7a8399f84d25 已评审、同步生产 Dashboard，warnings=[]，API 全量对账完成。
+- PR #1458 生产关键链路验证：未上线。
+- PR #1456 自审最终 diff、错误处理、资源释放、上下文传递；无凭据或候选人原始数据入库。
+- PR #1456 定向单测 12 项；真实 HTTP 拒绝空数组、重复 ID、parallel:false，均为 400。
+- PR #1456 类型检查、构建、定向 lint 与 git diff --check。
+- PR #1456 YAML 解析及诊断脚本合成认证错误检查，只输出分类，不输出原始错误文本。
+- PR #1456 真实 Agent 5/5 业务通过；批次 13f0e980-bde9-4f3e-add2-db376a3c9bb9；提交 HTTP 202，9.442 秒返回；四态复述正确、未知旧值重新确认、无工具调用。
+- PR #1456 既有正式测试资产的飞书状态回写完成；生产 Dashboard 同步 warnings=[]；生产 API 全量核对 ID、回复、工具、评审备注，completed / 5 passed / 0 failed / 0 pending。
+- PR #1456 本次无自然语言拒绝规则或虚构 prompt 示例修改。
+- PR #1456 pre-push 完整 ci:check 通过：548 suites、8,970 tests passed，5 skipped。
+- PR #1456 本轮 15 个合成身份记忆已重置，125 个隔离 Redis 键已备份删除并复查为零。
+- PR #1456 [远端 CI 39939250566](https://github.com/huajune/cake-agent-runtime/actions/runs/39939250566) 成功，HEAD 293d0095171327148636632b241ac6aa9b9e29ee。
+- PR #1456 required checks 已通过；AI workflow 的绿色来自“修改工作流需人工审阅”分支，Claude 步骤实际 skipped，不作为远端模型恢复证据。
+- PR #1456 GitHub reviewDecision=REVIEW_REQUIRED；所需审批、合并与生产发布尚未完成。此前只针对 #1451 的管理员例外不扩展到本 PR。
+- PR #1456 N/A：新 schema/migration、配置密钥、独立发版底账。生产发布前仍需正式 release/tag、部署验证及通知审阅，不能把本地通过当作上线。
+- PR #1456 为每个独立 Bull worker 注册 error 监听，连接故障进入日志处理。
+- PR #1456 并行批次在创建前拒绝重复 userId / sessionId，防止用例互相覆盖记忆 fixture。
+- PR #1456 全部入队成功后才将批次置为 RUNNING；worker 在有界等待中只接受该状态，入队失败或取消时不执行 Agent，取消状态不会被完成回调改回 reviewing。
+- PR #1456 按实际 Redis 连接的主机识别 Upstash，覆盖 REDIS_URL 配置兜底。
+- PR #1456 定向验证：17 项测试通过，覆盖身份冲突、启动屏障、取消不执行、worker 错误监听和 Redis 地址兜底；类型检查通过。本地完整 ci:check 通过：548 套 / 8975 项通过，1 套 / 5 项既有跳过；最新远端 CI 待完成。
+- PR #1456 既有真实 Agent 五项业务回归对应修复前提交；本次队列变更的定向测试不冒充新增真实 Agent 业务回归。
+<!-- release:pending:end -->
+
 ## [11.14.1] - 2026-10-23
 
 **来源分支**: `develop`

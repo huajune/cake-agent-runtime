@@ -40,7 +40,7 @@
 | 5   | `wecom:message:trace:{messageId}:v2`                                   | Hash          | 24 h                       | wecom/message   | 消息 trace 上下文（字段级增量更新） |
 | 6   | `memory:short_term:chat:{chatId}`                                      | List          | 7 天                       | memory          | 消息热缓存；滚动 7 天窗口在内存套用 |
 | 7   | `factsv2:{corpId}:{userId}:{sessionId}`                                | Hash          | 7 天 + 12 小时             | memory          | 会话 facts + 工作台                 |
-| 8   | `stage:{corpId}:{userId}:{sessionId}`                                  | String (JSON) | 7 天                       | memory          | short-term 阶段指针                 |
+| 8   | `stage:{corpId}:{userId}:{sessionId}`                                  | String (JSON) | 7 天 + 12 小时                       | memory          | short-term 阶段指针                 |
 | 9   | `long-term:{corpId}:{userId}:{botUserId}`                              | String (JSON) | 2 小时                     | memory          | 长期关系档缓存                      |
 | 10  | `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | String (JSON) | 7 天                       | tools           | 收资表单完整实体                    |
 | 11  | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | String (JSON) | 7 天                       | tools           | 当前办理人定位指针                  |
@@ -220,7 +220,7 @@ Redis Hash 不支持 field TTL，因此 facts 与 workbench 共享同一个 key 
 | -------- | ------------------------- |
 | 数据结构 | String（统一 entry JSON） |
 | 存储内容 | `{ currentStage }`        |
-| TTL      | 7 天                      |
+| TTL      | 7 天 + 12 小时                      |
 
 阶段属于 short-term working state；“procedural”是 Prompt 手册/规则的内容类型，不是本 key 的存储层。
 
@@ -456,7 +456,7 @@ bull:{env}:test-suite:{waiting|active|completed|failed|delayed|{jobId}}
 | 消息 trace                     | 24 h                                       | 自动过期                          |
 | 消息热缓存                     | `MEMORY_SESSION_TTL_DAYS`（当前默认 7 天） | 自动过期；滚动 7 天窗口独立于 TTL |
 | Session facts + workbench      | 7 天 + 12 小时安全余量                     | 自动过期                          |
-| 阶段指针                       | 7 天                                       | 自动过期                          |
+| 阶段指针                       | 7 天 + 12 小时                                       | 自动过期                          |
 | 长期关系档缓存                 | 2 小时                                     | 自动过期；Supabase 为权威源       |
 | 收资表单与定位指针             | 7 天                                       | tools 域自动过期或办结后主动删除  |
 | 托管共享缓存                   | 无                                         | 观察者 / 定期同步                 |

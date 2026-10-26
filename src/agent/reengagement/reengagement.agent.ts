@@ -1,3 +1,4 @@
+// business-rules: HO-01, IB-13
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';

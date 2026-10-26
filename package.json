@@ -1,6 +1,6 @@
 {
   "name": "cake-agent-runtime",
-  "version": "11.14.1",
+  "version": "11.14.2",
   "description": "自主 AI Agent 运行时 — 基于 Vercel AI SDK 多 Provider 架构",
   "author": "",
   "private": true,
@@ -13,7 +13,7 @@
     "build": "nest build",
     "build:ci": "API_GUARD_TOKEN=ci-placeholder-token pnpm run build:web && API_GUARD_TOKEN=ci-placeholder-token pnpm run build",
     "build:web": "cd web && pnpm run build",
-    "ci:check": "pnpm run lint:check && pnpm run format:check && pnpm run typecheck && pnpm run geo:validate && pnpm run vocab:validate && pnpm run quality-ledger:validate && pnpm run build:ci && pnpm run test:ci",
+    "ci:check": "pnpm run lint:check && pnpm run format:check && pnpm run typecheck && pnpm run geo:validate && pnpm run vocab:validate && pnpm run quality-ledger:validate && pnpm run business-rules:validate && pnpm run build:ci && pnpm run test:ci",
     "duplication:check": "jscpd src web/src --min-lines 8 --min-tokens 70 --ignore \"**/*.spec.ts\" --threshold 2.06 --silent",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
@@ -57,7 +57,9 @@
     "release:pr:create": "node scripts/create-release-pr.js",
     "release:ledger": "node scripts/generate-release-ledger.js",
     "release:ledger:check": "node scripts/check-release-ledger.js",
-    "deploy": "bash scripts/deploy-local.sh"
+    "deploy": "bash scripts/deploy-local.sh",
+    "business-rules:validate": "ts-node -r tsconfig-paths/register --project scripts/tsconfig.json scripts/business-rules/validate-business-rules.ts",
+    "business-rules:test": "ts-node -r tsconfig-paths/register --project scripts/tsconfig.json scripts/business-rules/test-business-rules.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.21",

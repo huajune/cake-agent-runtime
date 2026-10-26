@@ -1,3 +1,4 @@
+// business-rules: IB-06
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { parseInterviewMethod, requiresStoreVisit } from '@sponge/interview-method';

@@ -1,3 +1,4 @@
+import { readCandidateManual } from '../helpers/candidate-manual';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -5,10 +6,7 @@ describe('unknown employment fact handoff contract', () => {
   const root = process.cwd();
 
   it('forces unresolved contract or agreement questions to salary_admin_inquiry handoff', () => {
-    const candidatePrompt = readFileSync(
-      join(root, 'src/agent/generator/context/sections/procedural/candidate-consultation.md'),
-      'utf8',
-    );
+    const candidatePrompt = readCandidateManual(root);
     const handoffTool = readFileSync(join(root, 'src/tools/request-handoff.tool.ts'), 'utf8');
 
     expect(candidatePrompt).toContain('关键用工事实无法确认时，当轮转人工');

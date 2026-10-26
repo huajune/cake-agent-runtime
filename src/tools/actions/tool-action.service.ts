@@ -113,7 +113,7 @@ export class ToolActionService implements OnModuleInit {
               },
             };
           }
-          return spongeActionCompletion(result);
+          return spongeActionCompletion(result, input.kind);
         } catch {
           return {
             status: 'unknown',

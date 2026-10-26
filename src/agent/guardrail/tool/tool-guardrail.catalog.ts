@@ -1,3 +1,4 @@
+import type { BusinessRuleLink } from '@shared-types/business-rule.types';
 import type {
   GuardrailAction,
   GuardrailCoverage,
@@ -20,7 +21,7 @@ import {
  * - 对应阶段/动作/优先级/owner；
  * - 真实实现位置与验证证据。
  */
-export interface ToolGuardrailCatalogEntry {
+export interface ToolGuardrailCatalogEntry extends BusinessRuleLink {
   id: string;
   toolNames: readonly string[];
   stage: GuardrailStage;
@@ -41,6 +42,7 @@ export interface ToolGuardrailCatalogEntry {
 export const TOOL_GUARDRAIL_CATALOG = [
   {
     id: 'job_list_brand_provenance',
+    businessRule: 'GP-03',
     toolNames: ['duliday_job_list'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
@@ -62,6 +64,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'job_list_schedule_constraint_provenance',
+    businessRule: 'SH-05',
     toolNames: ['duliday_job_list'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
@@ -81,6 +84,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_jobid_provenance',
+    businessRule: 'IB-07',
     toolNames: ['duliday_interview_booking', 'duliday_interview_precheck'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
@@ -99,6 +103,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_precheck_contract',
+    businessRule: 'IB-01',
     toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
@@ -117,6 +122,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_real_name',
+    businessRule: 'ID-01',
     toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
@@ -133,6 +139,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'booking_name_authority',
+    businessRule: 'ID-04',
     toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
@@ -149,6 +156,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'invite_city_provenance',
+    businessRule: 'GEO-04',
     toolNames: ['invite_to_group', 'geocode'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
@@ -170,6 +178,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'invite_timing_gate',
+    businessRule: 'GP-10',
     toolNames: ['invite_to_group'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_COLLECT,
@@ -189,6 +198,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'cancel_work_order_ownership',
+    businessRule: 'IB-12',
     toolNames: ['duliday_cancel_work_order'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
@@ -205,6 +215,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'modify_work_order_ownership',
+    businessRule: 'IB-12',
     toolNames: ['duliday_modify_interview_time'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,
@@ -221,6 +232,8 @@ export const TOOL_GUARDRAIL_CATALOG = [
   },
   {
     id: 'image_message_allowlist',
+    businessRule: null,
+    mechanismReason: '通用执行/表达协议，具体招聘口径由业务规则维护。',
     toolNames: ['save_image_description'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,

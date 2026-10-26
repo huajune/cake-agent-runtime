@@ -1,3 +1,4 @@
+// business-rules: HO-01, HO-02, HO-03, HO-04, IB-09, SW-03, SW-06
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
