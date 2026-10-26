@@ -8,6 +8,75 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.14.2`
+**最近更新**: `2026-10-26`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 运营说明
+- 已按用户追加要求，将七个领域同步到指定飞书目录，供运营阅读与讨论。仓库仍为正式维护依据；本次保持现有业务行为，未部署。
+
+### 更新摘要
+- PR #1457 按七主题统一业务规则与共享维护流程
+- PR #1457 按七主题重构业务规则与 Claude/Codex 共用维护流程
+
+### 新功能
+- PR #1457 增加主题关联校验与按主题执行局部契约测试的命令，校验直接读取 Markdown 索引和现有规则定义，已接入本地 ci:check 与 GitHub CI。
+- PR #1457 Codex 的 .agents/skills 和 Claude 的 .claude/skills 链接同一维护源文件，增加 AGENTS.md 入口。
+
+### 问题修复
+- PR #1457 规则资产缺失、重复、未引用或格式错误时阻断启动，避免静默丢失手册。
+- PR #1457 已知敏感条件婉拒与禁止无证据声称招满的冲突按用户裁定仅记录，保持行为。
+
+### 优化调整
+- PR #1457 candidate-consultation.md 保留共通规程与原始顺序引用；七份主题正文位于 src/agent/generator/context/sections/procedural/rules/，docs 只维护业务摘要、来源、实现/测试关联及未决事项。
+- PR #1457 Guardrail / final-check 增加仅供审计的业务编号，通用机制显式注明豁免理由；工具、守卫与复聊的执行职责留在原消费者处。
+- PR #1457 同步 prompt 台账、现有文案断言和词表校验。47 个业务实现文件去除新增审计字段后的编译结果与基线一致。
+- PR #1457 模型可见手册与基线 12090e6f 逐字节一致：55,988 UTF-8 字节，SHA-256 f2e59fec2118593b57fd82244c01f22a51b3f2219e07c903f163bc7f8c7f3b44；构建产物与源码一致。
+
+### 运维与流程
+- PR #1457 编号稳定，当前实现归档为“现行基线”，不冒充新的业务裁定；未裁定/废止规则不得接入执行。
+- PR #1457 静态关联校验不等于业务语义正确；文档的测试链接不宣称覆盖全部分支。
+- PR #1457 本次为正式待审 PR，目标 develop；未合并、未部署。
+- PR #1457 按七主题统一业务规则与共享维护流程
+
+### 配置变更
+- PR #1457 无数据库 migration/schema/RPC、环境变量或运行时业务配置变更。
+- PR #1457 不新增配置化、自动飞书同步或发版底账。用户后来追加授权将规则按领域同步到指定飞书目录，用于运营讨论；这是一次文档快照同步，仓库仍为准。真实冒烟仍仅测试环境，未将测试记录导入飞书测试表或同步生产 Dashboard。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1457 已核对仓库规范、完整 diff、任务文件范围和目标分支；未包含凭据、临时测试产物或其他会话改动。
+- PR #1457 business-rules:validate：55 条规则、七个主题通过。
+- PR #1457 全主题关联测试：37 套、1,140 条通过。
+- PR #1457 pnpm run ci:check：lint、格式、类型、地理/词表/质量台账/规则校验、前后端构建通过；550 套 / 8,974 条测试通过，仓库原有 1 套 / 5 条因本地真实数据 fixture 缺失而跳过，3 个快照通过。
+- PR #1457 最终加载边界与 prompt 扫描定向复核：12 条通过；最终 lint、后端重建和打包正文核对通过。
+- PR #1457 duplication:check：0.57%；test:di-smoke：通过；skill quick_validate：通过；git diff --check：通过。
+- PR #1457 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；新正则仅解析维护标记。
+- PR #1457 未新增模型教学示例。
+- PR #1457 真实 Agent 业务评审全通过：**未满足**，详见下方。不能将运行成功写成业务通过。
+- PR #1457 补充检查 scripts/tsconfig.json 全量 tsc 时发现基线四个旧脚本的 8 条既有导入错误（eval/replay-reengagement、import-badcase-to-feishu、test-evaluation-cases）；相关文件未改，本次维护脚本经 ts-node 类型检查和执行通过。仓库要求的 typecheck/ci:check 全部通过。
+- PR #1457 合并、发布、生产迁移/配置、通知、发布后核查：N/A，本次交付包括实现、验证、正式 PR 与按用户追加要求进行的一次飞书文档同步。
+- PR #1457 IB、ID、SH、GEO、HO：通过对应冒烟检查；不代表完整预约/拉群副作用链覆盖。
+- PR #1457 SW（a44ec4cf-3b34-4fd7-b316-c3f3d20f2c04）：本人银行卡口径正确，但额外承诺办卡当天可取、不会影响报名入职，实际输入与工具无依据；记 failed，记录到 SW 未决项。模型正文未变，不在本次结构重构中暗改行为，也不声称已证明是此次重构导致。
+- PR #1457 GP（f1f6da14-e949-4e7d-8127-0f699d06e070）：我设计的“美团外卖未合作”前提缺少合作状态依据，记 skipped / 测试资产不可评估，不据此新增不合作规则。
+- PR #1457 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/39941876158)：通过，覆盖 lint、格式、类型、重复率、业务规则校验、构建、单元测试与 DI 冒烟。
+- PR #1457 [AI Code Review](https://github.com/huajune/cake-agent-runtime/actions/runs/39941876107)：首次与一次失败任务重试均未返回 structured_output，没有产生代码 findings。工作流按失败关闭策略保留 CHANGES_REQUESTED；不能宣称审查通过，未绕过或改动门禁。
+- PR #1457 [导航与讨论说明](https://gingjqcjzc.feishu.cn/wiki/GQLRwsi1yig0rGkgtLScMrVinIb)
+- PR #1457 [IB 面试与报名](https://gingjqcjzc.feishu.cn/wiki/Fghfwz2Hdiv30OkPsQ1c7dHOnVc)
+- PR #1457 [SW 薪资福利与社保](https://gingjqcjzc.feishu.cn/wiki/ESG4wXKCbigTVpkBJl1cmpDQnCe)
+- PR #1457 [ID 身份与资格](https://gingjqcjzc.feishu.cn/wiki/UtCawzVSIiEO0VkfieockDWnnsh)
+- PR #1457 [SH 班次与出勤](https://gingjqcjzc.feishu.cn/wiki/Ua8gwTdUYixLSLkrVNCcqnognDc)
+- PR #1457 [GEO 地理与城市](https://gingjqcjzc.feishu.cn/wiki/GZQRw71MniUrwckuLlgc8pqRnYc)
+- PR #1457 [GP 岗位与拉群](https://gingjqcjzc.feishu.cn/wiki/ITTBwSbOCie022koQOLctzyPnyg)
+- PR #1457 [HO 人工介入边界](https://gingjqcjzc.feishu.cn/wiki/QcQMw29sGir9jgkKjrrcvtTKnbd)
+<!-- release:pending:end -->
+
 ## [11.14.1] - 2026-10-23
 
 **来源分支**: `develop`
