@@ -1,3 +1,4 @@
+import { classifyBookingRejection } from '@sponge/booking-rejection';
 import type {
   ActionCompletion,
   ActionExecution,
@@ -25,6 +26,7 @@ export function toolActionIntent(
 
 export function spongeActionCompletion<T extends InterviewBookingResult | WorkOrderMutationResult>(
   result: T,
+  kind?: string,
 ): ActionCompletion<T> {
   if (result.success && result.code === 0)
     return {
@@ -36,6 +38,18 @@ export function spongeActionCompletion<T extends InterviewBookingResult | WorkOr
         ...('workOrderId' in result && result.workOrderId
           ? { externalId: String(result.workOrderId) }
           : {}),
+      },
+    };
+  const rejection = kind === 'sponge.booking' ? classifyBookingRejection(result) : null;
+  if (rejection)
+    return {
+      status: 'failed',
+      result,
+      retryable: false,
+      evidence: {
+        kind: 'definitive_no_effect',
+        requestTerminated: true,
+        detail: rejection,
       },
     };
   if ('duplicateSignupReason' in result && result.duplicateSignupReason)

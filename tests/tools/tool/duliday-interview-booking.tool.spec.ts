@@ -1,3 +1,4 @@
+import { spongeActionCompletion } from '@tools/actions/business-action.util';
 import type { ToolActionService } from '@tools/actions/tool-action.service';
 import {
   createForm,
@@ -207,6 +208,52 @@ describe('duliday_interview_booking（form → labelList）', () => {
       abortSignal: undefined as never,
     }) as Promise<Record<string, unknown>>;
   }
+
+  it.each([
+    [30058, 'booking_capacity_full', '岗位名额已满'],
+    [30049, 'interview_slot_coordination', '面试时间不符合岗位要求'],
+  ])(
+    'code %s preserves collected fields and emits one classified handoff',
+    async (code, reasonCode, reason) => {
+      const originalForm = structuredClone(currentForm);
+      const providerResult = {
+        success: false,
+        code: Number(code),
+        message: 'provider wording changed',
+        traceId: 'upstream-trace',
+        applyErrorList: null,
+      };
+      sponge.bookInterview.mockResolvedValue(providerResult);
+      const actions = {
+        executeSponge: jest.fn(async (_context, input, dispatch) => ({
+          ...spongeActionCompletion(await dispatch(), input.kind),
+          actionId: 'action',
+          requestId: 'request',
+          localSync: 'complete',
+          dispatched: true,
+        })),
+      };
+      const result = await execute({ jobId: 100 }, actions as never);
+      expect(result).toMatchObject({
+        success: false,
+        actionStatus: 'failed',
+        errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+        apiCode: code,
+        traceId: 'upstream-trace',
+        sideEffect: { kind: 'general_handoff', reasonCode, recordHandoff: true },
+      });
+      expect(result._outcome).toContain(reason);
+      expect(result._replyInstruction).not.toContain('字段已精确重开');
+      expect(result.sideEffect).not.toHaveProperty('recordOnly');
+      expect(currentForm).toEqual(originalForm);
+      expect(ops.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: 'booking.failed' }),
+      );
+      expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
+      expect(notifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+      expect(hosting.pauseUser).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(['unknown', 'executing', 'blocked'])(
     'action %s never triggers booking failure, pause, red card or a direct second request',
