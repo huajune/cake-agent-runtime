@@ -60,6 +60,32 @@ describe('TestSuiteQueueService', () => {
     expect(batchService.createBatch).not.toHaveBeenCalled();
   });
 
+  it.each(['userId', 'sessionId'])(
+    'rejects shared %s before creating a parallel batch',
+    async (field) => {
+      await expect(
+        service.submitBatch({
+          cases: [
+            { caseId: 'a', [field]: 'shared' },
+            { caseId: 'b', [field]: 'shared' },
+          ],
+        }),
+      ).rejects.toThrow(field);
+      expect(batchService.createBatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('opens the execution barrier only after every enqueue succeeds', async () => {
+    processor.addPreparedBatchJobs.mockImplementation(async () => {
+      expect(batchService.updateBatchStatus).not.toHaveBeenCalledWith(
+        'batch-1',
+        BatchStatus.RUNNING,
+      );
+    });
+    await service.submitBatch({ cases: [{ message: 'test' }] });
+    expect(batchService.updateBatchStatus).toHaveBeenLastCalledWith('batch-1', BatchStatus.RUNNING);
+  });
+
   it('does not admit jobs when persistence fails', async () => {
     executionService.saveExecution.mockRejectedValue(new Error('database unavailable'));
     await expect(service.submitBatch({ cases: [{ message: 'test' }] })).rejects.toThrow(

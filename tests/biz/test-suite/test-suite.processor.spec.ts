@@ -12,7 +12,10 @@ describe('TestSuiteProcessor tool constraints', () => {
   const queue = {
     add: jest.fn(),
     name: 'test-suite',
-    client: { duplicate: jest.fn(() => ({ quit: jest.fn().mockResolvedValue(undefined) })) },
+    client: {
+      options: { host: 'localhost' },
+      duplicate: jest.fn(() => ({ quit: jest.fn().mockResolvedValue(undefined) })),
+    },
     process: jest.fn(),
     on: jest.fn(),
   };
@@ -39,6 +42,7 @@ describe('TestSuiteProcessor tool constraints', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    queue.client.options.host = 'localhost';
     configService.get.mockReset();
     batchService.getBatch.mockResolvedValue({ status: 'running' });
     queue.add.mockResolvedValue({ id: 'job-1' });
@@ -66,20 +70,48 @@ describe('TestSuiteProcessor tool constraints', () => {
     const constructor = BullQueue as unknown as jest.Mock;
     workers.forEach((worker) => constructor.mockImplementationOnce(() => worker));
     configService.get.mockImplementation((key) =>
-      key === 'UPSTASH_REDIS_TCP_URL'
-        ? 'rediss://test'
+      key === 'REDIS_URL'
+        ? 'rediss://test.upstash.io'
         : key === 'TEST_SUITE_WORKER_CONCURRENCY'
           ? 3
           : undefined,
     );
+    queue.client.options.host = 'test.upstash.io';
     const processor = buildProcessor();
     (processor as unknown as { registerWorkers(): void }).registerWorkers();
     expect(constructor).toHaveBeenCalledTimes(3);
-    for (const worker of workers)
+    for (const worker of workers) {
       expect(worker.process).toHaveBeenCalledWith('execute-test', 1, expect.any(Function));
+      const handler = worker.on.mock.calls.find(([event]) => event === 'error')?.[1];
+      expect(handler).toEqual(expect.any(Function));
+      expect(() => handler(new Error('connection lost'))).not.toThrow();
+    }
     expect(queue.process).not.toHaveBeenCalled();
     await processor.onModuleDestroy();
     workers.forEach((worker) => expect(worker.close).toHaveBeenCalledTimes(1));
+  });
+
+  it.each(['running', 'cancelled'])('waits for full admission before %s', async (status) => {
+    jest.useFakeTimers();
+    try {
+      batchService.getBatch.mockResolvedValue({ status: 'created' });
+      const processor = buildProcessor();
+      await processor.addPreparedBatchJobs('batch-1', [
+        { caseId: 'c', caseName: 'n', userId: 'u' },
+      ]);
+      const data = queue.add.mock.calls[0][1];
+      const pending = (
+        processor as unknown as { handleTestJob(job: Job<TestJobData>): Promise<TestJobResult> }
+      ).handleTestJob({ data, progress: jest.fn() } as unknown as Job<TestJobData>);
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(executionService.executeTest).not.toHaveBeenCalled();
+      batchService.getBatch.mockResolvedValue({ status });
+      await jest.advanceTimersByTimeAsync(1000);
+      await pending;
+      expect(executionService.executeTest).toHaveBeenCalledTimes(status === 'running' ? 1 : 0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('keeps the entire async request and isolates the generated batch ID', async () => {

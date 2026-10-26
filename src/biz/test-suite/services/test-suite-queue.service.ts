@@ -27,6 +27,12 @@ export class TestSuiteQueueService {
     if (new Set(cases.map((testCase) => testCase.caseId)).size !== cases.length) {
       throw new BadRequestException('同一批次的 caseId 不得重复');
     }
+    for (const field of ['userId', 'sessionId'] as const) {
+      const identities = cases.map((testCase) => testCase[field]).filter(Boolean);
+      if (new Set(identities).size !== identities.length) {
+        throw new BadRequestException(`并行用例的 ${field} 不得重复`);
+      }
+    }
     const batch = await this.batchService.createBatch({
       name: request.batchName || `API 测试 ${new Date().toISOString()}`,
       source: BatchSource.MANUAL,
@@ -60,8 +66,9 @@ export class TestSuiteQueueService {
         if (failed?.status === 'rejected') throw failed.reason;
       }
       await this.batchService.updateBatchStats(batch.id);
-      await this.batchService.updateBatchStatus(batch.id, BatchStatus.RUNNING);
       await this.testProcessor.addPreparedBatchJobs(batch.id, cases);
+      // Workers wait for this admission barrier before touching Agent state.
+      await this.batchService.updateBatchStatus(batch.id, BatchStatus.RUNNING);
     } catch (error) {
       await this.batchService.updateBatchStatus(batch.id, BatchStatus.CANCELLED);
       throw error;

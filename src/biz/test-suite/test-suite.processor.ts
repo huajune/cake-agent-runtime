@@ -169,7 +169,7 @@ export class TestSuiteProcessor implements OnModuleInit, OnModuleDestroy {
     // 托管 Redis 会延迟同一阻塞连接上流水化 BRPOPLPUSH 的回复，导致任务
     // 已移入 active 却尚未拿到 Bull 锁。每个并发槽使用独立 bclient，普通
     // client 复用生产者，subscriber 在本组 worker 间共享。
-    if (this.configService.get<string>('UPSTASH_REDIS_TCP_URL')) {
+    if (this.testQueue.client.options.host?.endsWith('.upstash.io')) {
       const subscriber = this.testQueue.client.duplicate({
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
@@ -207,6 +207,9 @@ export class TestSuiteProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private setupQueueEventListeners(queue: Queue<TestJobData>): void {
+    queue.on('error', (error: Error) => {
+      this.logger.error(`[TestSuite Queue] worker 连接异常: ${toErrorMessage(error)}`);
+    });
     queue.on('completed', (job: Job<TestJobData>, result: TestJobResult) => {
       this.onJobCompleted(job, result);
     });
@@ -222,6 +225,19 @@ export class TestSuiteProcessor implements OnModuleInit, OnModuleDestroy {
     queue.on('stalled', (job: Job<TestJobData>) => {
       this.logger.warn(`[TestSuite] ⚠️ 任务 ${job.id} 卡住: ${job.data.caseName}`);
     });
+  }
+
+  private async waitForBatchAdmission(batchId: string): Promise<void> {
+    // Bounded wait: a crashed submitter must never authorize partially admitted work.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const batch = await this.batchService.getBatch(batchId);
+      if (batch?.status === BatchStatus.RUNNING) return;
+      if (!batch || batch.status !== BatchStatus.CREATED) {
+        throw new Error('批次尚未完成入队、已取消或不存在');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    throw new Error('等待批次完整入队超时');
   }
 
   private async handleTestJob(job: Job<TestJobData>): Promise<TestJobResult> {
@@ -250,10 +266,7 @@ export class TestSuiteProcessor implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (job.data.request) {
-        const batch = await this.batchService.getBatch(batchId);
-        if (!batch || batch.status === BatchStatus.CANCELLED) {
-          throw new Error('批次已取消或不存在');
-        }
+        await this.waitForBatchAdmission(batchId);
       }
       await job.progress(10);
 
@@ -451,6 +464,8 @@ export class TestSuiteProcessor implements OnModuleInit, OnModuleDestroy {
     this.logger.debug(`[TestSuite] 批次 ${batchId} 进度: ${dbStats.total}/${totalCases} 完成`);
 
     if (dbStats.total >= totalCases) {
+      const batch = await this.batchService.getBatch(batchId);
+      if (!batch || batch.status !== BatchStatus.RUNNING) return;
       this.logger.log(
         `[TestSuite] 📊 批次 ${batchId} 全部完成: ${dbStats.success}/${totalCases} 成功`,
       );
