@@ -1,3 +1,4 @@
+// business-rules: SW-05
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import { extractPresentedJobs } from '@resolution/job';
 import type { RecommendedJobSummary } from '@resolution/job/types';

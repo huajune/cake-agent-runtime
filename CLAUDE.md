@@ -98,7 +98,7 @@ src/
 ├── channels/wecom/     # 企微渠道
 │   └── message/        #   ingress(回调入口) → application(过滤/管道/回复工作流) → runtime(去重/debounce 合并)
 │                       #   → delivery(拟人化投递) + telemetry(观测采集)
-├── skills/             # Claude Code skills（analyze-chat-badcases，软链进 .claude/skills）
+├── skills/             # 共享维护 skills（Claude/Codex 入口链接到同一源目录）
 └── enums/ types/       # 共享枚举与类型
 
 web/                    # React Dashboard（视图：dashboard / message-processing / reengagement / test-suite /
@@ -160,6 +160,7 @@ Catalog 仅管理可独立识别与治理的规则：Input、Tool、Output 各�
 
 ## Prompt 内容防腐纪律（改手册/工具 description/DB 策略/守卫规则时必读）
 
+- **业务主题入口**：[docs/business-rules](./docs/business-rules/README.md) 覆盖七个主题，手册正文保留在 `src/.../procedural/rules/`。Claude/Codex 共用 [maintain-business-rules](./src/skills/maintain-business-rules/SKILL.md)；不新增数据库规则配置。主题摘要维护业务口径与关联，本台账维护 prompt 居所与放置纪律。
 - **规则台账是必经登记处**：任何 prompt 侧规则的增/改/删，必须同批更新 [docs/prompt-rule-ledger.md](./docs/prompt-rule-ledger.md)（摘要/来源/日期/时效性），放置位置先过台账文首的判定树——同一约束只准住一处。
 - **职责迁移必须回收**：代码/状态机接管某行为的 PR，必须同批删除 prompt 侧对应教学（先例：收资状态机上线后 precheck 描述 13.5K→729）。
 - **临时规则必须标 TTL**：季节性/开城状态/活动期口径必须写明过期条件，过期即删（标本：暑假工 2026 暑期规则）。

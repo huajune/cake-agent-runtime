@@ -6,10 +6,10 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'node:crypto';
+import { loadCandidateManual } from './manual-loader';
 import { renderPromptBlocks, type PromptSection } from './sections/section';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import { IdentitySection } from './sections/procedural/identity.section';
@@ -221,38 +221,11 @@ export class ContextService implements OnModuleInit {
   }
 
   private async loadPromptAssets(): Promise<void> {
-    const assetNames = ['candidate-consultation'];
-    for (const assetName of assetNames) {
-      const filePath = join(this.promptsBasePath, `${assetName}.md`);
-      const content = await this.readTextFile(filePath);
-      if (content) {
-        this.promptAssets.set(assetName, this.stripMaintainerComments(content));
-      }
-    }
+    // Missing/malformed fragments fail startup instead of silently dropping business rules.
+    this.promptAssets.set(
+      'candidate-consultation',
+      await loadCandidateManual(this.promptsBasePath),
+    );
     this.logger.log(`提示词资产加载完成，共 ${this.promptAssets.size} 个文件`);
-  }
-
-  /**
-   * 剥离 HTML 注释（<!-- ... -->）：badcase 溯源、修订注记等维护者信息只留在
-   * 源 md 文件里，不进模型上下文——省 token 且避免内部事故细节被模型回显。
-   */
-  private stripMaintainerComments(content: string): string {
-    return content
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/[ \t]+$/gm, '')
-      .replace(/\n{3,}/g, '\n\n');
-  }
-
-  private async readTextFile(filePath: string): Promise<string | undefined> {
-    try {
-      if (!existsSync(filePath)) {
-        this.logger.warn(`文件不存在: ${filePath}`);
-        return undefined;
-      }
-      return await readFile(filePath, 'utf-8');
-    } catch (error) {
-      this.logger.error(`读取文本文件失败: ${filePath}`, error);
-      return undefined;
-    }
   }
 }

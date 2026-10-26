@@ -22,6 +22,7 @@
  */
 
 import { readFileSync } from 'fs';
+import { assembleManual } from '../../src/agent/generator/context/manual-loader';
 import { join } from 'path';
 
 import { VALID_LABOR_FORMS } from '@resolution/labor-form';
@@ -39,7 +40,20 @@ const failures: Failure[] = [];
 const passed: string[] = [];
 
 function read(relPath: string): string {
-  return readFileSync(join(REPO_ROOT, relPath), 'utf8');
+  const raw = readFileSync(join(REPO_ROOT, relPath), 'utf8');
+  if (relPath.endsWith('/candidate-consultation.md')) {
+    return assembleManual(raw, (topic) =>
+      readFileSync(
+        join(
+          REPO_ROOT,
+          'src/agent/generator/context/sections/procedural/rules',
+          `${topic.toLowerCase()}.md`,
+        ),
+        'utf8',
+      ),
+    );
+  }
+  return raw;
 }
 
 /** 从一段 TS 源码里抽取某个字符串联合类型的成员。 */

@@ -1,3 +1,4 @@
+import type { BusinessRuleLink } from '@shared-types/business-rule.types';
 import type {
   GuardrailAction,
   GuardrailCoverage,
@@ -7,7 +8,7 @@ import type {
 } from '@shared-types/guardrail.contract';
 
 /** Input / Tool / Output 规则共用的审计字段。 */
-export interface GuardrailCatalogEntry {
+export interface GuardrailCatalogEntry extends BusinessRuleLink {
   id: string;
   layer: GuardrailLayer;
   stage: GuardrailStage;

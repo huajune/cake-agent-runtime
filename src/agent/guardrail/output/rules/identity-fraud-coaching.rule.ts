@@ -1,3 +1,4 @@
+// business-rules: ID-05
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import { matchIdentityEvidence } from '@resolution/candidate/student-identity';

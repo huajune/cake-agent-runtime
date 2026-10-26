@@ -1,3 +1,4 @@
+// business-rules: GEO-04, GP-10
 import { normalizeCityName as normalizeCity, isConcreteCityScope } from '@resolution/geo';
 import { mentionsPlaceNameStandalone, scanGeoSignalsFromText } from '@resolution/geo';
 import { isAssistantQuestionConfirmedInDialogue } from '@resolution/notary/dialogue-confirmation';

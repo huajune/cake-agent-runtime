@@ -1,14 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readCandidateManual } from '../helpers/candidate-manual';
 
 describe('booking failure current-result-only contract', () => {
   const root = process.cwd();
 
   it('requires an explicit terminal reply when the candidate asks for only the current result', () => {
-    const candidatePrompt = readFileSync(
-      join(root, 'src/agent/generator/context/sections/procedural/candidate-consultation.md'),
-      'utf8',
-    );
+    const candidatePrompt = readCandidateManual(root);
 
     expect(candidatePrompt).toContain(
       '候选人报告报名失败但工具和权威历史没有原因时，只能确认失败事实',

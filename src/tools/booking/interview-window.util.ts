@@ -1,3 +1,4 @@
+// business-rules: IB-10
 import type { InterviewWindow } from '@tools/job-list/job-policy-parser';
 import { formatShanghaiDate, formatShanghaiTime } from '@tools/booking/date.util';
 

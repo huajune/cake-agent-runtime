@@ -1,3 +1,4 @@
+// business-rules: IB-02
 import type { FactRule } from '../output-rule.types';
 
 /**

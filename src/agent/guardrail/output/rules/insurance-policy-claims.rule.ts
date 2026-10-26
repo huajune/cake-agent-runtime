@@ -1,3 +1,4 @@
+// business-rules: SW-02
 import { createOutputRuleFinding } from '../output-rule-catalog';
 
 const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
