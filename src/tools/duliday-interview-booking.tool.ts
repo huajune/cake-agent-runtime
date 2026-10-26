@@ -6,6 +6,8 @@
  */
 
 import { createHash } from 'crypto';
+import { classifyBookingRejection } from '@sponge/booking-rejection';
+import { HANDOFF_REASON_LABELS } from '@enums/handoff-reason.enum';
 import type { ToolActionService } from './actions/tool-action.service';
 import {
   actionReceiptFields,
@@ -752,6 +754,62 @@ export function buildInterviewBookingTool(
           }
 
           const interviewType = analysis.interviewMeta.method ?? undefined;
+
+          const rejection = classifyBookingRejection(result);
+          if (rejection) {
+            const capacityFull = rejection === 'capacity_full';
+            const reasonCode = capacityFull
+              ? 'booking_capacity_full'
+              : 'interview_slot_coordination';
+            const label = HANDOFF_REASON_LABELS[reasonCode];
+            const outcome = capacityFull
+              ? '报名失败：岗位名额已满'
+              : '报名失败：面试时间不符合岗位要求';
+            await recordBookingEvent(
+              opsEventsRecorder,
+              context,
+              'booking.failed',
+              jobId,
+              interviewTime,
+              {
+                reason: result.message ?? outcome,
+                apiCode: result.code,
+              },
+            );
+            // Business rejection does not invalidate candidate fields. The unified handoff
+            // commits the pause and notification once, preserving the provider's explanation.
+            return {
+              ...baseToolOutput,
+              ...buildToolError({
+                errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+                outcome,
+                replyInstruction:
+                  `${outcome}。如实告诉候选人，会请同事${capacityFull ? '协调名额或其他岗位' : '核实可约时段'}。` +
+                  '本轮已携带人工介入意图，不要再调用 request_handoff；不要重收资料、重试原请求或声称已报名、已安排面试。不要提前声称已通知同事或已暂停托管。',
+                details: {
+                  apiCode: result.code,
+                  apiMessage: result.message,
+                  traceId: result.traceId,
+                },
+              }),
+              sideEffect: {
+                kind: 'general_handoff',
+                source: 'agent_tool',
+                origin: 'tool_failure',
+                alertLabel: label,
+                reasonCode,
+                reason: `${outcome}（code=${result.code}）：${result.message ?? ''}${result.traceId ? `｜上游 traceId：${result.traceId}` : ''}`,
+                actionAdvice: capacityFull
+                  ? '请确认能否增加名额或协调其他时段、门店；不要重复提交原报名请求。'
+                  : `请核实岗位 ${jobId} 的可约时段，原提交时间为 ${interviewTime ?? '未指定'}；确认新时段后再办理，不要重收候选人资料。`,
+                jobId,
+                workOrderId: null,
+                botImId: context.session.botImId,
+                stage: context.archive.currentStage ?? null,
+                recordHandoff: true,
+              },
+            };
+          }
 
           if (!result.success) {
             const rewritten = applyErrorList(form, result.applyErrorList ?? [], contract);

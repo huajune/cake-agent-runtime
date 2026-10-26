@@ -145,6 +145,42 @@ describe('ToolActionService actual external boundary', () => {
     service.onModuleInit();
   });
 
+  it.each([
+    ['observe', 30058, 'capacity_full'],
+    ['execute', 30058, 'capacity_full'],
+    ['observe', 30049, 'interview_time_rejected'],
+    ['execute', 30049, 'interview_time_rejected'],
+  ] as const)(
+    '%s recognizes booking code %s without depending on prose',
+    async (actionMode, code, detail) => {
+      mode = actionMode;
+      const result = {
+        success: false,
+        code,
+        message: 'provider wording changed',
+        applyErrorList: null,
+      };
+      const dispatch = jest.fn().mockResolvedValue(result);
+      expect(await service.executeSponge(context, input, dispatch)).toMatchObject({
+        status: 'failed',
+        result,
+        evidence: { kind: 'definitive_no_effect', requestTerminated: true, detail },
+      });
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(settled).toHaveBeenCalledWith(expect.objectContaining({ retryable: false }));
+      expect(actionOpsEvents.sync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not apply booking rejection codes to cancellation', async () => {
+    expect(
+      await service.executeSponge(context, { ...input, kind: 'sponge.cancel' }, async () => ({
+        success: false,
+        code: 30058,
+      })),
+    ).toMatchObject({ status: 'unknown' });
+  });
+
   it('preserves external success when local state read fails and never invokes provider again', async () => {
     const dispatch = jest.fn().mockResolvedValue(booking);
     sponge.fetchSignupWorkOrders.mockRejectedValue(new Error('read timeout'));
