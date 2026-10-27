@@ -143,7 +143,7 @@ function toGeocodeAnchor(
   const districts = rawDistricts.length === 1 ? rawDistricts : [];
   const city = cityValue(facts.preferences.city) ?? resolveCityFromDistrict(districts[0] ?? '');
   if (!city && districts.length === 0) return null;
-  return { city, districts, source, referenceText, evidence: evidence.slice(0, 200) };
+  return { city, districts, source, referenceText, evidence };
 }
 
 function anchorFromTurnHints(

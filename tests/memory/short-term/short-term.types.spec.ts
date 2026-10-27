@@ -32,13 +32,13 @@ describe('SessionFactsSchema 读写边界', () => {
       preferences: { ...base.preferences, location: { ...original, value: null } },
     });
     expect(facts.interview_info.has_health_certificate).toEqual(
-      expected === null ? null : { ...original, value: expected, evidence: `${'原'.repeat(199)}…` },
+      expected === null ? null : { ...original, value: expected, evidence: original.evidence },
     );
     expect(facts.interview_info.name?.value).toBe('张三');
     expect(facts.preferences.location).toEqual({
       ...original,
       value: null,
-      evidence: `${'原'.repeat(199)}…`,
+      evidence: original.evidence,
     });
     expect(SessionFactsSchema.parse(facts)).toEqual(facts);
   });

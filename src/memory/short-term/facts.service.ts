@@ -1,3 +1,5 @@
+import { admitPreferenceEvidence } from './extraction-evidence';
+import { isValidExtractedEvidence } from '../fact-evidence';
 import { effectiveScheduleKey } from '@resolution/schedule/equivalence';
 import { completeEarlyShiftMapping } from '@resolution/schedule/mapping';
 import {
@@ -40,7 +42,7 @@ import {
   isSessionFactValue,
   sessionFactValue,
   toSessionFacts,
-  truncateEvidence,
+  normalizeFactEvidence,
   unwrapSessionFactValue,
 } from './short-term.types';
 import type { ReengagementSessionState, CollectedField } from '../recall.types';
@@ -433,7 +435,7 @@ export class SessionFactsService {
       next.district = {
         ...district,
         value: pruned.districts.length > 0 ? pruned.districts : null,
-        evidence: truncateEvidence(
+        evidence: normalizeFactEvidence(
           `${district.evidence}；换城清理：移除 ${pruned.removedDistricts.join('、')}`,
         ),
       };
@@ -442,7 +444,7 @@ export class SessionFactsService {
       next.location = {
         ...location,
         value: pruned.locations.length > 0 ? pruned.locations : null,
-        evidence: truncateEvidence(
+        evidence: normalizeFactEvidence(
           `${location.evidence}；换城清理：移除 ${pruned.removedLocations.join('、')}`,
         ),
       };
@@ -539,7 +541,7 @@ export class SessionFactsService {
           city: sessionFactValue(normalized, {
             confidence,
             source: 'system',
-            evidence: truncateEvidence(attestation.evidence),
+            evidence: normalizeFactEvidence(attestation.evidence),
             extractedAt: new Date().toISOString(),
           }),
         },
@@ -791,6 +793,10 @@ export class SessionFactsService {
       evidence: 'LLM 软事实提取',
       extractedAt: new Date().toISOString(),
     }).preferences as SessionFacts['preferences'];
+    for (const [field, evidence] of Object.entries(llmOutcome.fieldEvidence)) {
+      const fact = preferences[field as keyof typeof preferences];
+      if (isSessionFactValue(fact)) fact.evidence = evidence;
+    }
     // labor_form 只有一个语义写入口：正常提取时由 labor_form_intent 决定，
     // 提取降级或标签无效时才使用当前消息的确定性规则兜底。模型的 legacy
     // preferences.labor_form 和 turnHints 都不能绕过这个裁决入口。
@@ -801,6 +807,7 @@ export class SessionFactsService {
     const scheduleValid = Boolean(
       llmOutcome.facts.preferences.schedule_constraint &&
         scheduleCitation &&
+        isValidExtractedEvidence(scheduleCitation.quote) &&
         verifyCitation(scheduleCitation, currentTurnQuotes).verified,
     );
     const { ruleHints, toolVerifiedSchedule } = splitToolVerifiedScheduleClaim(turnHints);
@@ -841,7 +848,7 @@ export class SessionFactsService {
       preferences.schedule_constraint = sessionFactValue(toolSchedule, {
         confidence: 'medium',
         source: 'candidate_quote',
-        evidence: truncateEvidence(`工具已核验的本轮班次条件：${currentTurnQuotes.join(' ')}`),
+        evidence: normalizeFactEvidence(`工具已核验的本轮班次条件：${currentTurnQuotes.join(' ')}`),
         extractedAt: new Date().toISOString(),
       });
     } else {
@@ -869,7 +876,7 @@ export class SessionFactsService {
       target[field] = sessionFactValue(value, {
         confidence: 'medium',
         source: fact.producer,
-        evidence: truncateEvidence(fact.evidence.code ?? fact.evidence.label),
+        evidence: normalizeFactEvidence(fact.evidence.code ?? fact.evidence.label),
         extractedAt: fact.assertedAt,
       });
     }
@@ -900,7 +907,7 @@ export class SessionFactsService {
         continue;
       if (field in preferences) {
         preferenceTarget[field] = this.preferenceTombstone(
-          truncateEvidence(claim.evidence.code ?? claim.evidence.label),
+          normalizeFactEvidence(claim.evidence.code ?? claim.evidence.label),
         );
       }
     }
@@ -953,7 +960,7 @@ export class SessionFactsService {
     return sessionFactValue(null, {
       confidence: 'medium',
       source: 'candidate_quote',
-      evidence: truncateEvidence(evidence),
+      evidence: normalizeFactEvidence(evidence),
       extractedAt: new Date().toISOString(),
     });
   }
@@ -1038,6 +1045,7 @@ export class SessionFactsService {
     const validExtractedIntent =
       !llmOutcome.degraded &&
       extracted != null &&
+      (extracted.intent === 'ignore' || isValidExtractedEvidence(extracted.quote)) &&
       (extracted.intent !== 'set' || extracted.labor_form != null);
 
     if (validExtractedIntent) {
@@ -1045,7 +1053,7 @@ export class SessionFactsService {
         preferences.labor_form = sessionFactValue(extracted.labor_form, {
           confidence: 'medium',
           source: 'model',
-          evidence: truncateEvidence(extracted.quote || 'LLM 用工形式意图提取'),
+          evidence: normalizeFactEvidence(extracted.quote || 'LLM 用工形式意图提取'),
           extractedAt: new Date().toISOString(),
         });
       } else if (extracted.intent === 'clear') {
@@ -1073,6 +1081,7 @@ export class SessionFactsService {
     brandIntents: BrandIntentEntry[];
     laborFormIntent: LaborFormIntentExtraction | null;
     scheduleCitation: TextCitation | null;
+    fieldEvidence: Record<string, string>;
     /** 模型给出但不合严格契约、已丢弃的班次条件明细（字段路径 + 原因）；null 表示没有丢弃。 */
     rejectedScheduleIssues: string[] | null;
     degraded: boolean;
@@ -1087,6 +1096,19 @@ export class SessionFactsService {
         prompt,
       });
       const raw = result.output;
+      const admitted = admitPreferenceEvidence(raw.preferences, raw.preference_evidence, {
+        schedule_constraint: raw.schedule_constraint_citation?.quote,
+        labor_form: raw.labor_form_intent?.quote,
+      });
+      if (admitted.rejected.length > 0) {
+        this.logger.warn(
+          JSON.stringify({
+            event: 'memory_evidence_rejected',
+            fields: admitted.rejected,
+            reason: 'missing_empty_or_over_budget',
+          }),
+        );
+      }
       const brandIntents =
         z
           .array(BrandIntentEntrySchema)
@@ -1111,11 +1133,14 @@ export class SessionFactsService {
       });
       return {
         facts,
+        fieldEvidence: admitted.evidence,
         brandIntents,
         laborFormIntent,
         scheduleCitation: raw.schedule_constraint_citation ?? null,
         rejectedScheduleIssues: schedule.success
-          ? null
+          ? admitted.rejected.includes('schedule_constraint')
+            ? ['schedule_constraint: invalid evidence']
+            : null
           : schedule.error.issues.map(
               (issue) =>
                 `${['schedule_constraint', ...issue.path.map(String)].join('.')}: ${issue.message}`,
@@ -1126,6 +1151,7 @@ export class SessionFactsService {
       this.logger.warn('[extractFacts] preference extraction failed, using empty delta', error);
       return {
         facts: FALLBACK_EXTRACTION,
+        fieldEvidence: {},
         brandIntents: [],
         laborFormIntent: null,
         scheduleCitation: null,

@@ -126,7 +126,11 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
         ...FALLBACK_EXTRACTION,
         interview_info: { ...FALLBACK_EXTRACTION.interview_info, education: '本科' },
       },
-      { confidence: 'medium', source: 'candidate_quote', evidence: '候选人自述本科' },
+      {
+        confidence: 'medium',
+        source: 'candidate_quote',
+        evidence: '这是候选人的完整原话。'.repeat(30) + '本科在读，尚未毕业。',
+      },
     );
 
     await service.writeFromConsolidation('corp-1', 'user-1', BOT_USER_ID, facts, {
@@ -143,6 +147,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
           value: '本科',
           confidence: 'medium',
           source: 'candidate_quote',
+          evidence: '这是候选人的完整原话。'.repeat(30) + '本科在读，尚未毕业。',
         }),
       },
       { imBotId: 'bot-A' },

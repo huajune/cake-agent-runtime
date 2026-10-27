@@ -14,10 +14,10 @@ import {
   StoredHealthCertificateStateSchema,
   type HealthCertificateState,
 } from '@resolution/candidate/health-certificate-state';
-import { truncateEvidence } from '../fact-evidence';
+import { normalizeFactEvidence } from '../fact-evidence';
 import { isExpiredTemporalFact } from '../temporal-facts';
 
-export { MAX_FACT_EVIDENCE_CHARS, truncateEvidence } from '../fact-evidence';
+export { MAX_FACT_EVIDENCE_CHARS, normalizeFactEvidence } from '../fact-evidence';
 
 // ==================== 0. 结构总览（从这里读） ====================
 
@@ -417,6 +417,12 @@ export type LaborFormIntentExtraction = z.infer<typeof LaborFormIntentExtraction
 /** LLM 结构化输出只允许表单外软事实；身份字段由收资表单逐格/办结专用入口写入。 */
 export const LLMEntityExtractionResultSchema = z.object({
   preferences: LLMPreferencesSchema,
+  preference_evidence: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      '每个本轮变更偏好的同名字段证据，逐字段独立提炼，最多200个Unicode字符；保留人物、否定、条件、时间和不确定性，不写推理链。缺失或超长的字段不会更新记忆。',
+    ),
   schedule_constraint_citation: z
     .object({ quote: z.string() })
     .nullable()
@@ -440,7 +446,7 @@ export const LLMEntityExtractionResultSchema = z.object({
   reasoning: z
     .string()
     .describe(
-      '提取与推理说明：列出每个字段的来源（直接提取/白名单推断），推断字段说明推理链。本轮无新信息时固定写「本轮无新信息」。禁止叙述对话中不存在的来源，不得声称从本轮未提供的材料中提取事实。',
+      '仅简述本轮变化，不列推理链；字段依据写入 preference_evidence。本轮无新信息固定写「本轮无新信息」。',
     ),
 });
 
@@ -595,7 +601,7 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
     value: valueSchema,
     confidence: SessionFactConfidenceSchema,
     source: StoredCandidateFactProducerSchema,
-    evidence: z.string().transform((value) => truncateEvidence(value)),
+    evidence: z.string().transform((value) => normalizeFactEvidence(value)),
     extractedAt: z.string().optional(),
   });
 
@@ -800,7 +806,7 @@ export function sessionFactValue<T>(
     extractedAt?: string;
   },
 ): SessionFactValue<T> {
-  return { value, ...meta, evidence: truncateEvidence(meta.evidence) };
+  return { value, ...meta, evidence: normalizeFactEvidence(meta.evidence) };
 }
 
 export function unwrapSessionFactValue<T>(

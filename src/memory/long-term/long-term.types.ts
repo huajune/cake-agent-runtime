@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CANDIDATE_FACT_PRODUCERS, type CandidateFactProducer } from '@resolution/candidate/types';
-import { truncateEvidence } from '../fact-evidence';
+import { normalizeFactEvidence } from '../fact-evidence';
 import type { HealthCertificateState } from '@resolution/candidate/health-certificate-state';
 import {
   FACT_CONFIDENCE_LEVELS_DESC,
@@ -106,7 +106,7 @@ export const UserProfileFactValueSchema = z.object({
     z.enum(FACT_CONFIDENCE_LEVELS_DESC),
   ),
   source: z.enum(CANDIDATE_FACT_PRODUCERS),
-  evidence: z.string().transform((value) => truncateEvidence(value)),
+  evidence: z.string().transform((value) => normalizeFactEvidence(value)),
   updatedAt: z.string(),
   originSessionId: z.string().optional(),
   originBotId: z.string().optional(),
@@ -154,7 +154,7 @@ export function userProfileFactValue<T>(
     value,
     confidence: meta.confidence,
     source: meta.source,
-    evidence: truncateEvidence(meta.evidence),
+    evidence: normalizeFactEvidence(meta.evidence),
     updatedAt: meta.updatedAt ?? new Date().toISOString(),
     ...(meta.originSessionId ? { originSessionId: meta.originSessionId } : {}),
     ...(meta.originBotId ? { originBotId: meta.originBotId } : {}),
