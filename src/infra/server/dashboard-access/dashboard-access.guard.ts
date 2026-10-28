@@ -10,11 +10,13 @@ export class DashboardAccessGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
+    const path = request.path.replace(/\/+$/, '') || '/';
+    // 部署探针直连容器端口，没有入口代理的来源头；只放行既有公开健康检查。
+    if (request.method === 'GET' && path === '/agent/health') return true;
     const scope = this.access.resolve(request);
     if (!scope.centerId) return true;
     if (scope.centerId === 'denied') throw new ForbiddenException('无法识别访问来源');
     // 静态页面不携带业务数据；业务读操作走专用范围接口。
-    const path = request.path.replace(/\/+$/, '') || '/';
     if (
       request.method === 'GET' &&
       (Boolean(centerRoute(request)) || path === '/' || path === '/web' || path.startsWith('/web/'))

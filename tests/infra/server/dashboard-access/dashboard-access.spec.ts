@@ -40,6 +40,18 @@ describe('Dashboard source scope', () => {
     },
   );
 
+  it('allows the deployment health probe without granting access to business endpoints', () => {
+    for (const path of ['/agent/health', '/agent/health/']) {
+      expect(guard.canActivate(context(request('172.18.0.1', {}, path)))).toBe(true);
+    }
+    for (const path of ['/agent/models', '/agent/health/details', '/dashboard/access']) {
+      expect(() => guard.canActivate(context(request('172.18.0.1', {}, path)))).toThrow();
+    }
+    expect(() =>
+      guard.canActivate(context(request('172.18.0.1', {}, '/agent/health', 'POST'))),
+    ).toThrow();
+  });
+
   it.each([
     '/group/list',
     '/bot/configured-list',
