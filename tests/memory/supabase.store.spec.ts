@@ -112,7 +112,7 @@ describe('SupabaseStore', () => {
       expect(result?.has_health_certificate).toEqual({
         ...original,
         value: '办理中',
-        evidence: `${'原'.repeat(199)}…`,
+        evidence: '原'.repeat(201),
       });
       expect(result?.name?.value).toBe('张三');
     });
@@ -449,7 +449,7 @@ describe('SupabaseStore', () => {
       );
     });
 
-    it('RPC 写边界统一健康证，截断画像和意向证据，并保留墓碑及 100kg 原值', async () => {
+    it('RPC 写边界统一健康证，完整保留画像和意向证据，并保留墓碑及 100kg 原值', async () => {
       mockRpc.mockResolvedValue({ data: { written_fields: [], skipped_fields: [] }, error: null });
       const health = profileFact('无本地有效健康证，接受办理', {
         confidence: 'medium',
@@ -476,11 +476,11 @@ describe('SupabaseStore', () => {
             has_health_certificate: {
               ...health,
               value: '无本地有效健康证，接受办理',
-              evidence: `${'证'.repeat(199)}…`,
+              evidence: '证'.repeat(509),
             },
             weight: profileFact('100'),
           },
-          p_preference_facts: { city: { ...city, evidence: `${'😀'.repeat(199)}…` } },
+          p_preference_facts: { city: { ...city, evidence: '😀'.repeat(201) } },
         }),
       );
       expect(health.evidence).toHaveLength(509);

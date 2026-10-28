@@ -14,15 +14,6 @@ import {
   type CandidateParseResult,
 } from './types';
 
-const MAX_COLLECTED_EVIDENCE_CHARS = 200;
-
-function truncateEvidence(evidence: string): string {
-  const trimmed = evidence.trim();
-  return trimmed.length <= MAX_COLLECTED_EVIDENCE_CHARS
-    ? trimmed
-    : `${trimmed.slice(0, MAX_COLLECTED_EVIDENCE_CHARS)}…`;
-}
-
 export function hasPersistableFieldProvenance(field?: CandidateCollectedField): boolean {
   return !!field && PERSISTABLE_CANDIDATE_FIELD_PRODUCERS.has(field.producer);
 }
@@ -45,7 +36,7 @@ export function parseCandidateFieldsFromText(
     fallbackLabel: string,
   ): void => {
     if (!result) return;
-    const excerpt = truncateEvidence(result.excerpt);
+    const excerpt = result.excerpt.trim();
     fields[key] = {
       value: result.value,
       // 标 'rule' 而非 'candidate_quote'：这些值是正则算出来的，不是候选人原话

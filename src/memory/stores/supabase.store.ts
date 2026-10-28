@@ -6,7 +6,7 @@ import type { z } from 'zod';
 import type { CandidateFactField, CandidateFactProducer } from '@resolution/candidate/types';
 import { canonicalizeCandidateFieldValue } from '@resolution/candidate/value-shape';
 import { normalizeHealthCertificateState } from '@resolution/candidate/health-certificate-state';
-import { truncateEvidence } from '../fact-evidence';
+import { normalizeFactEvidence } from '../fact-evidence';
 import { isExpiredTemporalFact } from '../temporal-facts';
 import { isValidSummaryEntry } from '../memory-integrity';
 import type {
@@ -294,15 +294,15 @@ export class SupabaseStore implements MemoryStore {
             ? normalizeHealthCertificateState(fact.value)
             : fact.value;
         if (value === null) continue;
-        profileFactsJson[key] = { ...fact, value, evidence: truncateEvidence(fact.evidence) };
+        profileFactsJson[key] = { ...fact, value, evidence: normalizeFactEvidence(fact.evidence) };
       }
     }
-    // 意向 value=null 是显式清空墓碑，截断 evidence 时不得过滤掉。
+    // 意向 value=null 是显式清空墓碑，规范化 evidence 时不得过滤掉。
     const normalizedIntent = jobIntentFacts
       ? Object.fromEntries(
           Object.entries(jobIntentFacts).map(([key, fact]) => [
             key,
-            { ...fact, evidence: truncateEvidence(fact.evidence) },
+            { ...fact, evidence: normalizeFactEvidence(fact.evidence) },
           ]),
         )
       : null;

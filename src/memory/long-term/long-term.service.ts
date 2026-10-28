@@ -25,7 +25,7 @@ import {
   type SessionFacts,
   type SessionFactValue,
   isSessionFactValue,
-  truncateEvidence,
+  normalizeFactEvidence,
   unwrapSessionFactValue,
 } from '../short-term/short-term.types';
 
@@ -183,7 +183,7 @@ export class LongTermService {
    *
    * 当会话沉淀触发时，从 sessionFacts 中抽取身份字段写入 Profile。
    * 长期画像保留原 sessionFact 的 producer 章；沉淀只是运输，不改写事实出身。
-   * evidence 保留原 sessionFact 的置信度与机制细节，避免丢失一跳证据。
+   * evidence 完整透传原 sessionFact 的字段依据，不重复拼接沉淀元数据。
    * confidence 固定为 medium，避免沉淀数据覆盖 booking/high。
    */
   async writeFromConsolidation(
@@ -454,7 +454,7 @@ export class LongTermService {
    *
    * - 只取 LONG_TERM_JOB_INTENT_FIELD_KEYS 中的稳定意向字段
    * - 缺席保留、信封内 null 显式清空；RPC 按字段原始时间在行锁内合并
-   * - confidence 固定 medium（与 Profile 沉淀路径一致），evidence 截断保留一跳来源
+   * - confidence 固定 medium（与 Profile 沉淀路径一致），evidence 原样保留一跳来源
    */
   private buildPreferenceFactsFromConsolidation(
     facts: EntityExtractionResult | SessionFacts,
@@ -526,15 +526,7 @@ export class LongTermService {
   }
 
   private buildConsolidationEvidence(rawValue: unknown): string {
-    const prefix = '会话沉淀提取';
-    if (!isSessionFactValue(rawValue)) return prefix;
-
-    const parts = [
-      `原字段置信度=${rawValue.confidence}`,
-      rawValue.evidence?.trim() ? `原证据=${rawValue.evidence.trim()}` : null,
-    ].filter(Boolean);
-    // 截断后再入库：长期画像 evidence 是永久数据，曾被 600+ 字提取 reasoning 污染
-    // 并随每轮注入 prompt（张漪 case）。
-    return truncateEvidence(`${prefix}；${parts.join('；')}`);
+    // 来源与沉淀后的置信度由独立字段记录；证据正文完整透传。
+    return isSessionFactValue(rawValue) ? normalizeFactEvidence(rawValue.evidence) : '会话沉淀提取';
   }
 }
