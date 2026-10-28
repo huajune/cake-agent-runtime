@@ -1,3 +1,4 @@
+import { DelegatedTaskAssignmentService } from './delegated-task-assignment.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import type { Job, Queue } from 'bull';
@@ -13,6 +14,7 @@ export class InterventionTaskProcessor implements OnModuleInit {
     private readonly client: FeishuTaskClient,
     private readonly failures: QueueFailureService,
     private readonly preparation: InterventionTaskService,
+    private readonly delegation: DelegatedTaskAssignmentService,
   ) {}
 
   onModuleInit(): void {
@@ -23,23 +25,39 @@ export class InterventionTaskProcessor implements OnModuleInit {
   }
 
   async process(job: Job<InterventionTaskJob>): Promise<void> {
-    if (job.data.taskGuid) return;
-    if (job.data.dispatchStartedAt) {
-      // The provider key's validity is not verified here. A restarted worker must not turn
-      // an ambiguous create into a second task, especially after its short idempotency window.
-      throw new Error('Feishu task result unknown; human reconciliation required before retry');
+    let data = job.data;
+    if (!data.taskGuid) {
+      if (data.dispatchStartedAt) {
+        // An ambiguous create must be reconciled, never repeated after idempotency expires.
+        throw new Error('Feishu task result unknown; human reconciliation required before retry');
+      }
+      const request = data.request ?? (await this.preparation.prepareRequest(data));
+      if (!request) return;
+      let assignment = data.assignment;
+      if (!assignment && this.delegation.isRequired(request.tasklistGuid)) {
+        const tasklistGuid = request.tasklistGuid!;
+        const members = request.members ?? [];
+        const delegatedBy = await this.delegation.prepare(tasklistGuid, members);
+        assignment = { tasklistGuid, delegatedBy, members };
+      }
+      data = { ...data, request, assignment, dispatchStartedAt: Date.now() };
+      await job.update(data);
+      const task = await this.client.createTask({
+        ...request,
+        // External users cannot be assigned through the tenant identity.
+        members: assignment ? undefined : request.members,
+        startAt: request.startAt ? new Date(request.startAt) : undefined,
+        dueAt: request.dueAt ? new Date(request.dueAt) : undefined,
+      });
+      if (!task) throw new Error('Feishu task create has no authoritative success result');
+      data = { ...data, taskGuid: task.guid };
+      // Persist the external side effect before attempting assignment.
+      await job.update(data);
     }
-    const request = job.data.request ?? (await this.preparation.prepareRequest(job.data));
-    if (!request) return;
-    const data = { ...job.data, request, dispatchStartedAt: Date.now() };
-    await job.update(data);
-    const task = await this.client.createTask({
-      ...request,
-      startAt: request.startAt ? new Date(request.startAt) : undefined,
-      dueAt: request.dueAt ? new Date(request.dueAt) : undefined,
-    });
-    if (!task) throw new Error('Feishu task create has no authoritative success result');
-    // Failure here is accounting failure, not permission to create again.
-    await job.update({ ...data, taskGuid: task.guid });
+    if (data.assignment && !data.assignment.completedAt) {
+      const { tasklistGuid, delegatedBy, members } = data.assignment;
+      await this.delegation.assign(data.taskGuid!, tasklistGuid, delegatedBy, members);
+      await job.update({ ...data, assignment: { ...data.assignment, completedAt: Date.now() } });
+    }
   }
 }

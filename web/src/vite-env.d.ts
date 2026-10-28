@@ -2,8 +2,6 @@
 
 interface ImportMetaEnv {
   readonly API_GUARD_TOKEN?: string;
-  readonly SUPABASE_URL?: string;
-  readonly SUPABASE_ANON_KEY?: string;
 }
 
 // CSS Modules 类型声明

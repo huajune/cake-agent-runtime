@@ -56,7 +56,7 @@ describe('PrivateChatMonitorNotifierService', () => {
       }),
     );
     expect(payload).not.toHaveProperty('atAll');
-    expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'booking-card' });
+    expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'booking-card' }, botImId);
   });
 
   it('should fallback to atAll when bot id is unknown', async () => {
@@ -95,7 +95,10 @@ describe('PrivateChatMonitorNotifierService', () => {
         workOrderId: 123,
       }),
     );
-    expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'cancellation-card' });
+    expect(mockPrivateChatChannel.send).toHaveBeenCalledWith(
+      { kind: 'cancellation-card' },
+      botImId,
+    );
   });
   it('registers a notification at the webhook boundary and preserves unknown acceptance', async () => {
     mockPrivateChatChannel.sendOnce.mockResolvedValue(false);
@@ -153,5 +156,48 @@ describe('PrivateChatMonitorNotifierService', () => {
     await service.notifyInterviewCancellation({ workOrderId: 42 }, session);
     expect(execute.mock.calls[0][0].target).not.toBe(execute.mock.calls[1][0].target);
     expect(execute.mock.calls[0][0].target).toBe(execute.mock.calls[2][0].target);
+  });
+  it('rejects conflicting notification and session accounts before dispatch', async () => {
+    const result = await service.notifyInterviewCancellation(
+      { botImId: 'center-bot', workOrderId: 42 },
+      {
+        corpId: 'corp',
+        userId: 'user',
+        sessionId: 'chat',
+        botImId: 'foreign-bot',
+      },
+    );
+    expect(result).toBe(false);
+    expect(mockPrivateChatChannel.send).not.toHaveBeenCalled();
+    expect(mockPrivateChatChannel.sendOnce).not.toHaveBeenCalled();
+  });
+  it('passes the verified account through the action executor and suppresses external routing for tests', async () => {
+    const execute = jest.fn(async (_intent, callbacks) => callbacks.dispatch('request', 'execute'));
+    service = new PrivateChatMonitorNotifierService(
+      mockPrivateChatChannel as never,
+      mockRenderer,
+      mockHostingMemberConfig as never,
+      { execute } as never,
+    );
+    const session = {
+      corpId: 'corp',
+      userId: 'user',
+      sessionId: 'chat',
+      botImId: 'center-bot',
+      logicalTurnId: 'turn',
+    };
+    await service.notifyInterviewCancellation({ workOrderId: 42, botImId: 'center-bot' }, session);
+    expect(mockPrivateChatChannel.sendOnce).toHaveBeenLastCalledWith(
+      { kind: 'cancellation-card' },
+      'center-bot',
+    );
+    await service.notifyInterviewCancellation(
+      { workOrderId: 42, botImId: 'center-bot' },
+      { ...session, corpId: 'test' },
+    );
+    expect(mockPrivateChatChannel.sendOnce).toHaveBeenLastCalledWith(
+      { kind: 'cancellation-card' },
+      undefined,
+    );
   });
 });

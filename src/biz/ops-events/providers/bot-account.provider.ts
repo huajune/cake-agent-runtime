@@ -21,5 +21,5 @@ export interface BotAccountInfo {
 }
 
 export interface BotAccountProvider {
-  getConfiguredBotList(): Promise<BotAccountInfo[]>;
+  getConfiguredBotList(strict?: boolean): Promise<BotAccountInfo[]>;
 }

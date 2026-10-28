@@ -14,12 +14,17 @@ export async function getBlacklist() {
 }
 
 export async function addToBlacklist(params: { id: string; type: 'chatId' | 'groupId' }) {
-  const { data } = await api.post('/config/blacklist', params);
+  const { data } = await api.post('/config/blacklist', params, {
+    headers: { 'X-Center-Action': 'hosting' },
+  });
   return unwrapResponse(data);
 }
 
 export async function removeFromBlacklist(params: { id: string; type: 'chatId' | 'groupId' }) {
-  const { data } = await api.delete('/config/blacklist', { data: params });
+  const { data } = await api.delete('/config/blacklist', {
+    data: params,
+    headers: { 'X-Center-Action': 'hosting' },
+  });
   return unwrapResponse(data);
 }
 

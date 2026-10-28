@@ -30,6 +30,8 @@ import { EvaluationModule } from './evaluation/evaluation.module';
 import { validate } from './infra/config/env.validation';
 import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
 import { HttpExceptionFilter } from '@infra/server/response/filters/http-exception.filter';
+import { DashboardAccessModule } from '@infra/server/dashboard-access/dashboard-access.module';
+import { CenterDashboardModule } from '@biz/center-dashboard/center-dashboard.module';
 
 /**
  * 应用根模块
@@ -66,6 +68,8 @@ import { HttpExceptionFilter } from '@infra/server/response/filters/http-excepti
     SupabaseModule,
     FeishuModule,
     WebEntryModule,
+    DashboardAccessModule,
+    CenterDashboardModule,
 
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
     BizModule,

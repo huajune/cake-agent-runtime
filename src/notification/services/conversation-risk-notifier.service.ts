@@ -21,7 +21,9 @@ export class ConversationRiskNotifierService {
       ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
     });
 
-    const success = await this.privateChatChannel.send(card);
+    const routeBotId =
+      payload.corpId === 'test' || payload.corpId === 'debug' ? undefined : payload.botImId;
+    const success = await this.privateChatChannel.send(card, routeBotId);
     if (success) {
       this.logger.warn(`交流异常通知已发送: chatId=${payload.chatId}, risk=${payload.riskLabel}`);
     } else {

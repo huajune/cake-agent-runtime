@@ -19,6 +19,7 @@ function formatCompactTime(timestamp: number) {
 
 export default function UserTable({
   users,
+  readOnly = false,
   isLoading,
   onToggleHosting,
   isPausedTab = false,
@@ -164,6 +165,7 @@ export default function UserTable({
                     >
                       <Switch
                         size="sm"
+                        disabled={readOnly}
                         checked={!user.isPaused}
                         pending={isUpdating}
                         onChange={(checked) => onToggleHosting(user.chatId, checked)}

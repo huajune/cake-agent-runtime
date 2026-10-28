@@ -58,7 +58,12 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
       ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
     });
 
-    const success = await this.sendRecorded('booking_notification', card, session);
+    const success = await this.sendRecorded(
+      'booking_notification',
+      card,
+      session,
+      bookingInfo.botImId,
+    );
     if (success) {
       this.logger.log(
         `面试预约${isFailure ? '失败' : '成功'}通知已发送: ${bookingInfo.candidateName}`,
@@ -81,7 +86,12 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
       ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
     });
 
-    const success = await this.sendRecorded('cancellation_notification', card, session);
+    const success = await this.sendRecorded(
+      'cancellation_notification',
+      card,
+      session,
+      cancellationInfo.botImId,
+    );
     if (success) {
       this.logger.log(`面试预约取消通知已发送: ${cancellationInfo.candidateName ?? '-'}`);
     } else {
@@ -94,8 +104,17 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
     kind: string,
     card: Record<string, unknown>,
     session?: ToolSessionContext,
+    botImId?: string,
   ): Promise<boolean> {
-    if (!session) return this.privateChatChannel.send(card); // Existing, explicitly un-migrated callers.
+    if (botImId && session?.botImId && botImId.trim() !== session.botImId.trim()) {
+      this.logger.error('私聊通知账号与会话账号不一致，拒绝发送');
+      return false;
+    }
+    const routeBotId =
+      session?.corpId === 'test' || session?.corpId === 'debug'
+        ? undefined
+        : (botImId ?? session?.botImId);
+    if (!session) return this.privateChatChannel.send(card, routeBotId);
     if (!this.actions) {
       this.logger.error('Notification action executor missing');
       return false;
@@ -118,8 +137,8 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
         dispatch: async (_requestId, mode) => {
           const accepted =
             mode === 'execute'
-              ? await this.privateChatChannel.sendOnce(card)
-              : await this.privateChatChannel.send(card);
+              ? await this.privateChatChannel.sendOnce(card, routeBotId)
+              : await this.privateChatChannel.send(card, routeBotId);
           return accepted
             ? {
                 status: 'succeeded',
