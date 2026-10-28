@@ -98,15 +98,19 @@ export class RedisStore implements MemoryStore {
       raw: string | null;
       generation: string | null;
     };
-    let value: unknown = envelope.raw;
-    if (envelope.raw !== null) {
+    // Upstash's Lua cjson bridge can omit null-valued members. An absent field
+    // must still compare as absent, rather than as an existing empty string.
+    const raw = envelope.raw ?? null;
+    const generation = envelope.generation ?? null;
+    let value: unknown = raw;
+    if (raw !== null) {
       try {
-        value = JSON.parse(envelope.raw);
+        value = JSON.parse(raw);
       } catch {
         /* Non-JSON scalar fields remain strings. */
       }
     }
-    return { ...envelope, value };
+    return { raw, generation, value };
   }
 
   async compareHashField(

@@ -37,7 +37,9 @@ function setup(row = record) {
   const registry = { get: jest.fn().mockReturnValue(handler) };
   const localSync = { run: jest.fn(async (r, h) => h.sync?.(r)) };
   const crons = { runBatches: jest.fn(async (_id, _limits, batch) => batch(100)) };
+  const incidents = { notifyAsync: jest.fn() };
   return {
+    incidents,
     crons,
     records,
     handler,
@@ -48,6 +50,7 @@ function setup(row = record) {
       registry as never,
       localSync as never,
       crons as never,
+      incidents as never,
     ),
   };
 }
@@ -89,11 +92,17 @@ describe('bounded action reconciliation', () => {
   });
   it('stops bounded recovery with a visible manual flag without relabeling failure', async () => {
     const row = { ...record, attempts: 7 };
-    const { service, records, handler } = setup(row);
+    const { service, records, handler, incidents } = setup(row);
     await service.recoverDue();
     expect(handler.reconcile).not.toHaveBeenCalled();
     expect(records.defer).toHaveBeenCalledWith(row, null);
     expect(records.settle).not.toHaveBeenCalled();
+    expect(incidents.notifyAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'action.manual_review_required',
+        dedupe: { key: 'action.manual_review_required:action' },
+      }),
+    );
   });
   it('uses a late terminal success as evidence and only repairs local state', async () => {
     const { service, records, handler } = setup();

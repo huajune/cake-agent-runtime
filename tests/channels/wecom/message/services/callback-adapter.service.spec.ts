@@ -50,6 +50,35 @@ describe('MessageCallbackAdapterService', () => {
     expect(service).toBeDefined();
   });
 
+  it('accepts room system events without inventing a personal contact or send receipt', () => {
+    const result = service.normalizeCallback({
+      ...validEnterpriseBody,
+      messageType: MessageType.WECOM_SYSTEM,
+      imRoomId: 'room-system',
+      contactType: undefined,
+      isSelf: undefined,
+      payload: { subPayload: {}, wechatSystemPayloadType: 1 },
+    });
+    expect(result.contactType).toBe(ContactType.UNKNOWN);
+    expect(result.messageType).toBe(MessageType.WECOM_SYSTEM);
+    expect(result.source).toBe(MessageSource.MOBILE_PUSH);
+    expect(result.externalRequestId).toBeUndefined();
+  });
+
+  it.each([MessageType.TEXT, MessageType.ROOM_INVITE])(
+    'still rejects missing contactType on message type %s',
+    (messageType) => {
+      expect(() =>
+        service.normalizeCallback({
+          ...validEnterpriseBody,
+          messageType,
+          imRoomId: 'room-system',
+          contactType: undefined,
+        }),
+      ).toThrow(HttpException);
+    },
+  );
+
   describe('detectCallbackType', () => {
     it('should detect enterprise callback type', () => {
       const result = service.detectCallbackType(validEnterpriseBody);
