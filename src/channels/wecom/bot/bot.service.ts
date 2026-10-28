@@ -143,9 +143,10 @@ export class BotService {
    * 获取企业内各小组托管账号信息。
    * 使用企业级接口统一读取托管开关同源的小组账号，不依赖 GROUP_TASK_TOKENS。
    */
-  async getConfiguredBotList(): Promise<BotAccount[]> {
+  async getConfiguredBotList(strict = false): Promise<BotAccount[]> {
     const token = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
     if (!token) {
+      if (strict) throw new Error('托管账号目录凭据未配置');
       this.logger.warn('STRIDE_ENTERPRISE_TOKEN 未配置，无法获取企业托管账号列表');
       return [];
     }
@@ -155,7 +156,7 @@ export class BotService {
       const response = (await this.httpService.get(apiUrl, { token })) as GroupBotsResponse;
       const bots = new Map<string, BotAccount>();
 
-      for (const group of this.extractGroups(response)) {
+      for (const group of this.extractGroups(response, strict)) {
         for (const bot of group.bots || []) {
           const key = bot.wxid || bot.id || bot.wecomUserId || bot.name;
           if (!key) continue;
@@ -195,11 +196,25 @@ export class BotService {
     }
   }
 
-  private extractGroups(response: unknown): NonNullable<GroupBotsResponse['groups']> {
+  private extractGroups(
+    response: unknown,
+    strict = false,
+  ): NonNullable<GroupBotsResponse['groups']> {
     let current = response;
     while (current && typeof current === 'object' && 'data' in current) {
+      if (strict && 'errcode' in current && current.errcode !== 0)
+        throw new Error('托管账号目录读取失败');
       current = (current as { data: unknown }).data;
     }
+
+    if (
+      strict &&
+      current &&
+      typeof current === 'object' &&
+      'errcode' in current &&
+      current.errcode !== 0
+    )
+      throw new Error('托管账号目录读取失败');
 
     const groups =
       current && typeof current === 'object' && 'groups' in current
@@ -207,7 +222,26 @@ export class BotService {
         : undefined;
 
     if (!Array.isArray(groups)) {
+      if (strict) throw new Error('托管账号目录格式无效');
       return [];
+    }
+
+    if (strict) {
+      const seen = new Set<string>();
+      for (const group of groups) {
+        if (
+          !group ||
+          typeof group.id !== 'string' ||
+          !group.id.trim() ||
+          !Array.isArray(group.bots)
+        )
+          throw new Error('托管账号目录缺少小组范围');
+        for (const bot of group.bots) {
+          if (!bot || typeof bot.wxid !== 'string' || !bot.wxid.trim() || seen.has(bot.wxid.trim()))
+            throw new Error('托管账号目录身份缺失或重复');
+          seen.add(bot.wxid.trim());
+        }
+      }
     }
 
     return groups.filter((group) => group !== null && typeof group === 'object');

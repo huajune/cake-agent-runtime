@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { GroupBlacklistRepository } from '../repositories/group-blacklist.repository';
 import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
@@ -52,26 +52,35 @@ export class GroupBlacklistService {
     return Array.from(this.memoryCache.values());
   }
 
+  async isGroupBlacklistedStrict(groupId: string): Promise<boolean> {
+    const items = await this.getGroupBlacklistStrict();
+    return items.some((item) => item.group_id === groupId);
+  }
+
+  async getGroupBlacklistStrict(): Promise<GroupBlacklistItem[]> {
+    const items = await this.groupBlacklistRepository.loadBlacklistFromDb();
+    if (!items) throw new ServiceUnavailableException('暂时无法读取托管开关');
+    return items;
+  }
+
+  async setGroupBlacklisted(groupId: string, blacklisted: boolean, reason?: string): Promise<void> {
+    const items = await this.groupBlacklistRepository.setGroupBlacklisted(
+      groupId,
+      blacklisted,
+      reason,
+    );
+    this.populateMemoryCache(items);
+    await this.persistSharedCache();
+    this.logger.log(`[小组托管] groupId=${groupId} enabled=${!blacklisted}`);
+  }
+
   // ==================== 黑名单写操作 ====================
 
   /**
    * 添加小组到黑名单，同步更新内存和数据库
    */
   async addGroupToBlacklist(groupId: string, reason?: string): Promise<void> {
-    await this.ensureFreshCache();
-
-    const item: GroupBlacklistItem = {
-      group_id: groupId,
-      reason,
-      added_at: Date.now(),
-    };
-
-    this.memoryCache.set(groupId, item);
-    this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
-    await this.persistCache();
-    await this.persistSharedCache();
-
-    this.logger.log(`[小组黑名单] 已添加小组 ${groupId}${reason ? ` (原因: ${reason})` : ''}`);
+    await this.setGroupBlacklisted(groupId, true, reason);
   }
 
   /**
@@ -80,19 +89,9 @@ export class GroupBlacklistService {
    * @returns 如果小组原本在黑名单中则返回 true，否则返回 false
    */
   async removeGroupFromBlacklist(groupId: string): Promise<boolean> {
-    await this.ensureFreshCache();
-
-    if (!this.memoryCache.has(groupId)) {
-      return false;
-    }
-
-    this.memoryCache.delete(groupId);
-    this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
-    await this.persistCache();
-    await this.persistSharedCache();
-
-    this.logger.log(`[小组黑名单] 已移除小组 ${groupId}`);
-    return true;
+    const existed = await this.isGroupBlacklistedStrict(groupId);
+    await this.setGroupBlacklisted(groupId, false);
+    return existed;
   }
 
   // ==================== 缓存管理 ====================
@@ -159,19 +158,6 @@ export class GroupBlacklistService {
     this.memoryCacheExpiry = Date.now() + 30_000;
   }
 
-  /**
-   * 将当前内存缓存持久化到数据库
-   */
-  private async persistCache(): Promise<void> {
-    const blacklistArray = Array.from(this.memoryCache.values());
-
-    try {
-      await this.groupBlacklistRepository.saveBlacklistToDb(blacklistArray);
-    } catch (error) {
-      this.logger.error('保存小组黑名单到数据库失败', error);
-    }
-  }
-
   private async readSharedCache(): Promise<GroupBlacklistItem[] | null> {
     try {
       const cached = await this.redisService.get<
@@ -194,7 +180,8 @@ export class GroupBlacklistService {
 
   private async persistSharedCache(): Promise<void> {
     try {
-      await this.redisService.set(GroupBlacklistService.SHARED_CACHE_KEY, {
+      // 并发写入/读取的旧快照最多保留两秒，不能无限期覆盖较新的数据库状态。
+      await this.redisService.setex(GroupBlacklistService.SHARED_CACHE_KEY, 2, {
         items: Array.from(this.memoryCache.values()),
         updatedAt: Date.now(),
       });

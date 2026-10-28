@@ -43,6 +43,38 @@ describe('GroupService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('getAllGroups', () => {
+    it('reads every page and preserves descriptions used for ownership', async () => {
+      const first = Array.from({ length: 100 }, (_, i) => ({ id: `g-${i}`, name: `Group ${i}` }));
+      mockHttpService.get.mockResolvedValueOnce({ errcode: 0, data: first }).mockResolvedValueOnce({
+        errcode: 0,
+        data: [{ id: 'henan', name: '杨晶组', description: '河南自招团队成员' }],
+      });
+      expect(await service.getAllGroups()).toHaveLength(101);
+      expect(mockHttpService.get).toHaveBeenLastCalledWith(expect.any(String), {
+        token: 'enterprise-token',
+        current: 2,
+        pageSize: 100,
+      });
+    });
+
+    it.each([
+      { errcode: 1, data: [] },
+      { data: { invalid: true } },
+      { data: [{ name: 'missing identity' }] },
+    ])('rejects an incomplete or failed directory', async (response) => {
+      mockHttpService.get.mockResolvedValue(response);
+      await expect(service.getAllGroups()).rejects.toThrow();
+    });
+
+    it('rejects a server repeating its first page instead of silently using a partial scope', async () => {
+      mockHttpService.get.mockResolvedValue({
+        data: Array.from({ length: 100 }, (_, i) => ({ id: `g-${i}`, name: `Group ${i}` })),
+      });
+      await expect(service.getAllGroups()).rejects.toThrow('小组目录分页重复');
+    });
+  });
+
   describe('getGroupList', () => {
     it('should return group list with default params', async () => {
       const mockResult = {

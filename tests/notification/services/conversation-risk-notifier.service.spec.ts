@@ -53,7 +53,7 @@ describe('ConversationRiskNotifierService', () => {
         atUsers: [BOT_TO_RECEIVER[botImId]],
       }),
     );
-    expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'risk-card' });
+    expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'risk-card' }, botImId);
   });
 
   it('should fallback to atAll when bot id is unknown', async () => {

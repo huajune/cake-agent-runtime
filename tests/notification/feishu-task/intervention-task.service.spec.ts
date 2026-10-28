@@ -43,6 +43,7 @@ describe('InterventionTaskService', () => {
     }),
   };
   const configService = { get: jest.fn((key: string) => env[key]) };
+  const centerScope = { getScope: jest.fn() };
   const systemConfig = { getConfigValue: jest.fn() };
   const hostingMember = {
     getByBotImId: jest.fn(async () => ({ wecomNickname: '东升', feishuOpenId: 'ou_dongsheng' })),
@@ -67,6 +68,7 @@ describe('InterventionTaskService', () => {
         client as never,
         {} as never,
         service,
+        { isRequired: () => false } as never,
       );
       await worker.process({ data, update: jest.fn().mockResolvedValue(undefined) } as never);
     }),
@@ -95,6 +97,8 @@ describe('InterventionTaskService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete env.HENAN_FEISHU_TASK_TASKLIST_GUID;
+    centerScope.getScope.mockResolvedValue({ botIds: [] });
     // clearAllMocks 不还原 mockImplementation，显式重置字段解析默认行为（缺列用例会覆盖它）
     client.resolveFieldGuid.mockImplementation(
       async (_tasklist: string, name: string) => `field:${name}`,
@@ -124,6 +128,7 @@ describe('InterventionTaskService', () => {
       alertNotifier as never,
       moduleRef as never,
       taskQueue as never,
+      centerScope as never,
     );
     service.onApplicationBootstrap();
   });
@@ -158,6 +163,95 @@ describe('InterventionTaskService', () => {
     }
   });
 
+  describe('河南任务清单隔离', () => {
+    beforeEach(() => {
+      env.HENAN_FEISHU_TASK_TASKLIST_GUID = 'tl-henan';
+      centerScope.getScope.mockResolvedValue({ botIds: [basePayload.botImId] });
+      service = new InterventionTaskService(
+        client as never,
+        configService as never,
+        systemConfig as never,
+        hostingMember as never,
+        alertNotifier as never,
+        moduleRef as never,
+        taskQueue as never,
+        centerScope as never,
+      );
+    });
+
+    it('河南任务的清单、分组、字段均使用河南范围，负责人不回退总部主管', async () => {
+      await service.submit({
+        ...basePayload,
+        kind: 'conversation_risk',
+        riskType: 'abuse',
+        source: 'regex_intercept',
+        riskLabel: '辱骂/攻击',
+        summary: '风险测试',
+      } as RiskInterventionPayload);
+      expect(client.createTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tasklistGuid: 'tl-henan',
+          members: [{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }],
+        }),
+      );
+      expect(client.resolveFieldGuid.mock.calls.every(([list]) => list === 'tl-henan')).toBe(true);
+      expect(client.resolveSectionGuid.mock.calls.every(([list]) => list === 'tl-henan')).toBe(
+        true,
+      );
+      expect(client.resolveOptionGuid.mock.calls.every(([list]) => list === 'tl-henan')).toBe(true);
+    });
+
+    it('非河南账号继续进入总部清单', async () => {
+      centerScope.getScope.mockResolvedValue({ botIds: [] });
+      await service.submit(basePayload);
+      expect(client.createTask).toHaveBeenCalledWith(
+        expect.objectContaining({ tasklistGuid: 'tl-1' }),
+      );
+    });
+
+    it('归属查询失败时不建任务、不回退总部', async () => {
+      centerScope.getScope.mockRejectedValue(new Error('directory unavailable'));
+      await expect(service.submit(basePayload)).rejects.toThrow('directory unavailable');
+      expect(client.createTask).not.toHaveBeenCalled();
+    });
+
+    it('河南负责人缺失时不使用总部默认负责人', async () => {
+      hostingMember.resolveFeishuReceiver.mockResolvedValue(undefined as never);
+      await expect(service.submit(basePayload)).rejects.toThrow('河南托管账号尚未绑定');
+      expect(client.createTask).not.toHaveBeenCalled();
+    });
+  });
+
+  it('河南清单未配置时不回退总部', async () => {
+    centerScope.getScope.mockResolvedValue({ botIds: [basePayload.botImId] });
+    await expect(service.submit(basePayload)).rejects.toThrow('目标任务清单尚未配置');
+    expect(client.createTask).not.toHaveBeenCalled();
+  });
+
+  it('缺少托管账号时不猜测任务归属', async () => {
+    await expect(service.submit({ ...basePayload, botImId: undefined })).rejects.toThrow(
+      '无法确认清单归属',
+    );
+    expect(client.createTask).not.toHaveBeenCalled();
+  });
+
+  it('不允许河南和总部配置成同一个清单', () => {
+    env.HENAN_FEISHU_TASK_TASKLIST_GUID = env.FEISHU_TASK_TASKLIST_GUID;
+    expect(
+      () =>
+        new InterventionTaskService(
+          client as never,
+          configService as never,
+          systemConfig as never,
+          hostingMember as never,
+          alertNotifier as never,
+          moduleRef as never,
+          taskQueue as never,
+          centerScope as never,
+        ),
+    ).toThrow('河南任务清单必须与总部清单不同');
+  });
+
   it('开关关闭时不调飞书', async () => {
     systemConfig.getConfigValue.mockResolvedValue({ enabled: false });
     await service.submit(basePayload);
@@ -176,6 +270,7 @@ describe('InterventionTaskService', () => {
       alertNotifier as never,
       moduleRef as never,
       taskQueue as never,
+      centerScope as never,
     );
     noTasklistService.onApplicationBootstrap();
 

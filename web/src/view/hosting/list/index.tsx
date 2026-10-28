@@ -8,6 +8,7 @@ import {
 import { useGroupList } from '@/hooks/config/useWorker';
 
 // 组件导入
+import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import GlobalSwitch from './components/GlobalSwitch';
 import GroupTable from './components/GroupTable';
 import InfoCard from './components/InfoCard';
@@ -16,12 +17,13 @@ import InfoCard from './components/InfoCard';
 import styles from './styles/index.module.scss';
 
 export default function Hosting() {
+  const restricted = Boolean(useDashboardAccess()?.centerId);
   // 数据 hooks
   const { data: blacklist, isLoading: isLoadingBlacklist } = useBlacklist();
   const { data: groupList, isLoading: isLoadingGroups } = useGroupList();
   const addToBlacklist = useAddToBlacklist();
   const removeFromBlacklist = useRemoveFromBlacklist();
-  const { data: aiStatus } = useAiReplyStatus();
+  const { data: aiStatus } = useAiReplyStatus(true, !restricted);
   const toggleAiReply = useToggleAiReply();
 
   // 计算小组状态（是否在黑名单中）
@@ -44,11 +46,13 @@ export default function Hosting() {
   return (
     <div className={styles.page}>
       {/* 全局 AI 开关 */}
-      <GlobalSwitch
-        enabled={aiStatus?.enabled ?? false}
-        isPending={toggleAiReply.isPending}
-        onToggle={(enabled) => toggleAiReply.mutate(enabled)}
-      />
+      {!restricted && (
+        <GlobalSwitch
+          enabled={aiStatus?.enabled ?? false}
+          isPending={toggleAiReply.isPending}
+          onToggle={(enabled) => toggleAiReply.mutate(enabled)}
+        />
+      )}
 
       {/* 小组托管管理 */}
       <GroupTable

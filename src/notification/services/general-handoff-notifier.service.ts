@@ -46,8 +46,9 @@ export class GeneralHandoffNotifierService {
       ...(isTest ? {} : receiver ? { atUsers: [receiver] } : { atAll: true }),
     });
 
-    const targetChannel = isTest ? this.alertChannel : this.privateChatChannel;
-    const success = await targetChannel.send(card);
+    const success = isTest
+      ? await this.alertChannel.send(card)
+      : await this.privateChatChannel.send(card, payload.botImId);
     const tag = isTest ? '[测试]' : '';
     if (success) {
       this.logger.warn(

@@ -144,6 +144,7 @@ export class InterventionService {
 
   private notifyRisk(payload: RiskInterventionPayload): Promise<boolean> {
     return this.riskNotifier.notifyConversationRisk({
+      corpId: payload.corpId,
       riskLabel: payload.riskLabel,
       summary: payload.summary,
       reason: payload.reason,

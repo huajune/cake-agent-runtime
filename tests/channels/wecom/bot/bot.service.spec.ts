@@ -42,6 +42,30 @@ describe('BotService', () => {
     expect(service).toBeDefined();
   });
 
+  it('rejects missing credentials and malformed directories for center routing', async () => {
+    mockConfigService.get.mockReturnValue(undefined);
+    await expect(service.getConfiguredBotList(true)).rejects.toThrow('凭据未配置');
+    mockConfigService.get.mockReturnValue('enterprise-token');
+    for (const payload of [
+      {},
+      { errcode: 500, groups: [] },
+      { errcode: 500, data: { groups: [] } },
+      { groups: [{ id: 'g' }] },
+      { groups: [{ bots: [{ wxid: 'bot' }] }] },
+      { groups: [{ id: 'g', bots: [{}] }] },
+      { groups: [{ id: 'g', bots: [{ wxid: 'bot' }, { wxid: 'bot' }] }] },
+    ]) {
+      mockHttpService.get.mockResolvedValue(payload);
+      await expect(service.getConfiguredBotList(true)).rejects.toThrow('托管账号目录');
+    }
+    mockHttpService.get.mockResolvedValue({ errcode: 0, data: { groups: [] } });
+    await expect(service.getConfiguredBotList(true)).resolves.toEqual([]);
+    mockHttpService.get.mockResolvedValue({ groups: [{ id: 'g', bots: [{ wxid: 'bot' }] }] });
+    await expect(service.getConfiguredBotList(true)).resolves.toEqual([
+      expect.objectContaining({ groupId: 'g', wxid: 'bot' }),
+    ]);
+  });
+
   describe('getBotList', () => {
     it('should return bot list on success', async () => {
       const token = 'test-token';

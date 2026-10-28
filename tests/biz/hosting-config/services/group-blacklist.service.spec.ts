@@ -9,12 +9,12 @@ describe('GroupBlacklistService', () => {
 
   const mockGroupBlacklistRepository = {
     loadBlacklistFromDb: jest.fn(),
-    saveBlacklistToDb: jest.fn(),
+    setGroupBlacklisted: jest.fn(),
   };
 
   const mockRedisService = {
     get: jest.fn(),
-    set: jest.fn(),
+    setex: jest.fn(),
   };
 
   const sampleBlacklistItems: GroupBlacklistItem[] = [
@@ -35,7 +35,14 @@ describe('GroupBlacklistService', () => {
 
     jest.clearAllMocks();
     mockRedisService.get.mockResolvedValue(null);
-    mockRedisService.set.mockResolvedValue(undefined);
+    mockRedisService.setex.mockResolvedValue(undefined);
+    mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
+    mockGroupBlacklistRepository.setGroupBlacklisted.mockImplementation(
+      async (id, blocked, reason) => [
+        ...sampleBlacklistItems.filter((item) => item.group_id !== id),
+        ...(blocked ? [{ group_id: id, reason, added_at: Date.now() }] : []),
+      ],
+    );
 
     // Force cache to expire so tests start fresh
     (service as any).memoryCacheExpiry = 0;
@@ -137,10 +144,6 @@ describe('GroupBlacklistService', () => {
   // ==================== addGroupToBlacklist ====================
 
   describe('addGroupToBlacklist', () => {
-    beforeEach(() => {
-      mockGroupBlacklistRepository.saveBlacklistToDb.mockResolvedValue(undefined);
-    });
-
     it('should add group to blacklist with reason', async () => {
       await service.addGroupToBlacklist('newGroup', 'spam');
 
@@ -162,21 +165,25 @@ describe('GroupBlacklistService', () => {
     it('should persist to DB', async () => {
       await service.addGroupToBlacklist('newGroup', 'reason');
 
-      expect(mockGroupBlacklistRepository.saveBlacklistToDb).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ group_id: 'newGroup', reason: 'reason' }),
-        ]),
+      expect(mockGroupBlacklistRepository.setGroupBlacklisted).toHaveBeenCalledWith(
+        'newGroup',
+        true,
+        'reason',
+      );
+      expect(mockRedisService.setex).toHaveBeenCalledWith(
+        expect.any(String),
+        2,
+        expect.any(Object),
       );
     });
 
-    it('should handle DB save failure gracefully', async () => {
-      mockGroupBlacklistRepository.saveBlacklistToDb.mockRejectedValue(new Error('DB save error'));
-
-      // Should not throw
-      await expect(service.addGroupToBlacklist('newGroup')).resolves.not.toThrow();
-
-      // Item should still be in memory
-      expect((service as any).memoryCache.has('newGroup')).toBe(true);
+    it('reports DB failure without changing the effective cache', async () => {
+      mockGroupBlacklistRepository.setGroupBlacklisted.mockRejectedValue(
+        new Error('DB save error'),
+      );
+      await expect(service.addGroupToBlacklist('newGroup')).rejects.toThrow('DB save error');
+      expect((service as any).memoryCache.has('newGroup')).toBe(false);
+      expect(mockRedisService.setex).not.toHaveBeenCalled();
     });
   });
 
@@ -188,7 +195,6 @@ describe('GroupBlacklistService', () => {
       (service as any).memoryCache.set('group1', sampleBlacklistItems[0]);
       (service as any).memoryCache.set('group2', sampleBlacklistItems[1]);
       (service as any).memoryCacheExpiry = Date.now() + 300_000;
-      mockGroupBlacklistRepository.saveBlacklistToDb.mockResolvedValue(undefined);
     });
 
     it('should remove group from blacklist and return true', async () => {
@@ -207,18 +213,24 @@ describe('GroupBlacklistService', () => {
     it('should persist changes to DB after removal', async () => {
       await service.removeGroupFromBlacklist('group1');
 
-      expect(mockGroupBlacklistRepository.saveBlacklistToDb).toHaveBeenCalledWith(
-        expect.not.arrayContaining([expect.objectContaining({ group_id: 'group1' })]),
+      expect(mockGroupBlacklistRepository.setGroupBlacklisted).toHaveBeenCalledWith(
+        'group1',
+        false,
+        undefined,
       );
     });
 
-    it('should handle DB save failure gracefully when removing', async () => {
-      mockGroupBlacklistRepository.saveBlacklistToDb.mockRejectedValue(new Error('DB save error'));
+    it('does not report a successful removal when persistence failed', async () => {
+      mockGroupBlacklistRepository.setGroupBlacklisted.mockRejectedValue(
+        new Error('DB save error'),
+      );
+      await expect(service.removeGroupFromBlacklist('group1')).rejects.toThrow('DB save error');
+      expect((service as any).memoryCache.has('group1')).toBe(true);
+    });
 
-      await expect(service.removeGroupFromBlacklist('group1')).resolves.toBe(true);
-
-      // Memory cache should still be updated
-      expect((service as any).memoryCache.has('group1')).toBe(false);
+    it('does not expose a default-enabled switch when the database cannot be read', async () => {
+      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(null);
+      await expect(service.isGroupBlacklistedStrict('group1')).rejects.toThrow('暂时无法读取');
     });
   });
 
@@ -271,13 +283,13 @@ describe('GroupBlacklistService', () => {
     it('keeps the previous snapshot and skips the shared cache write when DB is unreadable', async () => {
       mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValueOnce(sampleBlacklistItems);
       await service.loadGroupBlacklist();
-      mockRedisService.set.mockClear();
+      mockRedisService.setex.mockClear();
 
       mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValueOnce(null);
       await service.loadGroupBlacklist();
 
       expect((service as any).memoryCache.has('group1')).toBe(true);
-      expect(mockRedisService.set).not.toHaveBeenCalled();
+      expect(mockRedisService.setex).not.toHaveBeenCalled();
       expect((service as any).memoryCacheExpiry).toBeGreaterThan(Date.now());
     });
   });

@@ -1,4 +1,6 @@
 import { InterventionService } from '@biz/intervention/intervention.service';
+import { FeishuPrivateChatChannel } from '@notification/channels/feishu-private-chat.channel';
+import { ConfigService } from '@nestjs/config';
 import type {
   GeneralHandoffInterventionPayload,
   RiskInterventionPayload,
@@ -53,6 +55,30 @@ describe('InterventionService', () => {
       riskNotifier as never,
       generalHandoffNotifier as never,
     );
+  });
+
+  it('still persists the task when the real notification channel cannot resolve ownership', async () => {
+    const webhook = { sendMessage: jest.fn() };
+    const channel = new FeishuPrivateChatChannel(
+      webhook as never,
+      new ConfigService({ HENAN_PRIVATE_CHAT_MONITOR_WEBHOOK_URL: 'https://example.test/hook' }),
+      { getScope: jest.fn().mockRejectedValue(new Error('directory unavailable')) } as never,
+    );
+    const tasks = { submit: jest.fn().mockResolvedValue(undefined) };
+    riskNotifier.notifyConversationRisk.mockImplementation(() => channel.send({}, 'bot-im-1'));
+    const service = new InterventionService(
+      userHostingService as never,
+      riskNotifier as never,
+      generalHandoffNotifier as never,
+      tasks as never,
+    );
+    await expect(service.dispatch(riskPayload)).resolves.toMatchObject({
+      paused: true,
+      alerted: false,
+      suppressed: 'notify_failed',
+    });
+    expect(tasks.submit).toHaveBeenCalledWith(riskPayload);
+    expect(webhook.sendMessage).not.toHaveBeenCalled();
   });
 
   it('returns missing_target when pauseTargetId is empty', async () => {

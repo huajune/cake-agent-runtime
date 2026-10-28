@@ -7,6 +7,7 @@ export interface ConversationRiskNotificationMessage {
 }
 
 export interface ConversationRiskNotificationPayload {
+  corpId?: string;
   riskLabel: string;
   summary: string;
   reason: string;

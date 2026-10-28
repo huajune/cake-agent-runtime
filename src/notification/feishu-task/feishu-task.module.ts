@@ -1,3 +1,4 @@
+import { DelegatedTaskAssignmentService } from './delegated-task-assignment.service';
 import { BullModule } from '@nestjs/bull';
 import { InterventionTaskProcessor } from './intervention-task.processor';
 import { INTERVENTION_TASK_QUEUE } from './intervention-task-job';
@@ -16,7 +17,12 @@ import { InterventionTaskService } from './intervention-task.service';
  */
 @Module({
   imports: [HostingConfigModule, BullModule.registerQueue({ name: INTERVENTION_TASK_QUEUE })],
-  providers: [FeishuTaskClient, InterventionTaskService, InterventionTaskProcessor],
+  providers: [
+    FeishuTaskClient,
+    InterventionTaskService,
+    InterventionTaskProcessor,
+    DelegatedTaskAssignmentService,
+  ],
   exports: [FeishuTaskClient, InterventionTaskService],
 })
 export class FeishuTaskModule {}
