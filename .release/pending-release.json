@@ -1,9 +1,45 @@
 {
   "baseVersion": "11.14.2",
-  "nextVersion": "11.14.2",
-  "updatedAt": "2026-10-26",
+  "nextVersion": "11.14.3",
+  "updatedAt": "2026-10-28",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1468",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1468",
+      "title": "修复邀请记忆补账并补充 execute 恢复验收",
+      "author": "huajune",
+      "mergedAt": "2026-10-28",
+      "opsNotes": [
+        "**入群邀请记录与系统回调** ⏳ 待上线",
+        "- 修复邀请已被受理、但首次邀请记忆无法保存的问题，减少后续重复邀请风险。",
+        "- 兼容缺少联系人类型的企微群系统事件，避免将正常系统事件报成回调格式错误。"
+      ],
+      "businessUpdates": [
+        "修复邀请记忆补账并补充执行恢复验收"
+      ],
+      "summary": [
+        "修复邀请记忆补账并补充执行恢复验收",
+        "修复邀请记忆补账并补充 execute 恢复验收"
+      ],
+      "features": [],
+      "fixes": [
+        "修复邀请记忆补账并补充执行恢复验收"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pnpm run ci:check：550 套件、8998 测试、3 快照通过，既有 1 套件/5 测试跳过。",
+        "隔离 PostgreSQL 真实旧 schema 冷加载、6 个运行时迁移、权限/故障 SQL、并发领取与版本墓碑。",
+        "实际重启隔离数据库：原输入/分段计划保留、禁止重派、回滚隔离、晚到回执精确匹配。",
+        "隔离 Redis：CAS 字节比较、过期、ABA、后台禁止复活。",
+        "新增人工核实告警断言定向通过；未新增开放语言判定或 prompt 示例。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.14.2",
     "date": "2026-10-26",
@@ -203,5 +239,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "9ff3ebc96bc04cd917ca613b348b9cc667bebdef"
+  "lastAnalyzedSha": "56bbb8b00b51b46a2fefa68558a32499b4c60af6"
 }
