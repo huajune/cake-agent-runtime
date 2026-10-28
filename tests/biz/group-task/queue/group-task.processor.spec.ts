@@ -498,6 +498,27 @@ describe('GroupTaskProcessor', () => {
       );
     });
 
+    it('does not dispatch on lock exhaustion and sends once when the original job retries', async () => {
+      redisMock.get.mockResolvedValue({ message: 'hi', summary: 's' });
+      // Advance the bounded acquisition deadline; no real 20-minute wait.
+      const now = Date.now();
+      const clock = jest
+        .spyOn(Date, 'now')
+        .mockReturnValueOnce(now)
+        .mockReturnValue(now + 1_200_001);
+      try {
+        await expect(invokeHandler(GroupTaskJobName.SEND, baseSend)).rejects.toThrow(
+          '发送锁不可用',
+        );
+        expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
+        expect(redisMock.setex).not.toHaveBeenCalled();
+      } finally {
+        clock.mockRestore();
+      }
+      await invokeHandler(GroupTaskJobName.SEND, baseSend);
+      expect(notificationSender.sendToGroup).toHaveBeenCalledTimes(1);
+    });
+
     it('should serialize concurrent send jobs for the same bot', async () => {
       let lockOwner: string | null = null;
       let lastDispatchAt: number | null = null;

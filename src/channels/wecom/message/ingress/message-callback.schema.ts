@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { ContactType, MessageType } from '@enums/message-callback.enum';
 
 const PayloadSchema = z.object({}).catchall(z.unknown());
 
-export const EnterpriseMessageCallbackInputSchema = z
+const EnterpriseMessageCallbackSchema = z
   .object({
     orgId: z.string().min(1),
     groupId: z.string().optional(),
@@ -30,6 +31,21 @@ export const EnterpriseMessageCallbackInputSchema = z
     _apiType: z.enum(['enterprise', 'group']).optional(),
   })
   .passthrough();
+
+// Enterprise room system events omit contactType because they have no contact.
+// Keep ordinary inbound messages and delivery callbacks strict.
+export const EnterpriseMessageCallbackInputSchema = z.preprocess((body) => {
+  if (!body || typeof body !== 'object') return body;
+  const value = body as Record<string, unknown>;
+  if (
+    value.messageType === MessageType.WECOM_SYSTEM &&
+    typeof value.imRoomId === 'string' &&
+    value.imRoomId.length > 0 &&
+    value.contactType === undefined
+  )
+    return { ...value, contactType: ContactType.UNKNOWN };
+  return body;
+}, EnterpriseMessageCallbackSchema);
 
 export const GroupMessageCallbackSchema = z
   .object({
