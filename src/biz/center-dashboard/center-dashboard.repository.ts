@@ -54,6 +54,8 @@ export class CenterDashboardRepository {
       'cursorTimestamp',
       'cursorChatId',
       'userName',
+      'afterChatId',
+      'afterBotId',
     ]) {
       const value = scalar(key);
       if (value) params[key] = value;
@@ -81,6 +83,8 @@ export class CenterDashboardRepository {
     }
     if (Boolean(params.cursorTimestamp) !== Boolean(params.cursorChatId))
       throw new BadRequestException('游标必须完整');
+    if (Boolean(params.afterChatId) !== Boolean(params.afterBotId))
+      throw new BadRequestException('用户游标必须完整');
     const client = this.supabase.getSupabaseClient();
     if (!client) throw new ServiceUnavailableException('数据服务暂不可用');
     const { data, error } = await client

@@ -90,6 +90,9 @@ describe('Existing dashboard contracts under a center scope', () => {
     abortSignal.mockResolvedValue({ data: null, error: { message: 'timeout' } });
     await expect(db.read('sessions', [], {})).rejects.toThrow('暂不可用');
     await expect(db.read('sessions', ['bot'], { limit: '999999' })).rejects.toThrow();
+    await expect(db.read('users', ['bot'], { afterChatId: 'chat' })).rejects.toThrow(
+      '游标必须完整',
+    );
     await expect(
       db.read('sessions', ['bot'], { startDate: '2020-01-01', endDate: today }),
     ).rejects.toThrow();
