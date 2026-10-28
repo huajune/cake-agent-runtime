@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import type { FeishuWebhookChannel } from '@infra/feishu/constants/constants';
@@ -6,6 +6,7 @@ import { CenterScopeService } from '@biz/center-dashboard/center-scope.service';
 
 @Injectable()
 export class FeishuPrivateChatChannel {
+  private readonly logger = new Logger(FeishuPrivateChatChannel.name);
   private readonly routeExternal: boolean;
 
   constructor(
@@ -19,8 +20,15 @@ export class FeishuPrivateChatChannel {
   }
 
   async send(card: Record<string, unknown>, botImId?: string): Promise<boolean> {
-    const channel = await this.resolveChannel(botImId);
-    return this.webhookService.sendMessage(channel, card);
+    try {
+      const channel = await this.resolveChannel(botImId);
+      return await this.webhookService.sendMessage(channel, card);
+    } catch {
+      // Boolean callers must still enqueue handoff tasks after a failed notification.
+      // Never fall back to another group or log private directory/provider responses.
+      this.logger.error('私聊通知失败：无法确认目标群或发送结果，未转发其他群');
+      return false;
+    }
   }
 
   /** The action executor owns unknown results; never retry a timed-out webhook here. */

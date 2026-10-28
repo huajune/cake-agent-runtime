@@ -85,7 +85,9 @@ describe('FeishuPrivateChatChannel', () => {
     expect(webhookService.sendMessage).toHaveBeenCalledWith('PRIVATE_CHAT_MONITOR', {});
     webhookService.sendMessage.mockClear();
     scopes.getScope.mockRejectedValue(new Error('directory unavailable'));
-    await expect(channel.send({}, 'center-bot')).rejects.toThrow('directory unavailable');
+    await expect(channel.send({}, 'center-bot')).resolves.toBe(false);
+    await expect(channel.sendOnce({}, 'center-bot')).rejects.toThrow('directory unavailable');
     expect(webhookService.sendMessage).not.toHaveBeenCalled();
+    expect(webhookService.sendMessageOrThrow).not.toHaveBeenCalled();
   });
 });

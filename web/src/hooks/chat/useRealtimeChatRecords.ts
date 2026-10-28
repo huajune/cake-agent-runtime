@@ -16,6 +16,7 @@ export function useRealtimeChatRecords() {
     );
     void queryClient.invalidateQueries({ queryKey: ['chat-sessions-optimized'] });
     void queryClient.invalidateQueries({ queryKey: ['chat-session-messages'] });
+    void queryClient.invalidateQueries({ queryKey: ['chat-summary-stats'] });
   }, [queryClient]);
   const isLive = useDashboardUpdates(refresh);
   return { isLive, activeChatIds };
