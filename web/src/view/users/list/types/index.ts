@@ -31,6 +31,7 @@ export type TabType = 'today' | 'paused' | 'permanent' | 'blacklist';
  * 用户表格属性
  */
 export interface UserTableProps {
+  readOnly?: boolean;
   users: UserData[];
   isLoading: boolean;
   onToggleHosting: (chatId: string, enabled: boolean) => void;

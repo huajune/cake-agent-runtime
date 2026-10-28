@@ -23,6 +23,7 @@ function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number
     'order',
     'limit',
     'range',
+    'abortSignal',
   ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mock: any = Object.assign(Promise.resolve(result), {});
@@ -67,6 +68,22 @@ describe('GroupBlacklistRepository', () => {
     expect(repository).toBeDefined();
   });
 
+  it('updates only the target group through the atomic RPC and reports failures', async () => {
+    const items = [{ group_id: 'other', added_at: 1 }];
+    mockSupabaseClient.rpc.mockReturnValue(makeQueryMock({ data: items, error: null }));
+    expect(await repository.setGroupBlacklisted('own', false)).toEqual(items);
+    expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('set_hosting_group_blacklisted', {
+      p_group_id: 'own',
+      p_blacklisted: false,
+      p_reason: null,
+    });
+    expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    mockSupabaseClient.rpc.mockReturnValue(
+      makeQueryMock({ data: null, error: { message: 'failed' } }),
+    );
+    await expect(repository.setGroupBlacklisted('own', true)).rejects.toThrow('保存失败');
+  });
+
   // ==================== loadBlacklistFromDb ====================
 
   describe('loadBlacklistFromDb', () => {
@@ -104,7 +121,7 @@ describe('GroupBlacklistRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array when value is not an array', async () => {
+    it('should treat malformed persisted data as unreadable', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const queryMock = makeQueryMock({ data: [{ value: null }], error: null });
@@ -112,7 +129,7 @@ describe('GroupBlacklistRepository', () => {
 
       const result = await repository.loadBlacklistFromDb();
 
-      expect(result).toEqual([]);
+      expect(result).toBeNull();
     });
 
     it('should return null (unreadable) on database error instead of an empty blacklist', async () => {
@@ -163,60 +180,6 @@ describe('GroupBlacklistRepository', () => {
       const result = await repository.loadBlacklistFromDb();
 
       expect(result).toBeNull();
-    });
-  });
-
-  // ==================== saveBlacklistToDb ====================
-
-  describe('saveBlacklistToDb', () => {
-    it('should skip save when supabase is not available', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(false);
-
-      await repository.saveBlacklistToDb([]);
-
-      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
-    });
-
-    it('should update existing record when record exists', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const items = [{ group_id: 'group_001', added_at: 1700000000000 }];
-
-      // update returns the updated records (non-empty means update happened)
-      const updateResult = makeQueryMock({
-        data: [{ key: 'group_blacklist', value: items }],
-        error: null,
-      });
-      mockSupabaseClient.from.mockReturnValue(updateResult);
-
-      await repository.saveBlacklistToDb(items);
-
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('system_config');
-    });
-
-    it('should insert new record when no existing record is updated', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const items = [{ group_id: 'group_001', added_at: 1700000000000 }];
-
-      // update returns empty array (no rows updated) → triggers insert
-      const emptyUpdateResult = makeQueryMock({ data: [], error: null });
-      mockSupabaseClient.from.mockReturnValue(emptyUpdateResult);
-
-      await repository.saveBlacklistToDb(items);
-
-      // from() is called at least twice: once for update, once for insert
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('system_config');
-    });
-
-    it('should handle empty items array', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      const updateResult = makeQueryMock({
-        data: [{ key: 'group_blacklist', value: [] }],
-        error: null,
-      });
-      mockSupabaseClient.from.mockReturnValue(updateResult);
-
-      await expect(repository.saveBlacklistToDb([])).resolves.not.toThrow();
     });
   });
 });

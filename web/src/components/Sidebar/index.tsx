@@ -1,3 +1,4 @@
+import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -34,6 +35,7 @@ const NAV_ICON_STROKE = 1.6;
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
+  const restricted = Boolean(useDashboardAccess()?.centerId);
   const location = useLocation();
 
   const shouldInterceptNavigation = (event: MouseEvent<HTMLAnchorElement>) =>
@@ -102,42 +104,48 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
       <div className="sidebar-menu">
         {/* 数据概览 */}
-        {!isCollapsed && <div className="group-title">数据概览</div>}
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '仪表盘' : undefined}
-          {...bindPreload('/')}
-        >
-          <span className="nav-icon">
-            <LayoutDashboard size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">仪表盘</span>}
-        </NavLink>
-        <NavLink
-          to="/conversion-analysis"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '转化分析' : undefined}
-          {...bindPreload('/conversion-analysis')}
-        >
-          <span className="nav-icon">
-            <TrendingUp size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">转化分析</span>}
-        </NavLink>
-        <a
-          href={OPERATION_METRICS_FEISHU_URL}
-          className="nav-item"
-          title={isCollapsed ? '运营日报' : undefined}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="nav-icon">
-            <Table2 size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">运营日报</span>}
-        </a>
+        {!restricted && !isCollapsed && <div className="group-title">数据概览</div>}
+        {!restricted && (
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '仪表盘' : undefined}
+            {...bindPreload('/')}
+          >
+            <span className="nav-icon">
+              <LayoutDashboard size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">仪表盘</span>}
+          </NavLink>
+        )}
+        {!restricted && (
+          <NavLink
+            to="/conversion-analysis"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '转化分析' : undefined}
+            {...bindPreload('/conversion-analysis')}
+          >
+            <span className="nav-icon">
+              <TrendingUp size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">转化分析</span>}
+          </NavLink>
+        )}
+        {!restricted && (
+          <a
+            href={OPERATION_METRICS_FEISHU_URL}
+            className="nav-item"
+            title={isCollapsed ? '运营日报' : undefined}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className="nav-icon">
+              <Table2 size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">运营日报</span>}
+          </a>
+        )}
 
         {/* 客户运营 */}
         {!isCollapsed && <div className="group-title">客户运营</div>}
@@ -177,68 +185,78 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         </NavLink>
 
         {/* 策略与质量 */}
-        {!isCollapsed && <div className="group-title">策略与质量</div>}
+        {!restricted && !isCollapsed && <div className="group-title">策略与质量</div>}
 
-        <NavLink
-          to="/strategy"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '策略配置' : undefined}
-          {...bindPreload('/strategy')}
-        >
-          <span className="nav-icon">
-            <Layers size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">策略配置</span>}
-        </NavLink>
-        <NavLink
-          to="/agent-test"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '对话调试' : undefined}
-          {...bindPreload('/agent-test')}
-        >
-          <span className="nav-icon">
-            <MessageSquareCode size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">对话调试</span>}
-        </NavLink>
-        <a
-          href={BADCASE_FEISHU_URL}
-          className="nav-item"
-          title={isCollapsed ? 'BadCase' : undefined}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="nav-icon">
-            <Bug size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">BadCase</span>}
-        </a>
-        <NavLink
-          to="/test-suite"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '飞书评测集' : undefined}
-          {...bindPreload('/test-suite')}
-        >
-          <span className="nav-icon">
-            <ClipboardCheck size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">飞书评测集</span>}
-        </NavLink>
+        {!restricted && (
+          <NavLink
+            to="/strategy"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '策略配置' : undefined}
+            {...bindPreload('/strategy')}
+          >
+            <span className="nav-icon">
+              <Layers size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">策略配置</span>}
+          </NavLink>
+        )}
+        {!restricted && (
+          <NavLink
+            to="/agent-test"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '对话调试' : undefined}
+            {...bindPreload('/agent-test')}
+          >
+            <span className="nav-icon">
+              <MessageSquareCode size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">对话调试</span>}
+          </NavLink>
+        )}
+        {!restricted && (
+          <a
+            href={BADCASE_FEISHU_URL}
+            className="nav-item"
+            title={isCollapsed ? 'BadCase' : undefined}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className="nav-icon">
+              <Bug size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">BadCase</span>}
+          </a>
+        )}
+        {!restricted && (
+          <NavLink
+            to="/test-suite"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '飞书评测集' : undefined}
+            {...bindPreload('/test-suite')}
+          >
+            <span className="nav-icon">
+              <ClipboardCheck size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">飞书评测集</span>}
+          </NavLink>
+        )}
 
         {/* 系统 */}
         {!isCollapsed && <div className="group-title">系统</div>}
 
-        <NavLink
-          to="/config"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '运行时配置' : undefined}
-          {...bindPreload('/config')}
-        >
-          <span className="nav-icon">
-            <Settings size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">运行时配置</span>}
-        </NavLink>
+        {!restricted && (
+          <NavLink
+            to="/config"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '运行时配置' : undefined}
+            {...bindPreload('/config')}
+          >
+            <span className="nav-icon">
+              <Settings size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">运行时配置</span>}
+          </NavLink>
+        )}
         <NavLink
           to="/message-processing"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
@@ -261,17 +279,19 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           </span>
           {!isCollapsed && <span className="nav-text">二次触发追溯</span>}
         </NavLink>
-        <NavLink
-          to="/system"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '系统监控' : undefined}
-          {...bindPreload('/system')}
-        >
-          <span className="nav-icon">
-            <Activity size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">系统监控</span>}
-        </NavLink>
+        {!restricted && (
+          <NavLink
+            to="/system"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '系统监控' : undefined}
+            {...bindPreload('/system')}
+          >
+            <span className="nav-icon">
+              <Activity size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">系统监控</span>}
+          </NavLink>
+        )}
       </div>
     </aside>
   );

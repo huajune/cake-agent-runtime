@@ -1,3 +1,4 @@
+import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import { useMemo, useState } from 'react';
 import { ArrowUpDown, Bot, Info, Search, X } from 'lucide-react';
 import { useConfiguredBots } from '@/hooks/bot/useBots';
@@ -133,17 +134,19 @@ function filterUsersByControls(
 }
 
 export default function Users() {
+  const restricted = Boolean(useDashboardAccess()?.centerId);
   const [activeTab, setActiveTab] = useState<TabType>('today');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('firstActiveDesc');
   const [botFilter, setBotFilter] = useState(ALL_BOTS);
   const [selectedDays, setSelectedDays] = useState<number>(USER_RANGE_OPTIONS[0].days);
   const { data: todayUsers = [], isLoading: isTodayLoading } = useTodayUsers();
-  const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers();
+  const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers(true, !restricted);
   const { data: configuredBots = [], isLoading: isBotsLoading } = useConfiguredBots();
   const toggleHosting = useToggleUserHosting();
   const pauseHosting = usePauseUserHosting();
-  const { data: candidateBlacklist, isLoading: isLoadingCandidates } = useCandidateBlacklist();
+  const { data: candidateBlacklist, isLoading: isLoadingCandidates } =
+    useCandidateBlacklist(!restricted);
   const addCandidate = useAddCandidateToBlacklist();
   const removeCandidate = useRemoveCandidateFromBlacklist();
 
@@ -264,6 +267,7 @@ export default function Users() {
       {/* Tab 切换 + 用户列表 */}
       <section className={styles.section}>
         <UserTabNav
+          readOnly={restricted}
           activeTab={activeTab}
           todayCount={hasToolbar ? filteredTodayUsers.length : todayUsers.length}
           pausedCount={hasToolbar ? filteredPausedUsers.length : temporaryPausedUsersData.length}
@@ -388,6 +392,7 @@ export default function Users() {
 
             {/* 用户表格 */}
             <UserTable
+              readOnly={restricted}
               users={displayUsers}
               isLoading={isLoading}
               onToggleHosting={handleToggleHosting}

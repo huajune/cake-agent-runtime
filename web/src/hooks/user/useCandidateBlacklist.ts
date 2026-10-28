@@ -15,9 +15,10 @@ const LIVE_REFETCH_INTERVAL_MS = 3000;
 /**
  * 获取候选人黑名单列表
  */
-export function useCandidateBlacklist() {
+export function useCandidateBlacklist(enabled = true) {
   return useQuery({
     queryKey: ['candidate-blacklist'],
+    enabled,
     queryFn: () => candidateBlacklistService.getCandidateBlacklist(),
     staleTime: 1000,
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,

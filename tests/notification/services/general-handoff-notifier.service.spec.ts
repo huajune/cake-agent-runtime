@@ -55,7 +55,7 @@ describe('GeneralHandoffNotifierService', () => {
     expect(mockRenderer.buildCard).toHaveBeenCalledWith(
       expect.objectContaining({ isTest: false, atAll: true }),
     );
-    expect(mockPrivateChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' });
+    expect(mockPrivateChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' }, undefined);
     expect(mockAlertChannel.send).not.toHaveBeenCalled();
   });
 

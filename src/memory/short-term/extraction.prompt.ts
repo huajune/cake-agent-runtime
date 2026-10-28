@@ -18,7 +18,13 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎�
 - labor_form_intent：set / clear / ignore 三态
 - schedule_constraint_citation：本轮排班条件有变更时，quote 必须引用候选人当前消息中的原文；无变更时省略
 - labor_form 仅允许以下合法值之一："全职"、"兼职"、"寒假工"、"暑假工"、"小时工"
-- reasoning：简短说明；无新信息固定写“本轮无新信息”
+- preference_evidence：按 preferences 同名字段给出独立证据，每个本轮变更字段都必须提供。
+  每条证据最多200个Unicode字符，优先用一句话（建议30—100字）提炼，只写该字段的依据。
+  保留人物归属、否定、例外、前提条件、时间范围及不确定性；不得为满足字数删掉这些关键语义。
+  不复述其他字段、历史全量事实或推理过程；不要复制整段消息，也不要用省略号截头截尾。
+  无法在预算内完整表达时，省略本轮该字段更新，不能猜测或丢失条件后强行写入。
+- schedule_constraint_citation.quote 和 labor_form_intent.quote：选取足以保留限定的连续原话，最多200个Unicode字符；不得改写或截断拼接。
+- reasoning：仅说明本轮有无变化，不列逐字段推理链，不作为字段证据；无新信息固定写“本轮无新信息”
 
 硬规则：
 1. 禁止输出或推断姓名、手机号、性别、年龄、学历、学生身份、健康证、经历、简历、

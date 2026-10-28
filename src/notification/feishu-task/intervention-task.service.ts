@@ -1,3 +1,4 @@
+import { CenterScopeService } from '@biz/center-dashboard/center-scope.service';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { CRITICAL_WRITE_JOB_OPTIONS } from '@infra/queue/queue-policy';
@@ -119,6 +120,7 @@ function joinBrandStore(
 export class InterventionTaskService implements OnApplicationBootstrap {
   private readonly logger = new Logger(InterventionTaskService.name);
   private readonly tasklistGuid: string;
+  private readonly henanTasklistGuid: string;
   private readonly fieldNames: Record<FieldKey, string>;
   private readonly owners: OwnerConfig;
   private runtimeConfig: FeishuTaskRuntimeConfig | null = null;
@@ -134,8 +136,14 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     private readonly alertNotifier: AlertNotifierService,
     private readonly moduleRef: ModuleRef,
     @InjectQueue(INTERVENTION_TASK_QUEUE) private readonly taskQueue: Queue<InterventionTaskJob>,
+    private readonly centerScope: CenterScopeService,
   ) {
     this.tasklistGuid = (this.configService.get<string>('FEISHU_TASK_TASKLIST_GUID') ?? '').trim();
+    this.henanTasklistGuid = (
+      this.configService.get<string>('HENAN_FEISHU_TASK_TASKLIST_GUID') ?? ''
+    ).trim();
+    if (this.henanTasklistGuid && this.henanTasklistGuid === this.tasklistGuid)
+      throw new Error('河南任务清单必须与总部清单不同');
     this.fieldNames = this.loadFieldNames();
     this.owners = this.loadOwners();
   }
@@ -210,6 +218,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     payload: InterventionPayload,
     triggeredAt: Date,
     clientToken: string,
+    isHenan: boolean,
   ): Promise<TaskDraft> {
     const reasonCode =
       payload.kind === 'conversation_risk' ? payload.riskType : (payload.reasonCode ?? null);
@@ -282,7 +291,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       triggeredAt,
     });
 
-    const members = await this.resolveMembers(category, payload.botImId);
+    const members = await this.resolveMembers(category, payload.botImId, isHenan);
 
     return {
       chatId: payload.chatId,
@@ -328,23 +337,26 @@ export class InterventionTaskService implements OnApplicationBootstrap {
    * 组装自定义字段值。字段名在清单里查不到（运营手动删了列）时静默跳过该字段，
    * 不报错、不告警——表头以飞书里的实际列为准。
    */
-  private async buildCustomFields(draft: TaskDraft): Promise<FeishuTaskCustomFieldValue[]> {
+  private async buildCustomFields(
+    draft: TaskDraft,
+    tasklistGuid: string,
+  ): Promise<FeishuTaskCustomFieldValue[]> {
     const values: FeishuTaskCustomFieldValue[] = [];
     const push = (value: FeishuTaskCustomFieldValue | null) => {
       if (value) values.push(value);
     };
     const text = async (key: FieldKey, value: string | null | undefined) => {
       if (value == null || value === '') return;
-      const guid = await this.client.resolveFieldGuid(this.tasklistGuid, this.fieldNames[key]);
+      const guid = await this.client.resolveFieldGuid(tasklistGuid, this.fieldNames[key]);
       if (guid) push(buildCustomFieldValue(guid, { text: value }));
     };
     const select = async (key: FieldKey, optionName: string | null | undefined) => {
       if (!optionName) return;
       const fieldName = this.fieldNames[key];
-      const guid = await this.client.resolveFieldGuid(this.tasklistGuid, fieldName);
+      const guid = await this.client.resolveFieldGuid(tasklistGuid, fieldName);
       if (!guid) return;
       const optionGuid = await this.client.resolveOptionGuid(
-        this.tasklistGuid,
+        tasklistGuid,
         fieldName,
         optionName,
         resolveOptionColorIndex(key, optionName),
@@ -352,7 +364,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       if (optionGuid) push(buildCustomFieldValue(guid, { singleSelectOptionGuid: optionGuid }));
     };
     const number = async (key: FieldKey, value: number) => {
-      const guid = await this.client.resolveFieldGuid(this.tasklistGuid, this.fieldNames[key]);
+      const guid = await this.client.resolveFieldGuid(tasklistGuid, this.fieldNames[key]);
       if (guid) push(buildCustomFieldValue(guid, { number: value }));
     };
 
@@ -375,10 +387,22 @@ export class InterventionTaskService implements OnApplicationBootstrap {
 
   async prepareRequest(job: InterventionTaskJob): Promise<InterventionTaskJob['request'] | null> {
     if (!(await this.isEnabled())) return null;
-    const draft = await this.buildDraft(job.payload, new Date(job.triggeredAt), job.clientToken);
-    const customFields = await this.buildCustomFields(draft);
+    const botImId = job.payload.botImId?.trim();
+    // 复用中心归属；查询失败就停止，不能把河南任务回退到总部。
+    if (!botImId) throw new Error('创建任务缺少托管账号，无法确认清单归属');
+    const scope = await this.centerScope.getScope();
+    const isHenan = scope.botIds.includes(botImId);
+    const tasklistGuid = isHenan ? this.henanTasklistGuid : this.tasklistGuid;
+    if (!tasklistGuid) throw new Error('目标任务清单尚未配置');
+    const draft = await this.buildDraft(
+      job.payload,
+      new Date(job.triggeredAt),
+      job.clientToken,
+      isHenan,
+    );
+    const customFields = await this.buildCustomFields(draft, tasklistGuid);
     const sectionGuid = await this.client.resolveSectionGuid(
-      this.tasklistGuid,
+      tasklistGuid,
       sectionNameOf(draft.category),
     );
     return {
@@ -387,7 +411,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       startAt: draft.triggeredAt.toISOString(),
       dueAt: draft.dueAt.toISOString(),
       members: draft.members,
-      tasklistGuid: this.tasklistGuid,
+      tasklistGuid,
       sectionGuid,
       customFields,
       clientToken: draft.clientToken,
@@ -457,7 +481,13 @@ export class InterventionTaskService implements OnApplicationBootstrap {
   private async resolveMembers(
     category: InterventionTaskCategory,
     botImId: string | undefined,
+    isHenan: boolean,
   ): Promise<FeishuTaskMember[]> {
+    if (isHenan) {
+      const openId = await this.resolveHostingReceiverOpenId(botImId);
+      if (!openId) throw new Error('河南托管账号尚未绑定飞书任务负责人');
+      return [{ id: openId, type: 'user', role: 'assignee' }];
+    }
     const meta = CATEGORY_META[category];
     const ordered: string[][] = [];
     if (meta.owner === 'supervisor') ordered.push(this.owners.supervisor ?? []);

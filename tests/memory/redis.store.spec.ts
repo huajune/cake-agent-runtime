@@ -133,6 +133,29 @@ describe('RedisStore', () => {
     });
   });
 
+  it('treats omitted Lua null fields as absent for the first invitation write', async () => {
+    mockRedis.eval.mockResolvedValueOnce({ generation: 'generation' }).mockResolvedValueOnce(1);
+    const snapshot = await store.readHashFieldSnapshot('hash', 'invitedGroups');
+    expect(snapshot).toEqual({ raw: null, generation: 'generation', value: null });
+    expect(await store.compareHashField('hash', 'invitedGroups', snapshot, [])).toBe(true);
+    expect(mockRedis.eval).toHaveBeenLastCalledWith(
+      expect.any(String),
+      ['hash'],
+      ['invitedGroups', '0', '', 'generation', '[]', 0, '1', expect.any(String)],
+    );
+  });
+
+  it('normalizes an omitted generation on a missing hash without reviving recovery state', async () => {
+    mockRedis.eval.mockResolvedValueOnce({}).mockResolvedValueOnce(0);
+    const snapshot = await store.readHashFieldSnapshot('hash', 'invitedGroups');
+    expect(snapshot).toEqual({ raw: null, generation: null, value: null });
+    expect(
+      await store.compareHashField('hash', 'invitedGroups', snapshot, [], 90, [], {
+        requireExisting: true,
+      }),
+    ).toBe(false);
+  });
+
   it('passes generation, original bytes and expiry policy to the atomic comparison', async () => {
     mockRedis.eval.mockResolvedValueOnce(0);
     expect(

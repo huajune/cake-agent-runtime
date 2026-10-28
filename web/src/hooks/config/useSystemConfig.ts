@@ -12,7 +12,10 @@ import * as agentService from '@/api/services/agent.service';
 import * as monitoringService from '@/api/services/monitoring.service';
 import * as configService from '@/api/services/config.service';
 
-export type { AvailableModelsResponse, ConfiguredToolsResponse } from '@/api/services/agent.service';
+export type {
+  AvailableModelsResponse,
+  ConfiguredToolsResponse,
+} from '@/api/services/agent.service';
 
 const LIVE_CONFIG_REFETCH_INTERVAL_MS = 3000;
 
@@ -43,9 +46,10 @@ export function useConfiguredTools() {
 /**
  * 获取 AI 回复状态
  */
-export function useAiReplyStatus(autoRefresh = true) {
+export function useAiReplyStatus(autoRefresh = true, enabled = true) {
   return useQuery({
     queryKey: ['ai-reply-status'],
+    enabled,
     queryFn: () => monitoringService.getAiReplyStatus(),
     staleTime: 1000,
     refetchInterval: autoRefresh ? LIVE_CONFIG_REFETCH_INTERVAL_MS : false,
@@ -181,8 +185,7 @@ export function useRemoveFromBlacklist() {
 export function useUpdateAgentReplyConfig() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (config: Partial<AgentReplyConfig>) =>
-      configService.updateAgentReplyConfig(config),
+    mutationFn: (config: Partial<AgentReplyConfig>) => configService.updateAgentReplyConfig(config),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['agent-reply-config'] });
       toast.success(data.message || '配置已更新');

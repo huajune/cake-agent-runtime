@@ -52,9 +52,10 @@ export function useTodayUsers(days?: number, autoRefresh = true) {
 /**
  * 获取已禁止托管的用户列表
  */
-export function usePausedUsers(autoRefresh = true) {
+export function usePausedUsers(autoRefresh = true, enabled = true) {
   return useQuery({
     queryKey: ['paused-users'],
+    enabled,
     queryFn: () => userService.getPausedUsers(),
     refetchInterval: autoRefresh ? 10000 : false,
   });

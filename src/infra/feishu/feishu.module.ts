@@ -1,3 +1,4 @@
+import { TaskDelegationTokenService } from './services/task-delegation-token.service';
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -23,12 +24,14 @@ import { FeishuController } from './feishu.controller';
   controllers: [FeishuController],
   providers: [
     FeishuApiService,
+    TaskDelegationTokenService,
     FeishuBitableApiService,
     FeishuWebhookService,
     FeishuCardBuilderService,
   ],
   exports: [
     FeishuApiService,
+    TaskDelegationTokenService,
     FeishuBitableApiService,
     FeishuWebhookService,
     FeishuCardBuilderService,

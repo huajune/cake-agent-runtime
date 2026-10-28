@@ -109,6 +109,44 @@ describe('SessionStateService（S1-S6）', () => {
       { confidence: 'medium', source: 'model', evidence: 'spec soft fact' },
     );
 
+  it('逐字段证据入库：长证据拒绝更新旧班次，短证据保留末尾否定及人物归属', async () => {
+    await service.saveFacts('corp-1', 'user-1', 'session-1', softFacts({ schedule: '不做夜班' }));
+    const evidence = '本人只接受新业坊；浦东是朋友想去，本人不接受。';
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ schedule: '晚班', location: ['新业坊'] }),
+        preference_evidence: { schedule: '超长'.repeat(201) + '但不能夜班', location: evidence },
+        reasoning: '不应该作为公共证据存储',
+      },
+    });
+    await service.extractAndSave('corp-1', 'user-1', 'session-1', [
+      { role: 'user', content: evidence },
+    ]);
+    const saved = await service.getFacts('corp-1', 'user-1', 'session-1');
+    expect(saved?.preferences.schedule?.value).toBe('不做夜班');
+    expect(saved?.preferences.location).toMatchObject({ value: ['新业坊'], evidence });
+  });
+
+  it('模型漏给字段证据时不以通用说明覆盖旧事实', async () => {
+    await service.saveFacts(
+      'corp-1',
+      'user-1',
+      'session-1',
+      softFacts({ salary: '至少25元/小时' }),
+    );
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ salary: '20元/小时' }),
+        reasoning: '无依据',
+      },
+    });
+    await service.extractAndSave('corp-1', 'user-1', 'session-1', [
+      { role: 'user', content: '再看看' },
+    ]);
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.salary?.value,
+    ).toBe('至少25元/小时');
+  });
   it('班次增量保存：省略延续、数组替换、明确空值撤销', async () => {
     await service.saveFacts(
       'corp-1',
@@ -286,6 +324,7 @@ describe('SessionStateService（S1-S6）', () => {
             schedule_constraint: scheduleConstraint,
           }),
           schedule_constraint_citation: { quote: '晚上10点到早上6点' },
+          preference_evidence: { city: '本人在上海', position: '本人求职服务员' },
           reasoning: '班次越界',
         });
 
@@ -368,6 +407,7 @@ describe('SessionStateService（S1-S6）', () => {
             },
           }),
           schedule_constraint_citation: { quote: message },
+          preference_evidence: { schedule: '本人想做晚班17点后', time_windows: '本人17点后可上班' },
           reasoning: '晚班+时段+周天数',
         },
       });
@@ -545,6 +585,7 @@ describe('SessionStateService（S1-S6）', () => {
         ledger.recordScheduleConstraint({ excludeTags: ['night'], includeAnyTags: ['evening'] });
         respondValidated({
           preferences: preferences({ schedule_constraint: { excludeTags: ['night'] } }),
+          preference_evidence: { schedule_constraint: '本人不做夜班' },
           reasoning: '回显已有条件',
         });
 
@@ -1088,6 +1129,7 @@ describe('SessionStateService（S1-S6）', () => {
         preferences: preferences({ schedule: '晚班' }),
         brand_intents: [],
         labor_form_intent: { intent: 'ignore', quote: '我只能晚班' },
+        preference_evidence: { schedule: '本人只能晚班' },
         reasoning: '提取班次',
       },
       modelId: 'test/extract',

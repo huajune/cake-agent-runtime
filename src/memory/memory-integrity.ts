@@ -1,6 +1,6 @@
 import { normalizeHealthCertificateState } from '@resolution/candidate/health-certificate-state';
 import { isValidLaborForm } from '@resolution/labor-form';
-import { truncateEvidence } from './fact-evidence';
+import { normalizeFactEvidence } from './fact-evidence';
 import { isExpiredTemporalFact } from './temporal-facts';
 import type { SummaryEntry } from './long-term/long-term.types';
 
@@ -39,7 +39,7 @@ export function cleanMemoryFacts(input: unknown, now = new Date()): Record<strin
       if (raw == null) return [key, null];
       if (typeof raw !== 'object' || Array.isArray(raw) || !('value' in raw)) return [key, null];
       const fact = { ...raw } as { value: unknown; evidence?: string; updatedAt?: string };
-      if (typeof fact.evidence === 'string') fact.evidence = truncateEvidence(fact.evidence);
+      if (typeof fact.evidence === 'string') fact.evidence = normalizeFactEvidence(fact.evidence);
       if (fact.value === null) return [key, fact];
       if (key === 'has_health_certificate') {
         const value = normalizeHealthCertificateState(fact.value);

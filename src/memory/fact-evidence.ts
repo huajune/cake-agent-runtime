@@ -1,10 +1,15 @@
-/** 事实证据的存储上限，含截断标记；与 PostgreSQL length(text) 同为 Unicode 码点数。 */
+/** 模型提炼时的证据预算；按 Unicode 码点计数，不是原话/存储的截断上限。 */
 export const MAX_FACT_EVIDENCE_CHARS = 200;
 
-export function truncateEvidence(evidence: string, maxChars = MAX_FACT_EVIDENCE_CHARS): string {
-  const limit = Math.max(0, Math.floor(maxChars));
-  if (limit === 0) return '';
-  const characters = Array.from(evidence.trim());
-  if (characters.length <= limit) return characters.join('');
-  return `${characters.slice(0, limit - 1).join('')}…`;
+/** 只去首尾空白，绝不删除证据正文（包括末尾的否定、条件和日期）。 */
+export function normalizeFactEvidence(evidence: string): string {
+  return evidence.trim();
+}
+
+export function isValidExtractedEvidence(evidence: unknown): evidence is string {
+  return (
+    typeof evidence === 'string' &&
+    evidence.trim().length > 0 &&
+    Array.from(evidence.trim()).length <= MAX_FACT_EVIDENCE_CHARS
+  );
 }

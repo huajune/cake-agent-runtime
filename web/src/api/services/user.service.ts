@@ -6,6 +6,7 @@ import type {
   TodayUserData,
 } from '../types/user.types';
 import { api, unwrapResponse } from '../client';
+import { loadUserPages, type ScopedUserPage } from './scoped-user-pages';
 
 export type { UserTrendData, TodayUserData, PausedUserData } from '../types/user.types';
 
@@ -17,10 +18,20 @@ export async function getUserTrend(days = 30) {
 }
 
 export async function getTodayUsers(days?: number) {
-  const params = Number.isFinite(days) ? new URLSearchParams({ days: String(days) }) : null;
-  const query = params ? `?${params.toString()}` : '';
-  const { data } = await api.get(`/analytics/users${query}`);
-  return unwrapResponse<TodayUserData[]>(data);
+  return readUsers<TodayUserData>(days);
+}
+
+async function readUsers<T>(days?: number) {
+  return loadUserPages<T>(async (cursor) => {
+    const params = new URLSearchParams({ limit: '500' });
+    if (Number.isFinite(days)) params.set('days', String(days));
+    if (cursor) {
+      params.set('afterChatId', cursor.chatId);
+      params.set('afterBotId', cursor.botId);
+    }
+    const { data } = await api.get(`/analytics/users?${params.toString()}`);
+    return unwrapResponse<T[] | ScopedUserPage<T>>(data);
+  });
 }
 
 export async function getPausedUsers() {
@@ -56,8 +67,7 @@ export async function getPausedUsers() {
 }
 
 export async function getUsers() {
-  const { data } = await api.get('/analytics/users');
-  return unwrapResponse<UserInfo[]>(data);
+  return readUsers<UserInfo>();
 }
 
 export async function toggleUserHosting(chatId: string, enabled: boolean) {

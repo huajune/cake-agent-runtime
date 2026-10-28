@@ -28,18 +28,11 @@ export default defineConfig(({ mode }) => {
     process.env.VITE_API_PROXY_TARGET ||
     process.env.API_PROXY_TARGET ||
     `http://localhost:${process.env.PORT || readRootEnvValue(mode, 'PORT') || '8080'}`;
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_URL');
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
 
   return {
     plugins: [react()],
     define: {
       'import.meta.env.API_GUARD_TOKEN': JSON.stringify(apiGuardToken),
-      'import.meta.env.SUPABASE_URL': JSON.stringify(supabaseUrl),
-      'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
     },
     resolve: {
       alias: {
@@ -71,6 +64,7 @@ export default defineConfig(({ mode }) => {
           '/bot',
           '/feishu',
           '/monitoring',
+          '/dashboard',
         ].map((prefix) => [
           prefix,
           { target: apiProxyTarget, changeOrigin: true, timeout: 120000 },

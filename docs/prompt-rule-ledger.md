@@ -1063,3 +1063,11 @@ AI 等通知回执存在流程备注时，以备注首句为通知事实，不�
 - `recall_history` 不再教“有档案就必须调用”；回访首轮由 memory 自动提供最近摘要，工具负责更早历史或信息不足时查询。
 - 软事实提取不再要求输出已退役的 `brand_ids`，品牌极性仍由既有 `brand_intents` 与 reducer 维护。
 - 健康证四态只做格式和闭集映射，表单选项代码来自实际岗位契约；没有“办理中”选项时留空，不猜编号。
+
+### 2026-10-27 字段证据在提炼阶段生成
+
+- **来源与时效**：候选人条件完整保留需求，PR #1467；2026-10-27 实现，2026-10-28 补登记。常设工程契约，不新增招聘业务裁定。
+- **唯一 prompt 居所**：`src/memory/short-term/extraction.prompt.ts`。每个本轮变更的偏好字段提供独立 `preference_evidence`，每条最多 200 个 Unicode 码点；保留人物归属、否定、例外、前提、时间范围及不确定性。无法完整表达时省略该字段更新，不以截断或丢条件换取长度合规。
+- **引用与 reasoning**：排班和用工形式引用必须是足以保留限定的连续原话，同为 200 码点预算，不得改写或拼接；reasoning 只说明本轮有无变化，不列逐字段推理链、不充当字段证据。
+- **运行时对应**：`src/memory/fact-evidence.ts` 定义 Unicode 预算，`src/memory/short-term/extraction-evidence.ts` 与 `facts.service.ts` 按字段拒绝缺失、空或超预算的模型增量并记录拒绝原因，保留旧事实。既有引用核验与用工形式裁决保持；表单、工具和历史证据不套用模型预算。
+- **完整保存与测试**：短期/长期、上下文及 Supabase 读写不再机械截短证据，迁移 `20261027110000_preserve_memory_evidence.sql` 移除数据库截断。`tests/memory/fact-evidence.spec.ts`、`tests/memory/short-term/session-state.service.spec.ts`、`tests/memory/long-term.service.spec.ts` 和 `tests/memory/supabase.store.spec.ts` 覆盖预算、拒绝增量、末尾条件及存储完整性。

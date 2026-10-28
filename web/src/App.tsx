@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Layout from '@/components/Layout';
+import { DashboardAccessBoundary } from '@/hooks/useDashboardAccess';
 import {
   AgentTest,
   ChatRecords,
@@ -18,7 +19,7 @@ import {
 
 function App() {
   return (
-    <>
+    <DashboardAccessBoundary>
       <Toaster
         position="top-center"
         containerStyle={{ top: '50%', transform: 'translateY(-50%)' }}
@@ -58,7 +59,7 @@ function App() {
           <Route path="strategy" element={<Strategy />} />
         </Route>
       </Routes>
-    </>
+    </DashboardAccessBoundary>
   );
 }
 

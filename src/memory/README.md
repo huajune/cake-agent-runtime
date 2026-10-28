@@ -178,7 +178,7 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 表内 `bot_user_id IS NULL` 的旧行还承载候选人共享的 `active_booking`；其历史画像不参与当前按 bot 的画像召回，不能把整批旧行视为可删垃圾。
 健康证在短期读写和长期读写边界统一到 `HEALTH_CERTIFICATE_STATES` 的四种表单同源状态（未知为 null）；精确别名转换不改变来源、置信度与事实时间。自由描述不能直接进入该字段，日期与原话留在证据中。
-画像与求职意向事实的 `evidence` 均最多 200 个 Unicode 码点，省略号计入上限；构造器、读边界和长期 RPC 写边界共用 `fact-evidence.ts`。
+模型提炼通过 `preference_evidence` 为本轮每个变更字段独立输出证据，最多 200 个 Unicode 码点，保留人物、否定、条件、日期及不确定性。缺失或超长时拒绝该字段增量并记录 `memory_evidence_rejected`，不覆盖旧值。排班和用工形式仍需其专用原话契约。构造器、读写边界、长期沉淀和数据库不再截断证据；已核验原话及规则/工具证据完整保留，来源和置信度不重复拼进证据。发布时先应用 `20261027110000_preserve_memory_evidence.sql` 再部署应用；迁移不清洗存量。
 
 存储形态：
 

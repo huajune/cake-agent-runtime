@@ -29,7 +29,6 @@ import type {
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import type { PromptModel } from '../../context.types';
 import type { PromptSection } from '../section';
-import { truncateEvidence } from '@memory/fact-evidence';
 
 export interface RealtimeGroupStatus {
   groupName: string;
@@ -118,7 +117,7 @@ function buildMemoryCoreBlock(memory: MemoryPromptView): string {
     formatProfile(adjudication.profile) +
     formatLongTermJobIntent(adjudication.jobIntent) +
     (memory.recentSessionSummary
-      ? `\n\n[最近一次咨询摘要]\n[${memory.recentSessionSummary.endTime?.slice(0, 10) ?? '历史'}] ${truncateEvidence(memory.recentSessionSummary.summary, 300)}\n`
+      ? `\n\n[最近一次咨询摘要]\n[${memory.recentSessionSummary.endTime?.slice(0, 10) ?? '历史'}] ${memory.recentSessionSummary.summary}\n`
       : '') +
     formatConflictAnnotations(adjudication.conflicts) +
     (adjudication.sessionState
