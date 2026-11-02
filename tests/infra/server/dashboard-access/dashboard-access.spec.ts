@@ -10,6 +10,7 @@ const context = (req: Request) =>
   ({ switchToHttp: () => ({ getRequest: () => req }) }) as ExecutionContext;
 const config = {
   HENAN_DASHBOARD_IPS: '1.193.23.48',
+  HEADQUARTERS_DASHBOARD_IPS: '203.0.113.4,2001:db8::1',
   HENAN_DASHBOARD_BOT_IDS: 'center-bot',
   DASHBOARD_TRUSTED_PROXY_IPS: '172.18.0.1',
 };
@@ -109,19 +110,43 @@ describe('Dashboard source scope', () => {
     delete req.headers['x-center-action'];
     expect(() => guard.canActivate(context(req))).toThrow();
   });
-  it('preserves existing behavior for other network sources and disabled configuration', () => {
+  it('grants full access only to registered headquarters addresses', () => {
     expect(
       guard.canActivate(
         context(request('172.18.0.1', { 'x-real-ip': '203.0.113.4' }, '/config', 'POST')),
       ),
     ).toBe(true);
+    expect(access.resolve(request('2001:0db8:0:0:0:0:0:1')).centerId).toBeNull();
+    expect(access.resolve(request('::ffff:cb00:7104')).centerId).toBeNull();
+    for (const peer of ['203.0.113.5', '', 'bad']) {
+      expect(access.resolve(request(peer, { 'x-real-ip': '203.0.113.4' })).centerId).toBe('denied');
+    }
+    expect(() =>
+      guard.canActivate(context(request('172.18.0.1', { 'x-real-ip': '203.0.113.5' }))),
+    ).toThrow();
+  });
+  it('permits unconfigured development but never unconfigured production', () => {
     expect(
       new DashboardAccessService(new ConfigService()).resolve(request('1.193.23.48')).centerId,
     ).toBeNull();
+    const environment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      expect(() => new DashboardAccessService(new ConfigService())).toThrow();
+    } finally {
+      if (environment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = environment;
+    }
   });
   it('refuses partial activation and invalid address configuration', () => {
     expect(
       () => new DashboardAccessService(new ConfigService({ HENAN_DASHBOARD_IPS: '1.193.23.48' })),
+    ).toThrow();
+    expect(
+      () =>
+        new DashboardAccessService(
+          new ConfigService({ ...config, HEADQUARTERS_DASHBOARD_IPS: '' }),
+        ),
     ).toThrow();
     expect(
       () =>

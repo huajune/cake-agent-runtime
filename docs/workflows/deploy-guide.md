@@ -171,6 +171,24 @@ nano .env.production
 
 > 完整配置说明见 `.env.example` 内注释。
 
+### 运营后台 IP 白名单
+
+生产环境启动前，必须在 `/data/cake/.env.production` 配置：
+
+- `HEADQUARTERS_DASHBOARD_IPS`：总部获准访问的公网出口 IP，保留完整后台范围。
+- `HENAN_DASHBOARD_IPS`：河南公网出口 IP，沿用河南小组与机器人数据范围。
+- `DASHBOARD_TRUSTED_PROXY_IPS`：应用 socket 实际看到的 Nginx 代理地址；Nginx 必须用 `$remote_addr` 覆盖 `X-Real-IP`，不得转发客户端自带的来源头。
+
+各项使用英文逗号分隔的精确 IPv4/IPv6 地址；未知来源以及可信代理缺少合法来源头时均返回 403。生产缺少总部 IP 或可信代理配置会拒绝启动，防止漏配后重新全开放。非生产环境只有在总部、河南两组地址均为空时才保留本地开发访问方式。
+
+检查在静态资源服务之前执行，覆盖后台 HTML、JS/CSS 和接口；后台原有 API Token 校验仍保留。Compose 将应用端口仅绑定到服务器 `127.0.0.1`，外部请求经 Nginx 进入，不能直接连接应用端口伪造可信来源。
+
+机器入口保持既有行为：`GET/HEAD /agent/health`，以及 `POST /message`、`POST /message/sent-result`、`POST /message/sentResult`、`POST /new-customer` 不受办公 IP 限制；同前缀的管理接口不豁免。新增机器回调时必须显式核对入口，不可按 `@Public()` 一概放行。
+
+发布顺序：先备份并补齐环境变量，再部署对应版本及 Compose，最后验证总部完整范围、河南受限范围、陌生 IP 403、静态资源 403、回调路由及本机健康探针。不要向真实消息回调发送虚构测试消息；回调入站通过无外部副作用的 HTTP 集成测试覆盖，生产观察正常回调继续到达即可。
+
+更换办公出口须先核实并更新对应配置，重建容器后生效。回滚到不支持此白名单的旧版本会重新开放未知 IP，不能用旧镜像回滚后仍宣称限制有效。
+
 CI/CD 自动部署需要在 GitHub Secrets 中配置 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET`。本地 `pnpm run deploy` 会优先读取当前 shell 环境变量，其次读取 `.env.production` 中的同名配置。
 
 ---

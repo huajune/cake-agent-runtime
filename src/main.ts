@@ -11,6 +11,7 @@ import { execSync } from 'child_process';
 import * as net from 'net';
 import { createGlobalValidationPipe } from '@infra/server/validation/global-validation-pipe';
 import { sleep } from '@infra/utils/async.util';
+import { configureDashboardHttpAccess } from '@infra/server/dashboard-access/dashboard-http-access';
 
 /** 应用创建前即可用（Nest Logger 未接管时回落 ConsoleLogger），端口清理阶段共用。 */
 const bootstrapLogger = new Logger('Bootstrap');
@@ -118,7 +119,7 @@ async function bootstrap() {
   // 配置静态文件服务（用于监控页面）
   // 使用 process.cwd() 确保在开发和生产环境都能正确找到 public 目录
   const publicPath = join(process.cwd(), 'public');
-  app.useStaticAssets(publicPath);
+  configureDashboardHttpAccess(app, publicPath);
 
   // 获取 Reflector 实例（用于读取装饰器元数据）
   const reflector = app.get(Reflector);

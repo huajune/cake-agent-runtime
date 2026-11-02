@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { DashboardAccessService } from './dashboard-access.service';
 
 import { centerRoute } from './center-routes';
+import { isPublicIngressRequest } from './dashboard-http-access';
 
 @Injectable()
 export class DashboardAccessGuard implements CanActivate {
@@ -11,11 +12,10 @@ export class DashboardAccessGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
     const path = request.path.replace(/\/+$/, '') || '/';
-    // 部署探针直连容器端口，没有入口代理的来源头；只放行既有公开健康检查。
-    if (request.method === 'GET' && path === '/agent/health') return true;
+    if (isPublicIngressRequest(request)) return true;
     const scope = this.access.resolve(request);
     if (!scope.centerId) return true;
-    if (scope.centerId === 'denied') throw new ForbiddenException('无法识别访问来源');
+    if (scope.centerId === 'denied') throw new ForbiddenException(scope.name);
     // 静态页面不携带业务数据；业务读操作走专用范围接口。
     if (
       request.method === 'GET' &&

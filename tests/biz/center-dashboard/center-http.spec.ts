@@ -53,6 +53,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
           provide: ConfigService,
           useValue: new ConfigService({
             HENAN_DASHBOARD_IPS: '1.193.23.48',
+            HEADQUARTERS_DASHBOARD_IPS: '203.0.113.1',
             DASHBOARD_TRUSTED_PROXY_IPS: '127.0.0.1,::1',
           }),
         },
