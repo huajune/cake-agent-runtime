@@ -194,3 +194,28 @@ v11.15.0 的 notify job 失败，不能据此说部署失败，也不能据 depl
 跳过的 7 项隔离 SQL 回复链路沿用第 9 节已完成的验证，相关源码哈希一致；另外 5 项真实岗位数据测试仍未执行。本次没有重复创建隔离容器或调用模型、供应商及生产接口。全部改动的 TypeScript 文件格式检查、相对文档链接和 `git diff --check` 通过。
 
 代码提交依次为 `63af5fe1`、`68dd1d21`、`024fe2ca`；本节与证据 JSON 随第四组文档提交归档。本次只完成本地整理，没有推送、部署、迁移或修改生产模式。生产切换仍按第 9.3 节完成发布与边界准备。完整命令、文件分组和代码哈希见 JSON 的 `localOrganization`；本机日志位于 `/private/tmp/cake-local-cleanup-20261104/`。
+
+## 11. 运行时协议值统一
+
+按用户后续要求，从原 A–G 合入及运行时修复涉及的 158 个源码文件出发，检查固定协议值的定义、调用者和校验入口。修改前基线为 `78a10a29d9fc1c632355e4404cb42bd787c1c148`。本次使用与既有 Guardrail 契约一致的 `as const` 常量对象，完整类型由对象派生；状态机分支的子集仍保留明确类型约束。
+
+| 范围 | 统一来源与落地 |
+| --- | --- |
+| 工具动作契约 | [tool-action.contract.ts](../../src/types/tool-action.contract.ts)：effect、replay、freshness、幂等作用域、gate、工具来源；11 个 gate 的配置、目录与校验共用定义 |
+| 动作账本 | [action-execution.contract.ts](../../src/types/action-execution.contract.ts)：执行模式、持久状态、执行返回状态、补账状态、结果证据和 10 类内置动作；Sponge 适配器只接受自身支持的 3 类写操作 |
+| 重试证据 | [tool-replay.types.ts](../../src/types/tool-replay.types.ts)：同轮在途、未知、成功、阻止和取消；按原顺序处理多动作回执，供模型重试与异常兜底共同读取 |
+| 回复恢复 | [reply-execution.constants.ts](../../src/biz/reply-execution/reply-execution.constants.ts)：回合状态、投影状态、RPC 操作和恢复任务标识；仓储、发送与复聊恢复共用 |
+| 权限与进度 | [action-permit.types.ts](../../src/types/action-permit.types.ts)、[candidate-progress.types.ts](../../src/types/candidate-progress.types.ts)：许可动作、拒绝原因、事实三态、读取模式、事实来源、比较读者和重复报名匹配方式 |
+| 重复报名与邀请 | 重复报名拒绝类型仍归 Sponge；[group-invite.types.ts](../../src/types/group-invite.types.ts) 统一邀请失败原因、投递方式及选择原因；邀请回执的 actionStatus/localSync 改为共享动作类型 |
+| 后台任务 | 群发送快照与整批汇总保持独立状态定义；统一触发来源、入队跳过原因、复聊底账及命令种类、关键事件写入结果、补账/关键事件任务名、cron 身份与生命周期 |
+| 渠道与本地投影 | [wecom-api.types.ts](../../src/types/wecom-api.types.ts) 统一企业/小组路由及入口 schema；本地预约投影 set/clear 共用操作定义；未核实动作错误码纳入既有工具错误目录 |
+
+工具配置校验直接使用常量对象生成的 Zod 枚举。除原来的字段检查外，现在拒绝未知 gate、非字符串 gate、非法幂等作用域、缺失或空的幂等目标。新增测试覆盖编译期 gate 拼写错误、运行时配置拒绝、合法 JSON 契约兼容及模式/切换边界校验。
+
+业务规则台账的 10 处源码引用改为实际 `TOOL_GATE.*` 符号，双向引用校验从同一常量表计算锚点，未复制第二份 gate 清单。规则编号、业务口径及模型手册不变。
+
+边界说明：动作注册表的扩展键、动态工具名、参数路径和诊断文字仍可为字符串；它们不是封闭状态集合。Bull 等第三方协议沿用上游类型，不把同名的第三方事件、群任务状态、回复状态或动作状态强行共用一个枚举。
+
+已完成源码级兼容核对：15 个内置工具契约的 JSON 序列化结果与修改前逐字节一致；动作身份 kind、证据值、动作/回复 SQL 的状态及操作值保持兼容。此项不是数据库迁移或 SQL 实跑。本轮未修改迁移、生产配置或模式，没有部署或外发业务消息。最终验证记录见同目录 JSON 的 `runtimeProtocolConsolidation`；本机日志位于 `/private/tmp/cake-runtime-contracts-20261104/`。
+
+最终完整 `pnpm run ci:check` 退出码为 **0**：Lint、格式、类型、各台账校验和前后端构建通过；**564 个 suite、9,249 项测试、3 个 snapshot 通过，2 个 suite / 12 项测试按既有条件跳过**。本轮新增 21 项测试。7 项 opt-in PostgreSQL 回复链路及 5 项真实岗位数据测试未在本轮重跑，不能把历史 SQL 演练计作本轮结果。`git diff --check` 与本节相对链接检查通过。改动保留在当前本地分支，尚未提交或推送到 PR。

@@ -20,6 +20,15 @@ import {
   GroupTaskJobName,
   PlanJobData,
 } from '../queue/group-task-queue.constants';
+import type {
+  GroupTaskAdmissionSkip,
+  GroupTaskTrigger,
+} from '@biz/group-task/queue/group-task-queue.constants';
+import {
+  GROUP_TASK_ADMISSION_SKIP,
+  GROUP_TASK_TRIGGER,
+} from '@biz/group-task/queue/group-task-queue.constants';
+import { CRON_JOB } from '@infra/queue/cron.constants';
 
 /**
  * 群任务调度编排服务
@@ -97,13 +106,13 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   async cronOrderGrabMorning(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
     await this.cronRunner.run(
-      'group-order-morning',
+      CRON_JOB.GROUP_ORDER_MORNING,
       { timeMs: 30_000, maxRows: 1 },
       async (budget) => {
         await budget.checkpoint(1);
         await this.executeTask(this.orderGrabStrategy, {
           timeSlot: TimeSlot.MORNING,
-          trigger: 'cron',
+          trigger: GROUP_TASK_TRIGGER.CRON,
         });
       },
     );
@@ -114,13 +123,13 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   async cronOrderGrabAfternoon(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
     await this.cronRunner.run(
-      'group-order-afternoon',
+      CRON_JOB.GROUP_ORDER_AFTERNOON,
       { timeMs: 30_000, maxRows: 1 },
       async (budget) => {
         await budget.checkpoint(1);
         await this.executeTask(this.orderGrabStrategy, {
           timeSlot: TimeSlot.AFTERNOON,
-          trigger: 'cron',
+          trigger: GROUP_TASK_TRIGGER.CRON,
         });
       },
     );
@@ -130,10 +139,14 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   @Cron('30 13 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async cronPartTimeJob(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.partTimeJobStrategy.type)) return;
-    await this.cronRunner.run('group-part-time', { timeMs: 30_000, maxRows: 1 }, async (budget) => {
-      await budget.checkpoint(1);
-      await this.executeTask(this.partTimeJobStrategy, { trigger: 'cron' });
-    });
+    await this.cronRunner.run(
+      CRON_JOB.GROUP_PART_TIME,
+      { timeMs: 30_000, maxRows: 1 },
+      async (budget) => {
+        await budget.checkpoint(1);
+        await this.executeTask(this.partTimeJobStrategy, { trigger: GROUP_TASK_TRIGGER.CRON });
+      },
+    );
   }
 
   /** 抢单群 — 晚上场 17:30 */
@@ -141,13 +154,13 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   async cronOrderGrabEvening(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
     await this.cronRunner.run(
-      'group-order-evening',
+      CRON_JOB.GROUP_ORDER_EVENING,
       { timeMs: 30_000, maxRows: 1 },
       async (budget) => {
         await budget.checkpoint(1);
         await this.executeTask(this.orderGrabStrategy, {
           timeSlot: TimeSlot.EVENING,
-          trigger: 'cron',
+          trigger: GROUP_TASK_TRIGGER.CRON,
         });
       },
     );
@@ -158,11 +171,11 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   async cronStoreManager(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.storeManagerStrategy.type)) return;
     await this.cronRunner.run(
-      'group-store-manager',
+      CRON_JOB.GROUP_STORE_MANAGER,
       { timeMs: 30_000, maxRows: 1 },
       async (budget) => {
         await budget.checkpoint(1);
-        await this.executeTask(this.storeManagerStrategy, { trigger: 'cron' });
+        await this.executeTask(this.storeManagerStrategy, { trigger: GROUP_TASK_TRIGGER.CRON });
       },
     );
   }
@@ -171,10 +184,14 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   @Cron('0 15 * * 6', { timeZone: 'Asia/Shanghai' })
   async cronWorkTips(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.workTipsStrategy.type)) return;
-    await this.cronRunner.run('group-work-tips', { timeMs: 30_000, maxRows: 1 }, async (budget) => {
-      await budget.checkpoint(1);
-      await this.executeTask(this.workTipsStrategy, { trigger: 'cron' });
-    });
+    await this.cronRunner.run(
+      CRON_JOB.GROUP_WORK_TIPS,
+      { timeMs: 30_000, maxRows: 1 },
+      async (budget) => {
+        await budget.checkpoint(1);
+        await this.executeTask(this.workTipsStrategy, { trigger: GROUP_TASK_TRIGGER.CRON });
+      },
+    );
   }
 
   // ==================== 核心入口（入队而非执行） ====================
@@ -191,15 +208,20 @@ export class GroupTaskSchedulerService implements OnModuleInit {
       forceEnabled?: boolean;
       forceSend?: boolean;
       timeSlot?: TimeSlot;
-      trigger?: 'cron' | 'manual';
+      trigger?: GroupTaskTrigger;
     } = {},
-  ): Promise<{ execId: string | null; skipped?: 'disabled' | 'duplicate' }> {
-    const { forceEnabled = false, forceSend = false, timeSlot, trigger = 'manual' } = options;
+  ): Promise<{ execId: string | null; skipped?: GroupTaskAdmissionSkip }> {
+    const {
+      forceEnabled = false,
+      forceSend = false,
+      timeSlot,
+      trigger = GROUP_TASK_TRIGGER.MANUAL,
+    } = options;
 
     const config = await this.getConfig();
     if (!config.enabled && !forceEnabled) {
       this.logger.debug(`[${strategy.type}] 任务已禁用，跳过入队`);
-      return { execId: null, skipped: 'disabled' };
+      return { execId: null, skipped: GROUP_TASK_ADMISSION_SKIP.DISABLED };
     }
 
     const dryRun = forceSend ? false : config.dryRun;
@@ -219,7 +241,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     // cron 在同一分钟内重复触发（极端边界）由确定性 jobId 去重；
     // manual 总是新 execId，不存在重复问题。
     const jobId =
-      trigger === 'cron'
+      trigger === GROUP_TASK_TRIGGER.CRON
         ? `plan:cron:${strategy.type}:${this.formatMinuteUtc(startedAt)}:${timeSlot ?? 'default'}`
         : `plan:manual:${strategy.type}:${execId}`;
 
@@ -238,7 +260,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
         this.logger.warn(
           `[${strategy.type}] jobId=${jobId} 已存在，沿用既有 exec=${acceptedExecId}`,
         );
-        return { execId: acceptedExecId, skipped: 'duplicate' };
+        return { execId: acceptedExecId, skipped: GROUP_TASK_ADMISSION_SKIP.DUPLICATE };
       }
 
       this.logger.log(

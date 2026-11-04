@@ -9,6 +9,14 @@ import { ActionPermitService } from '@biz/action-permit/services/action-permit.s
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import type { DeliveryContext, DeliveryResult } from '../types';
+import { REPLY_RECOVERY_TASK } from '@biz/reply-execution/reply-execution.constants';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_KIND,
+  ACTION_MODE,
+  ACTION_STATE,
+} from '@shared-types/action-execution.contract';
+import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
 
 /** Ordinary replies complete on send API acceptance, without claiming delivery/read. */
 @Injectable()
@@ -21,11 +29,11 @@ export class DurableReplyDeliveryService implements OnModuleInit {
     private readonly sender: MessageSenderService,
   ) {}
   onModuleInit(): void {
-    this.recovery.register('wecom.reply_segment', {
+    this.recovery.register(ACTION_KIND.WECOM_REPLY_SEGMENT, {
       reconcile: async () => ({
-        status: 'unknown',
+        status: ACTION_STATE.UNKNOWN,
         evidence: {
-          kind: 'indeterminate',
+          kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
           requestTerminated: false,
           detail:
             'No verified request lookup/idempotency contract; await exact callback or manual review',
@@ -37,11 +45,14 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   async resolveTurn(context: DeliveryContext): Promise<ReplyTurn | undefined> {
     if (context.replyTurn) return context.replyTurn;
     if (!context.logicalTurnId || !context.inputOccurredAt || !context.corpId) {
-      if (this.turns.mode === 'execute')
+      if (this.turns.mode === ACTION_MODE.EXECUTE)
         throw new ReplyDeferredError('delivery_identity_not_persisted');
       return undefined;
     }
-    if (this.turns.mode === 'execute' && context.taskRecovery?.kind === 'reengagement') {
+    if (
+      this.turns.mode === ACTION_MODE.EXECUTE &&
+      context.taskRecovery?.kind === REPLY_RECOVERY_TASK.REENGAGEMENT
+    ) {
       const data = context.taskRecovery.data as { jobData?: { dispatchDueAt?: number } };
       const due = data.jobData?.dispatchDueAt;
       if (
@@ -58,7 +69,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       [`task:${context.logicalTurnId}`],
       context.inputOccurredAt,
       {
-        action: context.action ?? 'reply',
+        action: context.action ?? PERMITTED_ACTION.REPLY,
         ...(context.taskRecovery ? { task: context.taskRecovery } : {}),
       },
     );
@@ -84,7 +95,8 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   }
 
   async deliver(turn: ReplyTurn, context: DeliveryContext): Promise<DeliveryResult> {
-    if (turn.mode !== 'execute') throw new ReplyDeferredError('reply_plan_not_executable');
+    if (turn.mode !== ACTION_MODE.EXECUTE)
+      throw new ReplyDeferredError('reply_plan_not_executable');
     if (!turn.plan) throw new ReplyDeferredError('missing_reply_plan');
     let completed = 0;
     let cancelled = false;
@@ -99,7 +111,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
               (
                 await this.permit.evaluate({
                   chatId: turn.chatId,
-                  action: context.action ?? 'reply',
+                  action: context.action ?? PERMITTED_ACTION.REPLY,
                   botImId: turn.accountId,
                   groupId: context.groupId,
                   candidateIds: [context.imContactId],
@@ -117,26 +129,27 @@ export class DurableReplyDeliveryService implements OnModuleInit {
               chatId: turn.chatId,
               messageType: SendMessageType.TEXT,
               payload: { text: segment.text },
-              externalRequestId: mode === 'execute' ? requestId : context.externalRequestId,
+              externalRequestId:
+                mode === ACTION_MODE.EXECUTE ? requestId : context.externalRequestId,
               _apiType: context._apiType,
             });
             if (turn.recovery.primary) {
               if (response?.errcode !== 0) throw new Error('reply_send_result_unconfirmed');
               return {
-                status: 'succeeded',
-                result: { stage: 'accepted' },
+                status: ACTION_STATE.SUCCEEDED,
+                result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
                 evidence: {
-                  kind: 'accepted',
+                  kind: ACTION_EVIDENCE_KIND.ACCEPTED,
                   requestTerminated: true,
                   detail: 'send_api_accepted; not_delivery_or_read_receipt',
                 },
               };
             }
             return {
-              status: 'executing',
-              result: { stage: 'accepted' },
+              status: ACTION_STATE.EXECUTING,
+              result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
               evidence: {
-                kind: 'accepted',
+                kind: ACTION_EVIDENCE_KIND.ACCEPTED,
                 requestTerminated: false,
                 detail: 'Await provider delivery callback; not delivered/read',
               },
@@ -145,15 +158,15 @@ export class DurableReplyDeliveryService implements OnModuleInit {
         },
         { persistedMode: turn.mode },
       );
-      if (execution.status === 'succeeded') {
+      if (execution.status === ACTION_STATE.SUCCEEDED) {
         completed++;
         continue;
       }
       if (
-        execution.status === 'cancelled' ||
+        execution.status === ACTION_STATE.CANCELLED ||
         execution.reason === 'permission_or_freshness_changed' ||
-        (execution.status === 'failed' &&
-          execution.evidence?.kind === 'definitive_no_effect' &&
+        (execution.status === ACTION_STATE.FAILED &&
+          execution.evidence?.kind === ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT &&
           execution.evidence.requestTerminated &&
           execution.evidence.detail === 'permission_changed_before_dispatch')
       ) {
@@ -187,7 +200,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
         chatId: context.chatId,
         logicalTurnId: context.logicalTurnId ?? context.messageId,
         intentId: `${context.logicalTurnId ?? context.messageId}:observed-reply:${index}`,
-        kind: 'wecom.reply_segment',
+        kind: ACTION_KIND.WECOM_REPLY_SEGMENT,
         target: `chat:${context.chatId}:observed-reply:${context.messageId}:${index}`,
         parameters: { text, index },
         occurredAt: context.inputOccurredAt ?? new Date().toISOString(),
@@ -195,7 +208,8 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       },
       {
         dispatch: async (_requestId, mode) => {
-          if (mode === 'execute') throw new ReplyDeferredError('legacy_delivery_identity');
+          if (mode === ACTION_MODE.EXECUTE)
+            throw new ReplyDeferredError('legacy_delivery_identity');
           try {
             await dispatch();
           } catch (error) {
@@ -203,9 +217,9 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             throw error;
           }
           return {
-            status: 'executing',
-            result: { stage: 'accepted' },
-            evidence: { kind: 'accepted', requestTerminated: false },
+            status: ACTION_STATE.EXECUTING,
+            result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
+            evidence: { kind: ACTION_EVIDENCE_KIND.ACCEPTED, requestTerminated: false },
           };
         },
       },
@@ -221,14 +235,17 @@ export class DurableReplyDeliveryService implements OnModuleInit {
           data?: { jobData?: { dispatchDueAt?: number } };
         }
       | undefined;
-    const due = task?.kind === 'reengagement' ? task.data?.jobData?.dispatchDueAt : undefined;
+    const due =
+      task?.kind === REPLY_RECOVERY_TASK.REENGAGEMENT
+        ? task.data?.jobData?.dispatchDueAt
+        : undefined;
     return {
       corpId: turn.corpId,
       accountId: turn.accountId,
       chatId: turn.chatId,
       logicalTurnId: turn.logicalTurnId,
       intentId: `${turn.logicalTurnId}:reply:v1:${index}`,
-      kind: 'wecom.reply_segment',
+      kind: ACTION_KIND.WECOM_REPLY_SEGMENT,
       target: `chat:${turn.chatId}:reply:${turn.logicalTurnId}:segment:${index}`,
       parameters: { text, index, version: 1 },
       occurredAt: turn.inputOccurredAt,

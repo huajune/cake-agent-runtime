@@ -57,8 +57,8 @@ import {
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService, type TouchRecovery } from './touch-ledger.service';
-import { ReengagementAgent } from './reengagement.agent';
 import type { ChatInterviewTimeMismatch, ReengagementAgentExecution } from './reengagement.agent';
+import { ReengagementAgent } from './reengagement.agent';
 import {
   resolveReengagementBookingContext,
   type ReengagementBookingContext,
@@ -66,6 +66,16 @@ import {
 import { CallerKind } from '@enums/agent.enum';
 import { RequestContextService } from '@observability/context/request-context.service';
 import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.util';
+import { TOUCH_RESERVE_RESULT, TOUCH_SLOT_STATE } from '@agent/reengagement/touch-ledger.types';
+import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
+import {
+  REPLY_RECOVERY_TASK,
+  REPLY_TURN_STATUS,
+} from '@biz/reply-execution/reply-execution.constants';
+import { CRON_JOB } from '@infra/queue/cron.constants';
+import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
+import { PROGRESS_READ_MODE, PROGRESS_TRUTH } from '@shared-types/candidate-progress.types';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
@@ -132,7 +142,7 @@ export class ReengagementDeliveryService
 
     const permit = await this.actionPermit.evaluate({
       chatId: context.chatId,
-      action: 'proactive',
+      action: PERMITTED_ACTION.PROACTIVE,
       botImId: context.imBotId,
       candidateIds: [context.imContactId],
     });
@@ -224,7 +234,7 @@ export class FollowUpProcessor implements OnModuleInit {
   async recoverUnknownTouches(): Promise<void> {
     if (!this.cronRunner || !this.delivery?.beginReply) return;
     await this.cronRunner.run(
-      'reengagement-touch-recovery',
+      CRON_JOB.REENGAGEMENT_TOUCH_RECOVERY,
       { timeMs: 25_000, maxRows: 25 },
       async (budget) => {
         const durableKeys = new Set<string>();
@@ -276,9 +286,12 @@ export class FollowUpProcessor implements OnModuleInit {
                 );
                 await assertOwned();
                 await this.delivery!.finishReplyTask?.(turn);
-              } else if (turn.status === 'settled' || turn.status === 'acked') {
+              } else if (
+                turn.status === REPLY_TURN_STATUS.SETTLED ||
+                turn.status === REPLY_TURN_STATUS.ACKED
+              ) {
                 await assertOwned();
-                await this.touchLedger.markFailedOrUnknown(key, 'failed');
+                await this.touchLedger.markFailedOrUnknown(key, TOUCH_SLOT_STATE.FAILED);
                 await assertOwned();
                 await this.delivery!.finishReplyTask?.(turn);
               } else if (this.dispatchWindowOpen(recovery.jobData)) {
@@ -354,7 +367,10 @@ export class FollowUpProcessor implements OnModuleInit {
               );
               continue;
             }
-            if (turn.status === 'settled' || turn.status === 'acked') {
+            if (
+              turn.status === REPLY_TURN_STATUS.SETTLED ||
+              turn.status === REPLY_TURN_STATUS.ACKED
+            ) {
               await this.queueFailures?.report(
                 'reengagement.touch_manual_review',
                 slot.key,
@@ -375,7 +391,9 @@ export class FollowUpProcessor implements OnModuleInit {
             // The immutable plan bypasses generation, never the business gates.
             await this.process({ data: jobData } as Job<FollowUpJob>, { ...recovery, turn });
           } catch (error) {
-            await this.touchLedger.markFailedOrUnknown(slot.key, 'unknown').catch(() => undefined);
+            await this.touchLedger
+              .markFailedOrUnknown(slot.key, TOUCH_SLOT_STATE.UNKNOWN)
+              .catch(() => undefined);
             if (!(error instanceof ReplyDeferredError))
               await this.queueFailures?.report(
                 'reengagement.touch_recovery_failed',
@@ -598,7 +616,7 @@ export class FollowUpProcessor implements OnModuleInit {
 
     const permit = await this.actionPermit.evaluate({
       chatId: sessionRef.sessionId,
-      action: 'proactive',
+      action: PERMITTED_ACTION.PROACTIVE,
       botImId: channelIdentity?.botImId,
       candidateIds: [
         sessionRef.userId,
@@ -625,11 +643,11 @@ export class FollowUpProcessor implements OnModuleInit {
               botImId: channelIdentity?.botImId,
               botUserId: channelIdentity?.managerName,
             },
-            'fresh',
+            PROGRESS_READ_MODE.FRESH,
           )
         : undefined;
     // booked 继续作为兼容投影写入；新鲜事实可推导停发，未知时保留旧终态，不能清空。
-    if (progress?.active === 'yes') {
+    if (progress?.active === PROGRESS_TRUTH.YES) {
       this.tracking.trackStopped(
         identity,
         progress.outOfBandVerdict?.reason ?? 'candidate_progress:active',
@@ -849,20 +867,24 @@ export class FollowUpProcessor implements OnModuleInit {
     const deliveryContext = {
       ...this.buildDeliveryContext(identity, sessionRef.sessionId, originalBatchId),
       taskRecovery: {
-        kind: 'reengagement' as const,
+        kind: REPLY_RECOVERY_TASK.REENGAGEMENT,
         data: this.persistableRecovery(effectiveJobData, identity, originalBatchId, now),
       },
     };
     const replyTurn = recovery?.turn ?? (await this.delivery.beginReply?.(deliveryContext));
     await recovery?.assertOwned?.();
     const slot = await this.touchLedger.reserve(key);
-    if (slot === 'duplicate_sent') {
+    if (slot === TOUCH_RESERVE_RESULT.DUPLICATE_SENT) {
       // 之前那次触达已送达，但**本次生成的文本**没发出去——不投影本次文本。
       this.logger.log(`[reengagement] 已发过，跳过 key=${key}`);
       this.tracking.trackDuplicate(identity, slot);
       return;
     }
-    if (slot === 'duplicate_inflight' && !replyTurn?.plan && replyTurn?.status !== 'preparing') {
+    if (
+      slot === TOUCH_RESERVE_RESULT.DUPLICATE_INFLIGHT &&
+      !replyTurn?.plan &&
+      replyTurn?.status !== REPLY_TURN_STATUS.PREPARING
+    ) {
       this.logger.warn(`[reengagement] 触达已在途/状态不明，跳过重投 key=${key}`);
       this.tracking.trackDuplicate(identity, slot);
       return;
@@ -938,7 +960,7 @@ export class FollowUpProcessor implements OnModuleInit {
           },
         }),
       );
-      await this.touchLedger.markFailedOrUnknown(key, 'failed');
+      await this.touchLedger.markFailedOrUnknown(key, TOUCH_SLOT_STATE.FAILED);
       return;
     }
     await this.outboxDeliverReserved(
@@ -1372,7 +1394,10 @@ export class FollowUpProcessor implements OnModuleInit {
           : 'delivery_skipped';
         this.tracking.trackOutcomeNotReply(identity, 'delivery_skipped', batchId, reason);
         await assertOwned?.();
-        await this.touchLedger.markFailedOrUnknown(key, replyTurn?.plan ? 'unknown' : 'failed');
+        await this.touchLedger.markFailedOrUnknown(
+          key,
+          replyTurn?.plan ? TOUCH_SLOT_STATE.UNKNOWN : TOUCH_SLOT_STATE.FAILED,
+        );
         if (scenario) {
           this.messageTracking.recordProactiveTurn(
             this.buildProactiveTurnRecord({
@@ -1433,7 +1458,9 @@ export class FollowUpProcessor implements OnModuleInit {
       await assertOwned?.();
       if (error instanceof ReplyDeferredError || externallyConfirmed) {
         // Known external success with pending projection is not a new failed send.
-        await this.touchLedger.markFailedOrUnknown(key, 'unknown').catch(() => undefined);
+        await this.touchLedger
+          .markFailedOrUnknown(key, TOUCH_SLOT_STATE.UNKNOWN)
+          .catch(() => undefined);
         this.tracking.trackDeliveryUnknown(
           identity,
           externallyConfirmed ? 'local_sync_pending' : (error as ReplyDeferredError).reason,
@@ -1471,7 +1498,7 @@ export class FollowUpProcessor implements OnModuleInit {
         );
       }
       // 投递状态不明时不写助手历史：候选人可能没看到这条复聊。
-      await this.touchLedger.markFailedOrUnknown(key, 'unknown');
+      await this.touchLedger.markFailedOrUnknown(key, TOUCH_SLOT_STATE.UNKNOWN);
       throw error;
     }
     this.logger.log(`[reengagement] 已投递 key=${key}`);
@@ -1851,11 +1878,11 @@ export class FollowUpProcessor implements OnModuleInit {
       jobId: bookingContext.jobId ?? null,
       idempotencyKey,
     });
-    if (writeOutcome === 'duplicate') {
+    if (writeOutcome === OPS_EVENT_WRITE_RESULT.DUPLICATE) {
       this.logger.warn(`[reengagement] 运营任务已处理，跳过重复告警 key=${idempotencyKey}`);
       return;
     }
-    if (writeOutcome === 'failed') {
+    if (writeOutcome === OPS_EVENT_WRITE_RESULT.FAILED) {
       this.logger.error(
         `[reengagement] 运营任务底账失败，继续 fail-safe 告警 key=${idempotencyKey}`,
       );
@@ -1936,7 +1963,7 @@ export class FollowUpProcessor implements OnModuleInit {
       corpId: identity.corpId,
       logicalTurnId: ReengagementTrackingService.touchKey(identity),
       inputOccurredAt: new Date(identity.anchorAt).toISOString(),
-      _apiType: 'enterprise',
+      _apiType: WECOM_API_TYPE.ENTERPRISE,
       action: 'proactive',
     };
   }

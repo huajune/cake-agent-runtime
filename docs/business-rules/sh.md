@@ -82,7 +82,7 @@
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/tools/job-list/candidate-card.util.spec.ts`
 - 验证：`tests/resolution/schedule/matcher.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#job_list_schedule_constraint_provenance`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.JOB_LIST_SCHEDULE_CONSTRAINT_PROVENANCE`
 - 落点：`src/tools/job-list/schedule-evidence.ts#verifyScheduleCitation`
 - 落点：`src/tools/collection/verified-work-answers.ts#collectVerifiedWorkAnswers`
 - 落点：`src/tools/duliday-interview-precheck.tool.ts#buildInterviewPrecheckTool`

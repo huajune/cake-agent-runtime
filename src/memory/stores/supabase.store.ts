@@ -34,6 +34,9 @@ import {
 import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';
+const BOOKING_PROJECTION_OPERATION = { SET: 'set', CLEAR: 'clear' } as const;
+type BookingProjectionOperation =
+  (typeof BOOKING_PROJECTION_OPERATION)[keyof typeof BOOKING_PROJECTION_OPERATION];
 
 export interface BookingProjectionOptions {
   strict?: boolean;
@@ -453,7 +456,14 @@ export class SupabaseStore implements MemoryStore {
     metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
     options?: BookingProjectionOptions,
   ): Promise<boolean> {
-    return this.applyBookingProjection(corpId, userId, 'set', workOrderId, metadata, options);
+    return this.applyBookingProjection(
+      corpId,
+      userId,
+      BOOKING_PROJECTION_OPERATION.SET,
+      workOrderId,
+      metadata,
+      options,
+    );
   }
 
   async clearActiveBooking(
@@ -465,7 +475,7 @@ export class SupabaseStore implements MemoryStore {
     return this.applyBookingProjection(
       corpId,
       userId,
-      'clear',
+      BOOKING_PROJECTION_OPERATION.CLEAR,
       expectedWorkOrderId,
       undefined,
       options,
@@ -475,7 +485,7 @@ export class SupabaseStore implements MemoryStore {
   private async applyBookingProjection(
     corpId: string,
     userId: string,
-    operation: 'set' | 'clear',
+    operation: BookingProjectionOperation,
     workOrderId?: number,
     metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
     options?: BookingProjectionOptions,

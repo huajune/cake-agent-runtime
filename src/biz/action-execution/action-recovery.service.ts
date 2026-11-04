@@ -7,6 +7,8 @@ import { ActionLocalSyncService } from './action-local-sync.service';
 import { ActionRecordsRepository } from './action-records.repository';
 import { ActionRecoveryRegistry } from './action-recovery.registry';
 import type { ActionRecord } from './action-execution.types';
+import { CRON_JOB } from '@infra/queue/cron.constants';
+import { ACTION_STATE } from '@shared-types/action-execution.contract';
 
 @Injectable()
 export class ActionRecoveryService {
@@ -46,7 +48,7 @@ export class ActionRecoveryService {
   @Cron('17 */10 * * * *', { timeZone: 'Asia/Shanghai' })
   async retainTombstones(): Promise<void> {
     await this.crons.runBatches(
-      'action-retention',
+      CRON_JOB.ACTION_RETENTION,
       { timeMs: 30_000, maxRows: 10_000, batchSize: 100 },
       (limit) => this.records.redactCompleted(limit),
     );
@@ -55,7 +57,7 @@ export class ActionRecoveryService {
   private async recover(record: ActionRecord): Promise<void> {
     const handler = this.handlers.get(record.intent.kind);
     try {
-      if (record.status === 'succeeded') {
+      if (record.status === ACTION_STATE.SUCCEEDED) {
         if (!handler || record.attempts > 6 || Date.now() >= Date.parse(record.recoveryDeadline)) {
           await this.requestReview(record);
           return;
@@ -80,14 +82,17 @@ export class ActionRecoveryService {
       const completion =
         late.completion ?? (await this.queryWithinBudget(() => handler!.reconcile(record)));
       const settled = await this.records.settle(record, completion);
-      if (settled.status === 'succeeded') {
+      if (settled.status === ACTION_STATE.SUCCEEDED) {
         if (!handler) {
           await this.requestReview(settled);
           return;
         }
         await this.localSync.run(settled, handler);
         await this.records.markSynced(settled);
-      } else if (settled.status === 'unknown' || settled.status === 'executing') {
+      } else if (
+        settled.status === ACTION_STATE.UNKNOWN ||
+        settled.status === ACTION_STATE.EXECUTING
+      ) {
         await this.records.defer(settled, this.nextCheck(settled));
       }
     } catch {

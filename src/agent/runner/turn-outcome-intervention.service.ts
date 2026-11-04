@@ -9,6 +9,7 @@ import type {
   GeneralHandoffSideEffectIntent,
   TurnSideEffectIntent,
 } from './turn-side-effect.types';
+import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
 
 export interface TurnOutcomeCommitContext {
   traceId: string;
@@ -121,7 +122,7 @@ export class TurnOutcomeInterventionService {
       }),
       new Date(occurredAt),
     );
-    if (writeOutcome === 'duplicate') {
+    if (writeOutcome === OPS_EVENT_WRITE_RESULT.DUPLICATE) {
       this.logger.warn(
         `[OutcomeSideEffect] duplicate conversation_risk，跳过重复 dispatch: chatId=${context.chatId}, type=${intent.riskType}`,
       );
@@ -173,13 +174,13 @@ export class TurnOutcomeInterventionService {
 
     if (shouldRecord) {
       const writeOutcome = await this.recordHandoff(intent, context, idempotencyKey, occurredAt);
-      if (writeOutcome === 'duplicate') {
+      if (writeOutcome === OPS_EVENT_WRITE_RESULT.DUPLICATE) {
         this.logger.warn(
           `[OutcomeSideEffect] duplicate handoff，跳过重复 dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
         );
         return;
       }
-      if (writeOutcome === 'failed') {
+      if (writeOutcome === OPS_EVENT_WRITE_RESULT.FAILED) {
         this.logger.error(
           `[OutcomeSideEffect] handoff 底账写入失败，执行 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
         );

@@ -39,7 +39,7 @@ const recovery = {
   identity: { name: '张三', phone: '13800000000', age: '25', gender: '男' },
 };
 const input = {
-  kind: 'sponge.booking',
+  kind: 'sponge.booking' as const,
   target: 'booking:13800000000:100',
   parameters: { jobId: 100 },
   recovery,

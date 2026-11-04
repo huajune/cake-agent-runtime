@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ContactType, MessageType } from '@enums/message-callback.enum';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 const PayloadSchema = z.object({}).catchall(z.unknown());
 
@@ -28,7 +29,7 @@ const EnterpriseMessageCallbackSchema = z
     externalUserId: z.string().optional(),
     coworker: z.boolean().optional(),
     avatar: z.string().optional(),
-    _apiType: z.enum(['enterprise', 'group']).optional(),
+    _apiType: z.enum(WECOM_API_TYPE).optional(),
   })
   .passthrough();
 

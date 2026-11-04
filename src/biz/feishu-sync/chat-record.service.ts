@@ -9,6 +9,7 @@ import {
 } from '@infra/feishu/services/bitable-api.service';
 import { AlertLevel } from '@enums/alert.enum';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { CRON_JOB } from '@infra/queue/cron.constants';
 
 /**
  * 增强的消息历史记录项（用于飞书同步）
@@ -65,7 +66,7 @@ export class ChatRecordSyncService {
     if (this.isReadOnlyPreview()) return;
 
     await this.cronRunner.run(
-      'chat-record-sync',
+      CRON_JOB.CHAT_RECORD_SYNC,
       { timeMs: 10 * 60_000, maxRows: 1000 },
       (budget) => this.runYesterdaySync(budget),
     );

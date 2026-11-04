@@ -111,6 +111,16 @@ describe('external action failure boundaries', () => {
   });
   afterEach(() => jest.useRealTimers());
 
+  it.each(['execuet', 'EXECUTE', 'repair', ''])('rejects an unknown execution mode: %s', (mode) => {
+    expect(() => setup(mode)).toThrow('Invalid ACTION_EXECUTION_MODE');
+  });
+
+  it('still requires an explicit cutover boundary for execute', () => {
+    expect(() => setup('execute', null)).toThrow('ACTION_EXECUTION_CUTOVER_AT');
+    expect(() => setup('observe', null)).not.toThrow();
+    expect(() => setup('off', null)).not.toThrow();
+  });
+
   it('never dispatches when registration is unconfirmed', async () => {
     const { service, repository } = setup();
     repository.prepare.mockRejectedValue(new Error('timeout after commit'));

@@ -4,8 +4,10 @@ import type { Job, Queue } from 'bull';
 import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { OpsEventsRepository } from './repositories/ops-events.repository';
 import type { RecordOpsEventInput } from './types/ops-events.types';
+import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
 
 export const CRITICAL_OPS_EVENT_QUEUE = 'critical-ops-events';
+export const CRITICAL_OPS_EVENT_JOB = 'persist';
 
 @Injectable()
 export class CriticalEventProcessor implements OnModuleInit {
@@ -16,8 +18,10 @@ export class CriticalEventProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.queue.process('persist', 2, (job: Job<RecordOpsEventInput>) => this.process(job));
-    this.queue.on('failed', (job: Job, error: Error) => {
+    this.queue.process(CRITICAL_OPS_EVENT_JOB, 2, (job: Job<RecordOpsEventInput>) =>
+      this.process(job),
+    );
+    this.queue.on(OPS_EVENT_WRITE_RESULT.FAILED, (job: Job, error: Error) => {
       void this.failures.exhausted(CRITICAL_OPS_EVENT_QUEUE, job, error);
     });
   }
@@ -28,7 +32,7 @@ export class CriticalEventProcessor implements OnModuleInit {
       ...job.data,
       occurredAt: job.data.occurredAt,
     });
-    if (result === 'failed')
+    if (result === OPS_EVENT_WRITE_RESULT.FAILED)
       throw new Error(`Critical event persistence failed: ${job.data.eventName}`);
   }
 }

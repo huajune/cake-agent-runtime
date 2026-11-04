@@ -9,6 +9,7 @@ import type {
   RecordCandidateMessageInput,
   RecordOpsEventInput,
 } from '../types/ops-events.types';
+import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
 
 export interface OpsBookingPollCursor {
   reportDate: string;
@@ -70,7 +71,7 @@ export class OpsEventsRepository extends BaseRepository {
     });
 
     if (data === null) {
-      return 'failed';
+      return OPS_EVENT_WRITE_RESULT.FAILED;
     }
 
     // The immutable booking fact may have been repaired before its separate
@@ -90,10 +91,12 @@ export class OpsEventsRepository extends BaseRepository {
         p_idempotency_key: input.idempotencyKey,
         p_group_invite: invite,
       });
-      if (enriched !== true) return 'failed';
+      if (enriched !== true) return OPS_EVENT_WRITE_RESULT.FAILED;
     }
 
-    return data.inserted === true ? 'inserted' : 'duplicate';
+    return data.inserted === true
+      ? OPS_EVENT_WRITE_RESULT.INSERTED
+      : OPS_EVENT_WRITE_RESULT.DUPLICATE;
   }
 
   /** Exact unique-key lookup; an unavailable read must not reclassify a recovered opening. */

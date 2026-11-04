@@ -13,6 +13,7 @@ import type {
   OutputResolution,
 } from '@shared-types/guardrail.contract';
 import type { TurnSideEffectIntent } from './turn-side-effect.types';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
 
 /** 会话三元组（记忆隔离键）。 */
 export interface SessionRef {
@@ -44,7 +45,7 @@ export interface TurnContext
   token?: string;
   imContactId?: string;
   imRoomId?: string;
-  apiType?: 'enterprise' | 'group';
+  apiType?: WecomApiType;
   /** 请求级 trace/message ID，用于 turn-end 回写与 handoff 幂等键。 */
   messageId?: string;
 }

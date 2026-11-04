@@ -12,6 +12,8 @@ import {
 } from './message-callback.schema';
 import { z } from 'zod';
 import { LEGACY_GROUP_CORP_ID } from '../credentials/group-route-credentials.service';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /**
  * 消息回调适配器服务
@@ -31,7 +33,7 @@ export class MessageCallbackAdapterService {
    * @param body 原始回调数据
    * @returns 'enterprise' | 'group' | 'unknown'
    */
-  detectCallbackType(body: unknown): 'enterprise' | 'group' | 'unknown' {
+  detectCallbackType(body: unknown): WecomApiType | 'unknown' {
     if (!body || typeof body !== 'object') {
       return 'unknown';
     }
@@ -40,7 +42,7 @@ export class MessageCallbackAdapterService {
 
     // 企业级回调特征：有 orgId 字段且数据在顶层
     if (typeof obj.orgId === 'string' && obj.messageType !== undefined) {
-      return 'enterprise';
+      return WECOM_API_TYPE.ENTERPRISE;
     }
 
     // 小组级回调特征：有 data 字段且 data 内有 type 字段
@@ -51,7 +53,7 @@ export class MessageCallbackAdapterService {
       (data as Record<string, unknown>).type !== undefined &&
       typeof (data as Record<string, unknown>).messageId === 'string'
     ) {
-      return 'group';
+      return WECOM_API_TYPE.GROUP;
     }
 
     return 'unknown';
@@ -104,7 +106,7 @@ export class MessageCallbackAdapterService {
       roomWecomChatId: groupCallback.roomWecomChatId ?? undefined,
 
       // 内部标记：标识为小组级回调转换而来（用于动态 API 选择）
-      _apiType: 'group',
+      _apiType: WECOM_API_TYPE.GROUP,
     };
 
     this.logger.debug(
@@ -125,14 +127,14 @@ export class MessageCallbackAdapterService {
     this.logger.log(`检测到回调类型: ${callbackType}`);
 
     switch (callbackType) {
-      case 'enterprise':
+      case WECOM_API_TYPE.ENTERPRISE:
         // 已经是企业级格式，但需要补充可能缺失的字段
         // 注意：企业级格式没有 _apiType 字段，默认使用企业级 API
         return this.normalizeEnterpriseCallback(
           this.parseOrThrow(EnterpriseMessageCallbackInputSchema, body, callbackType),
         );
 
-      case 'group':
+      case WECOM_API_TYPE.GROUP:
         // 小组级格式，需要转换
         const wrapper = this.parseOrThrow(GroupMessageCallbackWrapperSchema, body, callbackType);
         const converted = this.convertGroupToEnterprise(wrapper.data);
@@ -239,11 +241,7 @@ export class MessageCallbackAdapterService {
     return MessageSource.MOBILE_PUSH;
   }
 
-  private parseOrThrow<T>(
-    schema: z.ZodSchema<T>,
-    body: unknown,
-    callbackType: 'enterprise' | 'group',
-  ): T {
+  private parseOrThrow<T>(schema: z.ZodSchema<T>, body: unknown, callbackType: WecomApiType): T {
     const parsed = schema.safeParse(body);
     if (parsed.success) {
       return parsed.data;

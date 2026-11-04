@@ -1,11 +1,3 @@
-// business-rules: IB-01, IB-04, IB-07, IB-10, IB-11
-/**
- * 面试预约提交边界。
- *
- * booking 不再接收候选人裸字段：唯一取数口是 precheck 已办结并完成资料授权的
- * BookingCollectionForm，唯一外发形状是 `{ jobId, interviewTime?, labelList }`。
- */
-
 import { createHash } from 'crypto';
 import { classifyBookingRejection } from '@sponge/booking-rejection';
 import { HANDOFF_REASON_LABELS } from '@enums/handoff-reason.enum';
@@ -78,6 +70,7 @@ import {
 import { buildBookingFailureRecordIntent } from '@tools/shared/tool-failure-handoff.util';
 import { tool } from 'ai';
 import { z } from 'zod';
+import { ACTION_KIND } from '@shared-types/action-execution.contract';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u;
@@ -596,7 +589,7 @@ export function buildInterviewBookingTool(
             ? await deps.actions.executeSponge(
                 context,
                 {
-                  kind: 'sponge.booking',
+                  kind: ACTION_KIND.SPONGE_BOOKING,
                   target: `booking:${identity.phone}:${jobId}`,
                   parameters: bookingParameters,
                   recovery: {

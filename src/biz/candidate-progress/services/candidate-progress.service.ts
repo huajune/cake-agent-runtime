@@ -19,8 +19,23 @@ import {
   mergeLegacyGuardBookings,
   type OutOfBandWorkOrderVerdict,
 } from '../policies/legacy-progress.policies';
+import type {
+  ProgressOrderSource,
+  ProgressPhoneSource,
+  ProgressReadMode,
+  ProgressReader,
+  ProgressTruth,
+} from '@shared-types/candidate-progress.types';
+import {
+  PROGRESS_ORDER_SOURCE,
+  PROGRESS_PHONE_SOURCE,
+  PROGRESS_POLICY,
+  PROGRESS_READER,
+  PROGRESS_READ_MODE,
+  PROGRESS_TRUTH,
+} from '@shared-types/candidate-progress.types';
 
-export type ProgressTruth = 'yes' | 'no' | 'unknown';
+export type { ProgressTruth } from '@shared-types/candidate-progress.types';
 export interface CandidateProgressScope {
   corpId: string;
   userId: string;
@@ -30,11 +45,11 @@ export interface CandidateProgressScope {
 }
 export interface CandidateProgressView {
   scope: CandidateProgressScope;
-  mode: 'fresh' | 'cached';
+  mode: ProgressReadMode;
   /** 未指定统一窗口前只启用 legacy；comparison 仅提供评审证据。 */
-  policy: 'legacy';
+  policy: typeof PROGRESS_POLICY.LEGACY;
   active: ProgressTruth;
-  phone: { value: string | null; source: 'session' | 'profile' | 'missing' };
+  phone: { value: string | null; source: ProgressPhoneSource };
   workOrders: readonly SignupWorkOrderItem[];
   orders: ReadonlyArray<{
     workOrderId: number;
@@ -43,7 +58,7 @@ export interface CandidateProgressView {
     status: string | null;
     interviewTime: string | null;
     ownedByCurrentAccount: ProgressTruth;
-    source: 'sponge_cross_account' | 'snapshot';
+    source: ProgressOrderSource;
   }>;
 
   pointers: readonly ActiveBookingEntry[] | null;
@@ -68,7 +83,7 @@ export class CandidateProgressService {
   async loadBookingSnapshot(input: BookingSnapshotLoadInput): Promise<BookingSnapshotLoadResult> {
     const result = await this.snapshot.load(input);
     if (result.status === 'ok' && result.allWorkOrders) {
-      this.compare(input, result.allWorkOrders, input.now ?? Date.now(), 'context');
+      this.compare(input, result.allWorkOrders, input.now ?? Date.now(), PROGRESS_READER.CONTEXT);
     }
     return result;
   }
@@ -96,20 +111,20 @@ export class CandidateProgressService {
   /** 复聊事实视图；新鲜模式跨账号查本人手机号，缓存模式沿用既有 5 分钟快照。 */
   async read(
     scope: CandidateProgressScope,
-    mode: 'fresh' | 'cached',
+    mode: ProgressReadMode,
   ): Promise<CandidateProgressView> {
     const [state, stage, pointers] = await Promise.all([
       this.session.getSessionState(scope.corpId, scope.userId, scope.chatId).catch(() => null),
       this.workbench.getStage(scope.corpId, scope.userId, scope.chatId).catch(() => null),
       this.longTerm.tryGetActiveBookings(scope.corpId, scope.userId, {
-        bypassCache: mode === 'fresh',
+        bypassCache: mode === PROGRESS_READ_MODE.FRESH,
       }),
     ]);
     const rawPhone = state?.facts?.interview_info?.phone?.value;
     const sessionPhone = typeof rawPhone === 'string' ? rawPhone.trim() : '';
     const phone: CandidateProgressView['phone'] = isStorableCandidatePhone(sessionPhone)
-      ? { value: sessionPhone, source: 'session' }
-      : { value: null, source: 'missing' };
+      ? { value: sessionPhone, source: PROGRESS_PHONE_SOURCE.SESSION }
+      : { value: null, source: PROGRESS_PHONE_SOURCE.MISSING };
     const names: string[] = [];
     const sessionName = state?.facts?.interview_info?.name?.value;
     if (typeof sessionName === 'string') names.push(sessionName);
@@ -121,7 +136,7 @@ export class CandidateProgressService {
         isStorableCandidatePhone(profilePhone.value?.trim())
       ) {
         phone.value = profilePhone.value.trim();
-        phone.source = 'profile';
+        phone.source = PROGRESS_PHONE_SOURCE.PROFILE;
       }
       if (isUserProfileFactValue<string>(profile?.name)) names.push(profile.name.value);
     }
@@ -129,7 +144,7 @@ export class CandidateProgressService {
     let known = false;
     if (phone.value && scope.botImId) {
       try {
-        if (mode === 'fresh') {
+        if (mode === PROGRESS_READ_MODE.FRESH) {
           const result = await this.sponge.fetchSignupWorkOrders(
             { phone: phone.value, onlyCurrentAccount: false },
             { botImId: scope.botImId },
@@ -155,12 +170,16 @@ export class CandidateProgressService {
     }
     const now = Date.now();
     const outOfBandVerdict = known ? evaluateOutOfBandWorkOrders(workOrders, now) : null;
-    if (known) this.compare(scope, workOrders, now, 'pre_booking');
+    if (known) this.compare(scope, workOrders, now, PROGRESS_READER.PRE_BOOKING);
     return {
       scope,
       mode,
-      policy: 'legacy',
-      active: outOfBandVerdict ? 'yes' : known && pointers !== null ? 'no' : 'unknown',
+      policy: PROGRESS_POLICY.LEGACY,
+      active: outOfBandVerdict
+        ? PROGRESS_TRUTH.YES
+        : known && pointers !== null
+          ? PROGRESS_TRUTH.NO
+          : PROGRESS_TRUTH.UNKNOWN,
       phone,
       orders: workOrders.map((order) => ({
         workOrderId: order.workOrderId,
@@ -169,14 +188,21 @@ export class CandidateProgressService {
         status: order.currentStatus ?? null,
         interviewTime: order.interviewTime ?? null,
         // The legacy snapshot omits onlyCurrentAccount; its cache key proves lookup scope, not ownership.
-        ownedByCurrentAccount: 'unknown',
-        source: mode === 'cached' ? 'snapshot' : 'sponge_cross_account',
+        ownedByCurrentAccount: PROGRESS_TRUTH.UNKNOWN,
+        source:
+          mode === PROGRESS_READ_MODE.CACHED
+            ? PROGRESS_ORDER_SOURCE.SNAPSHOT
+            : PROGRESS_ORDER_SOURCE.SPONGE_CROSS_ACCOUNT,
       })),
       workOrders,
       pointers,
       outOfBandVerdict,
       group: {
-        invited: state ? ((state.invitedGroups?.length ?? 0) > 0 ? 'yes' : 'no') : 'unknown',
+        invited: state
+          ? (state.invitedGroups?.length ?? 0) > 0
+            ? PROGRESS_TRUTH.YES
+            : PROGRESS_TRUTH.NO
+          : PROGRESS_TRUTH.UNKNOWN,
         verified: false,
       },
       stage: { value: stage?.currentStage ?? null, fallback: !stage?.currentStage },
@@ -187,7 +213,7 @@ export class CandidateProgressService {
     scope: { corpId: string; userId: string },
     orders: readonly SignupWorkOrderItem[],
     now: number,
-    reader: 'context' | 'pre_booking',
+    reader: ProgressReader,
   ): void {
     const context = orders.some((order) => isSnapshotEligibleWorkOrder(order, now));
     const proactive = Boolean(evaluateOutOfBandWorkOrders(orders, now));
@@ -198,7 +224,7 @@ export class CandidateProgressService {
       corpId: scope.corpId,
       userId: scope.userId,
       reader,
-      selectedPolicy: 'legacy',
+      selectedPolicy: PROGRESS_POLICY.LEGACY,
       context,
       proactive,
       openWithoutWindow,

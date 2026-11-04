@@ -21,13 +21,13 @@ import {
   collectToolReplayEvidence,
 } from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
-import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import {
   ReengagementAnchorService,
   isBookingSucceededCall,
 } from '@agent/reengagement/anchor.service';
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import type { ReengagementChannelIdentity } from '@agent/reengagement/follow-up-scheduler.service';
+import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
@@ -47,6 +47,10 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import { BotService } from '../../bot/bot.service';
+import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
+import { REPLY_TURN_STATUS } from '@biz/reply-execution/reply-execution.constants';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /**
  * 兼容图片描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
@@ -86,7 +90,7 @@ interface AgentCallParams {
   token?: string;
   imContactId?: string;
   imRoomId?: string;
-  apiType?: 'enterprise' | 'group';
+  apiType?: WecomApiType;
   modelId?: string;
   thinking?: GeneratorThinkingConfig;
   shortTermEndTimeInclusive?: number;
@@ -278,7 +282,10 @@ export class ReplyWorkflowService {
         this.inputOccurredAt(allMessages),
         this.replyRecoveryContext(params.primaryMessage, params.content),
       ));
-    if (durableTurn?.status === 'settled' || durableTurn?.status === 'acked') {
+    if (
+      durableTurn?.status === REPLY_TURN_STATUS.SETTLED ||
+      durableTurn?.status === REPLY_TURN_STATUS.ACKED
+    ) {
       await this.ackDurableTurn(durableTurn, params.assertOwned);
       return;
     }
@@ -777,7 +784,7 @@ export class ReplyWorkflowService {
     assertOwned?: () => Promise<void>,
   ): Promise<void> {
     await assertOwned?.();
-    if (turn.status === 'settled' || turn.status === 'acked') {
+    if (turn.status === REPLY_TURN_STATUS.SETTLED || turn.status === REPLY_TURN_STATUS.ACKED) {
       await this.ackDurableTurn(turn, assertOwned);
       return;
     }
@@ -814,7 +821,7 @@ export class ReplyWorkflowService {
     message: EnterpriseMessageCallbackDto,
   ): Promise<{ token: string; groupId?: string }> {
     const primary = turn.recovery.primary as Partial<EnterpriseMessageCallbackDto> | undefined;
-    const apiType = primary?._apiType ?? 'enterprise';
+    const apiType = primary?._apiType ?? WECOM_API_TYPE.ENTERPRISE;
     if (
       !primary ||
       primary.orgId !== turn.corpId ||
@@ -823,14 +830,14 @@ export class ReplyWorkflowService {
       message.orgId !== turn.corpId ||
       message.imBotId !== turn.accountId ||
       message.chatId !== turn.chatId ||
-      (message._apiType ?? 'enterprise') !== apiType ||
+      (message._apiType ?? WECOM_API_TYPE.ENTERPRISE) !== apiType ||
       (message.groupId !== undefined && message.groupId !== primary.groupId) ||
       message.imContactId !== primary.imContactId ||
       message.imRoomId !== primary.imRoomId
     )
       throw new ReplyDeferredError('recovery_route_identity_mismatch');
 
-    if (apiType === 'group') {
+    if (apiType === WECOM_API_TYPE.GROUP) {
       try {
         const route = await this.groupCredentials?.resolveForRecovery({
           corpId: turn.corpId,
@@ -1520,14 +1527,14 @@ export class ReplyWorkflowService {
       // 写入失败（DB 不可用 / 熔断 OPEN / RPC 异常）时，无法判定本条是否开场白：
       // 不能据此误记为 agent.replied（否则开场白行永远缺失且不可恢复）。
       // 跳过本轮分类——开场白行未写入，后续回复会再次尝试插入并正确判定。
-      if (openingResult === 'failed') {
+      if (openingResult === OPS_EVENT_WRITE_RESULT.FAILED) {
         this.logger.warn(
           `[漏斗] 开场白事件写入失败，跳过本轮开场白/回复分类，等待后续重试 [${traceId}]`,
         );
         return 'unknown';
       }
 
-      const isOpening = openingResult === 'inserted';
+      const isOpening = openingResult === OPS_EVENT_WRITE_RESULT.INSERTED;
       if (isOpening) {
         // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
         // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态

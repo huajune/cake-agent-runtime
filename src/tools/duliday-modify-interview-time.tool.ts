@@ -1,22 +1,9 @@
-// business-rules: IB-09, IB-12
 import type { ToolActionService } from './actions/tool-action.service';
 import {
   actionReceiptFields,
   isUnresolvedAction,
   unresolvedActionReceipt,
 } from './actions/business-action.util';
-/**
- * DuLiDay 修改约面时间工具
- *
- * 候选人主动要求改约面试时间（改期/换一天）时，自助调海绵修改约面时间接口完成改约。
- * 自助优先：接口失败时回执自带转人工副作用（modify_appointment + 工单号/岗位/失败原因），
- * 模型只需如实告知已转同事；无工单号时仍回退 request_handoff(modify_appointment)。
- *
- * 工单归属两级核验：先看 active_booking 指针；不在指针里（真人后台手工建单、[当前预约信息]
- * 按手机号带外查得）时，再拿工单登记手机号与候选人本会话自报原话核对，一致即视为本人、
- * 放行并回填指针；核对不上一律 fail-closed 转人工，绝不跨微信联系人改单。
- */
-
 import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
@@ -38,6 +25,7 @@ import {
   buildToolFailureReplyInstruction,
 } from '@tools/shared/tool-failure-handoff.util';
 import { isInterviewSlotAvailabilityInquiryOnly } from '@tools/booking/interview-time-intent.util';
+import { ACTION_KIND } from '@shared-types/action-execution.contract';
 
 const logger = new Logger('duliday_modify_interview_time');
 
@@ -221,7 +209,7 @@ export function buildModifyInterviewTimeTool(
             ? await deps.actions.executeSponge(
                 context,
                 {
-                  kind: 'sponge.modify',
+                  kind: ACTION_KIND.SPONGE_MODIFY,
                   target: `work-order:${workOrderId}`,
                   parameters,
                   recovery: {

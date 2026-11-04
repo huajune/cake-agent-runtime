@@ -8,6 +8,9 @@ import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyWorkflowService } from '../application/reply-workflow.service';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import { REPLY_TURN_STATUS } from '@biz/reply-execution/reply-execution.constants';
+import { CRON_JOB } from '@infra/queue/cron.constants';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /** Durable scan repairs original plans/acks, including after the Redis input TTL expires. */
 @Injectable()
@@ -40,7 +43,7 @@ export class ReplyRecoveryService {
           } catch {
             this.logger.warn(`reply.recovery_pending ${turn.logicalTurnId}`);
             if (
-              turn.status === 'planned' &&
+              turn.status === REPLY_TURN_STATUS.PLANNED &&
               Date.parse(turn.inputOccurredAt) < Date.now() - 86400_000
             ) {
               this.manualReview(turn.logicalTurnId, 'recovery_deadline');
@@ -59,7 +62,7 @@ export class ReplyRecoveryService {
   }
 
   private async resumeTurn(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<void> {
-    if (!turn.plan && turn.status === 'preparing') {
+    if (!turn.plan && turn.status === REPLY_TURN_STATUS.PREPARING) {
       this.logger.error(
         `reply.manual_review_required generation_interrupted ${turn.logicalTurnId}`,
       );
@@ -74,7 +77,7 @@ export class ReplyRecoveryService {
       groupId?: string;
     };
     let token = '';
-    if (turn.status === 'planned') {
+    if (turn.status === REPLY_TURN_STATUS.PLANNED) {
       if (
         primary.orgId !== turn.corpId ||
         primary.imBotId !== turn.accountId ||
@@ -83,7 +86,7 @@ export class ReplyRecoveryService {
         this.manualReview(turn.logicalTurnId, 'recovery_identity_mismatch');
         return;
       }
-      if (primary._apiType === 'group') {
+      if (primary._apiType === WECOM_API_TYPE.GROUP) {
         const route = await this.groupCredentials?.resolveForRecovery({
           corpId: turn.corpId,
           accountId: turn.accountId,
@@ -105,7 +108,7 @@ export class ReplyRecoveryService {
   @Cron('47 */10 * * * *', { timeZone: 'Asia/Shanghai' })
   async retainTombstones(): Promise<void> {
     await this.crons.runBatches(
-      'reply-retention',
+      CRON_JOB.REPLY_RETENTION,
       { timeMs: 30_000, maxRows: 10_000, batchSize: 100 },
       (limit) => this.turns.repository.redact(limit),
     );

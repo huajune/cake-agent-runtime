@@ -9,6 +9,14 @@ import type {
 } from './action-execution.types';
 import type { ActionDbRecord } from './repository.types';
 import { actionDigest, identifyAction } from './action-identity';
+import { ACTION_RECORD_OPERATION } from '@biz/action-execution/action-records.constants';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_MODE,
+  ACTION_STATE,
+  LOCAL_SYNC_STATE,
+} from '@shared-types/action-execution.contract';
+import type { ActionRecordOperation } from './action-records.constants';
 
 @Injectable()
 export class ActionRecordsRepository extends BaseRepository {
@@ -23,7 +31,7 @@ export class ActionRecordsRepository extends BaseRepository {
     mode: ActionMode,
   ): Promise<{ record: ActionRecord | null; conflict?: string }> {
     const identity = identifyAction(intent);
-    return this.transition('prepare', {
+    return this.transition(ACTION_RECORD_OPERATION.PREPARE, {
       ...identity,
       corpId: intent.corpId,
       intent,
@@ -36,17 +44,20 @@ export class ActionRecordsRepository extends BaseRepository {
   }
 
   async claim(record: ActionRecord, owner: string, recovery = false): Promise<ActionRecord | null> {
-    const result = await this.transition(recovery ? 'reconcile_claim' : 'claim', {
-      corpId: record.intent.corpId,
-      actionId: record.actionId,
-      owner,
-    });
+    const result = await this.transition(
+      recovery ? ACTION_RECORD_OPERATION.RECONCILE_CLAIM : ACTION_RECORD_OPERATION.CLAIM,
+      {
+        corpId: record.intent.corpId,
+        actionId: record.actionId,
+        owner,
+      },
+    );
     if (result.conflict || result.record?.owner !== owner) return null;
     return result.record;
   }
 
   async settle<T>(record: ActionRecord, completion: ActionCompletion<T>): Promise<ActionRecord> {
-    const result = await this.transition('settle', {
+    const result = await this.transition(ACTION_RECORD_OPERATION.SETTLE, {
       ...this.ownership(record),
       completion,
       evidenceHash: actionDigest(completion),
@@ -56,31 +67,38 @@ export class ActionRecordsRepository extends BaseRepository {
   }
 
   async validateClaim(record: ActionRecord): Promise<boolean> {
-    const result = await this.transition('validate_claim', this.ownership(record));
+    const result = await this.transition(
+      ACTION_RECORD_OPERATION.VALIDATE_CLAIM,
+      this.ownership(record),
+    );
     return (
       result.record?.owner === record.owner &&
       result.record.fence === record.fence &&
-      result.record.status === 'executing' &&
+      result.record.status === ACTION_STATE.EXECUTING &&
       Boolean(result.record.nextCheckAt) &&
       Date.parse(result.record.nextCheckAt!) > Date.now()
     );
   }
 
   async markSynced(record: ActionRecord): Promise<void> {
-    const result = await this.transition('synced', this.ownership(record));
-    if (result.record?.localSync !== 'complete') throw new Error('Local sync ownership changed');
+    const result = await this.transition(ACTION_RECORD_OPERATION.SYNCED, this.ownership(record));
+    if (result.record?.localSync !== LOCAL_SYNC_STATE.COMPLETE)
+      throw new Error('Local sync ownership changed');
   }
 
   async cancel(record: ActionRecord): Promise<boolean> {
-    const result = await this.transition('cancel', this.ownership(record));
-    return result.record?.status === 'cancelled';
+    const result = await this.transition(ACTION_RECORD_OPERATION.CANCEL, this.ownership(record));
+    return result.record?.status === ACTION_STATE.CANCELLED;
   }
 
   async defer(record: ActionRecord, nextCheckAt: string | null): Promise<void> {
-    await this.transition(nextCheckAt ? 'schedule' : 'manual', {
-      ...this.ownership(record),
-      nextCheckAt,
-    });
+    await this.transition(
+      nextCheckAt ? ACTION_RECORD_OPERATION.SCHEDULE : ACTION_RECORD_OPERATION.MANUAL,
+      {
+        ...this.ownership(record),
+        nextCheckAt,
+      },
+    );
   }
 
   async due(limit = 25): Promise<ActionRecord[]> {
@@ -88,9 +106,11 @@ export class ActionRecordsRepository extends BaseRepository {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .eq('mode', 'execute')
+      .eq('mode', ACTION_MODE.EXECUTE)
       .lte('next_check_at', new Date().toISOString())
-      .or('status.in.(executing,unknown),and(status.eq.succeeded,local_sync.eq.pending)')
+      .or(
+        `status.in.(${ACTION_STATE.EXECUTING},${ACTION_STATE.UNKNOWN}),and(status.eq.${ACTION_STATE.SUCCEEDED},local_sync.eq.${LOCAL_SYNC_STATE.PENDING})`,
+      )
       .order('next_check_at')
       .order('corp_id')
       .order('action_id')
@@ -110,7 +130,7 @@ export class ActionRecordsRepository extends BaseRepository {
       .select('action_id')
       .eq('corp_id', record.intent.corpId)
       .eq('resource_hash', actionDigest([record.intent.corpId, record.intent.target]))
-      .eq('status', 'succeeded')
+      .eq('status', ACTION_STATE.SUCCEEDED)
       .neq('action_id', record.actionId)
       .gt('input_occurred_at', record.intent.occurredAt)
       .limit(1)
@@ -137,15 +157,18 @@ export class ActionRecordsRepository extends BaseRepository {
       .filter(
         (completion) =>
           completion.evidence.requestTerminated &&
-          (completion.status === 'succeeded' ||
-            (completion.status === 'failed' &&
-              completion.evidence.kind === 'definitive_no_effect')),
+          (completion.status === ACTION_STATE.SUCCEEDED ||
+            (completion.status === ACTION_STATE.FAILED &&
+              completion.evidence.kind === ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT)),
       );
-    const successes = completions.filter((completion) => completion.status === 'succeeded');
+    const successes = completions.filter(
+      (completion) => completion.status === ACTION_STATE.SUCCEEDED,
+    );
     return {
       completion: successes[0] ?? completions[0],
       conflicting:
-        successes.length > 0 && completions.some((completion) => completion.status === 'failed'),
+        successes.length > 0 &&
+        completions.some((completion) => completion.status === ACTION_STATE.FAILED),
     };
   }
 
@@ -176,7 +199,7 @@ export class ActionRecordsRepository extends BaseRepository {
   }
 
   private async transition(
-    operation: string,
+    operation: ActionRecordOperation,
     input: Record<string, unknown>,
   ): Promise<{ record: ActionRecord | null; conflict?: string }> {
     if (this.circuitBlocked('action_transition')) throw new Error('Action store unavailable');

@@ -3,9 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
 import { QueueFailureService } from './queue-failure.service';
 import { RedisLeaseService } from './redis-lease.service';
+import { CRON_JOB, CRON_RUN_STATE } from '@infra/queue/cron.constants';
+import type { CronJob, CronRunState } from './cron.constants';
 
 interface CronDefinition {
-  id: string;
+  id: CronJob;
   intervalMs: number;
   /** UTC offset of the first scheduled occurrence in the interval. */
   offsetMs: number;
@@ -15,28 +17,43 @@ interface CronDefinition {
 
 const DAY = 86_400_000;
 export const MANAGED_CRONS: readonly CronDefinition[] = [
-  { id: 'ops-daily-report', intervalMs: DAY, offsetMs: 13 * 3_600_000 },
-  { id: 'sponge-status-poll', intervalMs: 15 * 60_000, offsetMs: 0 },
-  { id: 'chat-record-sync', intervalMs: DAY, offsetMs: 16 * 3_600_000 },
-  { id: 'group-order-morning', intervalMs: DAY, offsetMs: 2 * 3_600_000, productionOnly: true },
-  { id: 'group-order-afternoon', intervalMs: DAY, offsetMs: 5 * 3_600_000, productionOnly: true },
-  { id: 'group-order-evening', intervalMs: DAY, offsetMs: 9.5 * 3_600_000, productionOnly: true },
+  { id: CRON_JOB.OPS_DAILY_REPORT, intervalMs: DAY, offsetMs: 13 * 3_600_000 },
+  { id: CRON_JOB.SPONGE_STATUS_POLL, intervalMs: 15 * 60_000, offsetMs: 0 },
+  { id: CRON_JOB.CHAT_RECORD_SYNC, intervalMs: DAY, offsetMs: 16 * 3_600_000 },
   {
-    id: 'group-part-time',
+    id: CRON_JOB.GROUP_ORDER_MORNING,
+    intervalMs: DAY,
+    offsetMs: 2 * 3_600_000,
+    productionOnly: true,
+  },
+  {
+    id: CRON_JOB.GROUP_ORDER_AFTERNOON,
+    intervalMs: DAY,
+    offsetMs: 5 * 3_600_000,
+    productionOnly: true,
+  },
+  {
+    id: CRON_JOB.GROUP_ORDER_EVENING,
+    intervalMs: DAY,
+    offsetMs: 9.5 * 3_600_000,
+    productionOnly: true,
+  },
+  {
+    id: CRON_JOB.GROUP_PART_TIME,
     intervalMs: DAY,
     offsetMs: 5.5 * 3_600_000,
     weekdays: [1, 2, 3, 4, 5],
     productionOnly: true,
   },
   {
-    id: 'group-store-manager',
+    id: CRON_JOB.GROUP_STORE_MANAGER,
     intervalMs: DAY,
     offsetMs: 2.5 * 3_600_000,
     weekdays: [1, 2, 3, 4, 5],
     productionOnly: true,
   },
   {
-    id: 'group-work-tips',
+    id: CRON_JOB.GROUP_WORK_TIPS,
     intervalMs: DAY,
     offsetMs: 7 * 3_600_000,
     weekdays: [6],
@@ -129,13 +146,13 @@ export class CronRunnerService implements OnApplicationBootstrap {
     try {
       // Failure to establish the lifecycle record skips execution, just like failure to acquire a lease.
       await this.redis.setex(`cron:last-observed:${id}`, 90 * 86400, startedAt);
-      await this.event(id, 'started', startedAt, rows);
+      await this.event(id, CRON_RUN_STATE.STARTED, startedAt, rows);
       const result = await task(budget);
-      await this.event(id, 'completed', startedAt, rows);
+      await this.event(id, CRON_RUN_STATE.COMPLETED, startedAt, rows);
       return result;
     } catch (error) {
       await this.failures.report('cron.job_failed', id, error);
-      await this.event(id, 'failed', startedAt, rows).catch(() => undefined);
+      await this.event(id, CRON_RUN_STATE.FAILED, startedAt, rows).catch(() => undefined);
       return undefined;
     } finally {
       // Await the task itself before releasing; a timeout race must never release a still-running writer.
@@ -170,7 +187,12 @@ export class CronRunnerService implements OnApplicationBootstrap {
     });
   }
 
-  private async event(id: string, status: string, startedAt: number, rows: number): Promise<void> {
+  private async event(
+    id: string,
+    status: CronRunState,
+    startedAt: number,
+    rows: number,
+  ): Promise<void> {
     const event = { id, status, startedAt, updatedAt: Date.now(), rows };
     this.logger.log(JSON.stringify(event));
     await this.redis.setex(`cron:lifecycle:${id}`, 90 * 86400, event);

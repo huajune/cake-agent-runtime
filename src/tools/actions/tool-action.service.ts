@@ -24,6 +24,14 @@ import { CollectionFormStore } from '@tools/collection/collection-form.store';
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { spongeActionCompletion, toolActionIntent } from './business-action.util';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_KIND,
+  ACTION_MODE,
+  ACTION_STATE,
+} from '@shared-types/action-execution.contract';
+import type { SpongeActionKind } from '@shared-types/action-execution.contract';
+import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
 
 const recoverySchema = z.object({
   userId: z.string(),
@@ -43,11 +51,11 @@ const recoverySchema = z.object({
 });
 
 const KINDS = [
-  'sponge.booking',
-  'sponge.cancel',
-  'sponge.modify',
-  'message.location',
-  'message.interview_address',
+  ACTION_KIND.SPONGE_BOOKING,
+  ACTION_KIND.SPONGE_CANCEL,
+  ACTION_KIND.SPONGE_MODIFY,
+  ACTION_KIND.MESSAGE_LOCATION,
+  ACTION_KIND.MESSAGE_INTERVIEW_ADDRESS,
 ] as const;
 
 @Injectable()
@@ -70,9 +78,9 @@ export class ToolActionService implements OnModuleInit {
       this.recoveryRegistry.register(kind, {
         // Current state cannot establish whether a timed-out request may still execute later.
         reconcile: async (): Promise<ActionCompletion<unknown>> => ({
-          status: 'unknown',
+          status: ACTION_STATE.UNKNOWN,
           evidence: {
-            kind: 'indeterminate',
+            kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
             requestTerminated: false,
             detail: 'manual_provider_request_verification_required',
           },
@@ -84,7 +92,7 @@ export class ToolActionService implements OnModuleInit {
   async executeSponge<T extends InterviewBookingResult | WorkOrderMutationResult>(
     context: ToolBuildContext,
     input: {
-      kind: string;
+      kind: SpongeActionKind;
       target: string;
       parameters: Record<string, unknown>;
       recovery: Record<string, unknown>;
@@ -98,16 +106,16 @@ export class ToolActionService implements OnModuleInit {
         try {
           const result = await dispatch();
           if (
-            mode === 'execute' &&
-            input.kind === 'sponge.booking' &&
+            mode === ACTION_MODE.EXECUTE &&
+            input.kind === ACTION_KIND.SPONGE_BOOKING &&
             result.success &&
             !('workOrderId' in result && result.workOrderId)
           ) {
             return {
-              status: 'unknown',
+              status: ACTION_STATE.UNKNOWN,
               result,
               evidence: {
-                kind: 'indeterminate',
+                kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
                 requestTerminated: true,
                 detail: 'booking_accepted_without_work_order_identity',
               },
@@ -116,9 +124,9 @@ export class ToolActionService implements OnModuleInit {
           return spongeActionCompletion(result, input.kind);
         } catch {
           return {
-            status: 'unknown',
+            status: ACTION_STATE.UNKNOWN,
             evidence: {
-              kind: 'indeterminate',
+              kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
               requestTerminated: false,
               detail: 'provider_response_unavailable',
             },
@@ -131,7 +139,7 @@ export class ToolActionService implements OnModuleInit {
 
   async executeMessage(
     context: ToolBuildContext,
-    kind: 'message.location' | 'message.interview_address',
+    kind: typeof ACTION_KIND.MESSAGE_LOCATION | typeof ACTION_KIND.MESSAGE_INTERVIEW_ADDRESS,
     target: string,
     parameters: Record<string, unknown>,
     dispatch: (requestId?: string) => Promise<unknown>,
@@ -140,28 +148,28 @@ export class ToolActionService implements OnModuleInit {
       authorize: () => this.authorized(context),
       dispatch: async (requestId, mode) => {
         try {
-          const result = await dispatch(mode === 'execute' ? requestId : undefined);
+          const result = await dispatch(mode === ACTION_MODE.EXECUTE ? requestId : undefined);
           const value =
             result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
           if (value.errcode === 0 || value.code === 0 || value.success === true)
             return {
-              status: 'succeeded',
+              status: ACTION_STATE.SUCCEEDED,
               result,
               evidence: {
-                kind: 'accepted',
+                kind: ACTION_EVIDENCE_KIND.ACCEPTED,
                 requestTerminated: true,
                 externalId: requestId,
                 detail: 'send_request_accepted_not_read_receipt',
               },
             };
           return {
-            status: 'unknown',
-            evidence: { kind: 'indeterminate', requestTerminated: false },
+            status: ACTION_STATE.UNKNOWN,
+            evidence: { kind: ACTION_EVIDENCE_KIND.INDETERMINATE, requestTerminated: false },
           };
         } catch {
           return {
-            status: 'unknown',
-            evidence: { kind: 'indeterminate', requestTerminated: false },
+            status: ACTION_STATE.UNKNOWN,
+            evidence: { kind: ACTION_EVIDENCE_KIND.INDETERMINATE, requestTerminated: false },
           };
         }
       },
@@ -173,7 +181,7 @@ export class ToolActionService implements OnModuleInit {
       return false;
     const permit = await this.permits.evaluate({
       chatId: context.session.chatId ?? context.session.sessionId,
-      action: 'tool',
+      action: PERMITTED_ACTION.TOOL,
       botImId: context.session.botImId,
       groupId: context.session.groupId,
       candidateIds: [context.session.userId, context.session.imContactId],
@@ -197,7 +205,7 @@ export class ToolActionService implements OnModuleInit {
     if (!workOrderId) throw new Error('Successful action has no recoverable work order ID');
     // Historical success is required even when a newer business version supersedes the projection.
     await this.actionOpsEvents.sync(intent, rawResult, context);
-    if (intent.kind === 'sponge.cancel' && !data.additional) {
+    if (intent.kind === ACTION_KIND.SPONGE_CANCEL && !data.additional) {
       // Terminal cancellation evidence establishes a tombstone even while the list projection lags.
       // Its original event version prevents an old booking repair from resurrecting this work order.
       const current = await this.longTerm.clearActiveBooking(
@@ -235,7 +243,7 @@ export class ToolActionService implements OnModuleInit {
     if (!order?.currentStatus)
       throw new Error('Current work order state unavailable for local repair');
     const active = ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(order.currentStatus);
-    if (intent.kind === 'sponge.cancel') {
+    if (intent.kind === ACTION_KIND.SPONGE_CANCEL) {
       if (active)
         throw new Error('Cancellation projection has not converged; keep local sync pending');
       return;
@@ -263,7 +271,7 @@ export class ToolActionService implements OnModuleInit {
         });
     }
     if (
-      intent.kind !== 'sponge.booking' ||
+      intent.kind !== ACTION_KIND.SPONGE_BOOKING ||
       !active ||
       !data.formDigest ||
       !data.candidateRef ||

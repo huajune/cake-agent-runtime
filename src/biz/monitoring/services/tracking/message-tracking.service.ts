@@ -4,7 +4,6 @@ import { exponentialBackoffMs, sleep } from '@infra/utils/async.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
-
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -22,6 +21,7 @@ import { MonitoringCacheService } from './monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { ACTION_DENIAL_REASON } from '@shared-types/action-permit.types';
 
 interface InvocationTimingSummary {
   timestamps: {
@@ -152,12 +152,14 @@ export class MessageTrackingService {
    * 用于排障 / 回归测试断言。
    */
   recordReplySkipped(messageId: string, reason: DeliverySkipReason): void {
-    if (reason !== 'hosting_paused' && reason !== 'output_leak') {
+    if (reason !== ACTION_DENIAL_REASON.HOSTING_PAUSED && reason !== 'output_leak') {
       this.logger.warn(`[Monitoring] 投递跳过 [${messageId}] reason=${reason}`);
       return;
     }
     const counterKey: keyof MonitoringGlobalCounters =
-      reason === 'hosting_paused' ? 'totalHostingPausedSkipped' : 'totalOutputLeakSkipped';
+      reason === ACTION_DENIAL_REASON.HOSTING_PAUSED
+        ? 'totalHostingPausedSkipped'
+        : 'totalOutputLeakSkipped';
     this.cacheService.incrementCounter(counterKey, 1).catch((err) => {
       this.logger.warn(`更新 ${counterKey} 计数器失败 [${messageId}]:`, err);
     });

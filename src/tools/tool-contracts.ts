@@ -1,5 +1,13 @@
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import type { ToolActionContract } from '@shared-types/tool-action.contract';
+import {
+  TOOL_EFFECT,
+  TOOL_FRESHNESS,
+  TOOL_GATE,
+  TOOL_IDEMPOTENCY_SCOPE,
+  TOOL_REPLAY,
+} from '@shared-types/tool-action.contract';
+import { z } from 'zod';
 
 export const DEFAULT_TOOL_CALL_LIMIT = RUNTIME_RETRY_LIMITS.sameToolCalls;
 
@@ -9,8 +17,8 @@ function contract(
 ): ToolActionContract {
   return Object.freeze({
     effect,
-    replay: 'allow',
-    freshness: 'none',
+    replay: TOOL_REPLAY.ALLOW,
+    freshness: TOOL_FRESHNESS.NONE,
     maxCallsPerTurn: DEFAULT_TOOL_CALL_LIMIT,
     gates: [],
     idempotency: null,
@@ -20,51 +28,56 @@ function contract(
 
 /** Single declaration used by registration, replay and per-turn limits. No model schema changes. */
 export const BUILT_IN_TOOL_CONTRACTS = {
-  advance_stage: contract('local_state'),
-  recall_history: contract('readonly'),
-  duliday_job_list: contract('readonly', {
-    gates: ['job_list_brand_provenance', 'job_list_schedule_constraint_provenance'],
+  advance_stage: contract(TOOL_EFFECT.LOCAL_STATE),
+  recall_history: contract(TOOL_EFFECT.READONLY),
+  duliday_job_list: contract(TOOL_EFFECT.READONLY, {
+    gates: [TOOL_GATE.JOB_LIST_BRAND_PROVENANCE, TOOL_GATE.JOB_LIST_SCHEDULE_CONSTRAINT_PROVENANCE],
   }),
-  duliday_interview_precheck: contract('local_state', {
+  duliday_interview_precheck: contract(TOOL_EFFECT.LOCAL_STATE, {
     maxCallsPerTurn: RUNTIME_RETRY_LIMITS.precheckCalls,
-    gates: ['booking_jobid_provenance'],
+    gates: [TOOL_GATE.BOOKING_JOBID_PROVENANCE],
   }),
-  duliday_interview_booking: contract('external_action', {
-    replay: 'block_on_success',
-    freshness: 'latest_input',
+  duliday_interview_booking: contract(TOOL_EFFECT.EXTERNAL_ACTION, {
+    replay: TOOL_REPLAY.BLOCK_ON_SUCCESS,
+    freshness: TOOL_FRESHNESS.LATEST_INPUT,
     gates: [
-      'booking_jobid_provenance',
-      'booking_precheck_contract',
-      'booking_real_name',
-      'booking_name_authority',
+      TOOL_GATE.BOOKING_JOBID_PROVENANCE,
+      TOOL_GATE.BOOKING_PRECHECK_CONTRACT,
+      TOOL_GATE.BOOKING_REAL_NAME,
+      TOOL_GATE.BOOKING_NAME_AUTHORITY,
     ],
-    idempotency: { scope: 'business', target: ['candidatePhone', 'jobId'] },
+    idempotency: { scope: TOOL_IDEMPOTENCY_SCOPE.BUSINESS, target: ['candidatePhone', 'jobId'] },
   }),
-  duliday_cancel_work_order: contract('external_action', {
-    replay: 'block_on_success',
-    gates: ['cancel_work_order_ownership'],
-    idempotency: { scope: 'business', target: ['workOrderId'] },
+  duliday_cancel_work_order: contract(TOOL_EFFECT.EXTERNAL_ACTION, {
+    replay: TOOL_REPLAY.BLOCK_ON_SUCCESS,
+    gates: [TOOL_GATE.CANCEL_WORK_ORDER_OWNERSHIP],
+    idempotency: { scope: TOOL_IDEMPOTENCY_SCOPE.BUSINESS, target: ['workOrderId'] },
   }),
-  duliday_modify_interview_time: contract('external_action', {
-    replay: 'block_on_success',
-    gates: ['modify_work_order_ownership'],
-    idempotency: { scope: 'business', target: ['workOrderId', 'interviewTime'] },
+  duliday_modify_interview_time: contract(TOOL_EFFECT.EXTERNAL_ACTION, {
+    replay: TOOL_REPLAY.BLOCK_ON_SUCCESS,
+    gates: [TOOL_GATE.MODIFY_WORK_ORDER_OWNERSHIP],
+    idempotency: {
+      scope: TOOL_IDEMPOTENCY_SCOPE.BUSINESS,
+      target: ['workOrderId', 'interviewTime'],
+    },
   }),
-  geocode: contract('readonly', { gates: ['invite_city_provenance'] }),
-  send_store_location: contract('external_action', {
-    replay: 'block_on_success',
-    idempotency: { scope: 'turn', target: ['storeId'] },
+  geocode: contract(TOOL_EFFECT.READONLY, { gates: [TOOL_GATE.INVITE_CITY_PROVENANCE] }),
+  send_store_location: contract(TOOL_EFFECT.EXTERNAL_ACTION, {
+    replay: TOOL_REPLAY.BLOCK_ON_SUCCESS,
+    idempotency: { scope: TOOL_IDEMPOTENCY_SCOPE.TURN, target: ['storeId'] },
   }),
-  invite_to_group: contract('external_action', {
-    replay: 'block_on_success',
-    gates: ['invite_city_provenance', 'invite_timing_gate'],
-    idempotency: { scope: 'business', target: ['chatId', 'groupId'] },
+  invite_to_group: contract(TOOL_EFFECT.EXTERNAL_ACTION, {
+    replay: TOOL_REPLAY.BLOCK_ON_SUCCESS,
+    gates: [TOOL_GATE.INVITE_CITY_PROVENANCE, TOOL_GATE.INVITE_TIMING_GATE],
+    idempotency: { scope: TOOL_IDEMPOTENCY_SCOPE.BUSINESS, target: ['chatId', 'groupId'] },
   }),
-  raise_risk_alert: contract('intervention_intent'),
-  request_handoff: contract('intervention_intent'),
-  skip_reply: contract('local_state'),
-  save_image_description: contract('local_state', { gates: ['image_message_allowlist'] }),
-  read_resume_attachment: contract('local_state'),
+  raise_risk_alert: contract(TOOL_EFFECT.INTERVENTION_INTENT),
+  request_handoff: contract(TOOL_EFFECT.INTERVENTION_INTENT),
+  skip_reply: contract(TOOL_EFFECT.LOCAL_STATE),
+  save_image_description: contract(TOOL_EFFECT.LOCAL_STATE, {
+    gates: [TOOL_GATE.IMAGE_MESSAGE_ALLOWLIST],
+  }),
+  read_resume_attachment: contract(TOOL_EFFECT.LOCAL_STATE),
 } as const satisfies Record<string, ToolActionContract>;
 
 export function getBuiltInToolContract(name: string): ToolActionContract | undefined {
@@ -115,17 +128,24 @@ export function toolNamesMatching(
   return names;
 }
 
-export function validateToolContract(value: ToolActionContract): void {
-  if (
-    !value ||
-    !['readonly', 'local_state', 'intervention_intent', 'external_action'].includes(value.effect) ||
-    !['allow', 'block_on_success'].includes(value.replay) ||
-    !['none', 'latest_input'].includes(value.freshness) ||
-    !Number.isInteger(value.maxCallsPerTurn) ||
-    value.maxCallsPerTurn < 1 ||
-    !Array.isArray(value.gates) ||
-    (value.effect === 'external_action' && !value.idempotency)
-  ) {
+const toolActionContractSchema = z
+  .object({
+    effect: z.enum(TOOL_EFFECT),
+    replay: z.enum(TOOL_REPLAY),
+    freshness: z.enum(TOOL_FRESHNESS),
+    maxCallsPerTurn: z.number().int().positive(),
+    gates: z.array(z.enum(TOOL_GATE)),
+    idempotency: z
+      .object({
+        scope: z.enum(TOOL_IDEMPOTENCY_SCOPE),
+        target: z.array(z.string().trim().min(1)).min(1),
+      })
+      .nullable(),
+  })
+  .refine((value) => value.effect !== TOOL_EFFECT.EXTERNAL_ACTION || value.idempotency !== null);
+
+export function validateToolContract(value: unknown): asserts value is ToolActionContract {
+  if (!toolActionContractSchema.safeParse(value).success) {
     throw new Error('A complete tool action contract is required');
   }
 }

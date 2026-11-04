@@ -5,6 +5,7 @@ import { sanitizeHttpError } from '@infra/client-http/http-log-sanitizer';
 import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /**
  * 发送入参：企业级 `SendMessageDto` 字段 + 小组级 API 的路由字段。
@@ -86,7 +87,7 @@ export class MessageSenderService {
       let apiUrl: string;
       let requestBody: Record<string, unknown>;
 
-      if (_apiType === 'group') {
+      if (_apiType === WECOM_API_TYPE.GROUP) {
         // 小组级 API：token 在请求体中
         // 生成唯一的 externalRequestId
         const resolvedExternalRequestId =

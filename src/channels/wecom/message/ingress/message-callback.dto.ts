@@ -5,8 +5,9 @@ import {
   MessageSource,
   getMessageSourceDescription,
 } from '@enums/message-callback.enum';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
 
-export { MessageType, ContactType, MessageSource, getMessageSourceDescription };
+export { ContactType, MessageSource, MessageType, getMessageSourceDescription };
 
 /**
  * ========================================
@@ -251,7 +252,7 @@ export class EnterpriseMessageCallbackDto {
   avatar?: string; // 头像URL
 
   // 内部标记（用于动态 API 选择，不参与验证）
-  _apiType?: 'enterprise' | 'group'; // API 类型标记（企业级 or 小组级）
+  _apiType?: WecomApiType; // API 类型标记（企业级 or 小组级）
   _receivedAtMs?: number; // 服务端实际接收时间（内部字段，不参与回调校验）
 }
 
