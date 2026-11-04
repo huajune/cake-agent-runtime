@@ -266,6 +266,80 @@ describe('MessageSenderService', () => {
     });
   });
 
+  describe('credential-safe failures', () => {
+    it.each(['enterprise', 'group'])(
+      'redacts a reflected %s token from business errors without accepting a failed send',
+      async (apiType) => {
+        const token = 'secret+/sender-token';
+        mockHttpService.post.mockResolvedValue({
+          errcode: 403,
+          errmsg: `invalid credential ${token}; encoded=${encodeURIComponent(token)}`,
+        });
+
+        const failure: unknown = await service
+          .sendMessage({
+            _apiType: apiType,
+            token,
+            imBotId: 'bot-1',
+            chatId: 'chat-1',
+            messageType: 7,
+            payload: { text: 'test' },
+          })
+          .catch((error: unknown) => error);
+
+        expect(failure).toBeInstanceOf(Error);
+        if (!(failure instanceof Error)) throw new Error('expected a send error');
+        expect(failure.message).toContain('errcode=403');
+        expect(failure).toMatchObject({ name: 'ProviderBusinessError', code: 403 });
+        expect(failure.message).toContain('[REDACTED]');
+        expect(failure.message).not.toContain(token);
+        expect(failure.message).not.toContain(encodeURIComponent(token));
+        expect(failure.stack).not.toContain(token);
+        expect(mockHttpService.post).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each(['send', 'broadcast'] as const)(
+      'strips credential-bearing HTTP context from %s rejection',
+      async (kind) => {
+        const token = 'transport-secret';
+        const original = Object.assign(new Error(`failed token=${token}`), {
+          config: { url: `https://api.example.test/send?token=${token}`, data: { token } },
+          request: { token },
+          response: { data: { errmsg: token } },
+          cause: new Error(token),
+        });
+        mockHttpService.post.mockRejectedValue(original);
+
+        const request =
+          kind === 'send'
+            ? service.sendMessage({
+                token,
+                imBotId: 'bot-1',
+                messageType: 7,
+                payload: { text: 'test' },
+              })
+            : service.createBroadcast({
+                token,
+                messages: [],
+                members: [],
+                hasMore: false,
+                type: 1,
+              });
+        const failure: unknown = await request.catch((error: unknown) => error);
+
+        expect(failure).toBeInstanceOf(Error);
+        if (!(failure instanceof Error)) throw new Error('expected an HTTP send error');
+        expect(failure).not.toBe(original);
+        expect(failure.message).not.toContain(token);
+        expect(failure.stack).not.toContain(token);
+        for (const field of ['config', 'request', 'response', 'cause'])
+          expect(failure).not.toHaveProperty(field);
+        expect(mockHttpService.post).toHaveBeenCalledTimes(1);
+      },
+    );
+  });
+
   describe('createBroadcast', () => {
     it('should create broadcast message successfully', async () => {
       const broadcastData = {
