@@ -350,10 +350,9 @@ export function carriesScreening(field: ContractFieldDef): boolean {
 }
 
 /**
- * 条件型单选项字段：选项型、只有一个可接受项、没有拒绝项。它不是"请填你的值"，
- * 而是"必须接受这个条件才能报名"（运营 2026-09-02 裁定；标本 741「每天可工作时间段」
- * 唯一选项「09:30-22:30」= 门店营业窗口，答自己的时段全部撞词表）。
- * 模板按条件呈现、适配器只认接受；不接受/答子区间不填不判——合不合适交模型与候选人对话决定。
+ * 单个可接受选项的形状（保留既有适配器名称）。只用于展示选项与绑定肯定短答，
+ * 不代表存在筛选门槛；门槛只读 carriesScreening。2026-11-04 用户明确：普通工期/
+ * 班次选择题不能增设要求。不接受/答子区间不擅自改成唯一选项。
  */
 export function isConditionField(field: ContractFieldDef): boolean {
   return (

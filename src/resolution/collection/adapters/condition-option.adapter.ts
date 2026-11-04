@@ -1,6 +1,6 @@
 /**
- * 条件型单选项写入适配器（`isConditionField`）：唯一选项是"必须接受的条件"，不是让候选人
- * 填自己的值。运营 2026-09-02 裁定：不接受就别报名；改自由文本就失去筛选意义。
+ * 单个可接受选项的写入适配器（`isConditionField`）：只把明确选中该项的回答映射回契约。
+ * 唯一选项本身不证明是硬门槛，不接受时不能替候选人改答案。
  *
  * 只认两种接受：
  * ① 原样抄回条件字面（「09:30-22:30」）——任何语境都认，回答自带信息；
@@ -21,7 +21,7 @@ const ACCEPT_ANSWER_RE =
  * 候选人回显我们的条件提示「（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）」时，
  * 括号里的字面是我们印的不是他答的——先剥掉再找字面，照抄模板不等于接受。
  */
-const ECHOED_HINT_RE = /[（(][^（）()]*(?:要求|请填)[^（）()]*[）)]/gu;
+const ECHOED_HINT_RE = /[（(][^（）()]*(?:要求|请填|可选项)[^（）()]*[）)]/gu;
 
 export function proposeConditionOption(input: AdapterInput): SlotProposal | null {
   const { field, candidateText, answerBound } = input;

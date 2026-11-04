@@ -70,11 +70,11 @@ export const TOOL_GUARDRAIL_CATALOG = [
     action: GUARDRAIL_ACTION.REJECT_HARD,
     coverage: GUARDRAIL_COVERAGE.CODE,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '本轮新增、修改或撤销班次条件必须提供当前候选人的逐字引用；已有会话条件继续保留。',
+    description: '班次变更须引用本轮原话或 precheck 已核验的本人表单答案；已有会话条件继续保留。',
     riskGoal: '防止无出处的条件变更造成错误筛选；不把参数拦截、部分扫描或待确认误报成无岗。',
-    source: 'resolution/notary/citation-verifier.ts + tools/duliday-job-list.tool.ts',
+    source: 'tools/job-list/schedule-evidence.ts + tools/duliday-job-list.tool.ts',
     exogenousSignal:
-      'turnInput.currentUserMessage 与 candidateScheduleCitation.quote；持续条件来自已存会话事实',
+      '本轮原话或 ledger.jobs.collectionAnswers 中的版本化答案引用；持续条件来自已存会话事实',
     residualRisk:
       '引用校验只证明出处，正负方向和字段含义由既有主Agent解释；历史早晚班布尔值含义不明确时需重新确认。',
     verification:

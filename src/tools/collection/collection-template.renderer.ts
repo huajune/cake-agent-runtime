@@ -10,16 +10,19 @@
  * "候选人按模板填了、回来却对不上槽位"。
  */
 
+// business-rules: IB-08, SH-03, SH-04
 import type { BookingCollectionForm, ContractFieldDef } from '@resolution/collection';
 import {
   carriesScreening,
   filledSlotIds,
   isConditionField,
+  isPublicWorkConditionField,
   isSensitiveAttribute,
   orderForAsking,
+  resolveValueRange,
 } from '@resolution/collection';
 
-const INTRO_LINE = '面试要求：先将以下资料补充下发给我，我来帮你约面试';
+const INTRO_LINE = '先将以下资料补充后发给我，我来帮你约面试';
 
 export interface CollectionTemplate {
   /**
@@ -33,6 +36,8 @@ export interface CollectionTemplate {
   knownFieldMap: Record<string, string>;
   /** 带筛选条件的字段——答错会筛掉候选人，不只是登记一笔。 */
   screeningFields: string[];
+  /** 已配置筛选的公开工期/班次要求；普通选择题不会出现在这里。 */
+  publicRequirements: string[];
   templateText: string;
 }
 
@@ -44,6 +49,23 @@ export function renderCollectionTemplate(
   // 才被筛掉，前 8 格白填。身份核仍排头——那是收资最自然的开场。
   const ordered = orderForAsking(contract);
   const titleById = new Map(contract.map((field) => [field.labelId, field.labelTitle]));
+  const publicRequirements = ordered
+    .filter((field) => isPublicWorkConditionField(field) && carriesScreening(field))
+    .flatMap((field) => {
+      const range = resolveValueRange(field.valueSpec, null);
+      if (range) {
+        const unit = field.valueSpec?.unit ?? '';
+        const bounds =
+          range.min != null && range.max != null
+            ? `${range.min}-${range.max}${unit}`
+            : range.min != null
+              ? `${range.min}${unit}以上`
+              : `${range.max}${unit}以内`;
+        return [`${field.labelTitle}：${bounds}`];
+      }
+      const accepted = field.acceptedOptions.map((option) => option.optionLabel);
+      return accepted.length ? [`${field.labelTitle}：${accepted.join(' / ')}`] : [];
+    });
 
   const knownFieldMap: Record<string, string> = {};
   for (const labelId of filledSlotIds(form, contract)) {
@@ -77,11 +99,19 @@ export function renderCollectionTemplate(
     requiredFields: ordered.filter((field) => field.required).map((field) => field.labelTitle),
     missingFields,
     knownFieldMap,
-    // 条件型单选项也是硬要求（不接受就别报名）——列进去让模型知道这一栏答不上来时该判合不合适。
-    screeningFields: ordered
-      .filter((field) => carriesScreening(field) || isConditionField(field))
-      .map((field) => field.labelTitle),
-    templateText: [INTRO_LINE, ...lines].join('\n'),
+    screeningFields: ordered.filter(carriesScreening).map((field) => field.labelTitle),
+    publicRequirements,
+    templateText: [
+      ...(publicRequirements.length
+        ? [
+            '这个岗位的报名要求：',
+            ...publicRequirements.map((requirement) => `• ${requirement}`),
+            '以下资料请按实际情况填写，不符合上述要求也请如实回答。',
+          ]
+        : []),
+      INTRO_LINE,
+      ...lines,
+    ].join('\n'),
   };
 }
 
@@ -89,7 +119,8 @@ export function renderCollectionTemplate(
  * 选项型字段的枚举占位：`身份：（学生/社会人士）`。提示只能出现在冒号右侧，
  * 冒号左侧的标签 100% 使用契约 labelTitle 原文，不做剥括号、剥标点或截断。
  *
- * ⚠️ **必须列全部选项，不能只列 accepted**——只列可接受项等于用省略泄露筛选条件：
+ * 保留全部真实回答选项。公开工期/班次的筛选要求另列在模板开头，不能靠删除拒绝项
+ * 引导候选人填写合格答案；敏感字段也不能用省略泄露筛选条件：
  * 「籍贯（北京/河北/…）」里没有天津，候选人一眼就看出天津被排除了，
  * 那正是 disclosure=RESTRICTED 要防的事。候选人如实填、筛在写入时判，
  * 拒绝话术再按披露分级决定说什么。
@@ -129,22 +160,15 @@ export function forcedOptionPlaceholder(field: ContractFieldDef): string {
 }
 
 /**
- * 条件型单选项（`isConditionField`）：唯一选项是报名条件不是备选项。以前按"少于 2 项不是
- * 选择题"留空，候选人不知道唯一合法答案是那串字面，填自己的时段全部撞词表
- * （0902 实测 741「每天可工作时间段」11 条拒收 + 当日全部熔断）。
- * 提示让候选人**把条件本身抄回来**——回答自带信息；单独一句"可以"没法知道在确认哪一行。
- * 首问/重问同一句。敏感属性（红线族）与契约明标 RESTRICTED 的仍留空——条件即筛选条件，
- * 不能用提示泄露。判据用 isSensitiveAttribute 而非 disclosureLevelOf：后者把"未标记"也算受限，
- * 排班窗口这类岗位卡上本来就印着的条件会被误遮（与 rejection-renderer 同一取舍）。
+ * 单个可选项也要告知契约字面，避免候选人不知道如何填写；但选项数量不能证明岗位
+ * 要求整段都能排班。首问/重问均保留如实回答出口，不把选项自行扩写成硬门槛。
+ * 敏感属性和契约明标 RESTRICTED 的仍留空。
  */
 function conditionPlaceholder(field: ContractFieldDef): string {
   if (!isConditionField(field)) return '';
   if (isSensitiveAttribute(field)) return '';
   const label = field.acceptedOptions[0].optionLabel.trim();
-  const requirement = /^\d{1,2}:\d{2}\s*[-~—～至到]\s*\d{1,2}:\d{2}$/u.test(label)
-    ? `要求 ${label} 内都能排班`
-    : `要求 ${label}`;
-  return `（${requirement}，接受请填 ${label}）`;
+  return `（可选项：${label}；请按实际情况填写，不符合请直接说明）`;
 }
 
 /**

@@ -32,6 +32,14 @@ export interface VerdictSiteRegistration {
  */
 export const VERDICT_SITE_REGISTRY = [
   {
+    id: 'job_list_schedule_evidence',
+    authority: 'notary',
+    effect: 'reject',
+    source: 'src/tools/job-list/schedule-evidence.ts#verifyScheduleCitation',
+    rationale:
+      '只核验本轮原话的连续引用，或已通过收资公证的本人答案版本 ID；不以字段名或关键词推断班次限制。',
+  },
+  {
     id: 'memory_health_certificate_closed_state',
     authority: 'closed_form',
     effect: 'mark_missing',

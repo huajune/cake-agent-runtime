@@ -105,9 +105,14 @@
 
 内部敏感条件不主动询问或披露；正式筛选拒绝后当前岗位保持终态，参数或证据错误可补正。现存中性拒绝与状态证据冲突见本主题未决项。
 
+公开工期、班次要求归可明说属性族；契约显式 RESTRICTED 和敏感红线仍优先于公开字段分类，未知字段继续保守处理。
+
 - 状态：现行基线
 - 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
 - 落点：`src/agent/generator/context/sections/procedural/rules/id.md#ID-08`
+- 落点：`src/resolution/collection/disclosure-policy.ts#disclosureLevelOf`
+- 验证：`tests/tools/collection/collection-template.renderer.spec.ts`
+- 验证：`tests/tools/tool/duliday-interview-precheck.tool.spec.ts`
 - 落点：`src/tools/collection/collection-form.service.ts#CollectionFormService`
 - 落点：`src/agent/guardrail/output/output-rule-catalog.ts#discriminatory_screening_leak`
 - 落点：`src/agent/guardrail/output/rules/discrimination-leaks.rule.ts#DISCRIMINATION_LEAK_RULES`
@@ -140,5 +145,7 @@
 - 学生身份改口是否永久锁定，历史积压仍有收紧诉求；当前按本人陈述与既有核实流程执行，不自动升级为锁定。
 
 ## 变更记录
+
+- 2026-11-04：按用户裁定补齐公开工期/班次的披露分类；敏感拒因与投诉回应保持既有行为。来源同 SH 主题 audit 459023。
 
 - 2026-10-23：首次按主题建立口径、执行落点与验证关联；机械拆分手册，保持文案与顺序；不新增业务裁定。
