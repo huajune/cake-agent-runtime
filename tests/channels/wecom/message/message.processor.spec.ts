@@ -98,6 +98,14 @@ describe('MessageProcessor', () => {
     jest.clearAllMocks();
   });
 
+  function processorInternals() {
+    return processor as unknown as {
+      processMessages(messages: unknown[], batchId: string, snapshotSize: number): Promise<void>;
+      dropIfHostingPaused(chatId: string, messages: unknown[], jobId: string): Promise<boolean>;
+      handleProcessJob(job: { id: string; data: { chatId: string } }): Promise<void>;
+    };
+  }
+
   it('should delegate merged batches to MessagePipelineService with initial snapshot size', async () => {
     const messages = [
       {
@@ -106,7 +114,7 @@ describe('MessageProcessor', () => {
       },
     ];
 
-    await (processor as any).processMessages(messages, 'batch-001', 1);
+    await processorInternals().processMessages(messages, 'batch-001', 1);
 
     expect(mockPipeline.processMergedMessages).toHaveBeenCalledWith(messages, 'batch-001', 1);
   });
@@ -123,7 +131,7 @@ describe('MessageProcessor', () => {
         { chatId: 'chat-123', messageId: 'msg-2', imContactId: 'c-1' },
       ];
 
-      const dropped = await (processor as any).dropIfHostingPaused('chat-123', messages, 'job-9');
+      const dropped = await processorInternals().dropIfHostingPaused('chat-123', messages, 'job-9');
 
       expect(dropped).toBe(true);
       // 议题 8-4：本批不会再进 Agent，intake 时写下的 processing 流水必须当场回收，
@@ -158,7 +166,7 @@ describe('MessageProcessor', () => {
       mockChatSession.markHistoryOnly.mockRejectedValueOnce(new Error('db down'));
       const messages = [{ chatId: 'chat-1', messageId: 'msg-1', imContactId: 'c-1' }];
 
-      const dropped = await (processor as any).dropIfHostingPaused('chat-1', messages, 'job-2');
+      const dropped = await processorInternals().dropIfHostingPaused('chat-1', messages, 'job-2');
 
       expect(dropped).toBe(true);
       expect(mockMessageTracking.dropMergedSourceRecords).toHaveBeenCalledWith(['msg-1'], 'job-2');
@@ -168,7 +176,7 @@ describe('MessageProcessor', () => {
       mockActionPermitService.evaluate.mockResolvedValueOnce({ allowed: true });
       const messages = [{ chatId: 'chat-1', messageId: 'msg-1', imContactId: 'c-1' }];
 
-      const dropped = await (processor as any).dropIfHostingPaused('chat-1', messages, 'job-1');
+      const dropped = await processorInternals().dropIfHostingPaused('chat-1', messages, 'job-1');
 
       expect(dropped).toBe(false);
       expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
@@ -203,7 +211,7 @@ describe('MessageProcessor', () => {
     it('schedules a lock-retry check instead of silently dropping (2026-06-09 发版事故)', async () => {
       mockSimpleMergeService.acquireProcessingLock.mockResolvedValueOnce(false);
 
-      await (processor as any).handleProcessJob({ id: 'job-1', data: { chatId: 'chat-123' } });
+      await processorInternals().handleProcessJob({ id: 'job-1', data: { chatId: 'chat-123' } });
 
       expect(mockSimpleMergeService.scheduleLockRetryCheck).toHaveBeenCalledWith('chat-123');
       expect(mockSimpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
@@ -218,7 +226,10 @@ describe('MessageProcessor', () => {
       );
 
       await expect(
-        (processor as any).handleProcessJob({ id: 'job-lock-fail', data: { chatId: 'chat-123' } }),
+        processorInternals().handleProcessJob({
+          id: 'job-lock-fail',
+          data: { chatId: 'chat-123' },
+        }),
       ).rejects.toThrow('queue unavailable');
     });
   });
@@ -227,7 +238,7 @@ describe('MessageProcessor', () => {
     it('补建剩余窗口检查，避免当前 job return 后 pending 永久无人接手', async () => {
       mockSimpleMergeService.isQuietWindowElapsed.mockResolvedValueOnce(false);
 
-      await (processor as any).handleProcessJob({
+      await processorInternals().handleProcessJob({
         id: 'job-quiet-early',
         data: { chatId: 'chat-quiet' },
       });
@@ -245,7 +256,7 @@ describe('MessageProcessor', () => {
       );
 
       await expect(
-        (processor as any).handleProcessJob({
+        processorInternals().handleProcessJob({
           id: 'job-quiet-fail',
           data: { chatId: 'chat-quiet' },
         }),

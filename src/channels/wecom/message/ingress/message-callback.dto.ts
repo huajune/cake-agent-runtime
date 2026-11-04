@@ -389,6 +389,14 @@ export function isWecomSystemPayload(
  */
 export class GroupMessageCallbackDto {
   @IsString()
+  @IsOptional()
+  externalRequestId?: string;
+
+  @IsNumber()
+  @IsOptional()
+  source?: MessageSource;
+
+  @IsString()
   @IsNotEmpty()
   messageId: string; // 消息ID
 

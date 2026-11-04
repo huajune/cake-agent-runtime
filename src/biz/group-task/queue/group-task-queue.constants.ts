@@ -123,6 +123,8 @@ export interface SendJobData {
 }
 
 export interface GroupTaskDispatchPlan {
+  /** Frozen admission mode; missing on legacy plans and never inferred as execute. */
+  mode?: 'off' | 'observe' | 'execute';
   corpId: string;
   logicalTurnId: string;
   occurredAt: string;

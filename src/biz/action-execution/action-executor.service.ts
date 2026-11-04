@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionRecordsRepository } from './action-records.repository';
@@ -48,7 +49,10 @@ export class ActionExecutorService {
   async execute<T>(
     intent: ActionIntent,
     callbacks: ActionCallbacks<T>,
+    /** Only inherit execute from an already persisted parent plan; never from input. */
+    options?: { persistedMode: 'execute' },
   ): Promise<ActionExecution<T>> {
+    const mode = options?.persistedMode ?? this.mode;
     let identity: ReturnType<typeof identifyAction>;
     try {
       identity = identifyAction(intent);
@@ -77,17 +81,19 @@ export class ActionExecutorService {
       Date.parse(intent.recoveryWindowStartedAt) > Date.now() + 60_000
     )
       return blocked('invalid_recovery_window');
-    if (this.mode === 'execute' && (!intent.identityReliable || occurredAt < this.cutoverAt!))
+    if (mode === 'execute' && this.cutoverAt === null)
+      return blocked('persisted_execution_requires_cutover');
+    if (mode === 'execute' && (!intent.identityReliable || occurredAt < this.cutoverAt!))
       return blocked('input_before_cutover_or_identity_not_persisted');
 
     let record: ActionRecord | null = null;
     try {
-      const prepared = await this.records.prepare(intent, this.mode);
+      const prepared = await this.records.prepare(intent, mode);
       record = prepared.record;
       if (prepared.conflict) {
         if (
           prepared.conflict === 'identity_payload_mismatch' &&
-          this.mode === 'observe' &&
+          mode === 'observe' &&
           record?.mode !== 'execute' &&
           this.cutoverAt === null
         ) {
@@ -102,13 +108,12 @@ export class ActionExecutorService {
       }
     } catch {
       // With a cutover configured, even off/observe must honor old execute obligations.
-      if (this.cutoverAt !== null || this.mode === 'execute')
-        return blocked('action_store_unavailable');
+      if (this.cutoverAt !== null || mode === 'execute') return blocked('action_store_unavailable');
       this.logger.warn(`action.observe_store_unavailable ${identity.actionId}`);
       return this.untracked(intent, callbacks);
     }
 
-    const enforce = record?.mode === 'execute' || this.mode === 'execute';
+    const enforce = record?.mode === 'execute' || mode === 'execute';
     if (enforce && record?.mode !== 'execute')
       return blocked('observation_record_requires_cutover_review');
     if (!record) return this.untracked(intent, callbacks);
@@ -251,13 +256,18 @@ export class ActionExecutorService {
       )
         return { ...result, status: 'unknown' };
       return result;
-    } catch {
+    } catch (error) {
       return {
         status: 'unknown',
         evidence: {
           kind: 'indeterminate',
           requestTerminated: false,
-          detail: 'external_call_did_not_return_terminal_evidence',
+          // Preserve the response code for diagnosis without storing upstream text/PII.
+          // A nonzero code alone is not a verified guarantee of zero external effects.
+          detail:
+            error instanceof ProviderBusinessError && Number.isSafeInteger(error.code)
+              ? `provider_business_error:${error.code}`
+              : 'external_call_did_not_return_terminal_evidence',
         },
       };
     }

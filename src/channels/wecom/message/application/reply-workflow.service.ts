@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
@@ -6,6 +6,8 @@ import { hasReplayEvidence, attachReplayEvidence } from '@infra/utils/action-rec
 import type { ToolReplayEvidence } from '@shared-types/tool-replay.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { GroupRouteCredentialsService } from '../credentials/group-route-credentials.service';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -117,6 +119,8 @@ export class ReplyWorkflowService {
     private readonly botService: BotService,
     private readonly oobReconcile: OobReconcileService,
     @Optional() private readonly replyTurns?: ReplyTurnsService,
+    @Optional() private readonly groupCredentials?: GroupRouteCredentialsService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -279,6 +283,11 @@ export class ReplyWorkflowService {
       return;
     }
     if (durableTurn) {
+      // Retries can arrive through ordinary ingress after a mode rollback. Route and
+      // credentials must still come from the original execute obligation.
+      const route = await this.resolveDurableRoute(durableTurn, params.primaryMessage);
+      parsed.token = route.token;
+      parsed.groupId = route.groupId;
       const members = new Set(durableTurn.inputIds);
       allMessages = allMessages.filter((message) => members.has(message.messageId));
       if (!allMessages.length)
@@ -313,7 +322,7 @@ export class ReplyWorkflowService {
       botUserId: stableBotUserId,
       contactName: parsed.contactName,
       botImId: params.primaryMessage.imBotId,
-      groupId: params.primaryMessage.groupId,
+      groupId: parsed.groupId,
       externalUserId: parsed.externalUserId,
       token: parsed.token,
       imContactId: parsed.imContactId,
@@ -798,6 +807,51 @@ export class ReplyWorkflowService {
       resumeTurn: turn,
       assertOwned,
     });
+  }
+
+  private async resolveDurableRoute(
+    turn: ReplyTurn,
+    message: EnterpriseMessageCallbackDto,
+  ): Promise<{ token: string; groupId?: string }> {
+    const primary = turn.recovery.primary as Partial<EnterpriseMessageCallbackDto> | undefined;
+    const apiType = primary?._apiType ?? 'enterprise';
+    if (
+      !primary ||
+      primary.orgId !== turn.corpId ||
+      primary.imBotId !== turn.accountId ||
+      primary.chatId !== turn.chatId ||
+      message.orgId !== turn.corpId ||
+      message.imBotId !== turn.accountId ||
+      message.chatId !== turn.chatId ||
+      (message._apiType ?? 'enterprise') !== apiType ||
+      (message.groupId !== undefined && message.groupId !== primary.groupId) ||
+      message.imContactId !== primary.imContactId ||
+      message.imRoomId !== primary.imRoomId
+    )
+      throw new ReplyDeferredError('recovery_route_identity_mismatch');
+
+    if (apiType === 'group') {
+      try {
+        const route = await this.groupCredentials?.resolveForRecovery({
+          corpId: turn.corpId,
+          accountId: turn.accountId,
+          groupId: primary.groupId,
+        });
+        if (route) return route;
+      } catch {
+        // A directory failure cannot fall through to a new model run or fallback send.
+      }
+      throw new ReplyDeferredError('group_credential_resolution');
+    }
+    const token = this.config?.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
+    if (!token) throw new ReplyDeferredError('enterprise_credential_resolution');
+    if (!turn.plan) {
+      const expected = Buffer.from(token);
+      const supplied = Buffer.from(typeof message.token === 'string' ? message.token : '');
+      if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied))
+        throw new ReplyDeferredError('enterprise_callback_unverified');
+    }
+    return { token, groupId: primary.groupId };
   }
 
   private async settleAndAckTurn(

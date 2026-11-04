@@ -2,10 +2,12 @@ import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { ConfigService } from '@nestjs/config';
+import { GroupRouteCredentialsService } from '../credentials/group-route-credentials.service';
 import { Cron } from '@nestjs/schedule';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyWorkflowService } from '../application/reply-workflow.service';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
+import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 
 /** Durable scan repairs original plans/acks, including after the Redis input TTL expires. */
 @Injectable()
@@ -19,6 +21,7 @@ export class ReplyRecoveryService {
     private readonly config: ConfigService,
     private readonly crons: CronRunnerService,
     @Optional() private readonly incidents?: IncidentReporterService,
+    @Optional() private readonly groupCredentials?: GroupRouteCredentialsService,
   ) {}
 
   @Cron('*/1 * * * *')
@@ -33,23 +36,7 @@ export class ReplyRecoveryService {
         if (!turn.recovery.primary) continue;
         await this.leases.run(turn.chatId, async (assertOwned) => {
           try {
-            if (!turn.plan && turn.status === 'preparing') {
-              this.logger.error(
-                `reply.manual_review_required generation_interrupted ${turn.logicalTurnId}`,
-              );
-              this.manualReview(turn.logicalTurnId, 'generation_interrupted');
-              return;
-            }
-            const primary = turn.recovery.primary as { _apiType?: string };
-            if (turn.status === 'planned' && primary._apiType === 'group') {
-              // No persisted group credential and no verified resolver: never switch accounts/APIs.
-              this.logger.warn(`reply.manual_credential_resolution ${turn.logicalTurnId}`);
-              this.manualReview(turn.logicalTurnId, 'group_credential_resolution');
-              return;
-            }
-            const token = this.config.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() ?? '';
-            if (!token && turn.status === 'planned') return;
-            await this.workflow.resumePersistedReply(turn, token, assertOwned);
+            await this.resumeTurn(turn, assertOwned);
           } catch {
             this.logger.warn(`reply.recovery_pending ${turn.logicalTurnId}`);
             if (
@@ -69,6 +56,50 @@ export class ReplyRecoveryService {
     } finally {
       this.running = false;
     }
+  }
+
+  private async resumeTurn(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<void> {
+    if (!turn.plan && turn.status === 'preparing') {
+      this.logger.error(
+        `reply.manual_review_required generation_interrupted ${turn.logicalTurnId}`,
+      );
+      this.manualReview(turn.logicalTurnId, 'generation_interrupted');
+      return;
+    }
+    const primary = turn.recovery.primary as {
+      _apiType?: string;
+      orgId?: string;
+      imBotId?: string;
+      chatId?: string;
+      groupId?: string;
+    };
+    let token = '';
+    if (turn.status === 'planned') {
+      if (
+        primary.orgId !== turn.corpId ||
+        primary.imBotId !== turn.accountId ||
+        primary.chatId !== turn.chatId
+      ) {
+        this.manualReview(turn.logicalTurnId, 'recovery_identity_mismatch');
+        return;
+      }
+      if (primary._apiType === 'group') {
+        const route = await this.groupCredentials?.resolveForRecovery({
+          corpId: turn.corpId,
+          accountId: turn.accountId,
+          groupId: primary.groupId,
+        });
+        if (!route) {
+          this.manualReview(turn.logicalTurnId, 'group_credential_resolution');
+          return;
+        }
+        token = route.token;
+      } else {
+        token = this.config.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() ?? '';
+        if (!token) return;
+      }
+    }
+    await this.workflow.resumePersistedReply(turn, token, assertOwned);
   }
 
   @Cron('47 */10 * * * *', { timeZone: 'Asia/Shanghai' })

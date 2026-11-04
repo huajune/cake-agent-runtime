@@ -1,3 +1,4 @@
+import { GroupRouteCredentialsService } from './credentials/group-route-credentials.service';
 import { ReplyExecutionModule } from '@biz/reply-execution/reply-execution.module';
 import { DurableReplyDeliveryService } from './delivery/durable-reply-delivery.service';
 import { ReplyRecoveryService } from './delivery/reply-recovery.service';
@@ -5,6 +6,7 @@ import { ActionPermitModule } from '@biz/action-permit/action-permit.module';
 import { MESSAGE_MERGE_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ApiConfigModule } from '@infra/config/api-config.module';
 import { BullModule } from '@nestjs/bull';
 import { LlmModule } from '@/llm/llm.module';
 import { MessageIngressController } from './ingress/message-ingress.controller';
@@ -62,6 +64,7 @@ import {
     ActionPermitModule,
     ReplyExecutionModule,
     ConfigModule,
+    ApiConfigModule,
     LlmModule,
     forwardRef(() => AgentModule),
     MessageSenderModule,
@@ -103,6 +106,7 @@ import {
     SimpleMergeService, // 简化版消息聚合（使用 Bull Queue 原生能力）
     DurableReplyDeliveryService,
     ReplyRecoveryService,
+    GroupRouteCredentialsService,
     MessageDeliveryService, // 消息发送（统一分段发送和监控）
     TypingPolicyService, // 发送策略（分段/打字延迟）
     MessageCallbackAdapterService, // 消息回调适配器（支持小组级和企业级格式）

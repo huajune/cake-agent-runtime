@@ -11,6 +11,7 @@ import {
   GroupMessageCallbackWrapperSchema,
 } from './message-callback.schema';
 import { z } from 'zod';
+import { LEGACY_GROUP_CORP_ID } from '../credentials/group-route-credentials.service';
 
 /**
  * 消息回调适配器服务
@@ -69,9 +70,10 @@ export class MessageCallbackAdapterService {
     // 字段名称映射和转换
     const enterpriseCallback: EnterpriseMessageCallbackDto = {
       // 企业级特有字段（小组级没有，使用默认值）
-      orgId: this.extractOrgIdFromToken(groupCallback.token), // 从 token 提取或使用默认值
+      orgId: LEGACY_GROUP_CORP_ID, // 保留既有记忆/账本命名空间，不把它当作企业身份
       groupId: undefined, // 小组级没有此字段
-      source: this.inferSourceFromGroupCallback(groupCallback), // 根据 isSelf 等字段推断 source
+      source: groupCallback.source ?? this.inferSourceFromGroupCallback(groupCallback),
+      _sourceInferred: groupCallback.source == null,
 
       // 字段名称映射
       messageType: groupCallback.type, // type → messageType
@@ -87,6 +89,7 @@ export class MessageCallbackAdapterService {
       botId: groupCallback.botId,
       chatId: groupCallback.chatId,
       messageId: groupCallback.messageId,
+      externalRequestId: groupCallback.externalRequestId,
       contactType: groupCallback.contactType,
       payload: groupCallback.payload,
       avatar: groupCallback.avatar,
@@ -234,32 +237,6 @@ export class MessageCallbackAdapterService {
       `推断消息来源: isSelf=${groupCallback.isSelf} → MOBILE_PUSH (messageId=${groupCallback.messageId})`,
     );
     return MessageSource.MOBILE_PUSH;
-  }
-
-  /**
-   * 从小组级回调生成 orgId
-   * @param token 小组级 token（用于日志）
-   * @returns orgId
-   *
-   * 说明：
-   * - 小组级回调没有 orgId 字段
-   * - 使用固定值标识来自小组级回调
-   * - 注意：该固定值会作为 corpId 进入记忆键与 ops_events 维度（对同一候选人恒定即可，
-   *   企业级/小组级两种回调格式不可对同一批用户混用）
-   */
-  private extractOrgIdFromToken(token: string): string {
-    this.logger.debug(`生成 orgId for 小组级回调: token=${this.maskToken(token)}`);
-    return 'group_callback_org';
-  }
-
-  /**
-   * 脱敏 token（日志记录用）
-   */
-  private maskToken(token: string): string {
-    if (!token || token.length < 8) {
-      return '****';
-    }
-    return `${token.substring(0, 4)}****${token.substring(token.length - 4)}`;
   }
 
   private parseOrThrow<T>(

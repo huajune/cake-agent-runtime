@@ -103,6 +103,7 @@ export class GroupTaskActionService implements OnModuleInit {
     await this.redis.setNx(
       planKey,
       {
+        mode: this.config.get('ACTION_EXECUTION_MODE', 'observe'),
         corpId: account.corpId,
         logicalTurnId: `group-task:${job.data.execId}:${group.imRoomId}`,
         occurredAt: new Date(inputTime).toISOString(),
@@ -128,10 +129,17 @@ export class GroupTaskActionService implements OnModuleInit {
     authorize: () => Promise<boolean>,
   ): Promise<void> {
     const plan = job.data.dispatchPlan;
+    const mode = this.config.get('ACTION_EXECUTION_MODE', 'observe');
+    const strict = mode === 'execute' || Boolean(this.config.get('ACTION_EXECUTION_CUTOVER_AT'));
     if (!plan) {
+      if (strict) throw new GroupTaskDeferredError('missing_persisted_task_scope');
       await dispatch();
       return;
     }
+    if (mode === 'execute' && plan.mode !== 'execute')
+      throw new GroupTaskDeferredError('observation_task_requires_cutover_review');
+    if (strict && plan.mode === undefined)
+      throw new GroupTaskDeferredError('legacy_task_mode_unconfirmed');
     const { group, execId, type, execDate, timeSlot, groupKey } = job.data;
     const dailyKey = groupTaskDailySentKey(type, execDate, timeSlot, group.imRoomId);
     const projection: Projection = {
@@ -159,29 +167,33 @@ export class GroupTaskActionService implements OnModuleInit {
       identityReliable: true,
       recovery: projection as unknown as Record<string, unknown>,
     };
-    const result = await this.actions.execute(intent, {
-      authorize: async () => {
-        if (!(await authorize())) return false;
-        const strict =
-          this.config.get('ACTION_EXECUTION_MODE', 'observe') === 'execute' ||
-          Boolean(this.config.get('ACTION_EXECUTION_CUTOVER_AT'));
-        if (!strict) return true;
-        if (Date.now() - Date.parse(plan.occurredAt) >= 24 * 3600_000) return false;
-        const current = await this.bots.getConfiguredBotList();
-        return current.some((bot) => bot.wxid === group.imBotId && bot.corpId === plan.corpId);
+    const result = await this.actions.execute(
+      intent,
+      {
+        authorize: async () => {
+          if (!(await authorize())) return false;
+          const strict =
+            this.config.get('ACTION_EXECUTION_MODE', 'observe') === 'execute' ||
+            Boolean(this.config.get('ACTION_EXECUTION_CUTOVER_AT'));
+          if (!strict) return true;
+          if (Date.now() - Date.parse(plan.occurredAt) >= 24 * 3600_000) return false;
+          const current = await this.bots.getConfiguredBotList();
+          return current.some((bot) => bot.wxid === group.imBotId && bot.corpId === plan.corpId);
+        },
+        dispatch: async (requestId, mode) => {
+          await dispatch(mode === 'execute' ? requestId : undefined);
+          return mode === 'execute'
+            ? { status: 'executing', evidence: { kind: 'accepted', requestTerminated: false } }
+            : {
+                status: 'succeeded',
+                result: { sent: true },
+                evidence: { kind: 'completed', requestTerminated: true },
+              };
+        },
+        sync: async () => this.project(projection, identifyAction(intent).actionId),
       },
-      dispatch: async (requestId, mode) => {
-        await dispatch(mode === 'execute' ? requestId : undefined);
-        return mode === 'execute'
-          ? { status: 'executing', evidence: { kind: 'accepted', requestTerminated: false } }
-          : {
-              status: 'succeeded',
-              result: { sent: true },
-              evidence: { kind: 'completed', requestTerminated: true },
-            };
-      },
-      sync: async () => this.project(projection, identifyAction(intent).actionId),
-    });
+      plan.mode === 'execute' ? { persistedMode: 'execute' } : undefined,
+    );
     if (result.status !== 'succeeded')
       throw new GroupTaskDeferredError(result.reason ?? result.status);
     // External success stays success even if projection is pending; recovery repairs it.

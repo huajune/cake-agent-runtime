@@ -50,6 +50,8 @@ export const EnterpriseMessageCallbackInputSchema = z.preprocess((body) => {
 export const GroupMessageCallbackSchema = z
   .object({
     messageId: z.string().min(1),
+    externalRequestId: z.string().min(1).optional(),
+    source: z.number().int().optional(),
     chatId: z.string().min(1),
     avatar: z.string().optional(),
     roomTopic: z.string().optional(),

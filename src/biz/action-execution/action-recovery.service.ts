@@ -112,27 +112,32 @@ export class ActionRecoveryService {
   }
 
   private async requestReview(record: ActionRecord): Promise<void> {
-    await this.records.defer(record, null);
     this.logger.error(`action.manual_review_required ${record.actionId} status=${record.status}`);
-    this.incidents?.notifyAsync({
-      source: {
-        subsystem: 'action-execution',
-        component: 'ActionRecoveryService',
-        action: 'reconcile',
-        trigger: 'cron',
-      },
-      code: 'action.manual_review_required',
-      summary: '外部动作无法自动核实，需要人工处理',
-      error: new Error(`Action ${record.actionId} remains ${record.status}`),
-      dedupe: { key: `action.manual_review_required:${record.actionId}` },
-    });
+    const delivered = await this.queryWithinBudget(
+      async () =>
+        this.incidents?.notify({
+          source: {
+            subsystem: 'action-execution',
+            component: 'ActionRecoveryService',
+            action: 'reconcile',
+            trigger: 'cron',
+          },
+          code: 'action.manual_review_required',
+          summary: '外部动作无法自动核实，需要人工处理',
+          error: new Error(`Action ${record.actionId} remains ${record.status}`),
+          dedupe: { key: `action.manual_review_required:${record.actionId}` },
+        }) ?? false,
+    ).catch(() => false);
+    // Stop scanning only after the existing notification channel confirms delivery.
+    // An unavailable/throttled channel must not strand an unknown action forever.
+    await this.records.defer(record, delivered ? null : this.nextCheck(record, false));
   }
 
-  private nextCheck(record: ActionRecord): string {
+  private nextCheck(record: ActionRecord, limitByRecoveryDeadline = true): string {
     return new Date(
       Math.min(
         Date.now() + Math.min(30 * 60_000, 30_000 * 2 ** record.attempts),
-        Date.parse(record.recoveryDeadline),
+        limitByRecoveryDeadline ? Date.parse(record.recoveryDeadline) : Infinity,
       ),
     ).toISOString();
   }

@@ -10,7 +10,7 @@ import { MessageSenderService } from '../../message-sender/message-sender.servic
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import type { DeliveryContext, DeliveryResult } from '../types';
 
-/** A send response means platform acceptance. Only a matching callback is completion. */
+/** Ordinary replies complete on send API acceptance, without claiming delivery/read. */
 @Injectable()
 export class DurableReplyDeliveryService implements OnModuleInit {
   constructor(
@@ -84,6 +84,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   }
 
   async deliver(turn: ReplyTurn, context: DeliveryContext): Promise<DeliveryResult> {
+    if (turn.mode !== 'execute') throw new ReplyDeferredError('reply_plan_not_executable');
     if (!turn.plan) throw new ReplyDeferredError('missing_reply_plan');
     let completed = 0;
     let cancelled = false;
@@ -107,7 +108,8 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             );
           },
           dispatch: async (requestId, mode) => {
-            await this.sender.sendMessage({
+            await context.assertOwned?.();
+            const response = await this.sender.sendMessage({
               token: context.token,
               imBotId: turn.accountId,
               imContactId: context.imContactId,
@@ -118,6 +120,18 @@ export class DurableReplyDeliveryService implements OnModuleInit {
               externalRequestId: mode === 'execute' ? requestId : context.externalRequestId,
               _apiType: context._apiType,
             });
+            if (turn.recovery.primary) {
+              if (response?.errcode !== 0) throw new Error('reply_send_result_unconfirmed');
+              return {
+                status: 'succeeded',
+                result: { stage: 'accepted' },
+                evidence: {
+                  kind: 'accepted',
+                  requestTerminated: true,
+                  detail: 'send_api_accepted; not_delivery_or_read_receipt',
+                },
+              };
+            }
             return {
               status: 'executing',
               result: { stage: 'accepted' },
@@ -129,6 +143,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             };
           },
         },
+        { persistedMode: turn.mode },
       );
       if (execution.status === 'succeeded') {
         completed++;
