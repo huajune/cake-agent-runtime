@@ -267,6 +267,36 @@ describe('MessageSenderService', () => {
   });
 
   describe('credential-safe failures', () => {
+    it('keeps original HTTP status and transport code through the sender boundary', async () => {
+      const token = 'private-token';
+      mockHttpService.post.mockRejectedValue(
+        Object.assign(new Error(`failed token=${token}`), {
+          isAxiosError: true,
+          code: 'ERR_BAD_REQUEST',
+          response: { status: 429, data: { token } },
+          config: { headers: { Authorization: token } },
+        }),
+      );
+      const failure: unknown = await service
+        .sendMessage({
+          token,
+          imBotId: 'bot-1',
+          imRoomId: 'room-1',
+          messageType: 7,
+          payload: { text: 'private-message' },
+        })
+        .catch((error: unknown) => error);
+      expect(failure).toMatchObject({
+        name: 'HttpRequestError',
+        httpStatus: 429,
+        transportCode: 'ERR_BAD_REQUEST',
+      });
+      expect(JSON.stringify(failure)).not.toContain(token);
+      expect(failure).not.toHaveProperty('response');
+      expect(failure).not.toHaveProperty('config');
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1);
+    });
+
     it.each(['enterprise', 'group'])(
       'redacts a reflected %s token from business errors without accepting a failed send',
       async (apiType) => {

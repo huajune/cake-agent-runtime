@@ -9,6 +9,8 @@ import type {
 } from '@biz/action-execution/action-execution.types';
 import { identifyAction } from '@biz/action-execution/action-identity';
 import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
+import { HttpRequestError } from '@infra/client-http/http-request-error';
+import { Logger } from '@nestjs/common';
 
 const now = '2026-10-21T04:00:00.000Z';
 const intent: ActionIntent = {
@@ -198,6 +200,35 @@ describe('external action failure boundaries', () => {
     await service.execute(intent, { dispatch });
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    [
+      new HttpRequestError('private-response', 503, 'ERR_BAD_RESPONSE'),
+      'http_error:503:ERR_BAD_RESPONSE',
+    ],
+    [new HttpRequestError('private-response', undefined, 'ETIMEDOUT'), 'transport_error:ETIMEDOUT'],
+  ])(
+    'persists and logs HTTP diagnostics without converting unknown to retry permission',
+    async (error, detail) => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const { service, get } = setup();
+        const dispatch = jest.fn().mockRejectedValue(error);
+        expect(await service.execute(intent, { dispatch })).toMatchObject({
+          status: 'unknown',
+          evidence: { detail, requestTerminated: false },
+        });
+        expect(get()?.evidence?.detail).toBe(detail);
+        await service.execute(intent, { dispatch });
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('action_dispatch_unconfirmed'));
+        expect(warn.mock.calls.map(([entry]) => String(entry)).join('\n')).not.toContain(
+          'private-response',
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
   it('keeps current goal satisfaction unresolved without authoritative request termination', async () => {
     const { service } = setup();
     const dispatch = jest.fn(async () => ({

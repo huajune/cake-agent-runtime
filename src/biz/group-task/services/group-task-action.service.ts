@@ -1,4 +1,5 @@
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { safeHttpFailureDetail } from '@infra/client-http/http-request-error';
 import { InjectQueue } from '@nestjs/bull';
 import type { Job, Queue } from 'bull';
 import { ConfigService } from '@nestjs/config';
@@ -32,8 +33,17 @@ import {
 } from '@shared-types/action-execution.contract';
 
 export class GroupTaskDeferredError extends Error {
-  constructor(readonly reason: string) {
-    super(`group_task_deferred:${reason}`);
+  constructor(
+    readonly reason: string,
+    diagnosis?: { actionId: string; requestId: string; errorCode?: string },
+  ) {
+    super(
+      `group_task_deferred:${reason}` +
+        (diagnosis
+          ? `; actionId=${diagnosis.actionId}; requestId=${diagnosis.requestId}` +
+            (diagnosis.errorCode ? `; errorCode=${diagnosis.errorCode}` : '')
+          : ''),
+    );
   }
 }
 
@@ -52,6 +62,8 @@ interface Projection {
 
 @Injectable()
 export class GroupTaskActionService implements OnModuleInit {
+  private readonly logger = new Logger(GroupTaskActionService.name);
+
   constructor(
     private readonly actions: ActionExecutorService,
     private readonly registry: ActionRecoveryRegistry,
@@ -205,8 +217,31 @@ export class GroupTaskActionService implements OnModuleInit {
       },
       plan.mode === ACTION_MODE.EXECUTE ? { persistedMode: ACTION_MODE.EXECUTE } : undefined,
     );
-    if (result.status !== ACTION_STATE.SUCCEEDED)
-      throw new GroupTaskDeferredError(result.reason ?? result.status);
+    if (result.status !== ACTION_STATE.SUCCEEDED) {
+      const diagnosis = {
+        actionId: result.actionId,
+        requestId: result.requestId,
+        errorCode: safeHttpFailureDetail(result.evidence?.detail),
+      };
+      this.logger.warn(
+        JSON.stringify({
+          event: 'group_task_part_unconfirmed',
+          execId,
+          jobId: String(job.id),
+          groupId: group.imRoomId,
+          botId: group.imBotId,
+          partId: part.id,
+          attempt: (job.attemptsMade ?? 0) + 1,
+          maxAttempts: job.opts?.attempts ?? 1,
+          mode: plan.mode ?? mode,
+          status: result.status,
+          dispatched: result.dispatched,
+          reason: result.reason,
+          ...diagnosis,
+        }),
+      );
+      throw new GroupTaskDeferredError(result.reason ?? result.status, diagnosis);
+    }
     // External success stays success even if projection is pending; recovery repairs it.
   }
 

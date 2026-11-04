@@ -1094,3 +1094,10 @@ AI 等通知回执存在流程备注时，以备注首句为通知事实，不�
 - **引用与 reasoning**：排班和用工形式引用必须是足以保留限定的连续原话，同为 200 码点预算，不得改写或拼接；reasoning 只说明本轮有无变化，不列逐字段推理链、不充当字段证据。
 - **运行时对应**：`src/memory/fact-evidence.ts` 定义 Unicode 预算，`src/memory/short-term/extraction-evidence.ts` 与 `facts.service.ts` 按字段拒绝缺失、空或超预算的模型增量并记录拒绝原因，保留旧事实。既有引用核验与用工形式裁决保持；表单、工具和历史证据不套用模型预算。
 - **完整保存与测试**：短期/长期、上下文及 Supabase 读写不再机械截短证据，迁移 `20261027110000_preserve_memory_evidence.sql` 移除数据库截断。`tests/memory/fact-evidence.spec.ts`、`tests/memory/short-term/session-state.service.spec.ts`、`tests/memory/long-term.service.spec.ts` 和 `tests/memory/supabase.store.spec.ts` 覆盖预算、拒绝增量、末尾条件及存储完整性。
+
+### 2026-11-04 轮末增量与证据拒绝诊断
+
+- **来源与时效**：用户要求修复班次抽取和告警；生产样本为纯确认和合同咨询回合仍输出多项无合格证据的偏好。常设增量契约修复，不改变招聘筛选口径。
+- **唯一 prompt 居所**：仍为 `src/memory/short-term/extraction.prompt.ts`；与固定字段 schema 对齐，未变化偏好填 null，历史和已有偏好只用于理解和比较，不回填全量档案；显式撤销使用字段自身的清空形态。
+- **确定性准入**：`extraction-evidence.ts` 在证据校验前忽略同值输出，班次按既有合并和有效等价规则比较；真正新增/修改/撤销不能绕过证据要求。通用证据不合格而专用原话合格时保留原话供后续核验，仍不能以不匹配的引用写入班次。
+- **观测与验证**：拒绝原因区分 missing / empty / over_budget，日志只记字段、原因和 Unicode 长度；班次告警同时列出其他被拒字段，不宣称尚未完成的保存或兜底成功。`tests/memory/fact-evidence.spec.ts`、`tests/memory/short-term/session-state.service.spec.ts`、`tests/memory/short-term/extraction.prompt.spec.ts` 覆盖同值回显、部分 patch、真实撤销与告警；不据此宣称真实模型或生产部署已验证。

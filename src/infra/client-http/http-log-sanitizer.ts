@@ -1,4 +1,5 @@
 import { ProviderBusinessError } from './provider-business-error';
+import { HttpRequestError, readHttpFailureCodes } from './http-request-error';
 
 const REDACTED = '[REDACTED]';
 const SENSITIVE_QUERY_KEY =
@@ -41,6 +42,9 @@ export function sanitizeHttpError(error: unknown, secrets: readonly string[] = [
     const message = redactHttpErrorText(error.message, secrets);
     if (error instanceof ProviderBusinessError && Number.isSafeInteger(error.code))
       return new ProviderBusinessError(error.code, message);
+    const codes = readHttpFailureCodes(error);
+    if (codes.httpStatus !== undefined || codes.transportCode !== undefined)
+      return new HttpRequestError(message, codes.httpStatus, codes.transportCode);
     const stack = error.stack ?? '';
     const carriesContext = Object.getOwnPropertyNames(error).some(
       (key) => !['name', 'message', 'stack'].includes(key),

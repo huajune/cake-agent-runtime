@@ -37,6 +37,9 @@ describe('session extraction prompt（表单外软事实 only）', () => {
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('preferences');
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('brand_intents');
     expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('labor_form_intent');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('输出的是本轮增量，不是完整档案');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('preferences 全部填 null');
+    expect(SESSION_EXTRACTION_SYSTEM_PROMPT).toContain('不得回填或复述其中未变化的字段');
   });
 
   it('LLM schema 不再含 interview_info / explicit_provenance / 事务字段', () => {

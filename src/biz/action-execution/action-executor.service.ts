@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
+import { describeHttpFailure, readHttpFailureCodes } from '@infra/client-http/http-request-error';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionRecordsRepository } from './action-records.repository';
@@ -255,6 +255,7 @@ export class ActionExecutorService {
     callbacks: ActionCallbacks<T>,
     mode: ActionMode,
   ): Promise<ActionCompletion<T>> {
+    const startedAt = Date.now();
     try {
       const result = await callbacks.dispatch(requestId, mode);
       if (result.status === ACTION_STATE.SUCCEEDED && !result.evidence.requestTerminated)
@@ -267,6 +268,17 @@ export class ActionExecutorService {
         return { ...result, status: ACTION_STATE.UNKNOWN };
       return result;
     } catch (error) {
+      const detail = describeHttpFailure(error);
+      this.logger.warn(
+        JSON.stringify({
+          event: 'action_dispatch_unconfirmed',
+          requestId,
+          mode,
+          durationMs: Date.now() - startedAt,
+          detail,
+          ...readHttpFailureCodes(error),
+        }),
+      );
       return {
         status: ACTION_STATE.UNKNOWN,
         evidence: {
@@ -274,10 +286,7 @@ export class ActionExecutorService {
           requestTerminated: false,
           // Preserve the response code for diagnosis without storing upstream text/PII.
           // A nonzero code alone is not a verified guarantee of zero external effects.
-          detail:
-            error instanceof ProviderBusinessError && Number.isSafeInteger(error.code)
-              ? `provider_business_error:${error.code}`
-              : 'external_call_did_not_return_terminal_evidence',
+          detail,
         },
       };
     }
