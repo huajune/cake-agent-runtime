@@ -1,5 +1,11 @@
 import { createForm, applyFieldValueProposal, type ContractFieldDef } from '@resolution/collection';
 import { renderCollectionTemplate } from '@tools/collection/collection-template.renderer';
+import { collectFieldValueProposals } from '@tools/collection/proposal-intake';
+import {
+  DURATION_FIELD,
+  AVAILABILITY_FIELD,
+  WEEKEND_FIELD,
+} from '../../helpers/work-condition.fixture';
 
 const CONTRACT: ContractFieldDef[] = [
   {
@@ -42,11 +48,16 @@ describe('renderCollectionTemplate', () => {
 
   it('prefills a notarized value and never reports the filled slot as missing', () => {
     const form = createForm({ jobId: 528962, contract: CONTRACT });
-    const written = applyFieldValueProposal(form, CONTRACT[0], {
-      value: '兮兮',
-      sourceText: '我叫兮兮',
-      producer: 'candidate_quote',
-    }, { candidateTexts: ['我叫兮兮'], messages: [{ role: 'user', content: '我叫兮兮' }] }).form;
+    const written = applyFieldValueProposal(
+      form,
+      CONTRACT[0],
+      {
+        value: '兮兮',
+        sourceText: '我叫兮兮',
+        producer: 'candidate_quote',
+      },
+      { candidateTexts: ['我叫兮兮'], messages: [{ role: 'user', content: '我叫兮兮' }] },
+    ).form;
 
     const result = renderCollectionTemplate(written, CONTRACT);
     expect(result.knownFieldMap).toEqual({ 姓名: '兮兮' });
@@ -96,7 +107,7 @@ describe('拒收重问档 · 强制枚举占位', () => {
   });
 });
 
-describe('条件型单选项 · 按条件呈现（运营 0902 裁定：唯一选项=必须接受，不是让候选人填时段）', () => {
+describe('单个可选项 · 告知选项但不擅自增加门槛（2026-11-04 用户裁定）', () => {
   const WORK_WINDOW: ContractFieldDef = {
     labelId: 741,
     labelTitle: '每天可工作时间段',
@@ -106,22 +117,23 @@ describe('条件型单选项 · 按条件呈现（运营 0902 裁定：唯一选
     rejectedOptions: [],
   };
 
-  it('首问就写明条件并要求抄回条件字面，不再按"少于 2 项"留空；列进 screeningFields', () => {
-    const result = renderCollectionTemplate(
-      createForm({ jobId: 1, contract: [WORK_WINDOW] }),
-      [WORK_WINDOW],
-    );
+  it('首问展示唯一合法选项和真实回答出口，不把选项个数当筛选依据', () => {
+    const result = renderCollectionTemplate(createForm({ jobId: 1, contract: [WORK_WINDOW] }), [
+      WORK_WINDOW,
+    ]);
     expect(result.templateText).toContain(
-      '每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）',
+      '每天可工作时间段：（可选项：09:30-22:30；请按实际情况填写，不符合请直接说明）',
     );
-    expect(result.screeningFields).toEqual(['每天可工作时间段']);
+    expect(result.screeningFields).toEqual([]);
+    expect(result.publicRequirements).toEqual([]);
+    expect(result.templateText).not.toContain('内都能排班');
   });
 
   it('重问档同一句；非时间形态的条件用通用措辞', () => {
     const attempted = createForm({ jobId: 1, contract: [WORK_WINDOW] });
     attempted.slots[741].rejectedAttempts = 1;
     expect(renderCollectionTemplate(attempted, [WORK_WINDOW]).templateText).toContain(
-      '每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）',
+      '每天可工作时间段：（可选项：09:30-22:30；请按实际情况填写，不符合请直接说明）',
     );
 
     const relocate: ContractFieldDef = {
@@ -134,7 +146,9 @@ describe('条件型单选项 · 按条件呈现（运营 0902 裁定：唯一选
     expect(
       renderCollectionTemplate(createForm({ jobId: 1, contract: [relocate] }), [relocate])
         .templateText,
-    ).toContain('是否接受一定范围内门店调度：（要求 接受调度，接受请填 接受调度）');
+    ).toContain(
+      '是否接受一定范围内门店调度：（可选项：接受调度；请按实际情况填写，不符合请直接说明）',
+    );
   });
 
   it('敏感属性 / 契约明标 RESTRICTED 的单选项仍留空——条件即筛选条件，不能用提示泄露', () => {
@@ -146,14 +160,85 @@ describe('条件型单选项 · 按条件呈现（运营 0902 裁定：唯一选
       acceptedOptions: [{ optionCode: '1', optionLabel: '上海市' }],
     };
     expect(
-      renderCollectionTemplate(createForm({ jobId: 1, contract: [hometown] }), [hometown])
-        .templateText.endsWith('籍贯：'),
+      renderCollectionTemplate(createForm({ jobId: 1, contract: [hometown] }), [
+        hometown,
+      ]).templateText.endsWith('籍贯：'),
     ).toBe(true);
     const marked: ContractFieldDef = { ...WORK_WINDOW, disclosure: 'RESTRICTED' };
     expect(
-      renderCollectionTemplate(createForm({ jobId: 1, contract: [marked] }), [marked])
-        .templateText.endsWith('每天可工作时间段：'),
+      renderCollectionTemplate(createForm({ jobId: 1, contract: [marked] }), [
+        marked,
+      ]).templateText.endsWith('每天可工作时间段：'),
     ).toBe(true);
+  });
+});
+
+describe('公开工期、班次要求与真实回答分别呈现', () => {
+  it('badcase 459023：先告知可接受工期，同时保留两个不合格答案', () => {
+    const contract = [DURATION_FIELD, WEEKEND_FIELD, AVAILABILITY_FIELD];
+    const result = renderCollectionTemplate(createForm({ jobId: 529230, contract }), contract);
+    expect(result.publicRequirements).toEqual([
+      '要求做到年后：可以做到年后 / 可以做6个月以上',
+      '周末两天是否在岗：周末两天都在接受门店排班',
+    ]);
+    expect(result.templateText.indexOf('• 要求做到年后')).toBeLessThan(
+      result.templateText.indexOf('先将以下资料'),
+    );
+    expect(result.templateText).toContain('不符合上述要求也请如实回答');
+    expect(result.templateText).toContain(
+      '要求做到年后：（可以做到年后/可以做6个月以上/只能做0-3个月/可以做3-6个月）',
+    );
+    expect(result.templateText).toContain('每天可工作时间段：（07:00-16:00/16:00-23:00）');
+    expect(result.screeningFields).not.toContain(AVAILABILITY_FIELD.labelTitle);
+  });
+
+  it('无拒绝项的普通工期选择题不增加报名门槛', () => {
+    const field = {
+      ...DURATION_FIELD,
+      acceptedOptions: [...DURATION_FIELD.acceptedOptions, ...DURATION_FIELD.rejectedOptions],
+      rejectedOptions: [],
+    };
+    const result = renderCollectionTemplate(createForm({ jobId: 1, contract: [field] }), [field]);
+    expect(result.publicRequirements).toEqual([]);
+    expect(result.screeningFields).toEqual([]);
+    expect(result.templateText).not.toContain('这个岗位的报名要求');
+    expect(result.templateText).toContain('只能做0-3个月');
+  });
+
+  it('整张未填写模板的回显不会把公开要求或预印选项写成候选人的答案', () => {
+    const contract = [DURATION_FIELD, WEEKEND_FIELD, AVAILABILITY_FIELD];
+    const text = renderCollectionTemplate(
+      createForm({ jobId: 529230, contract }),
+      contract,
+    ).templateText;
+    expect(
+      collectFieldValueProposals({ contract, candidateTexts: [text], filledLabelIds: new Set() }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    { ...DURATION_FIELD, disclosure: 'RESTRICTED' as const },
+    { ...DURATION_FIELD, labelTitle: '籍贯与工期' },
+    { ...DURATION_FIELD, labelInstructions: '专业要求：餐饮相关专业' },
+  ])('敏感属性或显式受限仍不泄露可接受集合：$labelTitle', (field) => {
+    const result = renderCollectionTemplate(createForm({ jobId: 1, contract: [field] }), [field]);
+    expect(result.publicRequirements).toEqual([]);
+    expect(result.templateText).not.toContain('这个岗位的报名要求');
+  });
+
+  it('工期数值门槛使用配置的上下界和单位', () => {
+    const field: ContractFieldDef = {
+      ...DURATION_FIELD,
+      labelTitle: '预计在岗月数',
+      fieldType: 'TEXT',
+      acceptedOptions: [],
+      rejectedOptions: [],
+      valueSpec: { kind: 'number', min: 3, unit: '个月', genderRanges: [] },
+    };
+    expect(
+      renderCollectionTemplate(createForm({ jobId: 1, contract: [field] }), [field])
+        .publicRequirements,
+    ).toEqual(['预计在岗月数：3个月以上']);
   });
 });
 
@@ -168,10 +253,9 @@ describe('FILE 字段 · 发文件占位提示（生产 chat 6a9117face406a6aee7
   };
 
   it('FILE 字段常驻「发文件别打字」提示——空行会邀请候选人打字，文字永远过不了形态门', () => {
-    const blank = renderCollectionTemplate(
-      createForm({ jobId: 529091, contract: [RESUME_FILE] }),
-      [RESUME_FILE],
-    );
+    const blank = renderCollectionTemplate(createForm({ jobId: 529091, contract: [RESUME_FILE] }), [
+      RESUME_FILE,
+    ]);
     expect(blank.templateText).toContain('上传简历：（直接发文件或截图，不用打字填写）');
 
     // 拒收重问档同样保留提示（FILE 无枚举可强制，提示不分档）。

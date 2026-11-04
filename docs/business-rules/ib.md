@@ -114,9 +114,13 @@
 
 按预检返回的待收字段一次性发出；已知值由官方模板预填，插问岗位细节先回答再提醒缺项，不复制整表重复收集。
 
+有明确筛选依据的公开工期/班次先讲要求，表单仍允许候选人如实选不满足的选项；无门槛的选择题不改成要求，不把真实答案改成合格答案。
+
 - 状态：现行基线
 - 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
 - 落点：`src/agent/generator/context/sections/procedural/rules/ib.md#IB-08`
+- 落点：`src/tools/collection/collection-template.renderer.ts#renderCollectionTemplate`
+- 验证：`tests/tools/collection/collection-template.renderer.spec.ts`
 - 落点：`src/tools/duliday-interview-precheck.tool.ts#buildInterviewPrecheckTool`
 - 落点：`src/tools/collection/collection-form.service.ts#CollectionFormService`
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
@@ -219,5 +223,7 @@
 - 换店是否自动取消旧单属于新业务行为；当前按取消工具契约执行，不由重构推导为自动取消。
 
 ## 变更记录
+
+- 2026-11-04：根据用户对 audit 459023 的修正区分公开要求与普通收集问题；模板保留真实回答出口，要求与选项分别呈现。
 
 - 2026-10-23：首次按主题建立口径、执行落点与验证关联；机械拆分手册，保持文案与顺序；不新增业务裁定。

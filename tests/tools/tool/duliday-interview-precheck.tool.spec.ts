@@ -18,6 +18,11 @@ import { buildRequestHandoffTool } from '@tools/request-handoff.tool';
 import { detectBookingReceiptMismatch } from '@agent/guardrail/output/rules/booking-receipt.rule';
 import { detectBookingDoneClaimWithoutSubmission } from '@agent/guardrail/output/rules/booking-claim-reconciliation.rule';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
+import {
+  DURATION_FIELD,
+  AVAILABILITY_FIELD,
+  WEEKEND_FIELD,
+} from '../../helpers/work-condition.fixture';
 
 const CONTRACT = [
   {
@@ -1515,6 +1520,69 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     const result = await execute({ jobId: 100 });
     expect(result.collectionVerdict).toBe('escalated');
     expect(result.nextAction).toBe('handoff');
+  });
+
+  it('audit 459023：工期真实筛退、公开说明要求，已验证的班次与原话可供同轮查岗复用', async () => {
+    const fields = [DURATION_FIELD, WEEKEND_FIELD, AVAILABILITY_FIELD];
+    sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields });
+    const answers = [
+      {
+        labelTitle: DURATION_FIELD.labelTitle,
+        value: '只能做0-3个月',
+        quote: '要求做到年后：只能做0-3个月',
+      },
+      {
+        labelTitle: WEEKEND_FIELD.labelTitle,
+        value: '周末两天都在接受门店排班',
+        quote: '周末两天是否在岗：（周末两天都在接受门店排班',
+      },
+      {
+        labelTitle: AVAILABILITY_FIELD.labelTitle,
+        value: '07:00-16:00',
+        quote: '每天可工作时间段：（07:00-16:00',
+      },
+    ];
+    const message = [
+      answers[0].quote,
+      answers[1].quote,
+      '居住地址：江宁区淳化街道',
+      answers[2].quote,
+    ].join('\n');
+    context.turnInput.messages = [{ role: 'user', content: message }];
+    const result = await execute({ mode: 'validate', jobId: 100, fieldValueProposals: answers });
+    expect(result.nextAction).toBe('screening_rejected');
+    expect(currentForm?.slots[797]).toMatchObject({
+      state: 'disqualified',
+      value: { value: '只能做0-3个月', optionCodes: ['50224'], sourceText: answers[0].quote },
+    });
+    expect(result.rejection.candidateMessage).toContain('可以做到年后、可以做6个月以上');
+    expect(result.rejection.forbiddenActions.join(' ')).not.toContain('绝不披露真实不合格原因');
+    expect(result.verifiedWorkAnswers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ labelId: 741, value: '07:00-16:00', quote: answers[2].quote }),
+        expect.objectContaining({ labelId: 798, value: '周末两天都在接受门店排班' }),
+      ]),
+    );
+    expect(context.ledger.jobs.collectionAnswers).toEqual(result.verifiedWorkAnswers);
+    expect(context.ledger.jobs.scheduleConstraint).toBeUndefined();
+    expect(observer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'slot_disqualified', labelId: 797 }),
+    );
+
+    // 下一轮只查询持久表单，候选人不用再次提供答案或粘贴原话。
+    context = createToolContext({
+      session: context.session,
+      turnInput: { messages: [{ role: 'user', content: '帮我看看其他岗位' }] },
+    });
+    expect(context.ledger.jobs.collectionAnswers).toEqual([]);
+    const nextTurn = await execute({ mode: 'query', jobId: 100 });
+    expect(nextTurn.verifiedWorkAnswers).toEqual(result.verifiedWorkAnswers);
+    expect(context.ledger.jobs.collectionAnswers).toEqual(result.verifiedWorkAnswers);
+    expect(nextTurn.bookingChecklist.knownFieldMap).toMatchObject({
+      每天可工作时间段: '07:00-16:00',
+    });
+    expect(nextTurn.bookingChecklist.missingFields ?? []).not.toContain('每天可工作时间段');
+    expect(context.ledger.jobs.scheduleConstraint).toBeUndefined();
   });
 
   it('submitted：已有 workOrderId 时停止重复办理', async () => {

@@ -82,6 +82,16 @@ export interface TurnGeoSnapshot {
  */
 export type TurnFetchedJob = RecommendedJobSummary;
 
+/** 本人表单已核验的公开工期/班次答案；有出处不等于候选人声明了排他性限制。 */
+export interface VerifiedCollectionAnswer {
+  readonly id: string;
+  readonly jobId: number;
+  readonly labelId: number;
+  readonly labelTitle: string;
+  readonly value: string;
+  readonly quote: string;
+}
+
 export interface TurnJobsSnapshot {
   readonly fetchedJobs: readonly TurnFetchedJob[];
   /** prep 时刻的当前焦点岗位；供本轮工具与轮末抽取共享同一上下文快照。 */
@@ -97,6 +107,8 @@ export interface TurnJobsSnapshot {
   readonly invalidatedJobIds: readonly number[];
   /** 已通过本轮原话校验的班次条件，保留撤销值供同轮后续查询沿用。 */
   readonly scheduleConstraint?: StoredScheduleConstraint;
+  /** precheck 在本轮读取或验证过的表单答案；只供后续工具引用。 */
+  readonly collectionAnswers?: readonly VerifiedCollectionAnswer[];
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */
   bookingSucceeded: boolean | undefined;
   /** 本轮已确认报名成功的具体岗位，供后续定位等工具使用；不因另一次报名失败而清空。 */
@@ -159,6 +171,8 @@ export interface TurnLedger extends TurnLedgerSnapshot {
   recordFetchedJobs(jobs: TurnFetchedJob[]): void;
   recordJobListQuery(query: { signature: string }): void;
   recordScheduleConstraint(constraint: StoredScheduleConstraint): void;
+  /** 原子替换同一岗位的答案，清空/更正/契约刷新不会留下旧引用。 */
+  recordCollectionAnswers(jobId: number, answers: readonly VerifiedCollectionAnswer[]): void;
   markJobInvalidated(jobId: number): void;
   /** precheck 校验通过（海绵查得到岗位）时登记工具确权焦点；只接收真实海绵岗位的投影。 */
   recordAttestedFocusJob(job: RecommendedJobSummary): void;

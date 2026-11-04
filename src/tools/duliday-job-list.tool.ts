@@ -78,7 +78,7 @@ import {
   readScheduleConditions,
   type ScheduleMatchResult,
 } from '@resolution/schedule/types';
-import { verifyCitation } from '@resolution/notary/citation-verifier';
+import { ScheduleCitationSchema, verifyScheduleCitation } from './job-list/schedule-evidence';
 import { WorkTimeContractError } from '@sponge/work-time.types';
 import { SpongeResponseContractError } from '@sponge/response-contract.error';
 import { selectCorpusMessages } from '@resolution/signal/corpus';
@@ -478,12 +478,9 @@ const inputSchema = z.object({
     .describe(
       'recommend=按候选人条件筛选推荐；inspect=按已知jobIdList核对岗位事实，不筛掉不匹配岗位，不进入推荐候选池',
     ),
-  candidateScheduleCitation: z
-    .object({ quote: z.string() })
-    .optional()
-    .describe(
-      '本轮新增、修改或撤销班次条件/排班方式偏好时，摘录本轮候选人的逐字原话。沿用记忆中的条件可省略',
-    ),
+  candidateScheduleCitation: ScheduleCitationSchema.optional().describe(
+    '本轮变更班次条件时提供来源：优先用 {collectionAnswerIds:[id]} 引用 precheck.verifiedWorkAnswers 中已核验的本人答案，无需重抄值或拼接原话；否则用 {quote:本轮候选人连续的逐字原话}。沿用记忆中的条件可省略。表单引用仅在本轮有效，跨轮可先 query precheck 读取持久答案，不重新询问候选人。',
+  ),
   candidateScheduleConstraint: CandidateScheduleConstraintSchema.optional().describe(
     SCHEDULE_CONSTRAINT_GUIDANCE,
   ),
@@ -856,7 +853,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **禁止推断品牌地理分布**：本工具只确认查询范围内有无在招，不掌握品牌全国门店分布；0 条只能说明查询范围内暂未查到该品牌在招岗位，**严禁**据此推断品牌主要在哪些区域开店
 - **Agent 自推岗位不适用品牌锁死**：如果候选人并未主动指定品牌，而是你上一轮先推荐了某品牌/门店，候选人只是接受推荐或补收资资料，则该品牌不是硬性 brand intent。后续发现该岗位年龄/性别/班次/学历等条件不匹配时，必须先去掉 jobIdList / brandIdList / brandAliasList，保留候选人的位置、年龄、身份、时间窗等硬约束重查，并基于新结果推荐可匹配岗位；不要直接 request_handoff，也不要用"明确品牌意向"规则阻止换岗自救
 - **工时长度反查**：候选人表达偏好较长工时时，必须基于返回的工作时间字段重新筛选；若结果集仍以短班为主，先如实说明附近岗位以短班为主，再询问是否扩大区域，不得将短班描述为满足长工时偏好
-- **首次推荐必须把关键要求 + 工作班次时间随岗位信息一起告知**，让候选人自行判断；严禁推完岗位再逐个追问个人条件去做比对
+- **首次推荐必须保留岗位卡中的关键要求（含已给出的最短工期）和工作班次时间**，让候选人自行判断；没有配置工期要求时不自行补门槛，严禁推完岗位再逐个追问个人条件去做比对
 - **推荐文案只输出工具结果顶部的实际岗位卡正文，严禁自行添加“模板/示例/内部说明”等元标题**：每个岗位四行（标题 = 品牌（门店）- 岗位，距离；班次行；薪资行；要求行），**不得删除或合并任一行**。薪资行已由卡片按岗位类型给全关键项（兼职阶梯岗：基础时薪 + 各档门槛 + 计算口径 + 结算；兼职无阶梯岗：时薪 + 法定节假日/加班 + 结算；全职岗：综合薪资 + 法定节假日/加班 + 奖金项 + 结算），推荐时照卡片说，不要再把详情块里的其他薪资字段塞进薪资行；候选人追问薪资细节时再按详情块展开。班次行照卡片说（卡片已写清几点上班、几个小时、怎么选、每周几天），不要把详情块里的排班类型名、班次标签或班次跨度加进班次行，候选人追问时再按详情块展开；要求行的取值结合该岗位下方详情和备注组织完整。漏掉班次行、薪资行或门店行都属于不合格推荐
 - **班次行必须列全工具返回的所有档位，不得只报候选人偏好的那一档**：含多档时连同卡片上的选择方式（如“三选一”“轮班，都要能上”“两个都要能上”）原样转述，排班方式以工具为准、不自行假定；只挑一档会让候选人误以为是纯某班岗，报名后被排到没告知的班次
 - **无岗与推荐不满意分流**（互斥顺序收口）：
@@ -1068,15 +1065,18 @@ export function buildJobListTool(
           effectiveScheduleKey(persistedConstraint) !== effectiveScheduleKey(mergedConstraint);
         if (
           changedSchedule &&
-          (!candidateScheduleCitation ||
-            !verifyCitation(candidateScheduleCitation, [context.turnInput.currentUserMessage ?? ''])
-              .verified)
+          !verifyScheduleCitation(
+            candidateScheduleCitation,
+            context.turnInput.currentUserMessage ?? '',
+            context.ledger.jobs.collectionAnswers ?? [],
+          )
         ) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE,
-            outcome: '班次条件变更缺少本轮候选人原话，未查询岗位',
+            outcome: '班次条件变更缺少有效原话或已验证表单引用，未查询岗位',
             replyInstruction:
-              '请用本轮候选人逐字原话提供candidateScheduleCitation后重试；仅核对岗位时间应使用purpose=inspect。不得把本次参数拦截描述成没有岗位。',
+              '请用 verifiedWorkAnswers 的 id 引用已核验答案，或提供本轮候选人连续的逐字原话后重试；不得跨行删字拼接 quote，也不得为了绕过引用校验删掉仍有效的班次条件。旧表单引用需先 query precheck 刷新，不重问已填答案。仅核对岗位时间应使用 purpose=inspect。不得把本次参数拦截描述成没有岗位。',
+            details: { verifiedWorkAnswers: context.ledger.jobs.collectionAnswers ?? [] },
           });
         }
         const scheduleState = readScheduleConditions(mergedConstraint);

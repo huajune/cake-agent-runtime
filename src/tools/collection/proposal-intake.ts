@@ -293,11 +293,7 @@ export function parseTemplateLines(
  */
 function stripEchoedPlaceholderPrefix(field: ContractFieldDef, value: string): string {
   const trimmed = value.trim();
-  for (const placeholder of [
-    optionPlaceholder(field),
-    forcedOptionPlaceholder(field),
-    filePlaceholder(field),
-  ]) {
+  for (const placeholder of placeholdersForEchoCheck(field)) {
     if (!placeholder || !trimmed.startsWith(placeholder)) continue;
     return trimmed
       .slice(placeholder.length)
@@ -374,9 +370,22 @@ function adaptAnswerValue(field: ContractFieldDef, value: string): SlotProposal 
 function isPlaceholderEcho(field: ContractFieldDef, value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  return [optionPlaceholder(field), forcedOptionPlaceholder(field), filePlaceholder(field)]
-    .filter(Boolean)
-    .includes(trimmed);
+  return placeholdersForEchoCheck(field).filter(Boolean).includes(trimmed);
+}
+
+/** 新旧官方模板的逐字回显都不是候选人答案；旧提示只用于兼容已发出的表单。 */
+function placeholdersForEchoCheck(field: ContractFieldDef): string[] {
+  const label = field.acceptedOptions[0]?.optionLabel.trim();
+  const legacy =
+    label && field.acceptedOptions.length === 1 && field.rejectedOptions.length === 0
+      ? [`（要求 ${label} 内都能排班，接受请填 ${label}）`, `（要求 ${label}，接受请填 ${label}）`]
+      : [];
+  return [
+    optionPlaceholder(field),
+    forcedOptionPlaceholder(field),
+    filePlaceholder(field),
+    ...legacy,
+  ];
 }
 
 /** MULTIPLE_OPTION 的规范值可列多个 optionLabel；只做契约标签逐字拆分，不猜同义词。 */
