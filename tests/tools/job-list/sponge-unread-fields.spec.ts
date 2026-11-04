@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { readFileSync } from 'node:fs';
 import { JobDetailSchema } from '@sponge/sponge.types';
 import {
   collectFieldPaths,
@@ -26,6 +27,10 @@ const SRC_DIR = path.resolve(__dirname, '../../../src');
 describe('sponge unread fields (海绵下发但蛋糕未读)', () => {
   const fixturePaths = new Set<string>();
   for (const job of loadSpongeJobFixtures()) collectFieldPaths(job, '', fixturePaths);
+  const insuranceFixtures = JSON.parse(
+    readFileSync(path.join(__dirname, '../../fixtures/sponge-jobs/insurance-fields.json'), 'utf8'),
+  ) as { jobs: unknown[] };
+  for (const job of insuranceFixtures.jobs) collectFieldPaths(job, '', fixturePaths);
   const declared = collectZodDeclaredPaths(JobDetailSchema);
   const sourceKeys = collectSourcePropertyKeys(SRC_DIR);
 
@@ -40,6 +45,7 @@ describe('sponge unread fields (海绵下发但蛋糕未读)', () => {
     expect(declared.has('basicInfo.cooperationMode')).toBe(true);
     expect(sourceKeys.has('cooperationMode')).toBe(true);
     expect(sourceKeys.has('memo')).toBe(true);
+    expect(fixturePaths.has('welfare.insuranceFundList')).toBe(true);
   });
 
   it('未读字段必须都在 allowlist 里（新出现的先人审）', () => {

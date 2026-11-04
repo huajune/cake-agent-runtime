@@ -33,6 +33,16 @@
 
 ## 居所索引（终态）
 
+2026-11-04 五险一金字段接入（用户明确裁定，关联 SW-02，持续有效）：
+跨工具回答口径唯一居于 `procedural/rules/sw.md#SW-02`，区分五险一金明细、保险购买设置和社保准入；
+“独立日不购买”不代表岗位没有五险一金，缺失不按无、部分项目不补全。
+字段事实在 `welfare-facts.util.ts#extractWelfareFacts` 与 `render.util.ts#renderWelfareSection` 供数，
+保险摘要保留购买设置原文，读取 `insuranceFundList` 实际项目，不新增隐含福利结论。
+拦侧沿用 `insurance-policy-claims.rule.ts#detectProactiveInsurancePolicyMention` 的 observe 边界，补公积金词项及主动询问豁免；
+真实海绵字段形态回归见 `tests/tools/job-list/insurance-fields.render.spec.ts`。
+真实回归另发现旧 DB 红线 R6 覆盖空明细处理；`red-lines.section.ts#RedLinesSection` 仅精确排除历史三个版本的已废止 R6，不改写配置、不按关键词删新规则。旧 R6 的回答教学并入 SW-02，编译后的提示词回归见 `tests/agent/generator/context/red-lines-insurance.spec.ts`。
+本次是有意改变 SW-02 模型可见正文；手册摘要基线随该裁定和行为回归更新，历史迁移基线保留于下方记录。
+
 2026-11-04 工期/班次收资 BadCase（trace `batch_6aea9566ce406a6aee2ccfb0_1793759532338`，audit 459023）：
 按用户裁定，`collection-template.renderer.ts#renderCollectionTemplate` 从真实筛选契约生成公开要求，
 完整保留真实回答选项；普通选择题及单个可选项不自行升级为硬门槛。发送协议仍唯一居于
@@ -387,7 +397,7 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
   - **教侧配对**：`tattoo_self_report_soft_decline`（final-check turn 规则，候选人自陈有纹身时注入婉拒话术）。
   - **居所状态**：DB 红线 R11 已删，本条是唯一 prompt 居所。
 
-- `T9` — 不主动提保险或社保；`haveInsurance` 与社保准入是两套概念。
+- `T9`（现 SW-02）— 不主动提保险、社保或公积金；五险一金明细 `insuranceFundList`、购买设置 `haveInsurance` 和候选人社保准入分别回答。2026-11-04 接管旧 R6，不再按兼职身份推定无社保。
   - **来源/加入**：2026-08-06 运营口径。
   - **拦侧配对**：`proactive_insurance_policy_mention`（observe 哨兵，2026-08-26 恢复）。
 
@@ -567,7 +577,7 @@ FC 编号保留为历史别名：
 | R3  | 健康证默认宽口径（先面试录用后办）    | 与手册 F6 成对：F6 已明确本红线只用于已确认岗位的约面流程。保留，边界互链                                                                                                                                                                                                                             |
 | R4  | 结伴求职分流方案                      | 唯一居所，保留                                                                                                                                                                                                                                                                                        |
 | R5  | "店长会联系吗"→后续由我们跟进         | 唯一居所，保留                                                                                                                                                                                                                                                                                        |
-| R6  | 已约面阶段社保问题口径                | 与 T9 相邻不重复（T9 管主动提及，R6 管已约面被问）。保留                                                                                                                                                                                                                                              |
+| R6  | 已约面阶段社保问题口径                | 2026-11-04 废止旧 R6，统一归 SW-02（原 T9）；运行时精确过滤历史文本，策略库原文保留。代码待上线，不能据此宣称生产已停用。                                                                                                                                                                                                                                              |
 | R7  | "能直接到店报名吗"→线上流程引导       | 与手册 F4 相邻：F4 管"不引导到店"，R7 管被问时话术。保留，互链                                                                                                                                                                                                                                        |
 | R8  | "成都你六姐"是完整品牌名仅上海在招    | ✅ **TTL 已标注（2026-08-21 挂账批）**：DB 原文已加"开城即失效需更新本条"                                                                                                                                                                                                                             |
 | R9  | 禁跨城市推荐                          | 唯一居所，保留                                                                                                                                                                                                                                                                                        |

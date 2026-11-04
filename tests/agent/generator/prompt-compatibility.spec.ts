@@ -112,11 +112,12 @@ describe('Prompt compiler compatibility contract', () => {
     // 2026-10-14：超过12小时的班次改为按 6-8 小时兜底，手册说法同步，重锁基线。
     // 2026-10-15：班次规则（10-13/10-14）与 v11.13.1 手册改动合并后重锁基线。
     // 2026-10-19：空预约上下文补充取消/改约禁止索要工单号与转人工口径，重锁基线。
+    // 2026-11-04：用户要求 SW-02 区分五险一金明细、购买设置与社保准入；真实接口样例由 insurance-fields.render.spec.ts 覆盖，重锁已批准的提示词基线。
     expect(result.systemPrompt).toContain(
       '候选人要取消或改约时同理：工单号是系统内部编号，严禁向候选人索要工单号；这里查不到工单就调用 request_handoff(reasonCode="modify_appointment") 交人工处理，不要自行调取消/改约工具。',
     );
     expect(createHash('sha256').update(result.systemPrompt).digest('hex')).toBe(
-      '532e252f106b3c51acb399db252bef6f0948aab64976b50eada28b10747d5698',
+      'a73d8592a518a1b40228e61170a81c3ed3a3d63c778394a3ee2426e6793bddd6',
     );
     expect(result.orderHash).toMatch(/^[a-f0-9]{64}$/);
     // dynamic 的口径是「随回合变化」：身份/红线/阈值/全阶段一览/通道规范只随配置变，

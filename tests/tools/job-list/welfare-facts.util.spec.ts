@@ -1,13 +1,11 @@
-import {
-  extractWelfareFacts,
-  renderWelfareFactsBanner,
-} from '@tools/job-list/welfare-facts.util';
+import { extractWelfareFacts, renderWelfareFactsBanner } from '@tools/job-list/welfare-facts.util';
 
 describe('extractWelfareFacts', () => {
   it('returns unspecified for null/undefined/empty welfare', () => {
     expect(extractWelfareFacts(null).meals).toBe('unspecified');
     expect(extractWelfareFacts(undefined).accommodation).toBe('unspecified');
-    expect(extractWelfareFacts({}).insurance).toBe('unspecified');
+    expect(extractWelfareFacts({}).insurancePurchase).toBeNull();
+    expect(extractWelfareFacts({}).insuranceFundItems).toEqual([]);
   });
 
   describe('meals classification', () => {
@@ -59,20 +57,34 @@ describe('extractWelfareFacts', () => {
     });
   });
 
-  describe('insurance classification', () => {
-    it('classifies 公司购买 as company', () => {
-      expect(extractWelfareFacts({ haveInsurance: '公司购买' }).insurance).toBe('company');
-    });
+  describe('insurance purchase and statutory benefits', () => {
+    it.each(['独立日购买', '独立日不购买', '公司购买', '员工自理'])(
+      'preserves the purchase setting %s without turning it into a benefits verdict',
+      (haveInsurance) => {
+        const facts = extractWelfareFacts({ haveInsurance, insuranceFundList: ['养老保险'] });
+        expect(facts.insurancePurchase).toBe(haveInsurance);
+        expect(facts.insuranceFundItems).toEqual(['养老保险']);
+      },
+    );
 
-    it('classifies 不购买/员工自理 as self_or_none (no allowance concept for insurance)', () => {
-      expect(extractWelfareFacts({ haveInsurance: '不购买' }).insurance).toBe('self_or_none');
-      expect(extractWelfareFacts({ haveInsurance: '员工自理' }).insurance).toBe('self_or_none');
-    });
+    it.each([undefined, null, [], '', '五险一金', 1, {}])(
+      'does not infer benefits from an empty or invalid list: %p',
+      (insuranceFundList) => {
+        const banner = renderWelfareFactsBanner(
+          extractWelfareFacts({ haveInsurance: '独立日不购买', insuranceFundList }),
+        );
+        expect(banner).toContain('五险一金明细（仅候选人主动问时可答）：未明确');
+        expect(banner).not.toContain('内部事实：无');
+      },
+    );
 
-    it('classifies real sponge enum strings (独立日购买/独立日不购买)', () => {
-      // "独立日/独立客" = 本公司，"独立日购买" 表示公司参保；旧逻辑误判为 unspecified。
-      expect(extractWelfareFacts({ haveInsurance: '独立日购买' }).insurance).toBe('company');
-      expect(extractWelfareFacts({ haveInsurance: '独立日不购买' }).insurance).toBe('self_or_none');
+    it('keeps only actual non-empty benefit items without completing a partial list', () => {
+      const facts = extractWelfareFacts({
+        haveInsurance: false,
+        insuranceFundList: [' 医疗保险 ', '', null, 1, '公积金'],
+      });
+      expect(facts.insurancePurchase).toBeNull();
+      expect(facts.insuranceFundItems).toEqual(['医疗保险', '公积金']);
     });
   });
 
@@ -115,7 +127,7 @@ describe('renderWelfareFactsBanner', () => {
     // 2026-08-06 运营：「吃和住都在岗位福利中，如果没有填就默认没有」。
     expect(banner).toContain('住宿：❌ 无');
     // 保险不吃该默认：敏感字段未配置时不得替公司断言"无保险"。
-    expect(banner).toContain('保险（敏感，仅候选人主动问时可答）：未明确');
+    expect(banner).toContain('保险购买设置（仅候选人主动问时可答，不代表五险一金）：未明确');
     expect(banner).toContain('保险/社保严禁主动提及');
     expect(banner).toContain('交通补贴：❓ 未明确');
     expect(banner).not.toContain('禁止在 reply 里声称');
@@ -157,7 +169,7 @@ describe('renderWelfareFactsBanner', () => {
     });
 
     it('保险不吃该默认：welfare 已加载但未配保险时仍是 unspecified', () => {
-      expect(extractWelfareFacts({ memo: 'x' }).insurance).toBe('unspecified');
+      expect(extractWelfareFacts({ memo: 'x' }).insurancePurchase).toBeNull();
     });
   });
 
@@ -177,7 +189,9 @@ describe('renderWelfareFactsBanner', () => {
     );
     expect(banner).toContain('员工餐：❌ 无');
     expect(banner).toContain('住宿：❌ 无');
-    expect(banner).toContain('保险（敏感，仅候选人主动问时可答）：内部事实：无');
+    expect(banner).toContain('保险购买设置（仅候选人主动问时可答，不代表五险一金）：不购买');
+    expect(banner).toContain('五险一金明细（仅候选人主动问时可答）：未明确');
+    expect(banner).not.toContain('内部事实：无');
     expect(banner).toContain('不得包装成"有"');
   });
 
@@ -187,9 +201,7 @@ describe('renderWelfareFactsBanner', () => {
         haveInsurance: '公司购买',
       }),
     );
-    expect(banner).toContain(
-      '保险（敏感，仅候选人主动问时可答）：内部事实：公司购买（敏感，禁止主动提及）',
-    );
+    expect(banner).toContain('保险购买设置（仅候选人主动问时可答，不代表五险一金）：公司购买');
     expect(banner).toContain('保险/社保严禁主动提及');
   });
 

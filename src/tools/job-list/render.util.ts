@@ -1,4 +1,4 @@
-// business-rules: SW-04, SW-07, SW-08, SW-09
+// business-rules: SW-02, SW-04, SW-07, SW-08, SW-09
 /**
  * duliday_job_list 工具的 markdown 渲染层（render-sections + 编排）。
  *
@@ -586,14 +586,17 @@ function renderWelfareSection(welfareInput: unknown): string {
   const welfare = asRecord(welfareInput);
   if (!welfare) return '';
   const lines: string[] = [];
+  const facts = extractWelfareFacts(welfare);
 
-  if (hasValue(welfare.haveInsurance)) {
-    const insuranceText = cleanSingleLineText(String(welfare.haveInsurance));
-    if (insuranceText) {
-      lines.push(
-        `- **保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: ${insuranceText}`,
-      );
-    }
+  if (facts.insurancePurchase) {
+    lines.push(
+      `- **保险购买设置（仅候选人主动问时可答，不代表五险一金）**: ${facts.insurancePurchase}`,
+    );
+  }
+  if (facts.insuranceFundItems.length > 0) {
+    lines.push(
+      `- **五险一金明细（仅候选人主动问时可答）**: ${facts.insuranceFundItems.join('、')}`,
+    );
   }
 
   if (hasValue(welfare.accommodation)) {
@@ -644,7 +647,7 @@ function renderWelfareSection(welfareInput: unknown): string {
   // 字面值显式标 ❌ 无；保险是敏感政策，只给内部判断，不能作为普通福利主动引用。
   // banner 非空时即使 raw 明细为空也要输出（welfare 对象存在但吃/住未配置 →
   // banner 按运营口径默认标 ❌ 无，这条信息本身就是给模型的答案，不能因明细空而吞掉）。
-  const factsBanner = renderWelfareFactsBanner(extractWelfareFacts(welfare));
+  const factsBanner = renderWelfareFactsBanner(facts);
   if (lines.length === 0 && !factsBanner) return '';
   return '### 福利信息\n' + factsBanner + lines.join('\n') + '\n\n';
 }
@@ -708,9 +711,9 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   // 旧代码按数组读会整段丢失；这里兼容字符串与历史数组两种形态。
   // socialSecurityRequirementType 现网不返回，已移除。
   if (Array.isArray(mb.socialSecurityList) && mb.socialSecurityList.length > 0) {
-    lines.push(`- **社保**: ${mb.socialSecurityList.join(', ')}`);
+    lines.push(`- **社保准入要求**: ${mb.socialSecurityList.join(', ')}`);
   } else {
-    pushField(lines, '社保', mb.socialSecurityList);
+    pushField(lines, '社保准入要求', mb.socialSecurityList);
   }
 
   const comp = asRecord(req.competencyRequirements) ?? {};
