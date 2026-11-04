@@ -22,9 +22,9 @@ priority: high
 >
 > **FOR HUMAN DEVELOPERS**: See [code-standards.md](code-standards.md) for detailed reference
 
-**Last Updated**: 2025-11-05 16:35:00
+**Last Updated**: 2026-11-04
 **Purpose**: Ensure all AI-generated code meets project quality standards
-**Target Audience**: Claude Code AI agents
+**Target Audience**: Codex and Claude coding agents
 
 ---
 
@@ -45,6 +45,7 @@ You are a **code quality enforcer** for the DuLiDay WeChat Service.
 When generating code, you MUST follow:
 
 - ✅ **TypeScript Standards** → [code-standards.md#typescript-standards](code-standards.md#typescript-standards)
+- ✅ **Protocol Contracts and Refactor Completion** → [code-standards.md#protocol-contracts-and-refactor-completion](code-standards.md#protocol-contracts-and-refactor-completion)
 - ✅ **NestJS Best Practices** → [code-standards.md#nestjs-best-practices](code-standards.md#nestjs-best-practices)
 - ✅ **Code Style & Formatting** → [code-standards.md#code-style--formatting](code-standards.md#code-style--formatting)
 - ✅ **Naming Conventions** → [code-standards.md#naming-conventions](code-standards.md#naming-conventions)
@@ -119,6 +120,15 @@ Before presenting code, verify:
 - [ ] No unused variables/imports
 - [ ] Functions under 50 lines
 - [ ] Meaningful names (no `data1`, `temp`, `x`)
+
+协议与运行时改造另按 [详细规范](code-standards.md#protocol-contracts-and-refactor-completion) 核对；不适用项说明原因，不能预先勾选：
+
+- [ ] 封闭值域、派生类型、运行时校验共用领域定义；开放值与不同语义未误合并
+- [ ] 已检索本次改造的完整调用链，同类问题已闭环；保留项有明确理由
+- [ ] 独立协议样本验证数据库、JSON、Redis、队列与请求身份兼容，非同源期望值自证
+- [ ] 兼容分支有进入/退出条件；替代后的失效实现已回收，旧执行及回滚义务仍受保护
+- [ ] 重试预算计数口径清楚；未知结果、外部成功与本地补账的处理符合真实接口契约
+- [ ] 验证对应最终源码和受影响边界，区分隔离测试、真实业务与未验证范围
 
 ### Step 4: Present Clean Code
 
