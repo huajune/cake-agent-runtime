@@ -60,6 +60,8 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
   let cityAttestation: CityAttestation | undefined;
   let jobListQuerySignature: string | undefined;
   let scheduleConstraint: TurnLedgerSnapshot['jobs']['scheduleConstraint'];
+  const collectionAnswers: NonNullable<TurnLedgerSnapshot['jobs']['collectionAnswers']>[number][] =
+    [];
 
   const ledger: TurnLedger = {
     get mentionedBrands() {
@@ -101,6 +103,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
       },
       get scheduleConstraint() {
         return scheduleConstraint;
+      },
+      get collectionAnswers() {
+        return collectionAnswers.map((answer) => ({ ...answer }));
       },
       bookingSucceeded: undefined,
       postBookingGroupInvite: undefined,
@@ -175,6 +180,15 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     recordScheduleConstraint(constraint) {
       scheduleConstraint = structuredClone(constraint);
     },
+    recordCollectionAnswers(jobId, answers) {
+      const kept = collectionAnswers.filter((answer) => answer.jobId !== jobId);
+      collectionAnswers.splice(
+        0,
+        collectionAnswers.length,
+        ...kept,
+        ...answers.filter((answer) => answer.jobId === jobId).map((answer) => ({ ...answer })),
+      );
+    },
     markJobInvalidated(jobId) {
       if (!invalidatedJobIds.includes(jobId)) invalidatedJobIds.push(jobId);
     },
@@ -213,6 +227,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
             ? {}
             : { collectionReadyJobId: ledger.jobs.collectionReadyJobId }),
           jobListExecuted: ledger.jobs.jobListExecuted,
+          collectionAnswers: collectionAnswers.map((answer) => ({ ...answer })),
           ...(scheduleConstraint === undefined
             ? {}
             : { scheduleConstraint: structuredClone(scheduleConstraint) }),

@@ -17,6 +17,7 @@
  * discrimination-leaks 与岗位渲染读的是同一份常量。本文件一个敏感词都不自己写。
  */
 
+// business-rules: ID-08, SH-03, SH-04
 import { containsSensitiveScreeningText } from './sensitive-screening';
 import type { ContractFieldDef } from './form.types';
 
@@ -62,6 +63,10 @@ export const RESTRICTED_REJECTION_FORBIDDEN: readonly string[] = [
 const OPEN_TITLE_FAMILIES =
   /年龄|性别|学历|文化程度|健康证|身高|体重|在岗多久|预计在岗|工作时长|排班|上班时间/u;
 
+/** 岗位契约的公开工期/班次字段名；只分类元数据，不解析候选人的自然语言。 */
+const WORK_CONDITION_TITLE_FAMILIES =
+  /工期|在岗多久|预计在岗|工作时长|要求做到|排班|上班时间|可工作时间段|是否在岗/u;
+
 /**
  * 判定某个契约字段的不合格原因披露级别。
  *
@@ -79,7 +84,11 @@ export function disclosureLevelOf(field: ContractFieldDef): DisclosureLevel {
   if (containsSensitiveScreeningText(field.labelTitle)) return 'restricted';
   if (containsSensitiveScreeningText(field.labelInstructions ?? '')) return 'restricted';
   // ③ 可明说白名单：岗位卡本来就印着的硬性条件。
-  if (OPEN_TITLE_FAMILIES.test(field.labelTitle)) return 'open';
+  if (
+    OPEN_TITLE_FAMILIES.test(field.labelTitle) ||
+    WORK_CONDITION_TITLE_FAMILIES.test(field.labelTitle)
+  )
+    return 'open';
   // ④ 默认禁明说。
   return 'restricted';
 }
@@ -87,6 +96,11 @@ export function disclosureLevelOf(field: ContractFieldDef): DisclosureLevel {
 /** 该字段的拒绝理由是否可以对候选人明说。 */
 export function canDiscloseRejection(field: ContractFieldDef): boolean {
   return disclosureLevelOf(field) === 'open';
+}
+
+/** 可公开的工期/班次问题不一定带筛选；是否为硬门槛另由 carriesScreening 判定。 */
+export function isPublicWorkConditionField(field: ContractFieldDef): boolean {
+  return WORK_CONDITION_TITLE_FAMILIES.test(field.labelTitle) && canDiscloseRejection(field);
 }
 
 /**

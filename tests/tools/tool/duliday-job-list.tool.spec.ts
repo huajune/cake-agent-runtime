@@ -2889,6 +2889,65 @@ describe('buildJobListTool', () => {
   });
 
   describe('班次条件引用与事实核对', () => {
+    it('引用 precheck 已验证的本人表单答案，免抄原话，并在后续查岗继续保留有效时间条件', async () => {
+      const context = createToolContext({ turnInput: { currentUserMessage: '帮我看看其他岗位' } });
+      context.ledger.recordCollectionAnswers(529230, [
+        {
+          id: 'verified-availability',
+          jobId: 529230,
+          labelId: 741,
+          labelTitle: '每天可工作时间段',
+          value: '07:00-16:00',
+          quote: '每天可工作时间段：（07:00-16:00',
+        },
+      ]);
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          scheduledJob(1, '固定排班', [['08:00', '15:00']]),
+          scheduledJob(2, '固定排班', [['16:00', '23:00']]),
+        ],
+        total: 2,
+      });
+      const query = {
+        ...defaultInput,
+        cityNameList: ['北京'],
+        candidateScheduleConstraint: { availableWindow: { start: '07:00', end: '16:00' } },
+        candidateScheduleCitation: { collectionAnswerIds: ['verified-availability'] },
+      };
+      const built = buildJobListTool(
+        mockSpongeService as never,
+        { recordEvent: jest.fn() } as never,
+        { geocode: jest.fn() } as never,
+      )(context);
+      const run = (input: Record<string, unknown>) =>
+        built.execute!(
+          input as never,
+          { toolCallId: 'form-reuse', messages: [] } as never,
+        ) as ReturnType<typeof executeTool>;
+      const result = await run(query);
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta.scheduleFilter).toMatchObject({
+        applied: true,
+        candidateConstraint: { availableWindow: { start: '07:00', end: '16:00' } },
+      });
+      expect(context.ledger.jobs.scheduleConstraint).not.toHaveProperty('onlyWeekends');
+      const next = await run({ ...defaultInput, cityNameList: ['北京'] });
+      expect(next.resultCount).toBe(1);
+      expect(next.queryMeta.scheduleFilter.applied).toBe(true);
+    });
+
+    it('无效表单引用不能更改班次或调用岗位接口，回执提供修复出口', async () => {
+      const context = createToolContext({ turnInput: { currentUserMessage: '继续查岗' } });
+      const result = await executeTool(context, {
+        ...defaultInput,
+        candidateScheduleConstraint: { onlyWeekends: true },
+        candidateScheduleCitation: { collectionAnswerIds: ['expired'] },
+      } as typeof defaultInput);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(context.ledger.jobs.scheduleConstraint).toBeUndefined();
+      expect(result.verifiedWorkAnswers).toEqual([]);
+    });
     it('已有标签重排和去重不要求本轮重新提供班次引用', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [scheduledJob(1, '固定排班', [['06:00', '10:00']])],

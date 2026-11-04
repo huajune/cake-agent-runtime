@@ -33,6 +33,19 @@
 
 ## 居所索引（终态）
 
+2026-11-04 工期/班次收资 BadCase（trace `batch_6aea9566ce406a6aee2ccfb0_1793759532338`，audit 459023）：
+按用户裁定，`collection-template.renderer.ts#renderCollectionTemplate` 从真实筛选契约生成公开要求，
+完整保留真实回答选项；普通选择题及单个可选项不自行升级为硬门槛。发送协议仍唯一居于
+`duliday-interview-precheck.tool.ts#COLLECTION_TEMPLATE_SEND_INSTRUCTION`。
+`disclosure-policy.ts` 补公开工期/班次分类，RESTRICTED 与敏感红线优先级不变。
+查岗的来源协议居于 `candidateScheduleCitation`，可引用 precheck 已核验本人答案的版本 ID；
+公证居于 `tools/job-list/schedule-evidence.ts#verifyScheduleCitation`，不扩张到开放语义判决。
+表单问题与排他性限制的区别居于 `resolution/schedule/types.ts` 的字段契约与
+`SCHEDULE_CONSTRAINT_GUIDANCE`；precheck 在已核验答案的回执附
+`verified-work-answers.ts#VERIFIED_WORK_ANSWERS_INSTRUCTION`，就近提醒引用与语义边界。
+首次推荐保留最短工期仍居于 job-list description，未配置时不补要求。
+关联 IB-08、ID-08、SH-03/04/05；持续有效。用户暂不调整投诉回应，海绵配置问题另交运营核对。
+
 2026-10-23 全主题维护重构（基线 `12090e6f`，本次结构调整、无新增业务裁定）：
 跨工具手册按 [七个业务主题](business-rules/README.md) 拆成 `procedural/rules/{ib,sw,id,sh,geo,gp,ho}.md`，
 `candidate-consultation.md` 保留共通规程与片段顺序。加载后模型可见正文仍为 55,988 UTF-8 字节，

@@ -1,6 +1,10 @@
-// business-rules: IB-01, IB-07, IB-08, IB-10, IB-11, ID-06
+// business-rules: IB-01, IB-07, IB-08, IB-10, IB-11, ID-06, SH-03, SH-05
 import { toErrorMessage } from '@infra/utils/error.util';
 import type { CollectionFormService } from '@tools/collection/collection-form.service';
+import {
+  collectVerifiedWorkAnswers,
+  VERIFIED_WORK_ANSWERS_INSTRUCTION,
+} from '@tools/collection/verified-work-answers';
 import type { LongTermService } from '@memory/long-term/long-term.service';
 import { Logger } from '@nestjs/common';
 import {
@@ -110,7 +114,7 @@ const logger = new Logger('duliday_interview_precheck');
  * 状态机的标准清单判定同口径：已预填值不算再次发问（见 collection-core）。
  */
 export const COLLECTION_TEMPLATE_SEND_INSTRUCTION =
-  '照发 bookingChecklist.templateText：标签逐字用原文，不得增删、重排字段行，不要另起一套收资清单；会话中候选人已明确说过的值可预填。首次收资时把 interview.bookableSlots 作为独立的「可约面试时间」区块一并展示，允许候选人一轮同时回复资料和时间。候选人发来值的**当轮**立即经 fieldValueProposals 提交本工具——提交字段值提案不等于提交预约；**禁止**在提交前自行复述资料向候选人讨确认。';
+  '照发 bookingChecklist.templateText：保留开头的公开报名要求和如实回答提示；标签逐字用原文，不得增删、重排字段行，不要另起一套收资清单；会话中候选人已明确说过的值可预填。普通选择题不额外改成硬要求，不删除不满足要求的真实回答选项，也不把候选人答案改成符合要求的值。首次收资时把 interview.bookableSlots 作为独立的「可约面试时间」区块一并展示，允许候选人一轮同时回复资料和时间。候选人发来值的**当轮**立即经 fieldValueProposals 提交本工具——提交字段值提案不等于提交预约；**禁止**在提交前自行复述资料向候选人讨确认。';
 
 /**
  * 代报多人时下一人的入口纪律（2026-10-19，badcase x1soque5）：第一人 booking 成功后，模型曾凭聊天记录
@@ -761,17 +765,26 @@ export function buildInterviewPrecheckTool(
             });
           }
 
+          const verifiedWorkAnswers =
+            formRun.form.candidateScope === 'additional'
+              ? []
+              : (context.ledger.jobs.collectionAnswers ?? []).filter(
+                  (answer) => answer.jobId === jobId,
+                );
           return stripNullish({
             success: true,
             nextAction,
             collectionVerdict: formRun.verdict,
             candidateScope: formRun.form.candidateScope ?? 'primary',
-            _replyInstruction: replyInstruction(
-              nextAction,
-              formRun,
-              duplicateBookingGuard,
-              allSlotsRequireManualConfirmation,
-            ),
+            _replyInstruction: [
+              replyInstruction(
+                nextAction,
+                formRun,
+                duplicateBookingGuard,
+                allSlotsRequireManualConfirmation,
+              ),
+              ...(verifiedWorkAnswers.length ? [VERIFIED_WORK_ANSWERS_INSTRUCTION] : []),
+            ].join(' '),
             duplicateBookingGuard,
             job: {
               jobId,
@@ -839,7 +852,9 @@ export function buildInterviewPrecheckTool(
                   : undefined,
               templateText: formRun.result.template.templateText,
               screeningFields: formRun.result.template.screeningFields,
+              publicRequirements: formRun.result.template.publicRequirements,
             },
+            verifiedWorkAnswers: verifiedWorkAnswers.length ? verifiedWorkAnswers : undefined,
             unmatchedAnswers: formRun.unmatchedAnswers,
             rejectedAnswers:
               formRun.rejectedAnswers.length > 0 ? formRun.rejectedAnswers : undefined,
@@ -944,6 +959,9 @@ async function runForm(params: {
     groundedCandidatePhone,
     groundedCandidatePhone ? { candidateScope: 'additional' } : undefined,
   );
+  if (form.candidateScope !== 'additional') {
+    params.context.ledger.recordCollectionAnswers(params.jobId, []);
+  }
   if (params.contractAccess === 'query') {
     form = params.deps.collectionForms.refreshContractSnapshot(form, mapped.fields);
   } else if (!form.contractSnapshot) {
@@ -1076,6 +1094,12 @@ async function runForm(params: {
       renderRecapRedeliveryText(persisted, contract, { jobLabel: params.jobLabel }) ?? undefined;
   }
   await params.deps.collectionForms.persist(scope, persisted);
+  if (persisted.candidateScope !== 'additional') {
+    params.context.ledger.recordCollectionAnswers(
+      params.jobId,
+      collectVerifiedWorkAnswers(persisted, contract),
+    );
+  }
   emitAudits(params.deps, params.context, params.jobId, result.audits, contract);
 
   return {
