@@ -27,6 +27,7 @@ export interface TurnContext
   extends Pick<
     GeneratorInvokeParams,
     | 'logicalTurnId'
+    | 'toolCallCounts'
     | 'inputOccurredAt'
     | 'scenario'
     | 'imageMessageIds'

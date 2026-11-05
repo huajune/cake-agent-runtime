@@ -70,6 +70,7 @@ const MAX_REPLAY_ATTEMPTS = RUNTIME_RETRY_LIMITS.pendingInputReplays;
 type VisualMessageTypes = Record<string, MessageType.IMAGE | MessageType.EMOTION>;
 
 interface AgentCallParams {
+  toolCallCounts?: Map<string, number>;
   logicalTurnId?: string;
   inputOccurredAt?: string;
   sessionId: string;
@@ -318,6 +319,7 @@ export class ReplyWorkflowService {
       params.primaryMessage.botUserId?.trim();
 
     const agentCallParams = {
+      toolCallCounts: new Map<string, number>(),
       sessionId: chatId,
       logicalTurnId: durableTurn?.logicalTurnId,
       inputOccurredAt: durableTurn?.inputOccurredAt,
@@ -1308,6 +1310,7 @@ export class ReplyWorkflowService {
         context: {
           callerKind: CallerKind.WECOM,
           logicalTurnId: params.logicalTurnId,
+          toolCallCounts: params.toolCallCounts,
           inputOccurredAt: params.inputOccurredAt,
           messageId,
           scenario,

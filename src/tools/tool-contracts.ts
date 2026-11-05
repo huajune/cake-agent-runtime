@@ -90,6 +90,10 @@ const dynamicContracts = new Map<string, ToolActionContract>();
 const policySets: Array<{ predicate: (value: ToolActionContract) => boolean; names: Set<string> }> =
   [];
 
+export function getToolCallLimit(name: string): number {
+  return getToolContract(name)?.maxCallsPerTurn ?? DEFAULT_TOOL_CALL_LIMIT;
+}
+
 export function getToolContract(name: string): ToolActionContract | undefined {
   return getBuiltInToolContract(name) ?? dynamicContracts.get(name);
 }

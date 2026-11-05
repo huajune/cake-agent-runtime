@@ -27,6 +27,7 @@ export interface WorkingMemory {
   conversationCorpusBlocks: CorpusBlock[];
   memoryLoadWarning?: string;
   tools: ToolSet;
+  toolCallCounts?: ReadonlyMap<string, number>;
   corpId: string;
   userId: string;
   sessionId: string;
@@ -121,8 +122,9 @@ export class PreparationService {
       const composed = measurePhase(phaseDurationsMs, 'compile_prompt', () =>
         this.context.compose(resolved.promptModel),
       );
+      const toolCallCounts = params.toolCallCounts ?? new Map<string, number>();
       const runtime = measurePhase(phaseDurationsMs, 'build_tools', () =>
-        this.toolRuntimeBuilder.build({ resolved }),
+        this.toolRuntimeBuilder.build({ resolved, toolCallCounts }),
       );
 
       const finalPrompt = composed.systemPrompt;
@@ -157,6 +159,7 @@ export class PreparationService {
         conversationCorpusBlocks,
         memoryLoadWarning: sources.memory._warnings?.join('; '),
         tools: runtime.tools,
+        toolCallCounts,
         corpId: params.corpId,
         userId: params.userId,
         sessionId: params.sessionId,
