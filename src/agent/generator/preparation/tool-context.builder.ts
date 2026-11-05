@@ -3,6 +3,8 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
+import { getToolCallLimit } from '@tools/tool-contracts';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type {
   ToolArchiveContext,
   ToolBuildContext,
@@ -41,6 +43,7 @@ import type {
 } from '@memory/short-term/short-term.types';
 import { stripTimeContext } from '@resolution/signal/markers';
 import {
+  buildToolCallLimitNotice,
   computeResultCount,
   computeToolCallStatus,
   extractToolApiCode,
@@ -421,6 +424,7 @@ export function wrapToolsWithTiming(
   tools: ToolSet,
   timings: Map<string, number>,
   tracer?: AgentTracerService,
+  toolCallCounts = new Map<string, number>(),
 ): ToolSet {
   const wrapped: ToolSet = {};
   for (const [name, toolDef] of Object.entries(tools)) {
@@ -435,10 +439,18 @@ export function wrapToolsWithTiming(
         const startedAt = Date.now();
         const options = args[1] as { toolCallId?: string } | undefined;
         try {
-          const result = await (execute as (...callArgs: unknown[]) => unknown).apply(
-            toolDef,
-            args,
-          );
+          const limit = getToolCallLimit(name);
+          const used = toolCallCounts.get(name) ?? 0;
+          const exhausted = used >= limit;
+          // Reserve before the first await. Several SDK calls can start within one step.
+          if (!exhausted) toolCallCounts.set(name, used + 1);
+          const result = exhausted
+            ? buildToolError({
+                errorType: TOOL_ERROR_TYPES.TURN_CALL_LIMIT_REACHED,
+                replyInstruction: buildToolCallLimitNotice([name], limit),
+                details: { toolExecuted: false },
+              })
+            : await (execute as (...callArgs: unknown[]) => unknown).apply(toolDef, args);
           const durationMs = Date.now() - startedAt;
           recordToolTiming(name, timings, options, durationMs);
           const resultCount = computeResultCount(result);
@@ -448,7 +460,7 @@ export function wrapToolsWithTiming(
             durationMs,
             resultCount,
             status: computeToolCallStatus(result, resultCount, undefined, undefined, name),
-            sideEffect: SIDE_EFFECT_TOOLS.has(name),
+            sideEffect: !exhausted && SIDE_EFFECT_TOOLS.has(name),
             errorType: extractToolErrorType(result),
             apiCode: extractToolApiCode(result),
           });
@@ -517,7 +529,10 @@ export class ToolRuntimeBuilderService {
     @Optional() private readonly tracer?: AgentTracerService,
   ) {}
 
-  build(input: { resolved: ResolvedTurnContext }): ToolRuntime {
+  build(input: {
+    resolved: ResolvedTurnContext;
+    toolCallCounts?: Map<string, number>;
+  }): ToolRuntime {
     const { resolved } = input;
     const ledger = createTurnLedger(resolved.ledgerSeed);
     if (resolved.initialGeoResolution) {
@@ -542,7 +557,12 @@ export class ToolRuntimeBuilderService {
     const { scenario, mode, allowedToolNames } = resolved.toolModel.selection;
     const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
     const selectedTools = resolveToolsForMode(scenarioTools, mode, allowedToolNames);
-    const tools = wrapToolsWithTiming(selectedTools, toolExecutionTimings, this.tracer);
+    const tools = wrapToolsWithTiming(
+      selectedTools,
+      toolExecutionTimings,
+      this.tracer,
+      input.toolCallCounts,
+    );
     return {
       tools,
       ledger,

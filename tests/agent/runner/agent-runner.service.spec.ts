@@ -832,6 +832,9 @@ describe('AgentRunnerService.runInboundTurn', () => {
       );
       expect(generator.invoke).toHaveBeenCalledTimes(2);
       expect(seen[1]).toEqual(seen[0]); // 同上下文：不注入反馈、不裁工具
+      const [first, replan] = generator.invoke.mock.calls;
+      expect(first[0].toolCallCounts).toBeInstanceOf(Map);
+      expect(replan[0].toolCallCounts).toBe(first[0].toolCallCounts);
       expect(replyRepairAgent.repair).not.toHaveBeenCalled();
       // 二审对账的是重生成的工具轨迹，不是首版的零工具轨迹
       expect(outputGuard.check.mock.calls[1][0]).toEqual(

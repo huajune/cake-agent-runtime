@@ -153,6 +153,10 @@
 
 - 状态：现行基线
 - 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
+- 落点：`src/tools/booking/bookable-slot.util.ts#buildBookableSlots`
+- 落点：`src/tools/booking/booking-guards.util.ts#runBookingScheduleAndNameGuards`
+- 验证：`tests/tools/booking/bookable-slot.util.spec.ts`
+- 验证：`tests/tools/booking/booking-guards.util.spec.ts`
 - 落点：`src/tools/duliday-interview-precheck.tool.ts#buildInterviewPrecheckTool`
 - 落点：`src/tools/duliday-interview-booking.tool.ts#buildInterviewBookingTool`
 - 落点：`src/tools/booking/interview-window.util.ts#findSameDayCutoffViolation`
@@ -223,6 +227,8 @@
 - 换店是否自动取消旧单属于新业务行为；当前按取消工具契约执行，不由重构推导为自动取消。
 
 ## 变更记录
+
+- 2026-11-05：预检回放在 18:00 列出了当天 16:30 已结束的面试。结构化时段、候选人选项和预约入口共同排除已结束的场次，保留仍开放的场次及只标日期的人工确认路径。
 
 - 2026-11-04：根据用户对 audit 459023 的修正区分公开要求与普通收集问题；模板保留真实回答出口，要求与选项分别呈现。
 

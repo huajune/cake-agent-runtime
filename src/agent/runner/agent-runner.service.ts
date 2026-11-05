@@ -234,14 +234,18 @@ export class AgentRunnerService {
     params: GeneratorInvokeParams,
     ctx: ReviewContext,
   ): Promise<ReviewedRunResult> {
-    const first = await this.generator.invoke(params);
+    const turnParams = {
+      ...params,
+      toolCallCounts: params.toolCallCounts ?? new Map<string, number>(),
+    };
+    const first = await this.generator.invoke(turnParams);
     const generations = [first];
     const retainGeneration = (result: GeneratorRunResult) => {
       generations.push(result);
       return result;
     };
     try {
-      return await this.reviewGeneratedResult(params, ctx, first, retainGeneration);
+      return await this.reviewGeneratedResult(turnParams, ctx, first, retainGeneration);
     } catch (error) {
       throw attachReplayEvidence(
         error,
@@ -1249,6 +1253,7 @@ export class AgentRunnerService {
       thinking: context?.thinking,
       shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
       hasNewerUserInput: context?.hasNewerUserInput,
+      toolCallCounts: context?.toolCallCounts,
       onPreparedRequest: context?.onPreparedRequest,
     };
 

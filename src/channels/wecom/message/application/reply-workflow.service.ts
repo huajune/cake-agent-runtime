@@ -341,6 +341,7 @@ export class ReplyWorkflowService {
         const { messages: newerMessages } = await this.fetchPendingSinceAgentStart(
           chatId,
           consumedPending,
+          allMessages,
         );
         return newerMessages.length > 0;
       },
@@ -418,7 +419,7 @@ export class ReplyWorkflowService {
         // fromIndex 必须是 worker 持有的 consumedPending 偏移，否则会把已经在 allMessages
         // 里的消息再读一遍。
         const { messages: newMessages, snapshotSize: replaySnapshotSize } =
-          await this.fetchPendingSinceAgentStart(chatId, consumedPending);
+          await this.fetchPendingSinceAgentStart(chatId, consumedPending, allMessages);
         consumedPending += replaySnapshotSize;
         if (newMessages.length === 0) {
           break;
@@ -1163,8 +1164,10 @@ export class ReplyWorkflowService {
   private async callAgentWithVisualCompatibilityFallback(
     params: AgentCallParams,
   ): Promise<AgentInvokeResult> {
+    // One allowance per input snapshot; a visual retry processes the same messages.
+    const toolCallCounts = new Map<string, number>();
     try {
-      return await this.callAgent(params);
+      return await this.callAgent(params, toolCallCounts);
     } catch (error) {
       if (hasReplayEvidence(error) || RUNTIME_RETRY_LIMITS.imageCompatibilityRetries < 1) {
         this.logger.warn(
@@ -1194,12 +1197,15 @@ export class ReplyWorkflowService {
         throw error;
       }
 
-      return this.callAgent({
-        ...params,
-        imageUrls: undefined,
-        imageMessageIds: undefined,
-        visualMessageTypes: undefined,
-      });
+      return this.callAgent(
+        {
+          ...params,
+          imageUrls: undefined,
+          imageMessageIds: undefined,
+          visualMessageTypes: undefined,
+        },
+        toolCallCounts,
+      );
     }
   }
 
@@ -1283,7 +1289,10 @@ export class ReplyWorkflowService {
     return true;
   }
 
-  private async callAgent(params: AgentCallParams): Promise<AgentInvokeResult> {
+  private async callAgent(
+    params: AgentCallParams,
+    toolCallCounts: Map<string, number>,
+  ): Promise<AgentInvokeResult> {
     const {
       scenario = 'candidate-consultation',
       messageId,
@@ -1308,6 +1317,7 @@ export class ReplyWorkflowService {
         context: {
           callerKind: CallerKind.WECOM,
           logicalTurnId: params.logicalTurnId,
+          toolCallCounts,
           inputOccurredAt: params.inputOccurredAt,
           messageId,
           scenario,
@@ -1655,13 +1665,22 @@ export class ReplyWorkflowService {
   private async fetchPendingSinceAgentStart(
     chatId: string,
     fromIndex: number,
+    currentMessages: EnterpriseMessageCallbackDto[],
   ): Promise<{ messages: EnterpriseMessageCallbackDto[]; snapshotSize: number }> {
     try {
       const { messages, snapshotSize } = await this.simpleMergeService.claimPendingSnapshot(
         chatId,
         fromIndex,
       );
-      return { messages, snapshotSize };
+      // 重投的原消息仍计入 Redis ACK 长度，只有新身份才能触发重生成。
+      const knownIds = new Set(currentMessages.map((message) => message.messageId));
+      const newMessages = messages.filter(({ messageId }) => {
+        if (!messageId) return true;
+        if (knownIds.has(messageId)) return false;
+        knownIds.add(messageId);
+        return true;
+      });
+      return { messages: newMessages, snapshotSize };
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.warn(

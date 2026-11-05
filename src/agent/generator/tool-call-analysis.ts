@@ -7,7 +7,7 @@ import { asRecord } from '@infra/utils/object.util';
 import {
   BUILT_IN_TOOL_CONTRACTS,
   DEFAULT_TOOL_CALL_LIMIT,
-  getToolContract,
+  getToolCallLimit,
   toolNamesMatching,
 } from '@tools/tool-contracts';
 import type { AgentToolCall } from './generator.types';
@@ -524,12 +524,14 @@ export function buildSideEffectBlockNotice(blockedTools: string[], steps?: StepL
  *
  * 用于在 prepareStep 中动态屏蔽，让 LLM 在第 4 次想调同一工具时被强制收敛。
  */
-export function findToolsExceedingLimit(steps: StepLike[], limit?: number): string[] {
-  const counts = countToolCallsByName(steps);
+export function findToolsExceedingLimit(
+  steps: StepLike[],
+  limit?: number,
+  counts: ReadonlyMap<string, number> = countToolCallsByName(steps),
+): string[] {
   const exceeded: string[] = [];
   for (const [name, count] of counts.entries()) {
-    if (count >= (limit ?? getToolContract(name)?.maxCallsPerTurn ?? MAX_SAME_TOOL_CALLS_PER_TURN))
-      exceeded.push(name);
+    if (count >= (limit ?? getToolCallLimit(name))) exceeded.push(name);
   }
   return exceeded;
 }
@@ -546,7 +548,7 @@ export function buildToolCallLimitNotice(
   if (blockedTools.length === 0) return '';
   const lines = blockedTools.map(
     (name) =>
-      `⚠️ 系统拦截：工具 \`${name}\` 在本轮已达调用上限（${limit} 次），不可再继续调用。请基于已有工具结果直接收敛回复；如确实未能拿到可用数据，应如实告知候选人"暂时没找到符合条件的岗位"，不要再换 filter 硬试。`,
+      `⚠️ 系统拦截：工具 \`${name}\` 在本轮已达调用上限（${limit} 次），不可再继续调用。请基于已有工具结果回复，只陈述已核实的信息。如需候选人补充资料，只询问缺少的信息。`,
   );
   return lines.join('\n');
 }

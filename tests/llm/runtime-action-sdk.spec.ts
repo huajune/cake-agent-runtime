@@ -3,7 +3,9 @@ import { MockLanguageModelV3 } from 'ai/test';
 import { z } from 'zod';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ReliableService } from '@providers/reliable.service';
-import { replayBlockingStatus } from '@agent/generator/tool-call-analysis';
+import { findToolsExceedingLimit, replayBlockingStatus } from '@agent/generator/tool-call-analysis';
+import { wrapToolsWithTiming } from '@agent/generator/preparation/tool-context.builder';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type { AgentError } from '@shared-types/agent-error.types';
 
 const toolName = 'duliday_interview_booking';
@@ -12,14 +14,14 @@ const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
   outputTokens: { total: 1, text: 1, reasoning: 0 },
 };
-const call = (id: string) => ({
+const call = (id: string, name: string) => ({
   type: 'tool-call' as const,
   toolCallId: id,
-  toolName,
+  toolName: name,
   input: '{}',
 });
-const toolReply = (ids: string[]) => ({
-  content: ids.map(call),
+const toolReply = (ids: string[], name = toolName) => ({
+  content: ids.map((id) => call(id, name)),
   finishReason: { unified: 'tool-calls' as const, raw: 'tool_calls' },
   usage,
   warnings: [],
@@ -41,6 +43,104 @@ function executor(model: MockLanguageModelV3) {
 }
 
 describe('real AI SDK / local fake provider fault injection (no network)', () => {
+  it.each([
+    { name: 'duliday_job_list', batches: [2, 2], permitted: 3 },
+    { name: 'duliday_job_list', batches: [1, 1, 1, 1], permitted: 3 },
+    { name: 'duliday_interview_precheck', batches: [1, 1, 1], permitted: 2 },
+  ])(
+    'bounds actual $name executions even if the model ignores activeTools',
+    async ({ name, batches, permitted }) => {
+      const counts = new Map<string, number>();
+      const execute = jest.fn().mockResolvedValue({ success: true });
+      const tools = wrapToolsWithTiming(
+        {
+          [name]: tool({ inputSchema: z.object({}), execute }),
+        },
+        new Map(),
+        undefined,
+        counts,
+      );
+      const model = new MockLanguageModelV3({
+        doGenerate: [
+          ...batches.map((n, i) =>
+            toolReply(
+              Array.from({ length: n }, (_, j) => `${i}-${j}`),
+              name,
+            ),
+          ),
+          textReply,
+        ],
+      });
+      const result = await executor(model).generate({
+        messages: [{ role: 'user', content: '测试' }],
+        tools,
+        stopWhen: stepCountIs(8),
+        prepareStep: ({ steps }) => ({
+          activeTools: Object.keys(tools).filter(
+            (key) => !findToolsExceedingLimit(steps, undefined, counts).includes(key),
+          ),
+        }),
+      });
+      expect(execute).toHaveBeenCalledTimes(permitted);
+      expect(counts.get(name)).toBe(permitted);
+      expect(result.steps.flatMap((step) => step.toolResults).at(-1)?.output).toMatchObject({
+        errorType: TOOL_ERROR_TYPES.TURN_CALL_LIMIT_REACHED,
+        toolExecuted: false,
+      });
+    },
+  );
+
+  it('preserves the precheck budget across a model retry and a new toolset in the same turn', async () => {
+    const name = 'duliday_interview_precheck';
+    const counts = new Map<string, number>();
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce({
+        success: false,
+        errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_PROVIDED,
+      })
+      .mockResolvedValue({ success: true, nextAction: 'ready_to_book' });
+    const toolsForTurn = (budget: Map<string, number>) =>
+      wrapToolsWithTiming(
+        {
+          [name]: tool({ inputSchema: z.object({}), execute }),
+        },
+        new Map(),
+        undefined,
+        budget,
+      );
+    let step = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        step++;
+        if (step === 3) throw new Error('provider timeout after completed prechecks');
+        return step <= 4 ? toolReply([String(step)], name) : textReply;
+      },
+    });
+    const options = {
+      messages: [{ role: 'user' as const, content: '测试' }],
+      stopWhen: stepCountIs(7),
+      config: { baseBackoffMs: 0 },
+    };
+    const first = await executor(model).generate({ ...options, tools: toolsForTurn(counts) });
+    expect(first.steps.flatMap((s) => s.toolResults).map((r) => r.output)).toEqual([
+      expect.objectContaining({ success: false }),
+      expect.objectContaining({ success: true, nextAction: 'ready_to_book' }),
+      expect.objectContaining({ errorType: TOOL_ERROR_TYPES.TURN_CALL_LIMIT_REACHED }),
+    ]);
+
+    const requestAgain = (budget: Map<string, number>) =>
+      executor(
+        new MockLanguageModelV3({
+          doGenerate: [toolReply(['again'], name), textReply],
+        }),
+      ).generate({ ...options, tools: toolsForTurn(budget) });
+    await requestAgain(counts);
+    expect(execute).toHaveBeenCalledTimes(2);
+    await requestAgain(new Map());
+    expect(execute).toHaveBeenCalledTimes(3);
+  });
+
   it('parallel duplicate tool calls dispatch once', async () => {
     const model = new MockLanguageModelV3({ doGenerate: [toolReply(['a', 'b']), textReply] });
     const execute = jest
