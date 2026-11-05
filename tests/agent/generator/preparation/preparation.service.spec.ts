@@ -137,7 +137,11 @@ describe('PreparationService orchestration', () => {
     expect(model.identity.nickname).toBe('小蛋糕');
     expect(harness.toolRuntimeBuilder.build).toHaveBeenCalledWith({
       resolved: expect.objectContaining({ promptModel: model }),
+      toolCallCounts: expect.any(Map),
     });
+    expect(result.toolCallCounts).toBe(
+      harness.toolRuntimeBuilder.build.mock.calls[0][0].toolCallCounts,
+    );
     expect(result).toEqual(
       expect.objectContaining({
         finalPrompt: 'SYSTEM',
