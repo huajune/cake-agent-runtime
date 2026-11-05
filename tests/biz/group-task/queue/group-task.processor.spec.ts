@@ -387,6 +387,35 @@ describe('GroupTaskProcessor', () => {
       expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
     });
 
+    it.each([true, false])(
+      '摘标后的冻结任务按未发送证据收口（已确认=%s）',
+      async (definitivelyUnsent) => {
+        redisMock.get.mockResolvedValue({ message: 'hi', summary: 'summary' });
+        groupResolver.hasCurrentTag.mockResolvedValue(false);
+        scheduledActions.executePart.mockRejectedValue(
+          new GroupTaskDeferredError('permission_or_freshness_changed', definitivelyUnsent),
+        );
+        const run = invokeHandler(GroupTaskJobName.SEND, {
+          ...baseSend,
+          type: GroupTaskType.ORDER_GRAB,
+          dispatchPlan: {
+            corpId: 'corp',
+            logicalTurnId: 'original',
+            occurredAt: new Date().toISOString(),
+            parts: [{ id: 'main', messageType: 7, payload: { text: 'hi' }, delayMs: 0 }],
+          },
+        });
+        if (definitivelyUnsent) await expect(run).resolves.toBeUndefined();
+        else await expect(run).rejects.toBeInstanceOf(GroupTaskDeferredError);
+        expect(redisMock.setex).toHaveBeenCalledWith(
+          groupTaskResultKey(baseSend.execId, baseSend.group.imRoomId),
+          expect.any(Number),
+          expect.objectContaining({ status: definitivelyUnsent ? 'skipped' : 'pending' }),
+        );
+        expect(notificationSender.sendPreparedPart).not.toHaveBeenCalled();
+      },
+    );
+
     it('routes frozen parts through the action protocol and keeps an unknown extra pending', async () => {
       const parts = [
         { id: 'main', messageType: 7, payload: { text: 'original main' }, delayMs: 0 },

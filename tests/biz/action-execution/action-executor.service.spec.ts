@@ -195,6 +195,21 @@ describe('external action failure boundaries', () => {
     expect((await service.execute(intent, { dispatch, authorize })).status).toBe('blocked');
     expect(dispatch).not.toHaveBeenCalled();
   });
+
+  it('only reports no effect after cancellation is confirmed', async () => {
+    const { service, repository } = setup();
+    const dispatch = jest.fn();
+    repository.cancel.mockResolvedValueOnce(false);
+    const unknown = await service.execute(intent, { dispatch, authorize: async () => false });
+    expect(unknown.evidence).toBeUndefined();
+    const cancelled = await service.execute(intent, { dispatch, authorize: async () => false });
+    expect(cancelled).toMatchObject({
+      status: 'blocked',
+      dispatched: false,
+      evidence: { kind: 'definitive_no_effect', requestTerminated: true },
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
   it('does not dispatch when the claim expires or its final confirmation fails', async () => {
     const { service, repository } = setup();
     repository.validateClaim.mockResolvedValue(false);

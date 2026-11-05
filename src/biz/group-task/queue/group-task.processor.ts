@@ -446,6 +446,7 @@ export class GroupTaskProcessor implements OnModuleInit {
     await this.acquireBotDispatchLock(lockKey, lockOwner, group.groupName);
 
     let dispatchAttempted = false;
+    let eligible = true;
     try {
       // 等锁期间可能已有另一个 exec 完成了同群发送，锁内再查一次避免重复投递。
       if (!job.data.dispatchPlan && (await this.redisService.exists(dailyKey))) {
@@ -461,7 +462,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       }
 
       await this.waitForBotDispatchWindow(botId, group.groupName, sendDelayMs);
-      const eligible =
+      eligible =
         dryRun ||
         type !== GroupTaskType.ORDER_GRAB ||
         (await this.groupResolver.hasCurrentTag(group, this.orderGrabStrategy.tagPrefix));
@@ -527,6 +528,16 @@ export class GroupTaskProcessor implements OnModuleInit {
 
       this.logger.log(`[send] ✅ ${group.groupName}`);
     } catch (error) {
+      if (!eligible && error instanceof GroupTaskDeferredError && error.definitivelyUnsent) {
+        await this.writeGroupResult(execId, group.imRoomId, {
+          groupKey,
+          groupName: group.groupName,
+          status: 'skipped',
+          summary: '群已不再匹配抢单群标签，确认尚未发送',
+          updatedAt: Date.now(),
+        });
+        return;
+      }
       const errorMsg = toErrorMessage(error);
       this.logger.error(`[send] ❌ ${group.groupName}: ${errorMsg}`);
       await this.writeGroupResult(execId, group.imRoomId, {

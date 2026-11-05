@@ -90,7 +90,11 @@ describe('Group task independently settled messages', () => {
         states.set(record.actionId, { ...record, localSync: 'complete' });
       }),
       defer: jest.fn(),
-      cancel: jest.fn().mockResolvedValue(true),
+      cancel: jest.fn(async (record: ActionRecord) => {
+        if (states.get(record.actionId)?.status !== 'registered') return false;
+        states.set(record.actionId, { ...record, status: 'cancelled' });
+        return true;
+      }),
       validateClaim: jest.fn().mockResolvedValue(true),
     };
     const config = new ConfigService({
@@ -140,6 +144,33 @@ describe('Group task independently settled messages', () => {
     expect(job.data.dispatchPlan).toEqual(original);
     expect(original?.occurredAt).toBe(new Date(job.timestamp).toISOString());
     expect(JSON.stringify(original)).not.toContain('never-record-this');
+  });
+
+  it('identifies revoked frozen tasks as definitively unsent, including cancellation replay', async () => {
+    await service.freezePlan(job, [parts[0]]);
+    const dispatch = jest.fn();
+    await expect(
+      service.executePart(job, cache, parts[0], dispatch, async () => false),
+    ).rejects.toMatchObject({
+      reason: 'permission_or_freshness_changed',
+      definitivelyUnsent: true,
+    });
+    await expect(
+      service.executePart(job, cache, parts[0], dispatch, async () => false),
+    ).rejects.toMatchObject({ reason: 'cancelled', definitivelyUnsent: true });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps in-flight frozen tasks uncertain after authorization is revoked', async () => {
+    await service.freezePlan(job, [parts[0]]);
+    const dispatch = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      service.executePart(job, cache, parts[0], dispatch, async () => true),
+    ).rejects.toMatchObject({ definitivelyUnsent: false });
+    await expect(
+      service.executePart(job, cache, parts[0], dispatch, async () => false),
+    ).rejects.toMatchObject({ definitivelyUnsent: false });
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
   it('after main success, an unknown follow-up cannot resend the main message or change payload', async () => {

@@ -25,7 +25,10 @@ import {
 } from '../queue/group-task-queue.constants';
 
 export class GroupTaskDeferredError extends Error {
-  constructor(readonly reason: string) {
+  constructor(
+    readonly reason: string,
+    readonly definitivelyUnsent = false,
+  ) {
     super(`group_task_deferred:${reason}`);
   }
 }
@@ -183,7 +186,13 @@ export class GroupTaskActionService implements OnModuleInit {
       sync: async () => this.project(projection, identifyAction(intent).actionId),
     });
     if (result.status !== 'succeeded')
-      throw new GroupTaskDeferredError(result.reason ?? result.status);
+      throw new GroupTaskDeferredError(
+        result.reason ?? result.status,
+        !result.dispatched &&
+          (result.status === 'cancelled' ||
+            (result.evidence?.kind === 'definitive_no_effect' &&
+              result.evidence.requestTerminated)),
+      );
     // External success stays success even if projection is pending; recovery repairs it.
   }
 
