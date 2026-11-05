@@ -28,7 +28,7 @@
 │ PLAN（并发 1）                                                              │
 │   ├─ GroupResolverService.resolveGroups(tagPrefix)                         │
 │   │    遍历小组 token → /stream-api/room/simpleList → labels 解析           │
-│   │    10 分钟内存缓存 + stampede 防护；0 群 → 硬告警 + 空汇总               │
+│   │    排程强制刷新，共享并发中的请求；0 群 → 硬告警 + 空汇总               │
 │   ├─ strategy.prepareTask()（抢单群：刷新 BI 数据源并等待）                  │
 │   ├─ 按 (城市+行业) 分组（抢单群按多地区 scope）                             │
 │   ├─ 写 exec 元信息快照（Redis，48h TTL）                                   │
@@ -51,6 +51,7 @@
 │   │      concurrency 非 job 名级隔离，同 bot 串行只靠这把锁）+ 锁内复查幂等  │
 │   ├─ 跨群间隔：距同 bot 上次发送尝试 ≥ sendDelayMs × 随机 1~2               │
 │   │    （基准 120s → 2~4 分钟；跨 exec、跨任务类型统一遵守）                 │
+│   ├─ 抢单群在限速等待结束后按群 ID 复查标签，再决定是否投递                 │
 │   ├─ NotificationSenderService：主消息 → 跟随消息（店长群）→                │
 │   │    兼职群小程序卡片（40~120s 随机延迟）；dryRun 只发飞书预览             │
 │   └─ 成功后：写幂等键 → 品牌轮转（兼职群）→ 写单群结果快照                   │

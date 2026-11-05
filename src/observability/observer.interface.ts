@@ -7,6 +7,7 @@ import type {
 } from '@resolution/brand/brand-resolution.types';
 import type { ToolErrorType } from '@tools/shared/tool-error-types';
 import type { ErrorCategory } from '@providers/types';
+import { PROGRESS_POLICY, type ProgressReader } from '@shared-types/candidate-progress.types';
 
 /**
  * llm-executor 单次 provider 尝试轨迹。`attempt=0` 为发起前预检跳过（不认图 /
@@ -78,8 +79,8 @@ export type AgentEvent = AgentEventContext &
     | { type: 'agent_error'; userId?: string; error: string }
     | {
         type: 'candidate_progress_difference';
-        reader: 'context' | 'pre_booking';
-        selectedPolicy: 'legacy';
+        reader: ProgressReader;
+        selectedPolicy: typeof PROGRESS_POLICY.LEGACY;
         context: boolean;
         proactive: boolean;
         openWithoutWindow: boolean;

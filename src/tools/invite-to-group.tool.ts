@@ -1,4 +1,3 @@
-// business-rules: GP-10
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
@@ -18,6 +17,10 @@ import {
   type PostBookingGroupInviteOutcome,
 } from '@tools/invite/post-booking-group-invite';
 import { resolveCityFromDistrict } from '@resolution/geo';
+import {
+  GROUP_INVITE_DELIVERY,
+  GROUP_INVITE_FAILURE_REASON,
+} from '@shared-types/group-invite.types';
 
 const logger = new Logger('invite_to_group');
 
@@ -193,7 +196,7 @@ export function buildInviteToGroupTool(
                 groupPurpose: 'job_pool',
                 city,
                 industry: industry ?? undefined,
-                inviteDelivery: 'invite_card',
+                inviteDelivery: GROUP_INVITE_DELIVERY.INVITE_CARD,
                 _outcome: '【测试链路模拟】已向候选人发送入群邀请卡片（未触达真实企业接口）',
                 _replyInstruction:
                   `企微已向候选人发送兼职岗位信息群"${outcome.groupName}"的邀请卡片。` +
@@ -240,14 +243,14 @@ function buildRuntimeHandledResult(
       result: {
         success: true,
         groupName: runtimeInvite.groupName,
-        inviteDelivery: runtimeInvite.delivery ?? 'invite_card',
+        inviteDelivery: runtimeInvite.delivery ?? GROUP_INVITE_DELIVERY.INVITE_CARD,
         ...inviteActionReceipt(runtimeInvite),
       },
       city: runtimeInvite.city ?? city,
       industry,
     });
   }
-  if (runtimeInvite.failureReason === 'result_unknown')
+  if (runtimeInvite.failureReason === GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN)
     return {
       ...inviteActionReceipt(runtimeInvite),
       errorType: 'action.result_unresolved',
@@ -380,7 +383,7 @@ function buildGroupInviteResult(params: {
     }
 
     const groupName = result.groupName ?? '';
-    const isDirectAdd = result.inviteDelivery === 'direct_add';
+    const isDirectAdd = result.inviteDelivery === GROUP_INVITE_DELIVERY.DIRECT_ADD;
     return {
       success: true,
       ...inviteActionReceipt(result),
@@ -405,7 +408,7 @@ function buildGroupInviteResult(params: {
   }
 
   switch (result.reason) {
-    case 'result_unknown':
+    case GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN:
       return {
         errorType: 'action.result_unresolved',
         ...inviteActionReceipt(result),
@@ -413,34 +416,34 @@ function buildGroupInviteResult(params: {
         _replyInstruction:
           '群邀请结果尚待核实，禁止声称已入群、邀请失败或换群重试。请调用 request_handoff(reasonCode="group_invite_failed") 请同事先核实原邀请，不要再次发送。',
       };
-    case 'enterprise_token_missing':
+    case GROUP_INVITE_FAILURE_REASON.ENTERPRISE_TOKEN_MISSING:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
         outcome: '企业 Token 未配置',
         replyInstruction: `拉群配置缺失，本次不向候选人提及群相关内容；这是部署侧配置问题，不应反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
         details: { detailedReason: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群' },
       });
-    case 'missing_bot_identity':
+    case GROUP_INVITE_FAILURE_REASON.MISSING_BOT_IDENTITY:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_MISSING_BOT_IDENTITY,
         outcome: '缺少 bot 身份信息',
         replyInstruction: `拉群所需的 bot 身份不完整，本次不向候选人提及群相关内容；这是上下文缺失问题，不要反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
         details: { detailedReason: '缺少 botImId / botUserId，无法执行企业级拉群' },
       });
-    case 'no_group_available':
+    case GROUP_INVITE_FAILURE_REASON.NO_GROUP_AVAILABLE:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE,
         outcome: '暂无可用群',
         replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
       });
-    case 'no_group_in_city':
+    case GROUP_INVITE_FAILURE_REASON.NO_GROUP_IN_CITY:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY,
         outcome: '该城市无匹配群',
         replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
         details: { city },
       });
-    case 'group_full':
+    case GROUP_INVITE_FAILURE_REASON.GROUP_FULL:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_GROUP_FULL,
         outcome: '候选群均已满',
@@ -450,14 +453,14 @@ function buildGroupInviteResult(params: {
           citySnapshot: result.citySnapshot,
         },
       });
-    case 'candidate_not_friend':
+    case GROUP_INVITE_FAILURE_REASON.CANDIDATE_NOT_FRIEND:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_CANDIDATE_NOT_FRIEND,
         outcome: '候选人非外部联系人(拉黑/删好友)，无法拉群',
         replyInstruction: NOT_FRIEND_CONTINUE_INSTRUCTION,
         details: { city, industry: industry ?? undefined },
       });
-    case 'api_rejected':
+    case GROUP_INVITE_FAILURE_REASON.API_REJECTED:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_API_REJECTED,
         outcome: '候选群均被接口拒绝',
@@ -471,7 +474,7 @@ function buildGroupInviteResult(params: {
           totalRejected: result.totalRejected,
         },
       });
-    case 'api_failed':
+    case GROUP_INVITE_FAILURE_REASON.API_FAILED:
     default:
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_API_FAILED,

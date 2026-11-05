@@ -8,6 +8,9 @@ import type {
   ActionRecord,
 } from '@biz/action-execution/action-execution.types';
 import { identifyAction } from '@biz/action-execution/action-identity';
+import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
+import { HttpRequestError } from '@infra/client-http/http-request-error';
+import { Logger } from '@nestjs/common';
 
 const now = '2026-10-21T04:00:00.000Z';
 const intent: ActionIntent = {
@@ -110,6 +113,16 @@ describe('external action failure boundaries', () => {
   });
   afterEach(() => jest.useRealTimers());
 
+  it.each(['execuet', 'EXECUTE', 'repair', ''])('rejects an unknown execution mode: %s', (mode) => {
+    expect(() => setup(mode)).toThrow('Invalid ACTION_EXECUTION_MODE');
+  });
+
+  it('still requires an explicit cutover boundary for execute', () => {
+    expect(() => setup('execute', null)).toThrow('ACTION_EXECUTION_CUTOVER_AT');
+    expect(() => setup('observe', null)).not.toThrow();
+    expect(() => setup('off', null)).not.toThrow();
+  });
+
   it('never dispatches when registration is unconfirmed', async () => {
     const { service, repository } = setup();
     repository.prepare.mockRejectedValue(new Error('timeout after commit'));
@@ -167,6 +180,55 @@ describe('external action failure boundaries', () => {
     expect((await service.execute(intent, { dispatch })).status).toBe('unknown');
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
+  it('retains only a safe provider code on an unknown result and never retries the request', async () => {
+    const { service, get } = setup();
+    const dispatch = jest
+      .fn()
+      .mockRejectedValue(
+        new ProviderBusinessError(-8, 'upstream response containing private data'),
+      );
+    const result = await service.execute(intent, { dispatch });
+    expect(result).toMatchObject({
+      status: 'unknown',
+      evidence: {
+        kind: 'indeterminate',
+        requestTerminated: false,
+        detail: 'provider_business_error:-8',
+      },
+    });
+    expect(JSON.stringify(get())).not.toContain('private data');
+    await service.execute(intent, { dispatch });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    [
+      new HttpRequestError('private-response', 503, 'ERR_BAD_RESPONSE'),
+      'http_error:503:ERR_BAD_RESPONSE',
+    ],
+    [new HttpRequestError('private-response', undefined, 'ETIMEDOUT'), 'transport_error:ETIMEDOUT'],
+  ])(
+    'persists and logs HTTP diagnostics without converting unknown to retry permission',
+    async (error, detail) => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const { service, get } = setup();
+        const dispatch = jest.fn().mockRejectedValue(error);
+        expect(await service.execute(intent, { dispatch })).toMatchObject({
+          status: 'unknown',
+          evidence: { detail, requestTerminated: false },
+        });
+        expect(get()?.evidence?.detail).toBe(detail);
+        await service.execute(intent, { dispatch });
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('action_dispatch_unconfirmed'));
+        expect(warn.mock.calls.map(([entry]) => String(entry)).join('\n')).not.toContain(
+          'private-response',
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
   it('keeps current goal satisfaction unresolved without authoritative request termination', async () => {
     const { service } = setup();
     const dispatch = jest.fn(async () => ({
@@ -193,6 +255,21 @@ describe('external action failure boundaries', () => {
     const dispatch = jest.fn();
     const authorize = jest.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
     expect((await service.execute(intent, { dispatch, authorize })).status).toBe('blocked');
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('only reports no effect after cancellation is confirmed', async () => {
+    const { service, repository } = setup();
+    const dispatch = jest.fn();
+    repository.cancel.mockResolvedValueOnce(false);
+    const unknown = await service.execute(intent, { dispatch, authorize: async () => false });
+    expect(unknown.evidence).toBeUndefined();
+    const cancelled = await service.execute(intent, { dispatch, authorize: async () => false });
+    expect(cancelled).toMatchObject({
+      status: 'blocked',
+      dispatched: false,
+      evidence: { kind: 'definitive_no_effect', requestTerminated: true },
+    });
     expect(dispatch).not.toHaveBeenCalled();
   });
   it('does not dispatch when the claim expires or its final confirmation fails', async () => {
@@ -233,6 +310,44 @@ describe('external action failure boundaries', () => {
     expect(dispatch).not.toHaveBeenCalled();
     rolledBack.repository.prepare.mockRejectedValue(new Error('db unavailable'));
     expect((await rolledBack.service.execute(intent, { dispatch })).status).toBe('blocked');
+  });
+  it.each(['off', 'observe'])(
+    'inherits execute for a new child of a persisted plan after rollback to %s',
+    async (mode) => {
+      const { service, repository, get } = setup(mode);
+      const dispatch = jest.fn(async () => completion);
+      const inherited = { persistedMode: 'execute' as const };
+      await service.execute(intent, { dispatch }, inherited);
+      await service.execute(intent, { dispatch }, inherited);
+      expect(repository.prepare).toHaveBeenCalledWith(intent, 'execute');
+      expect(get()?.mode).toBe('execute');
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(dispatch.mock.calls[0]).toEqual([identifyAction(intent).requestId, 'execute']);
+    },
+  );
+  it('does not convert an observe child into execute when resuming a persisted plan', async () => {
+    const { service } = setup('observe');
+    const dispatch = jest.fn(async () => completion);
+    await service.execute(intent, { dispatch });
+    expect((await service.execute(intent, { dispatch }, { persistedMode: 'execute' })).reason).toBe(
+      'observation_record_requires_cutover_review',
+    );
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+  it('blocks inherited execute without cutover or confirmed durable storage', async () => {
+    const noCutover = setup('observe', null);
+    const unavailable = setup('observe');
+    unavailable.repository.prepare.mockRejectedValue(new Error('storage unavailable'));
+    const dispatch = jest.fn();
+    const inherited = { persistedMode: 'execute' as const };
+    expect((await noCutover.service.execute(intent, { dispatch }, inherited)).reason).toBe(
+      'persisted_execution_requires_cutover',
+    );
+    expect((await unavailable.service.execute(intent, { dispatch }, inherited)).reason).toBe(
+      'action_store_unavailable',
+    );
+    expect(noCutover.repository.prepare).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
   });
   it('fails closed for missing durable identity and old inputs', async () => {
     const { service } = setup();

@@ -78,10 +78,7 @@ export interface FollowUpJob {
   collectionAwaitingConfirmation?: boolean;
 }
 
-/** 触达底账 outbox 状态机。 */
-export type TouchSlotState = 'reserved' | 'delivery_attempted' | 'sent' | 'failed' | 'unknown';
-
-export type ReserveResult = 'reserved' | 'duplicate_sent' | 'duplicate_inflight';
+export type { ReserveResult, TouchSlotState } from './touch-ledger.types';
 
 export interface ScheduleFollowUpInput {
   sessionRef: SessionRef;

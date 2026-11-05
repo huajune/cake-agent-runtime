@@ -1,12 +1,68 @@
-import { BUILT_IN_TOOL_CONTRACTS, validateToolContract } from '@tools/tool-contracts';
+import {
+  BUILT_IN_TOOL_CONTRACTS,
+  validateToolContract,
+  publishToolContract,
+  getToolContract,
+} from '@tools/tool-contracts';
 import { TOOL_GUARDRAIL_CATALOG } from '@agent/guardrail/tool/tool-guardrail.catalog';
 import {
   SIDE_EFFECT_TOOLS,
   REPLAY_BLOCKING_TOOLS,
   findToolsExceedingLimit,
 } from '@agent/generator/tool-call-analysis';
+import type { ToolActionContract, ToolGate } from '@shared-types/tool-action.contract';
 
 describe('tool action contracts', () => {
+  it.each([
+    { effect: 'external_actoin' },
+    { replay: 'always_retry' },
+    { freshness: 'latest' },
+    { maxCallsPerTurn: 0 },
+    { maxCallsPerTurn: 1.5 },
+    { gates: ['booking_precheck_contrcat'] },
+    { gates: [1] },
+    { idempotency: undefined },
+    { idempotency: null },
+    { idempotency: {} },
+    { idempotency: { scope: 'global', target: ['jobId'] } },
+    { idempotency: { scope: 'business', target: [] } },
+    { idempotency: { scope: 'business', target: [' '] } },
+    { idempotency: { scope: 'business', target: [123] } },
+  ])('rejects malformed runtime policy before publication: %j', (overrides) => {
+    const name = 'invalid_runtime_contract';
+    const input = { ...BUILT_IN_TOOL_CONTRACTS.duliday_interview_booking, ...overrides };
+    expect(() => validateToolContract(input)).toThrow(
+      'A complete tool action contract is required',
+    );
+    expect(() => publishToolContract(name, input as ToolActionContract)).toThrow();
+    expect(getToolContract(name)).toBeUndefined();
+  });
+
+  it('accepts existing serialized contracts without rewriting protocol values', () => {
+    const wireContract: unknown = JSON.parse(
+      JSON.stringify({
+        effect: 'external_action',
+        replay: 'block_on_success',
+        freshness: 'latest_input',
+        maxCallsPerTurn: 3,
+        gates: ['booking_precheck_contract'],
+        idempotency: { scope: 'business', target: ['candidatePhone', 'jobId'] },
+      }),
+    );
+    const before = JSON.stringify(wireContract);
+    validateToolContract(wireContract);
+    expect(wireContract.effect).toBe('external_action');
+    expect(JSON.stringify(wireContract)).toBe(before);
+  });
+
+  it('rejects misspelled gate IDs at the TypeScript boundary', () => {
+    // @ts-expect-error Gate IDs must come from the shared closed vocabulary.
+    const invalid: ToolGate = 'booking_precheck_contrcat';
+    expect(() =>
+      validateToolContract({ ...BUILT_IN_TOOL_CONTRACTS.advance_stage, gates: [invalid] }),
+    ).toThrow();
+  });
+
   it('keeps the approved side-effect and replay policies in the contracts', () => {
     expect([...SIDE_EFFECT_TOOLS].sort()).toEqual([
       'duliday_cancel_work_order',

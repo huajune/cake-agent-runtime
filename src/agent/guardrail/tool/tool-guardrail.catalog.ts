@@ -11,6 +11,8 @@ import {
   GUARDRAIL_PRIORITY,
   GUARDRAIL_STAGE,
 } from '@shared-types/guardrail.contract';
+import type { ToolGate } from '@shared-types/tool-action.contract';
+import { TOOL_GATE } from '@shared-types/tool-action.contract';
 
 /**
  * 工具层 Guardrail 显式治理目录。
@@ -22,7 +24,7 @@ import {
  * - 真实实现位置与验证证据。
  */
 export interface ToolGuardrailCatalogEntry extends BusinessRuleLink {
-  id: string;
+  id: ToolGate;
   toolNames: readonly string[];
   stage: GuardrailStage;
   action: GuardrailAction;
@@ -41,7 +43,7 @@ export interface ToolGuardrailCatalogEntry extends BusinessRuleLink {
 
 export const TOOL_GUARDRAIL_CATALOG = [
   {
-    id: 'job_list_brand_provenance',
+    id: TOOL_GATE.JOB_LIST_BRAND_PROVENANCE,
     businessRule: 'GP-03',
     toolNames: ['duliday_job_list'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -63,7 +65,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'job_list_schedule_constraint_provenance',
+    id: TOOL_GATE.JOB_LIST_SCHEDULE_CONSTRAINT_PROVENANCE,
     businessRule: 'SH-05',
     toolNames: ['duliday_job_list'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -83,7 +85,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'booking_jobid_provenance',
+    id: TOOL_GATE.BOOKING_JOBID_PROVENANCE,
     businessRule: 'IB-07',
     toolNames: ['duliday_interview_booking', 'duliday_interview_precheck'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -102,7 +104,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'booking_precheck_contract',
+    id: TOOL_GATE.BOOKING_PRECHECK_CONTRACT,
     businessRule: 'IB-01',
     toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -121,7 +123,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'booking_real_name',
+    id: TOOL_GATE.BOOKING_REAL_NAME,
     businessRule: 'ID-01',
     toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -138,7 +140,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'booking_name_authority',
+    id: TOOL_GATE.BOOKING_NAME_AUTHORITY,
     businessRule: 'ID-04',
     toolNames: ['duliday_interview_booking'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -155,7 +157,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'invite_city_provenance',
+    id: TOOL_GATE.INVITE_CITY_PROVENANCE,
     businessRule: 'GEO-04',
     toolNames: ['invite_to_group', 'geocode'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -177,7 +179,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'invite_timing_gate',
+    id: TOOL_GATE.INVITE_TIMING_GATE,
     businessRule: 'GP-10',
     toolNames: ['invite_to_group'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -197,7 +199,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'cancel_work_order_ownership',
+    id: TOOL_GATE.CANCEL_WORK_ORDER_OWNERSHIP,
     businessRule: 'IB-12',
     toolNames: ['duliday_cancel_work_order'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -214,7 +216,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'modify_work_order_ownership',
+    id: TOOL_GATE.MODIFY_WORK_ORDER_OWNERSHIP,
     businessRule: 'IB-12',
     toolNames: ['duliday_modify_interview_time'],
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
@@ -231,7 +233,7 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
-    id: 'image_message_allowlist',
+    id: TOOL_GATE.IMAGE_MESSAGE_ALLOWLIST,
     businessRule: null,
     mechanismReason: '通用执行/表达协议，具体招聘口径由业务规则维护。',
     toolNames: ['save_image_description'],

@@ -15,6 +15,7 @@ import {
   type OpsBookingPollCursor,
 } from '../repositories/ops-events.repository';
 import { OpsEventsRecorderService } from '../services/ops-events-recorder.service';
+import { CRON_JOB } from '@infra/queue/cron.constants';
 
 /**
  * 海绵工单状态轮询 cron（每 15 分钟）。
@@ -44,7 +45,7 @@ export class SpongeStatusPollService {
     if (this.isReadOnlyPreview()) return;
 
     await this.cronRunner.run(
-      'sponge-status-poll',
+      CRON_JOB.SPONGE_STATUS_POLL,
       { timeMs: 10 * 60_000, maxRows: 100 },
       async (budget) => {
         const cursor = await this.redis.get<OpsBookingPollCursor>(

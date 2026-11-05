@@ -10,6 +10,12 @@ import {
   InterviewCancellationNotificationPayload,
   InterviewBookingNotificationPayload,
 } from '../renderers/booking-card.renderer';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_KIND,
+  ACTION_MODE,
+  ACTION_STATE,
+} from '@shared-types/action-execution.contract';
 
 export interface InterviewBookingNotificationInfo
   extends Omit<InterviewBookingNotificationPayload, 'atUsers' | 'atAll'> {
@@ -34,12 +40,12 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    for (const kind of ['booking_notification', 'cancellation_notification']) {
+    for (const kind of [ACTION_KIND.BOOKING_NOTIFICATION, ACTION_KIND.CANCELLATION_NOTIFICATION]) {
       this.recovery?.register(kind, {
         reconcile: async () => ({
-          status: 'unknown',
+          status: ACTION_STATE.UNKNOWN,
           evidence: {
-            kind: 'indeterminate',
+            kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
             requestTerminated: false,
             detail: 'webhook_has_no_verified_request_lookup',
           },
@@ -59,7 +65,7 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
     });
 
     const success = await this.sendRecorded(
-      'booking_notification',
+      ACTION_KIND.BOOKING_NOTIFICATION,
       card,
       session,
       bookingInfo.botImId,
@@ -87,7 +93,7 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
     });
 
     const success = await this.sendRecorded(
-      'cancellation_notification',
+      ACTION_KIND.CANCELLATION_NOTIFICATION,
       card,
       session,
       cancellationInfo.botImId,
@@ -101,7 +107,7 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
   }
 
   private async sendRecorded(
-    kind: string,
+    kind: typeof ACTION_KIND.BOOKING_NOTIFICATION | typeof ACTION_KIND.CANCELLATION_NOTIFICATION,
     card: Record<string, unknown>,
     session?: ToolSessionContext,
     botImId?: string,
@@ -136,27 +142,27 @@ export class PrivateChatMonitorNotifierService implements OnModuleInit {
       {
         dispatch: async (_requestId, mode) => {
           const accepted =
-            mode === 'execute'
+            mode === ACTION_MODE.EXECUTE
               ? await this.privateChatChannel.sendOnce(card, routeBotId)
               : await this.privateChatChannel.send(card, routeBotId);
           return accepted
             ? {
-                status: 'succeeded',
+                status: ACTION_STATE.SUCCEEDED,
                 result: true,
                 evidence: {
-                  kind: 'accepted',
+                  kind: ACTION_EVIDENCE_KIND.ACCEPTED,
                   requestTerminated: true,
                   detail: 'webhook_accepted_not_recipient_read',
                 },
               }
             : {
-                status: 'unknown',
+                status: ACTION_STATE.UNKNOWN,
                 result: false,
-                evidence: { kind: 'indeterminate', requestTerminated: false },
+                evidence: { kind: ACTION_EVIDENCE_KIND.INDETERMINATE, requestTerminated: false },
               };
         },
       },
     );
-    return result.status === 'succeeded';
+    return result.status === ACTION_STATE.SUCCEEDED;
   }
 }

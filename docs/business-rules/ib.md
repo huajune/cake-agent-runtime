@@ -14,7 +14,7 @@
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/tools/tool/duliday-interview-precheck.tool.spec.ts`
 - 验证：`tests/tools/tool/duliday-interview-booking.tool.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#booking_precheck_contract`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.BOOKING_PRECHECK_CONTRACT`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
 
 ## IB-02 不保留名额或保证未来可约
@@ -107,7 +107,7 @@
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/tools/tool/duliday-interview-precheck.tool.spec.ts`
 - 验证：`tests/tools/tool/duliday-interview-booking.tool.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#booking_jobid_provenance`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.BOOKING_JOBID_PROVENANCE`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
 
 ## IB-08 整表收资与插问承接
@@ -196,9 +196,9 @@
 - 验证：`tests/tools/duliday-modify-interview-time.tool.spec.ts`
 - 验证：`tests/tools/duliday-cancel-work-order.tool.spec.ts`
 - 验证：`tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#cancel_work_order_ownership`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.CANCEL_WORK_ORDER_OWNERSHIP`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#modify_work_order_ownership`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.MODIFY_WORK_ORDER_OWNERSHIP`
 - 落点：`src/agent/generator/context/sections/semantic/memory.section.ts#BOOKING_CONTEXT_SHARED_RULES`
 - 验证：`tests/agent/generator/context/sections/memory.section.spec.ts`
 

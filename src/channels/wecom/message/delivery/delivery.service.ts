@@ -17,6 +17,7 @@ import { MessageSplitter } from '../utils/message-splitter.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from './typing-policy.service';
+import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
 
 /**
  * 消息发送服务
@@ -325,7 +326,7 @@ export class MessageDeliveryService implements OnModuleInit {
   ): Promise<ActionDenialReason | undefined> {
     const permit = await this.actionPermit.evaluate({
       chatId: context.chatId,
-      action: context.action ?? 'reply',
+      action: context.action ?? PERMITTED_ACTION.REPLY,
       botImId: context.imBotId,
       groupId: context.groupId,
       candidateIds: [context.imContactId],

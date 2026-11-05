@@ -1,22 +1,27 @@
 import { ReplyTurnsRepository } from '@biz/reply-execution/reply-turns.repository';
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
+import { GroupRouteCredentialsService } from './credentials/group-route-credentials.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-
-// 导入子服务
 import { SimpleMergeService } from './runtime/simple-merge.service';
 import { MessageDeduplicationService } from './runtime/deduplication.service';
 import { MessagePipelineService } from './application/pipeline.service';
 import { WecomMessageObservabilityService } from './telemetry/wecom-message-observability.service';
 import { MessageRuntimeConfigService } from './runtime/message-runtime-config.service';
-
-// 导入工具和类型
 import { MessageParser } from './utils/message-parser.util';
 import { LogSanitizer } from './utils/log-sanitizer.util';
 import { EnterpriseMessageCallbackDto } from './ingress/message-callback.dto';
 import { getMessageSourceDescription, MessageSource } from '@enums/message-callback.enum';
+import { ACTION_MODE } from '@shared-types/action-execution.contract';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /**
  * 消息处理服务（重构版 v4 - 协调器模式）
@@ -47,6 +52,7 @@ export class MessageService implements OnModuleInit {
     private readonly runtimeConfig: MessageRuntimeConfigService,
     @Optional() private readonly replyRecords?: ReplyTurnsRepository,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly groupCredentials?: GroupRouteCredentialsService,
   ) {}
 
   /**
@@ -71,43 +77,80 @@ export class MessageService implements OnModuleInit {
    */
   handleMessage(messageData: EnterpriseMessageCallbackDto) {
     messageData._receivedAtMs = messageData._receivedAtMs ?? Date.now();
-    // Managed API callbacks must durably append evidence before HTTP ACK. On store
-    // failure return an error so callback retry can repair evidence; never resend a message.
+    const managed = this.isManagedCallback(messageData);
     if (
-      this.replyRecords &&
-      messageData.isSelf === true &&
-      (messageData.source === MessageSource.API_SEND ||
-        (messageData._sourceInferred === true &&
-          messageData.source === MessageSource.AGGREGATED_CHAT_MANUAL)) &&
-      messageData.externalRequestId?.startsWith('cake_') &&
-      messageData.orgId &&
-      messageData.imBotId &&
-      this.hasTrustedCallbackCredential(messageData)
-    ) {
-      return this.replyRecords
-        .appendCallback({
-          corpId: messageData.orgId,
-          accountId: messageData.imBotId,
-          chatId: messageData.chatId,
-          requestId: messageData.externalRequestId,
-          messageId: messageData.messageId,
-          text: String(
-            (messageData.payload as Record<string, unknown>)?.pureText ||
-              (messageData.payload as Record<string, unknown>)?.text ||
-              '',
-          ),
-          messageType: messageData.messageType,
-          payload: messageData.payload as Record<string, unknown>,
-        })
-        .then(() => this.acceptMessageAsync(messageData));
-    }
+      messageData._apiType === WECOM_API_TYPE.GROUP &&
+      (managed || this.config?.get<string>('ACTION_EXECUTION_MODE') === ACTION_MODE.EXECUTE)
+    )
+      return this.handleGroupMessage(messageData, managed);
+    // Managed evidence must be durable before ACK; a storage error asks the provider to retry.
+    if (managed && this.hasTrustedCallbackCredential(messageData))
+      return this.appendManagedCallback(messageData, [messageData.orgId]);
     return this.acceptMessageAsync(messageData);
+  }
+
+  private isManagedCallback(message: EnterpriseMessageCallbackDto): boolean {
+    return Boolean(
+      this.replyRecords &&
+        message.isSelf === true &&
+        (message.source === MessageSource.API_SEND ||
+          (message._sourceInferred === true &&
+            message.source === MessageSource.AGGREGATED_CHAT_MANUAL)) &&
+        message.externalRequestId?.startsWith('cake_') &&
+        message.orgId &&
+        message.imBotId,
+    );
+  }
+
+  private async handleGroupMessage(message: EnterpriseMessageCallbackDto, managed: boolean) {
+    const verified = await this.groupCredentials?.verifyCallback({
+      token: message.token,
+      accountId: message.imBotId,
+      corpId: message.orgId,
+      groupId: message.groupId,
+      botId: message.botId,
+    });
+    if (!verified) {
+      // Untrusted self callbacks never settle an action. New execute inputs need a frozen route.
+      if (
+        !message.isSelf &&
+        this.config?.get<string>('ACTION_EXECUTION_MODE') === ACTION_MODE.EXECUTE
+      )
+        throw new ServiceUnavailableException('group_route_identity_unverified');
+      return this.acceptMessageAsync(message);
+    }
+    const scoped = { ...message, groupId: verified.groupId };
+    return managed
+      ? this.appendManagedCallback(scoped, verified.corpIds)
+      : this.acceptMessageAsync(scoped);
+  }
+
+  private async appendManagedCallback(message: EnterpriseMessageCallbackDto, corpIds: string[]) {
+    // Group inbound turns retain their legacy namespace; scheduled group actions use the
+    // directory's real corp. Only these server-verified scopes may match the frozen request.
+    for (const corpId of new Set(corpIds)) {
+      const matched = await this.replyRecords!.appendCallback({
+        corpId,
+        accountId: message.imBotId,
+        chatId: message.chatId,
+        requestId: message.externalRequestId!,
+        messageId: message.messageId,
+        text: String(
+          (message.payload as Record<string, unknown>)?.pureText ||
+            (message.payload as Record<string, unknown>)?.text ||
+            '',
+        ),
+        messageType: message.messageType,
+        payload: message.payload as Record<string, unknown>,
+      });
+      if (matched) break;
+    }
+    return this.acceptMessageAsync(message);
   }
 
   private hasTrustedCallbackCredential(messageData: EnterpriseMessageCallbackDto): boolean {
     // This endpoint is public. Body identity alone is not authoritative evidence.
-    // No verified group credential resolver exists yet; those actions remain unknown.
-    if (messageData._apiType === 'group') return false;
+    if (messageData._apiType === WECOM_API_TYPE.GROUP) return false;
     const expected = this.config?.get<string>('STRIDE_ENTERPRISE_TOKEN');
     const supplied = messageData.token;
     if (!expected || typeof supplied !== 'string' || !supplied) return false;

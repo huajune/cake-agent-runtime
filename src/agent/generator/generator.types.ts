@@ -8,6 +8,8 @@ import type {
   AgentStepDetail,
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
 
 export type {
   AgentMemorySnapshot,
@@ -28,8 +30,6 @@ export type GeneratorThinkingConfig = LlmThinkingConfig;
  */
 export const GENERATOR_TOOL_MODES = ['scenario', 'readonly', 'none'] as const;
 export type GeneratorToolMode = (typeof GENERATOR_TOOL_MODES)[number];
-
-import type { TurnLedger } from '@shared-types/turn.types';
 
 export interface GeneratorInputMessage {
   role: string;
@@ -118,7 +118,7 @@ export interface GeneratorInvokeParams {
   /** 当前群聊系统 wxid */
   imRoomId?: string;
   /** 当前发送链路 API 类型 */
-  apiType?: 'enterprise' | 'group';
+  apiType?: WecomApiType;
   /**
    * 覆盖本次调用使用的聊天模型 ID（provider/model 格式）
    * 为空时回退到 AGENT_CHAT_MODEL 角色路由。

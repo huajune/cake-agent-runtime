@@ -1,0 +1,54 @@
+{
+  "capturedAt": "2026-11-04T07:08:23.567Z",
+  "source": "海绵 /ai/api/job/list，includeWelfare=true、includeHiringRequirement=true；只保留本次相关字段，门店名替换，未含个人资料。",
+  "jobs": [
+    {
+      "basicInfo": {
+        "jobId": 529782,
+        "jobName": "必胜客-社保回归样例-内外场-小时工",
+        "laborForm": "兼职"
+      },
+      "welfare": {
+        "haveInsurance": "独立日购买",
+        "insuranceFundList": []
+      },
+      "hiringRequirement": {
+        "marriageBearingAndSocialSecurity": {
+          "socialSecurityList": "不限"
+        }
+      }
+    },
+    {
+      "basicInfo": {
+        "jobId": 527946,
+        "jobName": "李维斯-社保回归样例-导购-全职",
+        "laborForm": "全职"
+      },
+      "welfare": {
+        "haveInsurance": "独立日不购买",
+        "insuranceFundList": ["公积金", "养老保险", "医疗保险", "失业保险", "工伤保险", "生育保险"]
+      },
+      "hiringRequirement": {
+        "marriageBearingAndSocialSecurity": {
+          "socialSecurityList": "不限"
+        }
+      }
+    },
+    {
+      "basicInfo": {
+        "jobId": 514952,
+        "jobName": "哈根达斯-社保回归样例-店员-小时工",
+        "laborForm": "兼职"
+      },
+      "welfare": {
+        "haveInsurance": "独立日不购买",
+        "insuranceFundList": []
+      },
+      "hiringRequirement": {
+        "marriageBearingAndSocialSecurity": {
+          "socialSecurityList": "公司缴纳本地社保"
+        }
+      }
+    }
+  ]
+}

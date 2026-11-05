@@ -11,7 +11,6 @@ import {
   ToolRegistration,
   createToolDefinition,
 } from '@shared-types/tool.types';
-
 import { buildAdvanceStageTool } from './advance-stage.tool';
 import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
@@ -51,6 +50,8 @@ import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import { sleep } from '@infra/utils/async.util';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import type { ToolSource } from '@shared-types/tool-action.contract';
+import { TOOL_SOURCE } from '@shared-types/tool-action.contract';
 import type { ToolActionContract } from '@shared-types/tool-action.contract';
 import {
   BUILT_IN_TOOL_CONTRACTS,
@@ -295,7 +296,13 @@ export class ToolRegistryService {
     if (existing && existing.mcpServer !== mcpServer)
       throw new Error(`MCP tool ${name} is already registered`);
     const published = publishToolContract(name, contract);
-    this.mcpTools.set(name, { name, source: 'mcp', tool, mcpServer, contract: published });
+    this.mcpTools.set(name, {
+      name,
+      source: TOOL_SOURCE.MCP,
+      tool,
+      mcpServer,
+      contract: published,
+    });
     this.logger.log(`MCP工具已注册: ${name} (server: ${mcpServer})`);
   }
 
@@ -322,8 +329,8 @@ export class ToolRegistryService {
     );
   }
 
-  listBySource(source: 'built-in' | 'mcp'): string[] {
-    if (source === 'built-in') return Object.keys(this.registry);
+  listBySource(source: ToolSource): string[] {
+    if (source === TOOL_SOURCE.BUILT_IN) return Object.keys(this.registry);
     return [...this.mcpTools.keys()];
   }
 

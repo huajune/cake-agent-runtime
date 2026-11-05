@@ -347,7 +347,12 @@ export interface InterviewBookingApplyErrorItem {
 }
 
 /** 海绵已核实的重复报名拒绝类型，不依赖未确认的返回码。 */
-export type DuplicateSignupReason = 'already_registered' | 'ownership_review';
+export const DUPLICATE_SIGNUP_REASON = {
+  ALREADY_REGISTERED: 'already_registered',
+  OWNERSHIP_REVIEW: 'ownership_review',
+} as const;
+export type DuplicateSignupReason =
+  (typeof DUPLICATE_SIGNUP_REASON)[keyof typeof DUPLICATE_SIGNUP_REASON];
 
 /** 面试预约响应 */
 export interface InterviewBookingResult {

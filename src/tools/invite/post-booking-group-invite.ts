@@ -4,6 +4,15 @@ import type { GroupInviteService } from '@biz/group-task/services/group-invite.s
 import type { SessionStateService } from '@memory/short-term/session-state.service';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { readSessionCityForInvite, runGroupInvitePipeline } from './group-invite-pipeline';
+import type {
+  ActionExecutionStatus,
+  LocalSyncState,
+} from '@shared-types/action-execution.contract';
+import type { GroupInviteDelivery } from '@shared-types/group-invite.types';
+import {
+  GROUP_INVITE_DELIVERY,
+  GROUP_INVITE_FAILURE_REASON,
+} from '@shared-types/group-invite.types';
 
 /**
  * 报名成功后的运行时拉群（PRD R3）。
@@ -25,15 +34,15 @@ export interface PostBookingGroupInviteOutcome {
   /** 是否真的走到了拉群执行（闸门放行后）；false 时看 skippedReason。 */
   attempted: boolean;
   success: boolean;
-  actionStatus?: string;
+  actionStatus?: ActionExecutionStatus;
   actionId?: string;
   requestId?: string;
-  localSync?: 'pending' | 'complete';
+  localSync?: LocalSyncState;
   actionDispatched?: boolean;
   actionReason?: string;
   city?: string;
   groupName?: string;
-  delivery?: 'direct_add' | 'invite_card';
+  delivery?: GroupInviteDelivery;
   alreadyInGroup?: boolean;
   simulated?: boolean;
   skippedReason?: PostBookingGroupInviteSkipReason;
@@ -136,7 +145,7 @@ export async function runPostBookingGroupInvite(
             success: true,
             city,
             groupName: pipeline.groupName,
-            delivery: 'invite_card',
+            delivery: GROUP_INVITE_DELIVERY.INVITE_CARD,
             simulated: true,
           };
         case 'invited': {
@@ -147,7 +156,7 @@ export async function runPostBookingGroupInvite(
               success: false,
               city,
               groupName: result.groupName,
-              failureReason: result.reason ?? 'api_failed',
+              failureReason: result.reason ?? GROUP_INVITE_FAILURE_REASON.API_FAILED,
               actionStatus: result.actionStatus,
               actionId: result.actionId,
               requestId: result.requestId,
@@ -189,7 +198,7 @@ const NO_TOOL_REMINDER = '拉群已由系统在本轮处理完毕，不要再调
 
 /** 给模型的群动作说明：只按结果说话。 */
 export function buildPostBookingGroupInviteGuide(outcome: PostBookingGroupInviteOutcome): string {
-  if (outcome.failureReason === 'result_unknown')
+  if (outcome.failureReason === GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN)
     return '报名已成功；群邀请结果尚待核实，已携带人工核实意图，不要另调 request_handoff，不得声称邀请失败或重新邀请。';
   if (outcome.success) {
     const groupName = outcome.groupName ?? '';
@@ -199,7 +208,7 @@ export function buildPostBookingGroupInviteGuide(outcome: PostBookingGroupInvite
         `候选人主动问群时，告知已在该群并带实际群名。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
       );
     }
-    if (outcome.delivery === 'direct_add') {
+    if (outcome.delivery === GROUP_INVITE_DELIVERY.DIRECT_ADD) {
       return (
         `系统已在报名成功后把候选人直接加入兼职岗位信息群「${groupName}」。告知报名成功后，顺带说明已加入该群并带实际群名，` +
         `说明群用于查看兼职岗位信息。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
@@ -222,7 +231,7 @@ export function describePostBookingGroupInviteForEvent(
   outcome: PostBookingGroupInviteOutcome,
 ): Record<string, unknown> {
   const status =
-    outcome.failureReason === 'result_unknown'
+    outcome.failureReason === GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN
       ? 'unknown'
       : outcome.success
         ? outcome.alreadyInGroup
@@ -249,7 +258,7 @@ export function buildPostBookingUnknownInviteHandoff(
   jobId: number,
   workOrderId?: number | null,
 ): Record<string, unknown> | undefined {
-  if (outcome.failureReason !== 'result_unknown') return undefined;
+  if (outcome.failureReason !== GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN) return undefined;
   return {
     kind: 'general_handoff',
     source: 'agent_tool',

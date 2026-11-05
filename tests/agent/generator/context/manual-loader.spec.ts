@@ -12,15 +12,16 @@ const fragment = (id: string, body = 'rule text') =>
   `<!-- rule:${id} -->\n${body}\n<!-- end-rule:${id} -->`;
 
 describe('business rule manual assembly', () => {
-  it('preserves every model-visible byte from the pre-refactor manual', async () => {
+  it('preserves the approved model-visible manual snapshot', async () => {
     const text = await loadCandidateManual(
       join(process.cwd(), 'src/agent/generator/context/sections/procedural'),
     );
-    // Migration evidence from 12090e6f, before any includes existed. Deliberate policy
-    // changes must explain a new baseline and add behavioral evidence in the same PR.
-    expect(Buffer.byteLength(text)).toBe(55988);
+    // Original migration baseline: 12090e6f (55,988 bytes; hash recorded in prompt-rule-ledger).
+    // 2026-11-04 user-approved SW-02 change separates insuranceFundList / haveInsurance /
+    // socialSecurityList. Behavioral coverage: insurance-fields.render + welfare-facts tests.
+    expect(Buffer.byteLength(text)).toBe(56794);
     expect(createHash('sha256').update(text).digest('hex')).toBe(
-      'f2e59fec2118593b57fd82244c01f22a51b3f2219e07c903f163bc7f8c7f3b44',
+      'fd8b1e8764e4a6d6e3221192ec748956781cd856f2a58ea4580c0a77d7a81f38',
     );
     expect(text).not.toContain('{{rule:');
     expect(text).not.toContain('<!--');

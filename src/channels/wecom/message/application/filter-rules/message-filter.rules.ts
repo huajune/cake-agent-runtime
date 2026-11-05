@@ -16,6 +16,7 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@enums/message-filter.enum';
 import { FilterResult } from '../../types';
+import { ACTION_DENIAL_REASON, PERMITTED_ACTION } from '@shared-types/action-permit.types';
 
 export interface MessageFilterRule {
   evaluate(
@@ -96,21 +97,21 @@ export class PausedUserFilterRule implements MessageFilterRule {
   async evaluate(messageData: EnterpriseMessageCallbackDto): Promise<FilterResult | null> {
     const permit = await this.actionPermit.evaluate({
       chatId: messageData.chatId,
-      action: 'reply',
+      action: PERMITTED_ACTION.REPLY,
       botImId: messageData.imBotId,
       groupId: messageData.groupId,
       candidateIds: [messageData.imContactId, messageData.externalUserId],
     });
     // 保留黑名单专用处置（暂停、回溯、告警），其余拒绝都只记录历史。
-    if (permit.allowed || permit.reason === 'candidate_blacklisted') return null;
+    if (permit.allowed || permit.reason === ACTION_DENIAL_REASON.CANDIDATE_BLACKLISTED) return null;
     return {
       pass: true,
       content: MessageParser.extractContent(messageData),
       historyOnly: true,
       reason:
-        permit.reason === 'group_blacklisted'
+        permit.reason === ACTION_DENIAL_REASON.GROUP_BLACKLISTED
           ? FilterReason.GROUP_BLACKLISTED
-          : permit.reason === 'hosting_paused'
+          : permit.reason === ACTION_DENIAL_REASON.HOSTING_PAUSED
             ? FilterReason.USER_PAUSED
             : FilterReason.ACTION_NOT_PERMITTED,
       details: {

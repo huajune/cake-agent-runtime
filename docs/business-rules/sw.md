@@ -18,16 +18,22 @@
 
 ## SW-02 保险福利与社保准入分开
 
-不主动介绍保险。主动问公司购买情况按福利字段，问个人社保准入按招聘要求；商业险不说成社保。失业金与证明、个人账务交对应人工场景。
+不主动介绍保险、社保或公积金。主动询问时分别读取五险一金明细 `insuranceFundList`、保险购买设置 `haveInsurance` 与候选人社保准入 `socialSecurityList`。购买设置原文不能压成“无保险”；“独立日不购买”不否定岗位五险一金，明细为空不代表没有、部分项目不扩成齐全，准入“不限”不代表不交社保。失业金与证明、个人账务交对应人工场景。
 
 - 状态：现行基线
 - 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
 - 落点：`src/agent/generator/context/sections/procedural/rules/sw.md#SW-02`
 - 落点：`src/tools/job-list/welfare-facts.util.ts#extractWelfareFacts`
+- 落点：`src/tools/job-list/render.util.ts#renderWelfareSection`
+- 落点：`src/agent/generator/context/sections/procedural/red-lines.section.ts#RedLinesSection`
 - 落点：`src/agent/guardrail/output/output-rule-catalog.ts#proactive_insurance_policy_mention`
 - 落点：`src/agent/guardrail/output/rules/insurance-policy-claims.rule.ts#detectProactiveInsurancePolicyMention`
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/tools/job-list/welfare-facts.util.spec.ts`
+- 验证：`tests/tools/job-list/insurance-fields.render.spec.ts`
+- 验证：`tests/agent/generator/context/red-lines-insurance.spec.ts`
+- 来源：2026-11-04 用户明确要求接入五险一金字段、修正保险摘要与 SW-02；同日海绵岗位 527946 返回 `haveInsurance=独立日不购买` 且 `insuranceFundList` 明确含六个项目，线上岗位文本遗漏明细并将购买设置压为“内部事实：无”。
+- 来源：同日真实 Agent 回归 `05322033-e496-4d52-b621-0aacf84d8a15` 发现旧策略 R6 仍教“兼职岗不缴纳社保”，覆盖空明细处理。运行时精确排除历史三个版本的废止文本，当前回答口径统一归 SW-02，不修改策略库或过滤其他运营规则。
 - 验证：`tests/agent/guardrail/output/rules/hard-rules.restored-sentinels.spec.ts`
 
 ## SW-03 关键用工事实缺失转人工
@@ -134,4 +140,5 @@
 
 ## 变更记录
 
+- 2026-11-04：按用户裁定接入五险一金明细，购买设置保留原文并与社保准入分开，修订 SW-02；公积金沿用保险主动提及的观察边界。实现、局部回归与飞书原文同步；发布状态由生产版本核验，代码存在不代表已上线。
 - 2026-10-23：首次按主题建立口径、执行落点与验证关联；机械拆分手册，保持文案与顺序；不新增业务裁定。

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ActionIntent, ActionSyncContext } from '@biz/action-execution/action-execution.types';
 import { OpsEventsRecorderService } from './ops-events-recorder.service';
 import type { RecordOpsEventInput } from '../types/ops-events.types';
+import { ACTION_KIND } from '@shared-types/action-execution.contract';
 
 const scopeSchema = z.object({
   userId: z.string(),
@@ -21,7 +22,12 @@ export class ActionOpsEventService {
   constructor(private readonly recorder: OpsEventsRecorderService) {}
 
   async sync(intent: ActionIntent, rawResult: unknown, context?: ActionSyncContext): Promise<void> {
-    if (!['sponge.booking', 'sponge.cancel', 'sponge.modify'].includes(intent.kind)) return;
+    if (
+      intent.kind !== ACTION_KIND.SPONGE_BOOKING &&
+      intent.kind !== ACTION_KIND.SPONGE_CANCEL &&
+      intent.kind !== ACTION_KIND.SPONGE_MODIFY
+    )
+      return;
     const result = resultSchema.parse(rawResult);
     if (!result.success) return;
     const scope = scopeSchema.parse(intent.recovery);
@@ -37,7 +43,7 @@ export class ActionOpsEventService {
     };
     let eventName: RecordOpsEventInput['eventName'];
     let idempotencyKey: string;
-    if (intent.kind === 'sponge.booking') {
+    if (intent.kind === ACTION_KIND.SPONGE_BOOKING) {
       eventName = 'booking.succeeded';
       idempotencyKey = String(workOrderId);
       payload.job_id = intent.parameters.jobId ?? scope.jobId ?? payload.job_id ?? null;
@@ -45,7 +51,7 @@ export class ActionOpsEventService {
       // No invitation result can be inferred from booking success. A later
       // original tool continuation may fill this field through the narrow RPC.
       delete payload.group_invite;
-    } else if (intent.kind === 'sponge.cancel') {
+    } else if (intent.kind === ACTION_KIND.SPONGE_CANCEL) {
       eventName = 'booking.canceled';
       idempotencyKey = `${workOrderId}:canceled`;
       payload.cancel_reason_id =

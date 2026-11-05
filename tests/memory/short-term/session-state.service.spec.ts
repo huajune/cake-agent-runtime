@@ -49,6 +49,7 @@ describe('SessionStateService（S1-S6）', () => {
     fetchBrandList: jest.fn().mockResolvedValue([{ id: 1, name: '肯德基', aliases: ['KFC'] }]),
   };
   const systemConfig = { getExtractModelOverride: jest.fn().mockResolvedValue(undefined) };
+  const extractionAlerts = { sendSimpleAlert: jest.fn().mockResolvedValue(true) };
   const config = {
     sessionTtl: 86400,
     sessionFactsTtl: 129600,
@@ -92,6 +93,9 @@ describe('SessionStateService（S1-S6）', () => {
       llm as never,
       sponge as never,
       systemConfig as never,
+      undefined,
+      undefined,
+      extractionAlerts as never,
     );
     service = new SessionStateService(
       facts,
@@ -309,6 +313,78 @@ describe('SessionStateService（S1-S6）', () => {
         modelId: 'test/extract',
       }));
 
+    it.each(['好的', '如果没做满六个月门店不要了怎么办'])(
+      '无偏好变更回合回显旧值不报错、不覆盖旧条件：%s',
+      async (message) => {
+        const original = { availableWindow: { start: '20:00' }, maxDaysPerWeek: 3 };
+        await service.saveFacts(
+          ...scope,
+          softFacts({
+            city: { value: '上海', confidence: 'medium', evidence: '我在上海' },
+            schedule_constraint: original,
+          }),
+        );
+        const before = await savedPreferences();
+        respondValidated({
+          preferences: preferences({ city: '上海', schedule_constraint: { maxDaysPerWeek: 3 } }),
+          reasoning: '本轮无新信息',
+        });
+        const ledger = createTurnLedger();
+        ledger.recordScheduleConstraint({ maxDaysPerWeek: 6 });
+        await service.extractAndSave(
+          ...scope,
+          [{ role: 'user', content: message }],
+          ledger.drain().facts.turnHints,
+        );
+        expect((await savedPreferences())?.schedule_constraint).toEqual(
+          before?.schedule_constraint,
+        );
+        expect(extractionAlerts.sendSimpleAlert).not.toHaveBeenCalled();
+      },
+    );
+
+    it('新条件缺证据时告警列全被拒字段和原因，不承诺其他字段或兜底已保存', async () => {
+      await service.saveFacts(...scope, softFacts({ schedule_constraint: { maxDaysPerWeek: 3 } }));
+      respondValidated({
+        preferences: preferences({
+          schedule_constraint: { maxDaysPerWeek: 2 },
+          city: '上海',
+          district: ['静安'],
+          location: ['新业坊'],
+        }),
+        preference_evidence: { city: '', district: '字'.repeat(201), location: '本人想找新业坊' },
+        reasoning: '变更',
+      });
+      await service.extractAndSave(...scope, [{ role: 'user', content: '本人想找新业坊' }]);
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({ maxDaysPerWeek: 3 });
+      expect((await savedPreferences())?.location?.value).toEqual(['新业坊']);
+      expect(extractionAlerts.sendSimpleAlert).toHaveBeenCalledTimes(1);
+      const [title, detail] = extractionAlerts.sendSimpleAlert.mock.calls[0];
+      expect(title).toContain('班次条件更新未通过校验');
+      expect(detail).toContain('schedule_constraint: 证据缺失 [missing]');
+      expect(detail).toContain('city: 证据为空 [empty]');
+      expect(detail).toContain('district: 证据超长（201/200 字符） [over_budget]');
+      expect(detail).not.toContain('新业坊');
+      expect(detail).not.toContain('同轮其他偏好已照常保存');
+      expect(detail).toContain('不代表兜底或保存已成功');
+    });
+
+    it('新班次有有效专用原话时，空通用证据不误丢弃变更', async () => {
+      respondValidated({
+        preferences: preferences({ schedule_constraint: { maxDaysPerWeek: 2 } }),
+        preference_evidence: { schedule_constraint: '' },
+        schedule_constraint_citation: { quote: '一周最多两天' },
+        reasoning: '本轮变更',
+      });
+      await service.extractAndSave(...scope, [{ role: 'user', content: '一周最多两天' }]);
+      expect((await savedPreferences())?.schedule_constraint).toMatchObject({
+        value: { maxDaysPerWeek: 2 },
+        source: 'candidate_quote',
+        evidence: '一周最多两天',
+      });
+      expect(extractionAlerts.sendSimpleAlert).not.toHaveBeenCalled();
+    });
+
     it.each<[string, Record<string, unknown>]>([
       ['跨日漏写 endDayOffset', { availableWindow: { start: '22:00', end: '06:00' } }],
       ['起止相同', { availableWindow: { start: '18:00', end: '18:00' } }],
@@ -366,6 +442,7 @@ describe('SessionStateService（S1-S6）', () => {
       const [title, detail, level] = alertNotifier.sendSimpleAlert.mock.calls[0];
       expect(title).toContain('班次条件');
       expect(detail).toContain('availableWindow');
+      expect(detail).toContain('跨日区间须明确endDayOffset=1');
       expect(detail).not.toContain('22:00');
       expect(level).toBe('warning');
     });

@@ -8,15 +8,10 @@ import {
   type BotAccountProvider,
   type BotAccountInfo,
 } from '@biz/ops-events/providers/bot-account.provider';
+import type { ActionDenialReason, PermittedAction } from '@shared-types/action-permit.types';
+import { ACTION_DENIAL_REASON, PERMITTED_ACTION } from '@shared-types/action-permit.types';
 
-export type PermittedAction = 'reply' | 'proactive' | 'tool';
-export type ActionDenialReason =
-  | 'global_disabled'
-  | 'hosting_paused'
-  | 'candidate_blacklisted'
-  | 'group_blacklisted'
-  | 'receiving_bot_not_hosted'
-  | 'permit_unavailable';
+export type { ActionDenialReason, PermittedAction } from '@shared-types/action-permit.types';
 export interface ActionPermitInput {
   chatId: string;
   action: PermittedAction;
@@ -48,34 +43,39 @@ export class ActionPermitService {
       // 接管作用域是聊天，A bot 对话接管不得暂停同一候选人的 B bot 对话。
       const pause = await this.hosting.getChatPause(input.chatId);
       if (pause.paused)
-        return { allowed: false, reason: 'hosting_paused', pauseExpiresAt: pause.expiresAt };
+        return {
+          allowed: false,
+          reason: ACTION_DENIAL_REASON.HOSTING_PAUSED,
+          pauseExpiresAt: pause.expiresAt,
+        };
       if (await this.blacklist.matchBlacklisted([input.chatId, ...(input.candidateIds ?? [])])) {
-        return { allowed: false, reason: 'candidate_blacklisted' };
+        return { allowed: false, reason: ACTION_DENIAL_REASON.CANDIDATE_BLACKLISTED };
       }
       const enabled =
-        input.action === 'proactive'
+        input.action === PERMITTED_ACTION.PROACTIVE
           ? (await this.systemConfig.getAgentReplyConfig()).reengagementEnabled
           : await this.systemConfig.getAiReplyEnabled();
-      if (!enabled) return { allowed: false, reason: 'global_disabled' };
-      if (!input.botImId?.trim()) return { allowed: false, reason: 'receiving_bot_not_hosted' };
+      if (!enabled) return { allowed: false, reason: ACTION_DENIAL_REASON.GLOBAL_DISABLED };
+      if (!input.botImId?.trim())
+        return { allowed: false, reason: ACTION_DENIAL_REASON.RECEIVING_BOT_NOT_HOSTED };
       const botId = input.botImId.trim();
       const bots = await this.getRoster();
       const bot = bots.find((entry) =>
         [entry.wxid, entry.id, entry.weixin, entry.wecomUserId].some((id) => id?.trim() === botId),
       );
-      if (!bot) return { allowed: false, reason: 'receiving_bot_not_hosted' };
+      if (!bot) return { allowed: false, reason: ACTION_DENIAL_REASON.RECEIVING_BOT_NOT_HOSTED };
       // 2026-10-15 业务裁定：小组关闭仅停被动 AI，面试提醒/回访继续。
       const groupId = input.groupId ?? bot.groupId;
       if (
-        input.action !== 'proactive' &&
+        input.action !== PERMITTED_ACTION.PROACTIVE &&
         groupId &&
         (await this.groups.isGroupBlacklisted(groupId))
       ) {
-        return { allowed: false, reason: 'group_blacklisted' };
+        return { allowed: false, reason: ACTION_DENIAL_REASON.GROUP_BLACKLISTED };
       }
       return { allowed: true };
     } catch {
-      return { allowed: false, reason: 'permit_unavailable' };
+      return { allowed: false, reason: ACTION_DENIAL_REASON.PERMIT_UNAVAILABLE };
     }
   }
   private async getRoster(): Promise<BotAccountInfo[]> {

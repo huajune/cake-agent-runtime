@@ -3,7 +3,14 @@ import { join, relative } from 'node:path';
 import { GUARDRAIL_CATALOG } from '../../src/agent/guardrail/catalog';
 import { FINAL_CHECK_RULES } from '../../src/agent/generator/context/sections/procedural/final-check.section';
 import { loadCandidateManual } from '../../src/agent/generator/context/manual-loader';
+import { TOOL_GATE } from '../../src/types/tool-action.contract';
 import { validateRegistry, type RuleBinding } from './registry';
+
+function toolGateAnchor(id: string): string {
+  const entry = Object.entries(TOOL_GATE).find(([, value]) => value === id);
+  if (!entry) throw new Error(`Unknown tool gate in business-rule catalog: ${id}`);
+  return `TOOL_GATE.${entry[0]}`;
+}
 
 function readSources(root: string): Map<string, string> {
   const files = new Map<string, string>();
@@ -30,7 +37,12 @@ export async function checkBusinessRules(root = process.cwd()) {
     ...GUARDRAIL_CATALOG.map((rule) => ({
       ...rule,
       catalog: catalogs[rule.layer],
-      anchor: rule.layer === 'input' ? 'defineInputRiskRule' : rule.id,
+      anchor:
+        rule.layer === 'input'
+          ? 'defineInputRiskRule'
+          : rule.layer === 'tool'
+            ? toolGateAnchor(rule.id)
+            : rule.id,
     })),
     ...FINAL_CHECK_RULES.map((rule) => ({
       ...rule,

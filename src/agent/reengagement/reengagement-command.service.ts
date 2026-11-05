@@ -12,6 +12,14 @@ import {
 } from './follow-up-scheduler.service';
 
 export const REENGAGEMENT_COMMAND_QUEUE = 'reengagement-commands';
+export const REENGAGEMENT_COMMAND_JOB = 'apply';
+export const REENGAGEMENT_COMMAND_KIND = {
+  SCHEDULE: 'schedule',
+  BOOKING_RESOLUTION: 'booking-resolution',
+  STOP: 'stop',
+  SUPERSEDE: 'supersede',
+  ACTIVITY: 'activity',
+} as const;
 type StopInput = Parameters<FollowUpSchedulerService['stopPendingJobsForSessionScenario']>[0];
 type SupersedeInput = Parameters<FollowUpSchedulerService['removeSupersededPendingJobs']>[0];
 type StoredScheduleInput = Omit<ScheduleFollowUpInput, 'state'> & {
@@ -20,12 +28,15 @@ type StoredScheduleInput = Omit<ScheduleFollowUpInput, 'state'> & {
   };
 };
 type Command =
-  | { kind: 'schedule'; input: StoredScheduleInput }
-  | { kind: 'booking-resolution'; input: ScheduleBookingResolutionInput }
-  | { kind: 'stop'; input: StopInput }
-  | { kind: 'supersede'; input: SupersedeInput }
+  | { kind: typeof REENGAGEMENT_COMMAND_KIND.SCHEDULE; input: StoredScheduleInput }
   | {
-      kind: 'activity';
+      kind: typeof REENGAGEMENT_COMMAND_KIND.BOOKING_RESOLUTION;
+      input: ScheduleBookingResolutionInput;
+    }
+  | { kind: typeof REENGAGEMENT_COMMAND_KIND.STOP; input: StopInput }
+  | { kind: typeof REENGAGEMENT_COMMAND_KIND.SUPERSEDE; input: SupersedeInput }
+  | {
+      kind: typeof REENGAGEMENT_COMMAND_KIND.ACTIVITY;
       input: { corpId: string; userId: string; sessionId: string; timestamp: number };
     };
 
@@ -40,7 +51,7 @@ export class ReengagementCommandService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.queue.process('apply', 1, (job: Job<Command>) => this.process(job));
+    this.queue.process(REENGAGEMENT_COMMAND_JOB, 1, (job: Job<Command>) => this.process(job));
     this.queue.on('failed', (job: Job, error: Error) => {
       void this.failures.exhausted(REENGAGEMENT_COMMAND_QUEUE, job, error);
     });
@@ -49,7 +60,7 @@ export class ReengagementCommandService implements OnModuleInit {
   scheduleFollowUp(input: ScheduleFollowUpInput): Promise<void> {
     return this.enqueue(
       {
-        kind: 'schedule',
+        kind: REENGAGEMENT_COMMAND_KIND.SCHEDULE,
         input: {
           ...input,
           state: input.state
@@ -63,33 +74,41 @@ export class ReengagementCommandService implements OnModuleInit {
 
   scheduleBookingResolution(input: ScheduleBookingResolutionInput): Promise<void> {
     return this.enqueue(
-      { kind: 'booking-resolution', input },
+      { kind: REENGAGEMENT_COMMAND_KIND.BOOKING_RESOLUTION, input },
       `${input.sessionRef.sessionId}:${input.scenarioCode}:${input.anchorEventId}`,
     );
   }
 
   stopPendingJobsForSessionScenario(input: StopInput & { commandId: string }): Promise<void> {
     return this.enqueue(
-      { kind: 'stop', input: { ...input, beforeAnchorAt: Date.now() } },
+      { kind: REENGAGEMENT_COMMAND_KIND.STOP, input: { ...input, beforeAnchorAt: Date.now() } },
       input.commandId,
     );
   }
 
   removeSupersededPendingJobs(input: SupersedeInput & { commandId: string }): Promise<void> {
     return this.enqueue(
-      { kind: 'supersede', input: { ...input, beforeAnchorAt: Date.now() } },
+      {
+        kind: REENGAGEMENT_COMMAND_KIND.SUPERSEDE,
+        input: { ...input, beforeAnchorAt: Date.now() },
+      },
       input.commandId,
     );
   }
 
-  recordCandidateActivity(input: Extract<Command, { kind: 'activity' }>['input']): Promise<void> {
-    return this.enqueue({ kind: 'activity', input }, `${input.sessionId}:${input.timestamp}`);
+  recordCandidateActivity(
+    input: Extract<Command, { kind: typeof REENGAGEMENT_COMMAND_KIND.ACTIVITY }>['input'],
+  ): Promise<void> {
+    return this.enqueue(
+      { kind: REENGAGEMENT_COMMAND_KIND.ACTIVITY, input },
+      `${input.sessionId}:${input.timestamp}`,
+    );
   }
 
   async process(job: Job<Command>): Promise<void> {
     const command = job.data;
     switch (command.kind) {
-      case 'schedule': {
+      case REENGAGEMENT_COMMAND_KIND.SCHEDULE: {
         const stored = command.input;
         const result = await this.scheduler.scheduleFollowUp({
           ...stored,
@@ -100,18 +119,18 @@ export class ReengagementCommandService implements OnModuleInit {
         if (result.reason === 'enqueue_error') throw new Error(result.reason);
         return;
       }
-      case 'booking-resolution': {
+      case REENGAGEMENT_COMMAND_KIND.BOOKING_RESOLUTION: {
         const result = await this.scheduler.scheduleBookingResolution(command.input);
         if (result.reason === 'booking_resolution_schedule_error') throw new Error(result.reason);
         return;
       }
-      case 'stop':
+      case REENGAGEMENT_COMMAND_KIND.STOP:
         await this.scheduler.stopPendingJobsForSessionScenario(command.input);
         return;
-      case 'supersede':
+      case REENGAGEMENT_COMMAND_KIND.SUPERSEDE:
         await this.scheduler.removeSupersededPendingJobs(command.input);
         return;
-      case 'activity': {
+      case REENGAGEMENT_COMMAND_KIND.ACTIVITY: {
         const { corpId, userId, sessionId, timestamp } = command.input;
         await this.session.recordCandidateActivity(corpId, userId, sessionId, new Date(timestamp));
         return;
@@ -122,7 +141,10 @@ export class ReengagementCommandService implements OnModuleInit {
   private async enqueue(command: Command, key: string): Promise<void> {
     const jobId = createHash('sha256').update(`${command.kind}:${key}`).digest('hex');
     try {
-      await this.queue.add('apply', command, { ...CRITICAL_WRITE_JOB_OPTIONS, jobId });
+      await this.queue.add(REENGAGEMENT_COMMAND_JOB, command, {
+        ...CRITICAL_WRITE_JOB_OPTIONS,
+        jobId,
+      });
     } catch (error) {
       await this.failures.report('reengagement.command_not_durable', command.kind, error);
       throw error;

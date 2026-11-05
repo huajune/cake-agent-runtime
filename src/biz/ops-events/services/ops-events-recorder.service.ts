@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { CRITICAL_WRITE_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { QueueFailureService } from '@infra/queue/queue-failure.service';
-import { CRITICAL_OPS_EVENT_QUEUE } from '../critical-event.processor';
+import { CRITICAL_OPS_EVENT_QUEUE, CRITICAL_OPS_EVENT_JOB } from '../critical-event.processor';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from './bot-group-resolver.service';
@@ -14,6 +14,7 @@ import type {
   RecordCandidateMessageInput,
   RecordOpsEventInput,
 } from '../types/ops-events.types';
+import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
 
 /**
  * 运营事件记录统一入口。
@@ -46,7 +47,7 @@ export class OpsEventsRecorderService {
    * （如「首条插入=开场白」），失败会被误判成重复——请改用 {@link recordEventDetailed}。
    */
   async recordEvent(input: RecordOpsEventInput): Promise<boolean> {
-    return (await this.recordEventDetailed(input)) === 'inserted';
+    return (await this.recordEventDetailed(input)) === OPS_EVENT_WRITE_RESULT.INSERTED;
   }
 
   /**
@@ -85,7 +86,7 @@ export class OpsEventsRecorderService {
       context,
     );
     return (
-      result === 'inserted' ||
+      result === OPS_EVENT_WRITE_RESULT.INSERTED ||
       (await this.repository.openingLogicalTurn(input.corpId, input.chatId)) === logicalTurnId
     );
   }
@@ -96,7 +97,7 @@ export class OpsEventsRecorderService {
     context?: { assertOwned(): Promise<void> },
   ): Promise<OpsEventWriteResult> {
     let enriched = { ...input, occurredAt: input.occurredAt ?? new Date() };
-    let result: OpsEventWriteResult = 'failed';
+    let result: OpsEventWriteResult = OPS_EVENT_WRITE_RESULT.FAILED;
     await context?.assertOwned();
     try {
       enriched = this.enrichBotGroup(enriched);
@@ -106,7 +107,7 @@ export class OpsEventsRecorderService {
     } catch (error) {
       this.logger.warn(`记录运营事件失败 event=${input.eventName}: ${this.errorMessage(error)}`);
     }
-    if (result !== 'failed') return result;
+    if (result !== OPS_EVENT_WRITE_RESULT.FAILED) return result;
     const critical = [
       'booking.succeeded',
       'booking.canceled',
@@ -127,7 +128,10 @@ export class OpsEventsRecorderService {
         const jobId = createHash('sha256')
           .update(`${input.corpId}:${input.eventName}:${input.idempotencyKey}${inviteVariant}`)
           .digest('hex');
-        await this.recoveryQueue.add('persist', enriched, { ...CRITICAL_WRITE_JOB_OPTIONS, jobId });
+        await this.recoveryQueue.add(CRITICAL_OPS_EVENT_JOB, enriched, {
+          ...CRITICAL_WRITE_JOB_OPTIONS,
+          jobId,
+        });
       } catch (error) {
         // Both sinks failed: expose the gap; never re-run the external booking to repair its accounting.
         await this.failures.report('ops.critical_event_not_durable', input.eventName, error);
@@ -136,7 +140,7 @@ export class OpsEventsRecorderService {
     } else if (requireDurable) {
       throw new Error(`Event persistence not confirmed: ${input.eventName}`);
     }
-    return 'failed';
+    return OPS_EVENT_WRITE_RESULT.FAILED;
   }
 
   /**

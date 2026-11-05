@@ -12,9 +12,9 @@
 
 ## 投递与确认
 
-`MessageDeliveryService` 接入普通回复、转人工前业务回执和降级回复；复聊通过 `beginReply` 复用相同计划。执行档每段使用 ActionPermit 并进入 ActionExecutor，HTTP 成功仅表示平台受理，保留 `executing`。没有可靠终态证据时不重发、不发送依赖它的后续段、不生成另一条降级消息。
+`MessageDeliveryService` 接入普通回复、转人工前业务回执和降级回复；复聊通过 `beginReply` 复用相同计划。普通输入产生的 execute 回复（持久回合包含冻结的 `recovery.primary`）每段经过 ActionPermit 与 ActionExecutor，在发送接口明确返回 `errcode=0` 后记为 `succeeded`，立即继续后段，全部成功后确认原输入；不等待自发消息回调，也不等待后台扫描。证据保留为 `accepted`，表示本次发送 API 请求已明确受理，不表示对端送达或已读。网络超时、异常或不明响应才保留 `unknown`，不盲目重发或生成另一条降级消息。主动任务、复聊及群任务的既有确认策略不在本次修改范围内。
 
-`MessageService.handleMessage` 对纳管请求的 API 自发回调，在返回 HTTP ACK 前追加证据。入口公开，因此先以恒定时间比较核对当前企业 token；缺失、不符及尚未具备可信凭证解析的小组路由均不能形成终态证据。再精确核对企业、执行账号、聊天、原请求号、类型和内容；文本检查原文，小程序还检查 appId、username、title、pagePath。证据关联原 dispatch attempt，回调只追加证据并唤醒；执行核心取得核实权后按 fence 结算。过期后到达的可靠终态仍可结算，不能据此声称已读。凭证不落库、不进入日志；没有已验证语义的 `sent-result` 不用于推断成功。
+`MessageService.handleMessage` 对纳管请求的 API 自发回调，在返回 HTTP ACK 前追加证据。入口公开，因此先以恒定时间比较核对当前凭据：企业使用配置 token，小组使用服务器端 `getGroupBots` 目录的当前账号归属和组 token。目录失败或凭据不符不能形成终态证据。再精确核对企业、执行账号、聊天、原请求号、类型和内容；文本检查原文，小程序还检查 appId、username、title、pagePath。小组适配器保留原始 `externalRequestId` 和 source，缺少 source 时标记推断来源；不能把发送接口的类型 0 当作回调文本类型 7。证据关联原 dispatch attempt，回调可作为未知请求的补充证据，由既有恢复路径按 fence 结算；它不是普通回复续发或输入确认的前置条件。过期后到达的可靠终态仍可结算，不能据此声称已读。凭证不写入恢复载荷；没有已验证语义的 `sent-result` 不用于推断成功。
 
 所有应发送段均终结后，事务保存输入结局，再按消息 ID 原子移除 Redis pending。重复 ack 只删除原归属消息，不能按条数误裁新输入。ack 失败后只修 ack，不重新调用模型或发送。
 
@@ -24,14 +24,18 @@
 
 ## 恢复、档位与保留
 
+正常发送成功的普通回复在当前处理流程内完成。只有持久化补账、输入确认失败或真正未知的发送结果进入既有恢复流程；没有逐段回调等待任务或 60 秒缺回调告警。
+
 扫描器按索引、25 条批量和 30 秒整轮预算发现计划/确认待办，最长自动恢复窗口为原输入起 24 小时；确认修复不受该发送窗口影响。扫描不依赖 Redis 输入仍存在。没有原计划的中断生成进入人工核实，不能凭缺失队列内容重新编造输入。未决状态与人工核实标志保留。
 
-后台企业路由从当前配置解析凭证，不存 token。历史小组路由尚无经过验证的凭证解析器时进入人工核实；不得换企业 token、换执行账号或换 API 继续。带原路由身份的新回调/输入可以提供核实线索，但不保证已丢失凭证的后台自动恢复。
+后台企业路由从当前配置解析凭证，不存 token。小组路由从当前目录解析凭据，并要求账号仍属于计划冻结的 groupId；缺少冻结 groupId、账号迁组、目录歧义或凭据缺失时停止恢复，不得换企业 token、执行账号或 API 继续。新 execute 小组输入在 ACK 前验证目录归属并冻结 groupId；普通 observe 输入保留原即时 ACK 行为。入口重放已有 execute 计划也须核对冻结路由并重新解析凭据，不能绕过后台的迁组检查。settled/acked 仅修确认时不要求发送凭据。
 
-执行档读写未确认即阻断。观察档记录拟拦截信息并保留原 API 参数、请求号和重试行为；关闭/观察不能绕过已有执行档 membership 和动作。切执行档必须设置输入生效时间；回退时保留 `ACTION_EXECUTION_CUTOVER_AT`。观察记录不能直接升级为执行证据。
+执行档读写未确认即阻断。观察档记录拟拦截信息并保留原 API 参数、请求号和重试行为；关闭/观察不能绕过已有执行档 membership 和动作。旧 execute 计划中尚未登记的后续段也继承计划的 execute 模式，保留冻结请求号；缺失 cutover 或登记未确认时阻断。切执行档必须设置输入生效时间；回退时保留 `ACTION_EXECUTION_CUTOVER_AT`。观察记录不能直接升级为执行证据。
 
 90 天后只清理已经 ack 的正文和恢复载荷，保留最小输入归属与终态摘要；未决计划不删除。超过重放安全期限拒绝自动派发。只保存恢复需要的原输入摘要、回复和 outcome/锚点资料，不保存 token、完整会话或模型记忆快照。
 
 ## 验证
 
 `tests/biz/reply-execution/reply-turns.integration.sql` 在一次性 PostgreSQL 15 中验证真实事务、不可变计划、部分确认、切档、晚到回调、原尝试/fence 与保留边界；并发双连接验证同一输入只有一个生成者。Jest 故障测试覆盖登记失败、冻结文本、逐段未知、无副作用恢复、ack-only 和回调落账失败不 ACK。没有调用真实发送或报名接口。
+
+`tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts` 使用隔离 PostgreSQL 和真实 Nest 服务验证企业/小组普通回复无回调即可连续发送并确认输入，以及发送异常不重派、数据库补账、服务容器重建、observe 回退和冻结路由。渠道 HTTP、目录、模型及 Redis 边界使用测试替身，不等于供应商真实收发或生产延迟验收。运行需要显式设置 `CAKE_REPLY_TEST_CONTAINER` 和 `CAKE_REPLY_TEST_DATABASE`；仅允许测试库，默认跳过。本次简化使用现有数据库结构与 RPC，不新增迁移。最新验收范围见 [验收记录](../../../docs/technical/runtime-acceptance-2026-11-04.md)。

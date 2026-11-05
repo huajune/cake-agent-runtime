@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
@@ -6,6 +6,8 @@ import { hasReplayEvidence, attachReplayEvidence } from '@infra/utils/action-rec
 import type { ToolReplayEvidence } from '@shared-types/tool-replay.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { GroupRouteCredentialsService } from '../credentials/group-route-credentials.service';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -19,13 +21,13 @@ import {
   collectToolReplayEvidence,
 } from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
-import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import {
   ReengagementAnchorService,
   isBookingSucceededCall,
 } from '@agent/reengagement/anchor.service';
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import type { ReengagementChannelIdentity } from '@agent/reengagement/follow-up-scheduler.service';
+import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
@@ -45,6 +47,10 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import { BotService } from '../../bot/bot.service';
+import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
+import { REPLY_TURN_STATUS } from '@biz/reply-execution/reply-execution.constants';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /**
  * 兼容图片描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
@@ -84,7 +90,7 @@ interface AgentCallParams {
   token?: string;
   imContactId?: string;
   imRoomId?: string;
-  apiType?: 'enterprise' | 'group';
+  apiType?: WecomApiType;
   modelId?: string;
   thinking?: GeneratorThinkingConfig;
   shortTermEndTimeInclusive?: number;
@@ -117,6 +123,8 @@ export class ReplyWorkflowService {
     private readonly botService: BotService,
     private readonly oobReconcile: OobReconcileService,
     @Optional() private readonly replyTurns?: ReplyTurnsService,
+    @Optional() private readonly groupCredentials?: GroupRouteCredentialsService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -274,11 +282,19 @@ export class ReplyWorkflowService {
         this.inputOccurredAt(allMessages),
         this.replyRecoveryContext(params.primaryMessage, params.content),
       ));
-    if (durableTurn?.status === 'settled' || durableTurn?.status === 'acked') {
+    if (
+      durableTurn?.status === REPLY_TURN_STATUS.SETTLED ||
+      durableTurn?.status === REPLY_TURN_STATUS.ACKED
+    ) {
       await this.ackDurableTurn(durableTurn, params.assertOwned);
       return;
     }
     if (durableTurn) {
+      // Retries can arrive through ordinary ingress after a mode rollback. Route and
+      // credentials must still come from the original execute obligation.
+      const route = await this.resolveDurableRoute(durableTurn, params.primaryMessage);
+      parsed.token = route.token;
+      parsed.groupId = route.groupId;
       const members = new Set(durableTurn.inputIds);
       allMessages = allMessages.filter((message) => members.has(message.messageId));
       if (!allMessages.length)
@@ -313,7 +329,7 @@ export class ReplyWorkflowService {
       botUserId: stableBotUserId,
       contactName: parsed.contactName,
       botImId: params.primaryMessage.imBotId,
-      groupId: params.primaryMessage.groupId,
+      groupId: parsed.groupId,
       externalUserId: parsed.externalUserId,
       token: parsed.token,
       imContactId: parsed.imContactId,
@@ -768,7 +784,7 @@ export class ReplyWorkflowService {
     assertOwned?: () => Promise<void>,
   ): Promise<void> {
     await assertOwned?.();
-    if (turn.status === 'settled' || turn.status === 'acked') {
+    if (turn.status === REPLY_TURN_STATUS.SETTLED || turn.status === REPLY_TURN_STATUS.ACKED) {
       await this.ackDurableTurn(turn, assertOwned);
       return;
     }
@@ -798,6 +814,51 @@ export class ReplyWorkflowService {
       resumeTurn: turn,
       assertOwned,
     });
+  }
+
+  private async resolveDurableRoute(
+    turn: ReplyTurn,
+    message: EnterpriseMessageCallbackDto,
+  ): Promise<{ token: string; groupId?: string }> {
+    const primary = turn.recovery.primary as Partial<EnterpriseMessageCallbackDto> | undefined;
+    const apiType = primary?._apiType ?? WECOM_API_TYPE.ENTERPRISE;
+    if (
+      !primary ||
+      primary.orgId !== turn.corpId ||
+      primary.imBotId !== turn.accountId ||
+      primary.chatId !== turn.chatId ||
+      message.orgId !== turn.corpId ||
+      message.imBotId !== turn.accountId ||
+      message.chatId !== turn.chatId ||
+      (message._apiType ?? WECOM_API_TYPE.ENTERPRISE) !== apiType ||
+      (message.groupId !== undefined && message.groupId !== primary.groupId) ||
+      message.imContactId !== primary.imContactId ||
+      message.imRoomId !== primary.imRoomId
+    )
+      throw new ReplyDeferredError('recovery_route_identity_mismatch');
+
+    if (apiType === WECOM_API_TYPE.GROUP) {
+      try {
+        const route = await this.groupCredentials?.resolveForRecovery({
+          corpId: turn.corpId,
+          accountId: turn.accountId,
+          groupId: primary.groupId,
+        });
+        if (route) return route;
+      } catch {
+        // A directory failure cannot fall through to a new model run or fallback send.
+      }
+      throw new ReplyDeferredError('group_credential_resolution');
+    }
+    const token = this.config?.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
+    if (!token) throw new ReplyDeferredError('enterprise_credential_resolution');
+    if (!turn.plan) {
+      const expected = Buffer.from(token);
+      const supplied = Buffer.from(typeof message.token === 'string' ? message.token : '');
+      if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied))
+        throw new ReplyDeferredError('enterprise_callback_unverified');
+    }
+    return { token, groupId: primary.groupId };
   }
 
   private async settleAndAckTurn(
@@ -1466,14 +1527,14 @@ export class ReplyWorkflowService {
       // 写入失败（DB 不可用 / 熔断 OPEN / RPC 异常）时，无法判定本条是否开场白：
       // 不能据此误记为 agent.replied（否则开场白行永远缺失且不可恢复）。
       // 跳过本轮分类——开场白行未写入，后续回复会再次尝试插入并正确判定。
-      if (openingResult === 'failed') {
+      if (openingResult === OPS_EVENT_WRITE_RESULT.FAILED) {
         this.logger.warn(
           `[漏斗] 开场白事件写入失败，跳过本轮开场白/回复分类，等待后续重试 [${traceId}]`,
         );
         return 'unknown';
       }
 
-      const isOpening = openingResult === 'inserted';
+      const isOpening = openingResult === OPS_EVENT_WRITE_RESULT.INSERTED;
       if (isOpening) {
         // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
         // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态

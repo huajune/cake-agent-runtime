@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@infra/client-http/http.service';
 import { ApiConfigService } from '@infra/config/api-config.service';
+import { sanitizeHttpError } from '@infra/client-http/http-log-sanitizer';
+import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /**
  * 发送入参：企业级 `SendMessageDto` 字段 + 小组级 API 的路由字段。
@@ -84,7 +87,7 @@ export class MessageSenderService {
       let apiUrl: string;
       let requestBody: Record<string, unknown>;
 
-      if (_apiType === 'group') {
+      if (_apiType === WECOM_API_TYPE.GROUP) {
         // 小组级 API：token 在请求体中
         // 生成唯一的 externalRequestId
         const resolvedExternalRequestId =
@@ -101,9 +104,8 @@ export class MessageSenderService {
           messageType: groupMessageType, // 使用转换后的类型
           payload,
         };
-        this.logger.debug(`使用 API: 小组级 - ${apiUrl}`);
+        this.logger.debug('使用 API: 小组级');
         this.logger.debug(`消息类型转换: 企业级(${messageType}) → 小组级(${groupMessageType})`);
-        this.logger.debug(`请求体: ${JSON.stringify(requestBody)}`);
       } else {
         // 企业级 API：token 在 URL 参数中
         apiUrl = `${this.apiConfig.endpoints.message.send()}?token=${token}`;
@@ -115,14 +117,15 @@ export class MessageSenderService {
           payload,
           ...(externalRequestId ? { externalRequestId } : {}),
         };
-        this.logger.debug(`使用 API: 企业级 - ${apiUrl}`);
+        this.logger.debug('使用 API: 企业级');
       }
 
       const result = await this.httpService.post(apiUrl, requestBody);
 
       // 校验业务状态码（Stride API 返回 HTTP 200 但 errcode !== 0 表示业务失败）
       if (result && typeof result.errcode === 'number' && result.errcode !== 0) {
-        throw new Error(
+        throw new ProviderBusinessError(
+          result.errcode,
           `消息发送业务失败: errcode=${result.errcode}, errmsg=${result.errmsg || '未知'}`,
         );
       }
@@ -132,7 +135,7 @@ export class MessageSenderService {
     } catch (error) {
       // 不在中间层打印日志，避免日志重复
       // 由调用方（MessageDeliveryService / 失败兜底链路）统一记错误日志
-      throw error;
+      throw sanitizeHttpError(error, data.token ? [data.token] : []);
     }
   }
 
@@ -154,7 +157,7 @@ export class MessageSenderService {
     } catch (error) {
       // 不在中间层打印日志，避免日志重复
       // 由顶层服务统一处理错误日志
-      throw error;
+      throw sanitizeHttpError(error, data.token ? [data.token] : []);
     }
   }
 }
