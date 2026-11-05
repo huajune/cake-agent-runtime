@@ -250,6 +250,7 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   // 跨工具共享（涉及通用前置/上下文）
   // ============================================================
+  TURN_CALL_LIMIT_REACHED: 'shared.turn_call_limit_reached',
   MISSING_CHAT_ID: 'shared.missing_chat_id',
   NO_ACTIVE_CASE: 'shared.no_active_case',
   /** request_handoff(modify_appointment) 但候选人并无已确认预约 → 不短路，让 Agent 按首次约面继续。 */

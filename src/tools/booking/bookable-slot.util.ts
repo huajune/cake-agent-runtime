@@ -1,3 +1,4 @@
+// business-rules: IB-10
 /**
  * 面试时段构建：未来 N 天可约 slot + 周期性班次规则压缩 + 候选人请求日期评估。
  *
@@ -12,6 +13,7 @@ import { normalizePolicyText, type InterviewWindow } from '@tools/job-list/job-p
 import {
   compareTime,
   getShanghaiWeekday,
+  hasInterviewWindowEnded,
   isDateOnlyWindow,
   normalizeHm,
   resolveBookingDeadlineDateTime,
@@ -81,68 +83,20 @@ export function buildUpcomingTimeOptions(
   maxOptions = 10,
   now: Date = new Date(),
 ): string[] {
-  if (windows.length === 0) return [];
-
   const today = formatShanghaiDate(now);
-  const nowTime = formatShanghaiTime(now);
-  const nowDateTime = `${today} ${nowTime}`;
-
-  type Option = {
-    date: string;
-    startTime: string;
-    endTime: string;
-    deadline: string | null;
-    label: string;
-  };
-  const options: Option[] = [];
-  const seen = new Set<string>();
-
-  for (let i = 0; i < horizonDays; i += 1) {
-    const date = shiftDate(today, i);
-    const weekday = getShanghaiWeekday(date);
-
-    for (const window of windows) {
-      if (window.date && window.date !== date) continue;
-      if (!window.date && window.weekday && window.weekday !== weekday) continue;
-      if (!window.date && !window.weekday) continue;
-      // 与 buildBookableSlots 的 bookingAllowed=false 同口径：只标日期 / 起点解析不出的窗口不是
-      // 候选人能挑的时间——它们混进扁平选项里，模型会照着让候选人"选个时间"，而 booking 永远提交不了
-      // （2026-10-19 BadCase [13]：肯德基幸福里DT 周一至周五 00:00，模型承诺"我会在截止前帮你提交"）。
-      if (isDateOnlyWindow(window) || normalizeHm(window.startTime) === null) continue;
-
-      const deadline = resolveBookingDeadlineDateTime(date, window);
-      if (deadline && nowDateTime.localeCompare(deadline) > 0) continue;
-
-      const key = `${date}|${window.startTime}|${window.endTime}|${deadline ?? ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const weekdayShort = weekday.replace('每周', '周');
-      const isToday = date === today;
-      const deadlineText = deadline
-        ? isToday
-          ? `报名截止 ${deadline.slice(11)}` // 今日只保留 HH:mm
-          : `报名截止 ${deadline}`
-        : '';
-      const todayTag = isToday ? '今日' : '';
-      const suffixParts = [todayTag, deadlineText].filter(Boolean);
-      const suffix = suffixParts.length > 0 ? `（${suffixParts.join('，')}）` : '';
-
-      options.push({
-        date,
-        startTime: window.startTime,
-        endTime: window.endTime,
-        deadline,
-        label: `${date} ${weekdayShort} ${formatWindowTimeText(window.startTime, window.endTime)}${suffix}`,
-      });
-    }
-  }
-
-  options.sort((a, b) =>
-    a.date === b.date ? compareTime(a.startTime, b.startTime) : a.date.localeCompare(b.date),
-  );
-
-  return options.slice(0, maxOptions).map((option) => option.label);
+  // 人工确认的场次不占候选人可选列表的名额。
+  return buildBookableSlots({ windows, horizonDays, maxOptions: Infinity, now })
+    .filter((slot) => slot.bookingAllowed)
+    .slice(0, maxOptions)
+    .map((slot) => {
+      const isToday = slot.date === today;
+      const deadline = slot.registrationDeadline;
+      const suffix = [
+        isToday ? '今日' : '',
+        deadline ? `报名截止 ${isToday ? deadline.slice(11) : deadline}` : '',
+      ].filter(Boolean);
+      return suffix.length ? `${slot.label}（${suffix.join('，')}）` : slot.label;
+    });
 }
 
 export interface BookableSlot {
@@ -207,6 +161,7 @@ export function buildBookableSlots(params: {
       if (!window.date && window.weekday && window.weekday !== weekday) continue;
       if (!window.date && !window.weekday) continue;
 
+      if (hasInterviewWindowEnded(date, window, today, nowTime)) continue;
       const registrationDeadline = resolveBookingDeadlineDateTime(date, window);
       if (registrationDeadline && nowDateTime.localeCompare(registrationDeadline) > 0) continue;
 
@@ -377,6 +332,7 @@ export function evaluateRequestedDate(params: {
   reason: string;
   policyNotes: string[];
   decisionBasis:
+    | 'past_date'
     | 'no_matching_schedule'
     | 'after_booking_deadline'
     | 'future_schedule_match'
@@ -394,6 +350,17 @@ export function evaluateRequestedDate(params: {
     if (window.weekday) return window.weekday === weekday;
     return false;
   });
+
+  if (date < today) {
+    return {
+      status: 'unavailable',
+      canSchedule: false,
+      matchedWindows: [],
+      reason: `${date} 的面试日期已过`,
+      policyNotes: [...basePolicyNotes],
+      decisionBasis: 'past_date',
+    };
+  }
 
   if (matchedWindows.length === 0) {
     return {
@@ -446,12 +413,14 @@ export function evaluateRequestedDate(params: {
     };
   }
 
-  const latestEnd = effectiveWindows
-    .map((window) => window.endTime || window.startTime)
-    .sort((a, b) => compareTime(a, b))
-    .pop();
-
-  if (latestEnd && compareTime(nowTime, latestEnd) > 0) {
+  const remainingWindows = effectiveWindows.filter(
+    (window) => !hasInterviewWindowEnded(date, window, today, nowTime),
+  );
+  if (remainingWindows.length === 0) {
+    const latestEnd = effectiveWindows
+      .map((window) => normalizeHm(window.endTime))
+      .sort()
+      .at(-1);
     return {
       status: 'unavailable',
       canSchedule: false,
@@ -464,16 +433,16 @@ export function evaluateRequestedDate(params: {
 
   // 如果所有有效窗口都尚未开始（now < 最早 startTime），且之前已通过报名截止检查，
   // 则今日仍可预约，直接返回 available，不让 LLM 生成暧昧话术。
-  const earliestStart = effectiveWindows
-    .map((window) => window.startTime)
-    .filter(Boolean)
+  const earliestStart = remainingWindows
+    .map((window) => normalizeHm(window.startTime))
+    .filter((time): time is string => time !== null)
     .sort((a, b) => compareTime(a, b))[0];
 
   if (earliestStart && compareTime(nowTime, earliestStart) < 0) {
     return {
       status: 'available',
       canSchedule: true,
-      matchedWindows: effectiveWindows,
+      matchedWindows: remainingWindows,
       reason: `今天还可以预约面试（最早时段 ${earliestStart} 开始）`,
       policyNotes: [...basePolicyNotes],
       decisionBasis: 'same_day_before_window',
@@ -483,7 +452,7 @@ export function evaluateRequestedDate(params: {
   return {
     status: 'needs_confirmation',
     canSchedule: null,
-    matchedWindows: effectiveWindows,
+    matchedWindows: remainingWindows,
     reason: '今天有面试时段，是否还能预约需以预约接口结果为准',
     policyNotes: [...basePolicyNotes],
     decisionBasis: 'same_day_window_requires_confirmation',

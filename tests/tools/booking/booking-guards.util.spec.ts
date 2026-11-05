@@ -75,6 +75,22 @@ describe('runBookingScheduleAndNameGuards', () => {
     expect(result?._outcome).toContain('时刻不在面试窗口内');
   });
 
+  it('rejects a previously offered slot after its window ends before submission', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-05T18:01:00+08:00'));
+    try {
+      const input = { job: makeWindowJob(), name: '兮兮' };
+      expect(
+        runBookingScheduleAndNameGuards({ ...input, interviewTime: '2026-11-05 17:00:00' })
+          ?.errorType,
+      ).toBe('booking.invalid_interview_time');
+      expect(
+        runBookingScheduleAndNameGuards({ ...input, interviewTime: '2026-11-06 17:00:00' }),
+      ).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('does not recreate free-text screening when the live contract has no such field', () => {
     const job = {
       ...makeWindowJob(),

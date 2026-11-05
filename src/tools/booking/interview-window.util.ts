@@ -100,6 +100,19 @@ export function isDateOnlyWindow(window: InterviewWindow): boolean {
   return normalizeHm(window.startTime) === '00:00' && normalizeHm(window.endTime) === '00:00';
 }
 
+/** 按面试所在地的分钟判断整个场次是否结束。只标日期的场次在当天继续留给人工确认。 */
+export function hasInterviewWindowEnded(
+  date: string,
+  window: InterviewWindow,
+  today: string,
+  nowTime: string,
+): boolean {
+  if (date !== today) return date < today;
+  if (isDateOnlyWindow(window)) return false;
+  const end = normalizeHm(window.endTime);
+  return end !== null && end < nowTime;
+}
+
 /**
  * 同日报名截止硬阻断检查。
  *

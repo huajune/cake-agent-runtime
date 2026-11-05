@@ -233,6 +233,48 @@ describe('bookable-slot.util', () => {
     });
   });
 
+  it('keeps both candidate lists aligned after a window ends without a registration deadline', () => {
+    const now = new Date('2026-11-05T17:59:00+08:00');
+    const windows = [
+      { date: '2026-11-05', startTime: '14:00', endTime: '16:30' },
+      { date: '2026-11-05', startTime: '17:59', endTime: '17:59' },
+      { date: '2026-11-05', startTime: '18:00', endTime: '19:00' },
+      { date: '2026-11-05', startTime: '00:00', endTime: '00:00' },
+      { date: '2026-11-06', startTime: '14:00', endTime: '16:30' },
+    ];
+    const slots = buildBookableSlots({ windows, now });
+    const allowed = slots.filter((slot) => slot.bookingAllowed);
+    expect(allowed.map((slot) => slot.interviewTime)).toEqual([
+      '2026-11-05 17:59:00',
+      '2026-11-05 18:00:00',
+      '2026-11-06 14:00:00',
+    ]);
+    expect(slots.find((slot) => slot.dateOnly)?.requiresManualConfirmation).toBe(true);
+    expect(buildUpcomingTimeOptions(windows, 7, 10, now)).toEqual([
+      `${allowed[0].label}（今日）`,
+      `${allowed[1].label}（今日）`,
+      allowed[2].label,
+    ]);
+  });
+
+  it('retains a window in progress and checks its registration deadline separately', () => {
+    const now = new Date('2026-11-05T15:00:00+08:00');
+    const window = { date: '2026-11-05', startTime: '14:00', endTime: '16:30' };
+    const slots = buildBookableSlots({ windows: [window], now });
+    expect(slots).toHaveLength(1);
+    expect(slots[0].bookingAllowed).toBe(true);
+    expect(
+      buildBookableSlots({ windows: [{ ...window, fixedDeadline: '2026-11-05 13:00' }], now }),
+    ).toEqual([]);
+  });
+
+  it('does not reintroduce an expired date explicitly requested by the candidate', () => {
+    const now = new Date('2026-11-05T17:59:00+08:00');
+    const windows = [{ date: '2026-11-04', startTime: '14:00', endTime: '16:30' }];
+    expect(buildBookableSlots({ windows, now, requestedDate: '2026-11-04' })).toEqual([]);
+    expect(evaluateRequestedDate({ date: '2026-11-04', windows, now }).canSchedule).toBe(false);
+  });
+
   describe('buildScheduleRule', () => {
     it('returns "" when there are no periodic windows', () => {
       expect(buildScheduleRule([])).toBe('');

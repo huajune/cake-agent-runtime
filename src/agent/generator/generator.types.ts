@@ -64,6 +64,8 @@ export interface GeneratorInvokeParams {
   sessionId: string;
   /** 请求级 trace/message ID，用于写回 turn-end post-processing 状态。 */
   messageId?: string;
+  /** Actual executions in this logical turn, shared by retries and reviewed regeneration. */
+  toolCallCounts?: Map<string, number>;
   logicalTurnId?: string;
   inputOccurredAt?: string;
   /**

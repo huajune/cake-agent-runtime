@@ -1,3 +1,4 @@
+// business-rules: IB-10
 /** Booking guards that remain outside the live collection-form contract. */
 import type { JobDetail } from '@sponge/sponge.types';
 import { isStrictRealChineseName } from '@resolution/candidate/name';
@@ -6,10 +7,12 @@ import {
   compareTime,
   findSameDayCutoffViolation,
   getShanghaiWeekday,
+  hasInterviewWindowEnded,
   isDateOnlyWindow,
   normalizeHm,
-  resolveBookingDeadlineDateTime,
 } from '@tools/booking/interview-window.util';
+import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
+import { formatShanghaiDate, formatShanghaiTime } from '@tools/booking/date.util';
 import {
   buildToolError,
   TOOL_ERROR_TYPES,
@@ -59,7 +62,8 @@ function validateInterviewTimeAgainstSchedule(
   if (!date || !hms) return null;
 
   // 同日报名截止——badcase 簇 booking_same_day_cutoff
-  const cutoffViolation = findSameDayCutoffViolation(date, windows);
+  const now = new Date();
+  const cutoffViolation = findSameDayCutoffViolation(date, windows, now);
   if (cutoffViolation) {
     return buildToolError({
       errorType: TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME,
@@ -75,21 +79,29 @@ function validateInterviewTimeAgainstSchedule(
 
   // 日期完全不在窗口里——LLM 可能从历史抓了一个旧日期或者凭印象造日期
   const matchedWindows = matchWindowsForDate(windows, date);
-  if (matchedWindows.length === 0) {
+  const today = formatShanghaiDate(now);
+  const nowTime = formatShanghaiTime(now);
+  const openWindows = matchedWindows.filter(
+    (window) => !hasInterviewWindowEnded(date, window, today, nowTime),
+  );
+  if (openWindows.length === 0) {
     return buildToolError({
       errorType: TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME,
       outcome: '预约失败（该日无可用面试时段）',
       replyInstruction:
-        '当前 interviewTime 的日期没有匹配的面试窗口。先调 duliday_interview_precheck 拿当前岗位的 bookableSlots，只有 bookingAllowed=true 且带 interviewTime 的 slot 才能用于 booking；不要凭历史对话或印象拼日期。',
+        '该日期没有仍可用的面试窗口。先调 duliday_interview_precheck 拿当前岗位的 bookableSlots，只有 bookingAllowed=true 且带 interviewTime 的 slot 才能用于 booking；不要凭历史对话或印象拼日期。',
       details: {
         detailedReason: `${date} 没有可预约的面试时段`,
-        availableSlots: windows.slice(0, 8).map((window) => ({
-          date: window.date ?? null,
-          weekday: window.weekday ?? null,
-          startTime: window.startTime,
-          endTime: window.endTime,
-          deadline: resolveBookingDeadlineDateTime(date, window),
-        })),
+        availableSlots: buildBookableSlots({ windows, now, maxOptions: Infinity })
+          .filter((slot) => slot.bookingAllowed)
+          .slice(0, 8)
+          .map((slot) => ({
+            date: slot.date,
+            weekday: slot.weekday,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            deadline: slot.registrationDeadline,
+          })),
       },
     });
   }
@@ -101,7 +113,7 @@ function validateInterviewTimeAgainstSchedule(
   // bookingAllowed=false 在 prompt 层禁止自动提交）。
   const hm = normalizeHm(hms);
   if (hm) {
-    const timeWithinSomeWindow = matchedWindows.some((window) => {
+    const timeWithinSomeWindow = openWindows.some((window) => {
       if (isDateOnlyWindow(window)) return true;
       const start = normalizeHm(window.startTime);
       const end = normalizeHm(window.endTime);
@@ -117,7 +129,7 @@ function validateInterviewTimeAgainstSchedule(
           '候选人明确约定了窗口内某时刻就用该时刻，否则用 bookableSlots 里 slot 自带的 interviewTime（窗口起点）；不要凭印象拼时间。',
         details: {
           detailedReason: `${hm} 不在 ${date} 的面试窗口内`,
-          availableSlots: matchedWindows.slice(0, 8).map((window) => ({
+          availableSlots: openWindows.slice(0, 8).map((window) => ({
             date: window.date ?? null,
             weekday: window.weekday ?? null,
             startTime: window.startTime,
