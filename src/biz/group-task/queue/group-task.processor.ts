@@ -173,7 +173,9 @@ export class GroupTaskProcessor implements OnModuleInit {
 
     this.logger.log(`[plan] 开始排程 type=${type} exec=${execId} trigger=${trigger}`);
 
-    const groups = await this.groupResolver.resolveGroups(strategy.tagPrefix);
+    const groups = await this.groupResolver.resolveGroups(strategy.tagPrefix, {
+      forceRefresh: true,
+    });
     if (groups.length === 0) {
       this.logger.warn(`[plan] 未找到匹配群 (tagPrefix=${strategy.tagPrefix})`);
       // 线上有过"群一个都取不到"但一直没被发现的情况：通常是 GROUP_TASK_TOKENS
@@ -459,6 +461,20 @@ export class GroupTaskProcessor implements OnModuleInit {
       }
 
       await this.waitForBotDispatchWindow(botId, group.groupName, sendDelayMs);
+      const eligible =
+        dryRun ||
+        type !== GroupTaskType.ORDER_GRAB ||
+        (await this.groupResolver.hasCurrentTag(group, this.orderGrabStrategy.tagPrefix));
+      if (!eligible && !job.data.dispatchPlan) {
+        await this.writeGroupResult(execId, group.imRoomId, {
+          groupKey,
+          groupName: group.groupName,
+          status: 'skipped',
+          summary: '群已不再匹配抢单群标签',
+          updatedAt: Date.now(),
+        });
+        return;
+      }
       if (!dryRun) {
         await this.scheduledActions.freezePlan(
           job,
@@ -466,7 +482,8 @@ export class GroupTaskProcessor implements OnModuleInit {
         );
       }
       if (!dryRun && job.data.dispatchPlan) {
-        await this.previewPreparedOnce(job, cache.message, type);
+        // 已冻结的任务仍可核对先前的投递结果，新的对外发送须通过标签校验。
+        if (eligible) await this.previewPreparedOnce(job, cache.message, type);
         for (const part of job.data.dispatchPlan.parts) {
           await this.scheduledActions.executePart(
             job,
@@ -476,7 +493,8 @@ export class GroupTaskProcessor implements OnModuleInit {
               dispatchAttempted = true;
               await this.notificationSender.sendPreparedPart(group, part, requestId);
             },
-            () =>
+            async () =>
+              eligible &&
               this.leases.renew({
                 key: lockKey,
                 owner: lockOwner,

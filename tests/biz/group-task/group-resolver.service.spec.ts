@@ -21,6 +21,41 @@ describe('GroupResolverService', () => {
   });
 
   describe('parseLabels', () => {
+    const labels = (...names: string[]) => names.map((name) => ({ id: name, name }));
+
+    it.each([
+      ['上海', '餐饮', '兼职群'],
+      ['餐饮', '上海', '兼职群'],
+      ['上海', '兼职群', '餐饮'],
+      ['餐饮', '兼职群', '上海'],
+      ['零售', '上海', '兼职群', '餐饮'],
+    ])('按名称识别兼职类型和行业（%s, %s, %s）', (...names) => {
+      expect(service.parseLabels(labels(...names))).toEqual({
+        type: '兼职群',
+        city: '上海',
+        industry: '餐饮',
+      });
+    });
+
+    it('支持多地区抢单群和只标类型的店长群', () => {
+      expect(service.parseLabels(labels('景德镇', '抢单群', '上饶'))).toMatchObject({
+        type: '抢单群',
+        city: '景德镇',
+      });
+      expect(service.parseLabels(labels('店长群'))).toMatchObject({ type: '店长群', city: '全国' });
+      expect(service.parseLabels(labels('成都', '店长群'))).toMatchObject({
+        type: '店长群',
+        city: '成都',
+      });
+    });
+
+    it('排除摘标、类型冲突、缺少兼职地区的群', () => {
+      expect(service.parseLabels(labels('武汉', '原抢单群'))).toBeNull();
+      expect(service.parseLabels(labels('上海', '兼职群', '抢单群'))).toBeNull();
+      expect(service.parseLabels(labels('餐饮', '兼职群'))).toBeNull();
+      expect(service.parseLabels(labels('上海', '未分类标签', '兼职群'))).toBeNull();
+    });
+
     it('应解析兼职群标签（三标签：类型+城市+行业）', () => {
       const result = service.parseLabels([
         { id: '1', name: '兼职群' },
@@ -110,6 +145,38 @@ describe('GroupResolverService', () => {
         data: [makeRoom(memberCount)],
         page: { total: 1 },
       },
+    });
+
+    it('按群 ID 核对最新标签，不受名单缓存或同名群影响', async () => {
+      const room = {
+        ...makeRoom(50),
+        topic: '武汉抢单群',
+        labels: [
+          { id: '1', name: '武汉' },
+          { id: '2', name: '抢单群' },
+        ],
+      };
+      mockRoomService.getRoomSimpleList.mockResolvedValueOnce({ code: 0, data: [room] });
+      const [group] = await service.resolveGroups('抢单群');
+      mockRoomService.getRoomSimpleList
+        .mockResolvedValueOnce({ code: 0, data: [room] })
+        .mockResolvedValueOnce({
+          code: 0,
+          data: [
+            { ...room, labels: room.labels.slice(0, 1) },
+            { ...room, wxid: 'other' },
+          ],
+        })
+        .mockResolvedValueOnce({ code: 401, data: [] });
+      await expect(service.hasCurrentTag(group, '抢单群')).resolves.toBe(true);
+      await expect(service.hasCurrentTag(group, '抢单群')).resolves.toBe(false);
+      await expect(service.hasCurrentTag(group, '抢单群')).rejects.toThrow();
+      expect(mockRoomService.getRoomSimpleList).toHaveBeenLastCalledWith(
+        'test-token',
+        0,
+        1,
+        'room-1',
+      );
     });
 
     it('forceRefresh should bypass cached group member counts', async () => {

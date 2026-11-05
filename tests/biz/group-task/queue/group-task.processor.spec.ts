@@ -52,7 +52,7 @@ describe('GroupTaskProcessor', () => {
     eval: jest.Mock;
     getClient: jest.Mock;
   };
-  let groupResolver: { resolveGroups: jest.Mock };
+  let groupResolver: { resolveGroups: jest.Mock; hasCurrentTag: jest.Mock };
   let notificationSender: {
     buildDispatchParts: jest.Mock;
     previewPrepared: jest.Mock;
@@ -105,6 +105,7 @@ describe('GroupTaskProcessor', () => {
 
     groupResolver = {
       resolveGroups: jest.fn().mockResolvedValue([]),
+      hasCurrentTag: jest.fn().mockResolvedValue(true),
     };
 
     notificationSender = {
@@ -195,6 +196,7 @@ describe('GroupTaskProcessor', () => {
       await invokeHandler(GroupTaskJobName.PLAN, planData);
 
       // meta 写入 + summarize 入队；没有 prepare
+      expect(groupResolver.resolveGroups).toHaveBeenCalledWith('兼职群', { forceRefresh: true });
       const addedJobNames = queueMock.add.mock.calls.map((c) => c[0]);
       expect(addedJobNames).toEqual([GroupTaskJobName.SUMMARIZE]);
       expect(partTimeStrategy.prepareTask).not.toHaveBeenCalled();
@@ -340,6 +342,50 @@ describe('GroupTaskProcessor', () => {
       totalGroups: 1,
       sendDelayMs: 120_000,
     };
+
+    it('排程后已摘标的抢单群会在发送前跳过', async () => {
+      redisMock.get.mockResolvedValue({ message: 'hi', summary: 'summary' });
+      groupResolver.hasCurrentTag.mockResolvedValue(false);
+      const group = { ...baseSend.group, tag: '抢单群' };
+      await invokeHandler(GroupTaskJobName.SEND, {
+        ...baseSend,
+        group,
+        type: GroupTaskType.ORDER_GRAB,
+      });
+      expect(groupResolver.hasCurrentTag).toHaveBeenCalledWith(group, '抢单群');
+      expect(scheduledActions.freezePlan).not.toHaveBeenCalled();
+      expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
+      expect(redisMock.setex).toHaveBeenCalledWith(
+        groupTaskResultKey(baseSend.execId, group.imRoomId),
+        expect.any(Number),
+        expect.objectContaining({ status: 'skipped' }),
+      );
+    });
+
+    it('摘标后的已冻结抢单可以核对结果，但不再授权新的发送', async () => {
+      redisMock.get.mockResolvedValue({ message: 'hi', summary: 'summary' });
+      groupResolver.hasCurrentTag.mockResolvedValue(false);
+      scheduledActions.executePart.mockImplementation(
+        async (_job, _cache, _part, dispatch, authorize) => {
+          expect(await authorize()).toBe(false);
+          if (await authorize()) await dispatch();
+        },
+      );
+      await invokeHandler(GroupTaskJobName.SEND, {
+        ...baseSend,
+        type: GroupTaskType.ORDER_GRAB,
+        dispatchPlan: {
+          corpId: 'corp',
+          logicalTurnId: 'original',
+          occurredAt: new Date().toISOString(),
+          parts: [{ id: 'main', messageType: 7, payload: { text: 'hi' }, delayMs: 0 }],
+        },
+      });
+      expect(scheduledActions.executePart).toHaveBeenCalledTimes(1);
+      expect(notificationSender.previewPrepared).not.toHaveBeenCalled();
+      expect(notificationSender.sendPreparedPart).not.toHaveBeenCalled();
+      expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
+    });
 
     it('routes frozen parts through the action protocol and keeps an unknown extra pending', async () => {
       const parts = [

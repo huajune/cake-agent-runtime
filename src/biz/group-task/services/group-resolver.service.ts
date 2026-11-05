@@ -22,7 +22,9 @@ interface SimpleRoomItem {
   memberCount?: number;
 }
 
-const PART_TIME_INDUSTRY_LABELS = new Set(['餐饮', '零售']);
+const GROUP_TYPE_LABELS = ['抢单群', '兼职群', '店长群'] as const;
+// 同时标记两个行业的群沿用餐饮分组。
+const PART_TIME_INDUSTRY_LABELS = ['餐饮', '零售'];
 
 /**
  * 群解析服务
@@ -79,42 +81,26 @@ export class GroupResolverService implements OnModuleInit {
    * - 多地区抢单群: [{ name: '抢单群' }, { name: '景德镇' }, { name: '上饶' }]
    * - 兼职群: [{ name: '兼职群' }, { name: '上海' }, { name: '餐饮' }]
    *
-   * 规则：
-   * - 第一个标签 = 群类型；店长群只需一级标签（不按城市分组）
-   * - 第二个标签 = 城市/主地区
-   * - 第三个标签仅对兼职群视为行业
-   * - 兼职群容错：第二个标签若是行业词（餐饮/零售）且存在第三个标签，
-   *   视为 [类型, 行业, 城市] 换序写法
+   * 按标签名识别唯一群类型和兼职行业。其余标签中的首个地区作为主地区，
+   * 多地区抢单仍使用完整原始标签；店长群单独标记类型即可。
    */
   parseLabels(labels: RoomLabel[]): ParsedGroupTag | null {
     if (!labels || labels.length === 0) return null;
 
-    const names = labels.map((l) => l.name);
-    const type = names[0]; // 抢单群 | 兼职群 | 店长群
+    const names = new Set(labels.map((label) => label.name).filter(Boolean));
+    const types = GROUP_TYPE_LABELS.filter((name) => names.has(name));
+    if (types.length !== 1) return null;
 
-    // 校验群类型
-    const validTypes = ['抢单群', '兼职群', '店长群'];
-    if (!validTypes.includes(type)) return null;
+    const [type] = types;
+    names.delete(type);
+    const industry =
+      type === '兼职群' ? PART_TIME_INDUSTRY_LABELS.find((name) => names.has(name)) : undefined;
+    const regions = [...names].filter((name) => !PART_TIME_INDUSTRY_LABELS.includes(name));
+    if (type === '兼职群' && regions.length !== 1) return null;
+    const [city] = regions;
+    if (!city && type !== '店长群') return null;
 
-    // 店长群只需一级标签（不按城市分组），其他类型至少需要城市标签
-    if (names.length < 2 && type !== '店长群') return null;
-
-    if (type === '兼职群') {
-      const secondLabel = names[1];
-      const thirdLabel = names[2];
-      const isIndustryFirst = PART_TIME_INDUSTRY_LABELS.has(secondLabel) && Boolean(thirdLabel);
-      return {
-        type,
-        city: isIndustryFirst ? thirdLabel : secondLabel || '全国',
-        industry: isIndustryFirst ? secondLabel : thirdLabel,
-      };
-    }
-
-    return {
-      type,
-      city: names[1] || '全国',
-      industry: undefined,
-    };
+    return { type, city: city ?? '全国', industry };
   }
 
   /**
@@ -128,6 +114,20 @@ export class GroupResolverService implements OnModuleInit {
   ): Promise<GroupContext[]> {
     const allGroups = await this.fetchAllGroups(options.forceRefresh === true);
     return allGroups.filter((g) => g.tag === tagPrefix);
+  }
+
+  /** 按群 ID 读取最新标签，供已排队的抢单任务在实际发送前核对。 */
+  async hasCurrentTag(group: GroupContext, tag: string): Promise<boolean> {
+    const result = await this.roomService.getRoomSimpleList(group.token, 0, 1, group.imRoomId);
+    if (result?.code !== 0 || !Array.isArray(result.data)) {
+      throw new Error('托管平台未返回有效的群标签');
+    }
+    return result.data.some(
+      (room: SimpleRoomItem) =>
+        room.wxid === group.imRoomId &&
+        !room.deleted &&
+        this.parseLabels(room.labels ?? [])?.type === tag,
+    );
   }
 
   /**

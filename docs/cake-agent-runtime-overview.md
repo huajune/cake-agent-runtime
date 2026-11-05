@@ -505,7 +505,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
   ├─ 前置：enabled 开关 / Redis 分布式锁 / 非生产跳过 Cron
   ├─ GroupResolver.resolveGroups(tagPrefix)
   │   遍历小组 token → /room/simpleList → 按 tagPrefix 筛选
-  │   10min 内存缓存 + stampede 防护
+  │   排程强制刷新群标签，并发请求共享一次查询
   ├─ 按 (城市 + 行业) 分组
   │   ├─ strategy.fetchData (代表群)        外部 BI / 岗位
   │   ├─ buildMessage (模板) 或 buildPrompt + LlmExecutor (AI)
