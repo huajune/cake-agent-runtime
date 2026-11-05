@@ -1,4 +1,5 @@
 import type { ActionMode } from '../action-execution/action-execution.types';
+import type { ReplyProjectionStatus, ReplyTurnStatus } from './reply-execution.constants';
 
 export interface ReplyTurnScope {
   corpId: string;
@@ -26,12 +27,12 @@ export interface ReplyTurn extends ReplyTurnScope {
   inputIds: string[];
   inputOccurredAt: string;
   mode: ActionMode;
-  status: 'preparing' | 'planned' | 'settled' | 'acked';
+  status: ReplyTurnStatus;
   owner: string | null;
   fence: number;
   plan: ReplyPlan | null;
   recovery: Record<string, unknown>;
-  projectionStatus?: 'none' | 'pending' | 'complete';
+  projectionStatus?: ReplyProjectionStatus;
 }
 
 /** Deliberate suspension, never a reason to generate/send a fallback. */

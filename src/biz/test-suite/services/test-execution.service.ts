@@ -37,6 +37,7 @@ import type {
   TestSourceTrace,
 } from '../types/test-debug-trace.types';
 import { IMAGE_MESSAGE_PREFIX } from '@resolution/signal/markers';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
@@ -798,7 +799,7 @@ export class TestExecutionService {
       payload,
       contactName: request.userId,
       externalUserId: request.userId,
-      _apiType: 'enterprise',
+      _apiType: WECOM_API_TYPE.ENTERPRISE,
       _receivedAtMs: Date.now(),
     };
   }

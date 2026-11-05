@@ -10,12 +10,11 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { FilterReason } from '@enums/message-filter.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
-
-// 导入子服务
 import { SimpleMergeService } from './simple-merge.service';
 import { MessageDeduplicationService } from './deduplication.service';
 import { MessagePipelineService } from '../application/pipeline.service';
 import { MessageWorkerManagerService } from './message-worker-manager.service';
+import { ACTION_DENIAL_REASON, PERMITTED_ACTION } from '@shared-types/action-permit.types';
 
 /**
  * Bull 'process' 任务消费者（Job 由 SimpleMergeService 创建）。
@@ -317,13 +316,14 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     const primary = messages[messages.length - 1];
     const hit = await this.actionPermit.evaluate({
       chatId,
-      action: 'reply',
+      action: PERMITTED_ACTION.REPLY,
       botImId: primary.imBotId,
       groupId: primary.groupId,
       candidateIds: [primary.imContactId, primary.externalUserId],
     });
     if (hit.allowed) return false;
-    if (hit.reason === 'candidate_blacklisted') await this.blacklistFilter.evaluate(primary);
+    if (hit.reason === ACTION_DENIAL_REASON.CANDIDATE_BLACKLISTED)
+      await this.blacklistFilter.evaluate(primary);
 
     this.logger.log(
       `[Bull][已暂停托管] 任务 ${jobId} 丢弃 ${messages.length} 条消息 (chatId=${chatId}, reason=${hit.reason})`,
@@ -346,11 +346,11 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     await this.chatSession
       .markHistoryOnly(
         messages.map((message) => message.messageId),
-        hit.reason === 'candidate_blacklisted'
+        hit.reason === ACTION_DENIAL_REASON.CANDIDATE_BLACKLISTED
           ? FilterReason.CANDIDATE_BLACKLISTED
-          : hit.reason === 'group_blacklisted'
+          : hit.reason === ACTION_DENIAL_REASON.GROUP_BLACKLISTED
             ? FilterReason.GROUP_BLACKLISTED
-            : hit.reason === 'hosting_paused'
+            : hit.reason === ACTION_DENIAL_REASON.HOSTING_PAUSED
               ? FilterReason.USER_PAUSED
               : FilterReason.ACTION_NOT_PERMITTED,
       )

@@ -1,4 +1,3 @@
-// business-rules: GEO-02, IB-03, IB-05, IB-06
 import type { ToolActionService } from './actions/tool-action.service';
 import { actionReceiptFields, unresolvedActionReceipt } from './actions/business-action.util';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -25,6 +24,7 @@ import {
 import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import { stripMessageDecorations } from '@resolution/signal/markers';
+import { ACTION_KIND, ACTION_STATE } from '@shared-types/action-execution.contract';
 
 const logger = new Logger('send_store_location');
 
@@ -503,13 +503,13 @@ export function buildSendStoreLocationTool(
                 const sent = actions
                   ? await actions.executeMessage(
                       context,
-                      'message.interview_address',
+                      ACTION_KIND.MESSAGE_INTERVIEW_ADDRESS,
                       `store:${resolvedJobId}:${resolvedDestination}`,
                       { text: fixedReply },
                       send,
                     )
                   : undefined;
-                if (sent && sent.status !== 'succeeded')
+                if (sent && sent.status !== ACTION_STATE.SUCCEEDED)
                   return unresolvedActionReceipt(context, sent, '发送定位', resolvedJobId);
                 if (!actions) await send();
                 return buildToolError({
@@ -557,7 +557,7 @@ export function buildSendStoreLocationTool(
           const sent = actions
             ? await actions.executeMessage(
                 context,
-                'message.location',
+                ACTION_KIND.MESSAGE_LOCATION,
                 `store:${resolvedJobId}:${resolvedDestination}`,
                 {
                   address: targetAddress,
@@ -568,7 +568,7 @@ export function buildSendStoreLocationTool(
                 send,
               )
             : undefined;
-          if (sent && sent.status !== 'succeeded')
+          if (sent && sent.status !== ACTION_STATE.SUCCEEDED)
             return unresolvedActionReceipt(context, sent, '发送定位', resolvedJobId);
           if (!actions) await send();
 

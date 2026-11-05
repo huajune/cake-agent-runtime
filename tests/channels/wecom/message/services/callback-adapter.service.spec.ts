@@ -108,6 +108,50 @@ describe('MessageCallbackAdapterService', () => {
   });
 
   describe('convertGroupToEnterprise', () => {
+    it('preserves a group API request and explicit source without remapping callback text type 7', () => {
+      const result = service.normalizeCallback({
+        data: {
+          ...validGroupCallback,
+          isSelf: true,
+          source: MessageSource.API_SEND,
+          externalRequestId: 'cake_frozen_request',
+          type: 7,
+          orgId: 'untrusted-corp',
+          groupId: 'untrusted-group',
+          _sourceInferred: true,
+        },
+      });
+      expect(result).toMatchObject({
+        orgId: 'group_callback_org',
+        messageType: MessageType.TEXT,
+        externalRequestId: 'cake_frozen_request',
+        source: MessageSource.API_SEND,
+        _sourceInferred: false,
+        _apiType: 'group',
+      });
+      expect(result.groupId).toBeUndefined();
+    });
+
+    it('marks a missing group source as inferred but does not invent a request ID', () => {
+      const result = service.normalizeCallback({ data: { ...validGroupCallback, isSelf: true } });
+      expect(result.source).toBe(MessageSource.AGGREGATED_CHAT_MANUAL);
+      expect(result._sourceInferred).toBe(true);
+      expect(result.externalRequestId).toBeUndefined();
+    });
+
+    it('does not turn an explicitly manual group message into managed API evidence', () => {
+      const result = service.normalizeCallback({
+        data: {
+          ...validGroupCallback,
+          isSelf: true,
+          source: MessageSource.AGGREGATED_CHAT_MANUAL,
+          externalRequestId: 'cake_manual_claim',
+          _sourceInferred: true,
+        },
+      });
+      expect(result._sourceInferred).toBe(false);
+    });
+
     it('should map group fields to enterprise fields correctly', () => {
       const result = service.convertGroupToEnterprise(validGroupCallback);
 

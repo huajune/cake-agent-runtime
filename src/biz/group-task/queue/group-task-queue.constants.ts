@@ -11,6 +11,22 @@ import { GroupContext, GroupTaskType, TimeSlot } from '../group-task.types';
  */
 export const GROUP_TASK_QUEUE_NAME = 'group-task';
 
+export const GROUP_TASK_SEND_STATUS = {
+  SENT: 'sent',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
+  PENDING: 'pending',
+} as const;
+export type GroupTaskSendStatus =
+  (typeof GROUP_TASK_SEND_STATUS)[keyof typeof GROUP_TASK_SEND_STATUS];
+
+export const GROUP_TASK_TRIGGER = { CRON: 'cron', MANUAL: 'manual' } as const;
+export type GroupTaskTrigger = (typeof GROUP_TASK_TRIGGER)[keyof typeof GROUP_TASK_TRIGGER];
+
+export const GROUP_TASK_ADMISSION_SKIP = { DISABLED: 'disabled', DUPLICATE: 'duplicate' } as const;
+export type GroupTaskAdmissionSkip =
+  (typeof GROUP_TASK_ADMISSION_SKIP)[keyof typeof GROUP_TASK_ADMISSION_SKIP];
+
 export enum GroupTaskJobName {
   PLAN = 'plan',
   PREPARE = 'prepare',
@@ -72,7 +88,7 @@ export interface PlanJobData {
   /** plan 产生时间（毫秒） */
   startedAt: number;
   /** 仅 cron 触发时为 'cron'；否则 'manual' */
-  trigger: 'cron' | 'manual';
+  trigger: GroupTaskTrigger;
 }
 
 /** 发送任务所需的群上下文（含全局顺序 index，供 Bull delay 错峰） */
@@ -123,6 +139,8 @@ export interface SendJobData {
 }
 
 export interface GroupTaskDispatchPlan {
+  /** Frozen admission mode; missing on legacy plans and never inferred as execute. */
+  mode?: import('@shared-types/action-execution.contract').ActionMode;
   corpId: string;
   logicalTurnId: string;
   occurredAt: string;
@@ -149,7 +167,7 @@ export interface SummarizeJobData {
 export interface GroupTaskResultSnapshot {
   groupKey: string;
   groupName: string;
-  status: 'sent' | 'failed' | 'skipped' | 'pending';
+  status: GroupTaskSendStatus;
   summary: string;
   error?: string;
   updatedAt: number;
@@ -164,7 +182,7 @@ export interface GroupTaskMetaSnapshot {
   totalGroups: number;
   groupIds: string[];
   startedAt: number;
-  trigger: 'cron' | 'manual';
+  trigger: GroupTaskTrigger;
 }
 
 /** 缓存在 Redis 的消息体（Prepare 写 → Send 读） */

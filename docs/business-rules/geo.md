@@ -50,7 +50,7 @@
 - 落点：`src/tools/invite/invite-city-gate.ts`
 - 验证：`tests/tools/tool/geocode.tool.spec.ts`
 - 验证：`tests/tools/invite/invite-city-gate.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#invite_city_provenance`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.INVITE_CITY_PROVENANCE`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
 
 ## 验证边界

@@ -318,6 +318,27 @@ describe('HardRulesService restored sentinels', () => {
   });
 
   describe('proactive insurance policy mention', () => {
+    it.each([
+      ['附近有什么岗位？', 'proactive_insurance_policy_mention'],
+      ['这个岗位有公积金吗？', null],
+    ])(
+      'keeps housing fund disclosure tied to the candidate question: %s',
+      (userMessage, ruleId) => {
+        const result = service.check({
+          replyText: '这个岗位提供公积金。',
+          toolCalls: [],
+          chatId: 'chat-1',
+          userId: 'user-1',
+          userMessage,
+        });
+        const finding = result.contradictions.find(
+          (c) => c.ruleId === 'proactive_insurance_policy_mention',
+        );
+        if (ruleId) expect(finding?.action).toBe(GUARDRAIL_ACTION.OBSERVE);
+        else expect(finding).toBeUndefined();
+      },
+    );
+
     it('observes proactive insurance policy promise when candidate did not ask', () => {
       const result = service.check({
         replyText: '这家早班 7:00-10:00，时薪 24 元，兼职岗位公司购买保险。',

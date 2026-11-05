@@ -2,11 +2,13 @@ import type { ToolBuildContext } from '@shared-types/tool.types';
 import { HANDOFF_REASON_LABELS } from '@enums/handoff-reason.enum';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { formatInterviewTimeForReply } from './booking-reply-format.util';
+import type { BookingDuplicateMatch } from '@shared-types/candidate-progress.types';
+import { BOOKING_DUPLICATE_MATCH } from '@shared-types/candidate-progress.types';
 
 export interface DuplicateBookingReceiptParams {
   workOrderId?: number;
   interviewTime?: string | null;
-  matchedBy?: 'job' | 'brand';
+  matchedBy?: BookingDuplicateMatch;
   crossAccount: boolean;
   /** 海绵拒绝后的工单查询结果，未必能核实工单归属或当前面试安排。 */
   spongeRejection?: { context: ToolBuildContext; jobId: number; message: string };
@@ -20,7 +22,7 @@ export function buildDuplicateBookingReceipt(
   const existingInterviewTimeHuman = interviewTime
     ? formatInterviewTimeForReply(interviewTime)
     : undefined;
-  const scopeText = matchedBy === 'brand' ? '同品牌' : '该岗位';
+  const scopeText = matchedBy === BOOKING_DUPLICATE_MATCH.BRAND ? '同品牌' : '该岗位';
   const needsReview = Boolean(spongeRejection && crossAccount);
   return {
     ...buildToolError({

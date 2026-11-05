@@ -1,4 +1,8 @@
-import { admitPreferenceEvidence } from './extraction-evidence';
+import {
+  admitPreferenceEvidence,
+  formatPreferenceEvidenceIssue,
+  type PreferenceEvidenceIssue,
+} from './extraction-evidence';
 import { isValidExtractedEvidence } from '../fact-evidence';
 import { effectiveScheduleKey } from '@resolution/schedule/equivalence';
 import { completeEarlyShiftMapping } from '@resolution/schedule/mapping';
@@ -762,7 +766,7 @@ export class SessionFactsService {
       previousFacts,
     );
     const extractionStartedAt = Date.now();
-    const llmOutcome = await this.callLLM(prompt);
+    const llmOutcome = await this.callLLM(prompt, previousFacts);
     this.logger.log(
       JSON.stringify({
         event: 'memory_extraction_budget',
@@ -784,6 +788,7 @@ export class SessionFactsService {
       this.reportRejectedScheduleConstraint(
         { corpId, userId, sessionId },
         llmOutcome.rejectedScheduleIssues,
+        llmOutcome.rejectedEvidenceIssues,
       );
     }
 
@@ -826,7 +831,11 @@ export class SessionFactsService {
     if (toolScheduleChange && !toolSchedule && !scheduleValid && !extractionUnavailable) {
       this.reportScheduleExtractionDisagreement({
         toolChangedFields: changedScheduleFields(previousSchedule, toolScheduleChange),
-        extraction: llmOutcome.facts.preferences.schedule_constraint == null ? 'none' : 'echo',
+        extraction:
+          llmOutcome.unchangedFields.includes('schedule_constraint') ||
+          llmOutcome.facts.preferences.schedule_constraint != null
+            ? 'echo'
+            : 'none',
         declarative: declarativeTurn,
       });
     }
@@ -994,22 +1003,30 @@ export class SessionFactsService {
   }
 
   /**
-   * 模型给出的班次条件不合严格契约、已被丢弃：其余偏好照常保存，但丢弃必须能被发现。
-   * 明细只带字段路径与原因，不带候选人原值。告警 fire-and-forget，失败只留日志。
+   * 班次增量被拒绝时列出同轮所有证据拒绝；此时尚未写入，不能宣称其他字段已保存。
+   * 明细只带字段路径、原因和长度，不带候选人原值。告警 fire-and-forget。
    */
   private reportRejectedScheduleConstraint(
     scope: { corpId: string; userId: string; sessionId: string },
     issues: string[],
+    evidenceIssues: PreferenceEvidenceIssue[],
   ): void {
-    const detail = issues.join('; ');
-    this.logger.warn(`[extractFacts] 班次条件不合契约，已只丢弃该字段: ${detail}`);
+    const detail = [
+      ...new Set([...issues, ...evidenceIssues.map(formatPreferenceEvidenceIssue)]),
+    ].join('; ');
+    const rejectedFields = [
+      ...new Set(['schedule_constraint', ...evidenceIssues.map((i) => i.field)]),
+    ];
+    this.logger.warn(`[extractFacts] 班次条件增量未采纳: ${detail}`);
     void this.alertNotifier
       ?.sendSimpleAlert(
-        '轮末抽取的班次条件不合契约（已只丢弃该字段）',
+        '轮末班次条件更新未通过校验（已拒绝模型增量）',
         [
           `会话：${scope.corpId}/${scope.userId}/${scope.sessionId}`,
+          `本轮被拒字段：${rejectedFields.join('、')}`,
           `明细：${detail}`,
-          '同轮其他偏好已照常保存；本轮班次变更改由工具核验结果或规则轨兜底。',
+          '被拒绝的模型增量不会直接覆盖已有值；其他字段仍按各自校验与写入结果处理。',
+          '班次仅在存在可用的工具核验结果或规则证据时兜底；本告警不代表兜底或保存已成功。',
         ].join('\n'),
         'warning',
       )
@@ -1076,7 +1093,10 @@ export class SessionFactsService {
     }
   }
 
-  private async callLLM(prompt: string): Promise<{
+  private async callLLM(
+    prompt: string,
+    previousFacts: SessionFacts | null,
+  ): Promise<{
     facts: EntityExtractionResult;
     brandIntents: BrandIntentEntry[];
     laborFormIntent: LaborFormIntentExtraction | null;
@@ -1084,6 +1104,8 @@ export class SessionFactsService {
     fieldEvidence: Record<string, string>;
     /** 模型给出但不合严格契约、已丢弃的班次条件明细（字段路径 + 原因）；null 表示没有丢弃。 */
     rejectedScheduleIssues: string[] | null;
+    rejectedEvidenceIssues: PreferenceEvidenceIssue[];
+    unchangedFields: string[];
     degraded: boolean;
   }> {
     try {
@@ -1096,16 +1118,27 @@ export class SessionFactsService {
         prompt,
       });
       const raw = result.output;
-      const admitted = admitPreferenceEvidence(raw.preferences, raw.preference_evidence, {
-        schedule_constraint: raw.schedule_constraint_citation?.quote,
-        labor_form: raw.labor_form_intent?.quote,
-      });
+      const admitted = admitPreferenceEvidence(
+        raw.preferences,
+        raw.preference_evidence,
+        {
+          schedule_constraint: raw.schedule_constraint_citation?.quote,
+          labor_form: raw.labor_form_intent?.quote,
+        },
+        Object.fromEntries(
+          Object.entries(previousFacts?.preferences ?? {}).map(([field, fact]) => [
+            field,
+            unwrapSessionFactValue(fact),
+          ]),
+        ),
+      );
       if (admitted.rejected.length > 0) {
         this.logger.warn(
           JSON.stringify({
             event: 'memory_evidence_rejected',
             fields: admitted.rejected,
-            reason: 'missing_empty_or_over_budget',
+            issues: admitted.issues,
+            unchangedFields: admitted.unchanged,
           }),
         );
       }
@@ -1137,13 +1170,17 @@ export class SessionFactsService {
         brandIntents,
         laborFormIntent,
         scheduleCitation: raw.schedule_constraint_citation ?? null,
+        rejectedEvidenceIssues: admitted.issues,
+        unchangedFields: admitted.unchanged,
         rejectedScheduleIssues: schedule.success
           ? admitted.rejected.includes('schedule_constraint')
-            ? ['schedule_constraint: invalid evidence']
+            ? admitted.issues
+                .filter((issue) => issue.field === 'schedule_constraint')
+                .map(formatPreferenceEvidenceIssue)
             : null
           : schedule.error.issues.map(
               (issue) =>
-                `${['schedule_constraint', ...issue.path.map(String)].join('.')}: ${issue.message}`,
+                `${['schedule_constraint', ...issue.path.map(String)].join('.')}: ${issue.code === 'custom' ? issue.message : '结构校验失败'} [${issue.code}]`,
             ),
         degraded: false,
       };
@@ -1156,6 +1193,8 @@ export class SessionFactsService {
         laborFormIntent: null,
         scheduleCitation: null,
         rejectedScheduleIssues: null,
+        rejectedEvidenceIssues: [],
+        unchangedFields: [],
         degraded: true,
       };
     }

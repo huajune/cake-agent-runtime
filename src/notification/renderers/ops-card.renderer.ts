@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
+import type { GroupTaskStatus } from '@biz/group-task/group-task.types';
+import { GROUP_TASK_STATUS } from '@biz/group-task/group-task.types';
 
 export interface GroupTaskExecutionDetail {
   groupKey: string;
   groupCount: number;
   dataSummary: string;
-  status: 'success' | 'skipped' | 'partial' | 'failed' | 'pending';
+  status: GroupTaskStatus;
 }
 
 export interface GroupTaskExecutionError {
@@ -97,7 +99,7 @@ export class OpsCardRenderer {
     appendSection(
       '**✅ 成功分组**',
       params.details
-        .filter((detail) => detail.status === 'success')
+        .filter((detail) => detail.status === GROUP_TASK_STATUS.SUCCESS)
         .map(
           (detail) => `✅ **${detail.groupKey}** (${detail.groupCount}群) — ${detail.dataSummary}`,
         ),
@@ -106,7 +108,7 @@ export class OpsCardRenderer {
     appendSection(
       '**⏭️ 已跳过**',
       params.details
-        .filter((detail) => detail.status === 'skipped')
+        .filter((detail) => detail.status === GROUP_TASK_STATUS.SKIPPED)
         .map(
           (detail) => `⏭️ **${detail.groupKey}** (${detail.groupCount}群) — ${detail.dataSummary}`,
         ),
@@ -115,7 +117,7 @@ export class OpsCardRenderer {
     appendSection(
       '**⚠️ 部分失败**',
       params.details
-        .filter((detail) => detail.status === 'partial')
+        .filter((detail) => detail.status === GROUP_TASK_STATUS.PARTIAL)
         .map(
           (detail) => `⚠️ **${detail.groupKey}** (${detail.groupCount}群) — ${detail.dataSummary}`,
         ),
@@ -124,7 +126,7 @@ export class OpsCardRenderer {
     appendSection(
       '**⏳ 待核对分组**',
       params.details
-        .filter((detail) => detail.status === 'pending')
+        .filter((detail) => detail.status === GROUP_TASK_STATUS.PENDING)
         .map(
           (detail) => `⏳ **${detail.groupKey}** (${detail.groupCount}群) — ${detail.dataSummary}`,
         ),
@@ -133,7 +135,7 @@ export class OpsCardRenderer {
     appendSection(
       '**❌ 失败分组**',
       params.details
-        .filter((detail) => detail.status === 'failed')
+        .filter((detail) => detail.status === GROUP_TASK_STATUS.FAILED)
         .map(
           (detail) => `❌ **${detail.groupKey}** (${detail.groupCount}群) — ${detail.dataSummary}`,
         ),

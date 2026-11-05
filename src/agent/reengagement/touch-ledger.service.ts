@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { RedisService } from '@infra/redis/redis.service';
-import type { ReserveResult, TouchSlotState } from './follow-up-scheduler.service';
 import type { FollowUpJob } from './follow-up-scheduler.service';
+import { TOUCH_RESERVE_RESULT, TOUCH_SLOT_STATE } from '@agent/reengagement/touch-ledger.types';
+import type { ReserveResult, TouchSlotState } from './touch-ledger.types';
 
 export interface TouchRecovery {
   jobData: FollowUpJob;
@@ -13,7 +14,7 @@ export interface TouchRecovery {
 
 export interface UnknownTouchSlot {
   key: string;
-  state: 'unknown';
+  state: typeof TOUCH_SLOT_STATE.UNKNOWN;
 }
 
 /**
@@ -72,10 +73,16 @@ export class TouchLedgerService {
 
   /** 原子占位。已存在则按当前状态区分 duplicate_sent / duplicate_inflight。 */
   async reserve(key: string): Promise<ReserveResult> {
-    const ok = await this.redis.setNx(this.slotKey(key), 'reserved', this.SLOT_TTL_S);
-    if (ok) return 'reserved';
+    const ok = await this.redis.setNx(
+      this.slotKey(key),
+      TOUCH_SLOT_STATE.RESERVED,
+      this.SLOT_TTL_S,
+    );
+    if (ok) return TOUCH_SLOT_STATE.RESERVED;
     const state = await this.getState(key);
-    return state === 'sent' ? 'duplicate_sent' : 'duplicate_inflight';
+    return state === TOUCH_SLOT_STATE.SENT
+      ? TOUCH_RESERVE_RESULT.DUPLICATE_SENT
+      : TOUCH_RESERVE_RESULT.DUPLICATE_INFLIGHT;
   }
 
   async getState(key: string): Promise<TouchSlotState | null> {
@@ -83,14 +90,14 @@ export class TouchLedgerService {
   }
 
   async markDeliveryAttempted(key: string): Promise<void> {
-    await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, 'delivery_attempted');
+    await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, TOUCH_SLOT_STATE.DELIVERY_ATTEMPTED);
   }
 
   async markSent(key: string, sessionId: string, now: number): Promise<void> {
     // 频控与 session 冷却只数 confirmed sent，避免 shadow/失败投递压制后续真发。
     await this.redis.eval(
       `
-redis.call('SETEX', KEYS[1], ARGV[1], 'sent')
+redis.call('SETEX', KEYS[1], ARGV[1], '${TOUCH_SLOT_STATE.SENT}')
 if redis.call('SET', KEYS[4], '1', 'NX', 'EX', ARGV[1]) then
   redis.call('RPUSH', KEYS[2], ARGV[2])
 end
@@ -115,9 +122,12 @@ return 1
   }
 
   /** markSent 落库失败等"状态不明" → unknown（不可盲重投，交补偿/告警）。 */
-  async markFailedOrUnknown(key: string, state: 'failed' | 'unknown'): Promise<void> {
+  async markFailedOrUnknown(
+    key: string,
+    state: typeof TOUCH_SLOT_STATE.FAILED | typeof TOUCH_SLOT_STATE.UNKNOWN,
+  ): Promise<void> {
     await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, state);
-    if (state === 'unknown') {
+    if (state === TOUCH_SLOT_STATE.UNKNOWN) {
       this.logger.error(`[TouchLedger] 触达状态不明，置 unknown 待补偿: key=${key}`);
     }
   }
@@ -221,10 +231,11 @@ return 1
         const state = await this.redis.get<TouchSlotState>(redisKey);
         pending.shift();
         inspected++;
-        if (state !== 'unknown' && state !== 'delivery_attempted') continue;
+        if (state !== TOUCH_SLOT_STATE.UNKNOWN && state !== TOUCH_SLOT_STATE.DELIVERY_ATTEMPTED)
+          continue;
         result.push({
           key: redisKey.replace(/^reengagement:touch:/, ''),
-          state: 'unknown',
+          state: TOUCH_SLOT_STATE.UNKNOWN,
         });
       }
       if (pending.length === 0 && String(cursor) === '0') break;

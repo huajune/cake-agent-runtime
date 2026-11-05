@@ -41,6 +41,10 @@ describe('reply segment external-result boundaries', () => {
   const registry = { register: jest.fn() };
   const permit = { evaluate: jest.fn() };
   const sender = { sendMessage: jest.fn() };
+  const primaryTurn = {
+    ...turn,
+    recovery: { primary: { orgId: 'corp', imBotId: 'bot', chatId: 'chat' } },
+  };
   const service = new DurableReplyDeliveryService(
     turns as never,
     executor as never,
@@ -131,7 +135,14 @@ describe('reply segment external-result boundaries', () => {
     expect(executor.execute).toHaveBeenCalledTimes(2);
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
-  it('platform acceptance is pending, uses the registered request ID and does not send the next segment', async () => {
+  it.each(['observe', 'off'] as const)('never upgrades a %s plan to execute', async (mode) => {
+    await expect(service.deliver({ ...turn, mode }, context)).rejects.toThrow(
+      'reply_plan_not_executable',
+    );
+    expect(executor.execute).not.toHaveBeenCalled();
+    expect(sender.sendMessage).not.toHaveBeenCalled();
+  });
+  it('retains the existing proactive-task confirmation policy and registered request ID', async () => {
     executor.execute.mockImplementation(
       async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => {
         const result = await handlers.dispatch('stable-provider-request', 'execute');
@@ -147,6 +158,112 @@ describe('reply segment external-result boundaries', () => {
       }),
     );
   });
+
+  it.each(['enterprise', 'group'] as const)(
+    'sends every ordinary %s segment on API success without any callback',
+    async (_apiType) => {
+      const completions: unknown[] = [];
+      executor.execute.mockImplementation(
+        async (intent: ActionIntent, handlers: ActionCallbacks<unknown>) => {
+          const result = await handlers.dispatch(`request-${intent.parameters.index}`, 'execute');
+          completions.push(result);
+          return { ...result, dispatched: true };
+        },
+      );
+
+      await expect(service.deliver(primaryTurn, { ...context, _apiType })).resolves.toMatchObject({
+        success: true,
+        deliveredSegments: 3,
+      });
+
+      expect(sender.sendMessage.mock.calls.map(([request]) => request.payload.text)).toEqual([
+        'first',
+        'second',
+        'third',
+      ]);
+      expect(sender.sendMessage.mock.calls.map(([request]) => request.externalRequestId)).toEqual([
+        'request-0',
+        'request-1',
+        'request-2',
+      ]);
+      expect(completions).toEqual(
+        Array.from({ length: 3 }, () => ({
+          status: 'succeeded',
+          result: { stage: 'accepted' },
+          evidence: {
+            kind: 'accepted',
+            requestTerminated: true,
+            detail: 'send_api_accepted; not_delivery_or_read_receipt',
+          },
+        })),
+      );
+    },
+  );
+
+  it.each([undefined, {}, { errcode: 500 }])(
+    'does not claim API acceptance from an unconfirmed response %j',
+    async (response) => {
+      sender.sendMessage.mockResolvedValue(response);
+      executor.execute.mockImplementation(
+        async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) =>
+          handlers.dispatch('stable-request', 'execute'),
+      );
+      await expect(service.deliver(primaryTurn, context)).rejects.toThrow(
+        'reply_send_result_unconfirmed',
+      );
+      expect(sender.sendMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('stops at an actual send timeout while retaining the earlier accepted segment', async () => {
+    sender.sendMessage
+      .mockResolvedValueOnce({ errcode: 0 })
+      .mockRejectedValueOnce(new Error('timeout'));
+    executor.execute.mockImplementation(
+      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => {
+        try {
+          return await handlers.dispatch('stable-request', 'execute');
+        } catch {
+          return { status: 'unknown' };
+        }
+      },
+    );
+    await expect(service.deliver(primaryTurn, context)).rejects.toThrow('segment_1_unknown');
+    expect(sender.sendMessage.mock.calls.map(([request]) => request.payload.text)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
+  it('checks the chat lease at dispatch without a callback-wait checkpoint', async () => {
+    const assertOwned = jest.fn().mockRejectedValue(new Error('chat lease lost'));
+    executor.execute.mockImplementation(
+      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) =>
+        handlers.dispatch('stable-request', 'execute'),
+    );
+    await expect(service.deliver(primaryTurn, { ...context, assertOwned })).rejects.toThrow(
+      'chat lease lost',
+    );
+    expect(sender.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps persisted execute request identities after runtime rollback to observe', async () => {
+    turns.mode = 'observe';
+    executor.execute.mockImplementation(
+      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>, options) => {
+        expect(options).toEqual({ persistedMode: 'execute' });
+        return handlers.dispatch('stable-request', 'execute');
+      },
+    );
+    await expect(service.deliver(primaryTurn, context)).resolves.toMatchObject({
+      deliveredSegments: 3,
+    });
+    expect(sender.sendMessage).toHaveBeenCalledTimes(3);
+    expect(sender.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ externalRequestId: 'stable-request' }),
+    );
+  });
+
   it('recovery uses the frozen version even when the caller supplies newly generated text', async () => {
     expect(await service.prepare(turn, 'changed', ['changed'])).toBe(turn);
     expect(turns.savePlan).not.toHaveBeenCalled();
@@ -158,7 +275,7 @@ describe('reply segment external-result boundaries', () => {
     );
     expect(executor.execute).not.toHaveBeenCalled();
   });
-  it('returns completed only from terminal evidence of all segments', async () => {
+  it('returns completed when every segment is recorded successful', async () => {
     executor.execute.mockResolvedValue({ status: 'succeeded' });
     expect(await service.deliver(turn, context)).toMatchObject({
       deliveredSegments: 3,

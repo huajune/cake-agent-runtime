@@ -142,8 +142,10 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 合并后正向标签与排除标签同名时，以本轮改动的一侧为准，从另一侧移除同名标签。
 
 - 抽取模型看到的 `schedule_constraint` JSON Schema 与严格契约 `CandidateScheduleConstraintSchema`
-  一致，但结构化输出先原样接收，再由 facts 层单独校验；不合契约只丢弃该字段并记日志、发告警，
-  同轮城市、岗位等偏好照常保存。
+  一致，但结构化输出先原样接收，再由 facts 层单独校验；不合契约只拒绝该字段增量。
+  同值回显（班次按 patch 合并后的有效条件比较）在证据校验前按无变化处理；真实变更仍须核验证据。
+  班次被拒绝时告警列出同轮全部被拒字段和具体原因，其他字段按各自校验及写入结果处理，
+  不预先声称保存或兜底已成功。
 - 班次映射、引文等抽取规则写在 schema 字段说明里，前提是抽取模型能看到完整 schema 且能按需输出字段。
   厂商的 json_schema 约束解码做不到这点时（千问/DashScope：严格模式不给模型看 schema，非严格模式按字段
   顺序截断输出），在 `providers/types.ts` 的厂商配置里设 `jsonSchemaInPrompt`，改走 JSON 模式并把 schema

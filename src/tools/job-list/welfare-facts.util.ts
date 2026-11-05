@@ -2,16 +2,16 @@
 /**
  * 从 raw job.welfare 派生结构化 WelfareFacts。
  *
- * 历史 badcase 簇 welfare_fabrication：Agent 看到 catering="员工自理" / haveInsurance="不购买"
- * 等字面值后，仍在 reply 中说"公司包吃 / 有保险"——核心原因有两个：
- *  1. 工具回的中文字面值（"员工自理 / 不包吃 / 不购买 / 无"）容易被 LLM 当成弱否定，
- *     在转述时压缩成"有员工餐 / 有保险"
+ * 历史 badcase 簇 welfare_fabrication：Agent 看到 catering="员工自理"
+ * 等字面值后，仍在 reply 中说"公司包吃"——核心原因有两个：
+ *  1. 工具回的中文字面值（"员工自理 / 不包吃 / 无"）容易被 LLM 当成弱否定，
+ *     在转述时压缩成"有员工餐"
  *  2. 工具完全没返回的字段（班车/夜宵补贴/带薪假 等），LLM 凭训练知识脑补"应该有"
  *
  * 让 LLM 在 render 顶部就看到"福利速览"：明确"有什么/没什么"对照表，
  * 把"工具没说有就不能说"这件事从 prompt 红线层下沉到数据契约层。
- * 保险字段只做内部事实判断；兼职场景主动提"公司买保险"容易被理解成社保/五险，
- * 所以不能把保险归入普通可主动引用福利。
+ * 保险购买设置与五险一金明细分别保留原始事实，不套用餐宿的有/无归类；
+ * 仅候选人主动询问时可引用，不能把保险归入普通可主动引用福利。
  *
  * 同时保留 raw field 渲染（renderWelfareSection 继续输出 detail），banner 只是
  * 高优先级的"先看这里"提示。
@@ -30,8 +30,10 @@ export interface WelfareFacts {
   meals: WelfareKind;
   /** 住宿：公司提供宿舍 / 仅给房补 / 员工自理或明确无 / 未明确 */
   accommodation: WelfareKind;
-  /** 保险：公司购买 / 员工自理 / 明确不购买 / 未明确（敏感，仅候选人主动问时可答） */
-  insurance: WelfareKind;
+  /** haveInsurance 的购买设置原文；不代表岗位是否提供五险一金。 */
+  insurancePurchase: string | null;
+  /** insuranceFundList 明确列出的五险一金项目；空列表表示未明确，不表示没有。 */
+  insuranceFundItems: string[];
   /** 交通补贴：是否存在 trafficAllowanceSalary */
   hasTrafficAllowance: boolean;
   /** 是否有晋升福利说明 */
@@ -43,7 +45,8 @@ export interface WelfareFacts {
 const EMPTY_WELFARE_FACTS: WelfareFacts = {
   meals: 'unspecified',
   accommodation: 'unspecified',
-  insurance: 'unspecified',
+  insurancePurchase: null,
+  insuranceFundItems: [],
   hasTrafficAllowance: false,
   hasPromotionWelfare: false,
   otherWelfareItems: [],
@@ -101,7 +104,7 @@ function classifyWelfareValue(
     return hasAllowance ? 'allowance' : 'self_or_none';
   }
 
-  // 负向优先：sponge 实际用 "无餐饮福利"/"无住宿福利"/"独立日不购买" 这类完整描述串，
+  // 负向优先：sponge 实际用 "无餐饮福利"/"无住宿福利" 这类完整描述串，
   // 必须在正向 "购买" 命中前先判否定（否则 "不购买" 会被 "购买" 误判为公司提供）。
   if (/^无|^没有|不包|员工自理|不(购买|提供|缴纳|承担)/.test(text)) {
     return hasAllowance ? 'allowance' : 'self_or_none';
@@ -110,7 +113,7 @@ function classifyWelfareValue(
   if (/补贴/.test(text)) {
     return 'allowance';
   }
-  // 正向：包吃/包住、公司或"独立日/独立客"(本公司)购买/缴纳社保保险、免费餐宿
+  // 正向：包吃/包住、公司或"独立日/独立客"(本公司)提供、免费餐宿。
   if (
     /(包吃|包住|(公司|独立[日客])(提供|购买|缴纳|承担)|购买|缴纳|免费(工作|员工)?餐|免费住宿)/.test(
       text,
@@ -153,6 +156,14 @@ export function extractWelfareFacts(welfare: unknown): WelfareFacts {
         .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
         .filter((item: string) => item.length > 0)
     : [];
+  const insurancePurchase =
+    typeof w.haveInsurance === 'string' ? w.haveInsurance.trim().replace(/\s+/g, ' ') : '';
+  const insuranceFundItems = Array.isArray(w.insuranceFundList)
+    ? w.insuranceFundList
+        .filter((item: unknown): item is string => typeof item === 'string')
+        .map((item: string) => item.trim().replace(/\s+/g, ' '))
+        .filter(Boolean)
+    : [];
 
   // welfare 块**确实加载过**（对象非空）时，吃/住缺失才按"无"归类（运营口径：没填=没有）。
   // 空对象 {} 仍归 unspecified——它代表"没有任何信息"而非"填了但为空"，此时替门店
@@ -165,8 +176,9 @@ export function extractWelfareFacts(welfare: unknown): WelfareFacts {
   return {
     meals: classifyWelfareValue(w.catering, cateringAllowance, missingKind),
     accommodation: classifyWelfareValue(w.accommodation, accommodationAllowance, missingKind),
-    // 保险是敏感字段：未配置时不得替公司断言"无保险"，保持未明确。
-    insurance: classifyWelfareValue(w.haveInsurance, false),
+    // 两个独立字段原样供数，不把“独立日不购买”压成“无保险 / 无五险一金”。
+    insurancePurchase: insurancePurchase || null,
+    insuranceFundItems,
     hasTrafficAllowance: trafficAllowance,
     hasPromotionWelfare:
       typeof w.promotionWelfare === 'string' && w.promotionWelfare.trim().length > 0,
@@ -181,16 +193,9 @@ const KIND_LABEL: Record<WelfareKind, string> = {
   unspecified: '❓ 未明确',
 };
 
-const INSURANCE_LABEL: Record<WelfareKind, string> = {
-  company: '内部事实：公司购买（敏感，禁止主动提及）',
-  allowance: '内部事实：仅补贴（敏感，禁止主动提及）',
-  self_or_none: '内部事实：无（敏感，禁止主动提及）',
-  unspecified: '未明确（敏感，禁止主动提及）',
-};
-
 /**
- * 把 WelfareFacts 渲染成给 Agent 看的紧凑速览——把"员工自理/不购买"这类
- * 易被压缩成"有"的字面值，显式标注为 ❌ 无；把工具未提的字段标 ❓ 未明确，
+ * 把 WelfareFacts 渲染成给 Agent 看的紧凑速览——餐宿的"员工自理/不提供"
+ * 显式标注为 ❌ 无；保险保留购买设置与明细，缺失保持未明确，
  * 让 Agent 不要编造工具没返回的福利项。
  *
  * 返回空字符串表示 welfare 块整个为空，上层不渲染。
@@ -200,7 +205,8 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   const hasAnySignal =
     facts.meals !== 'unspecified' ||
     facts.accommodation !== 'unspecified' ||
-    facts.insurance !== 'unspecified' ||
+    facts.insurancePurchase !== null ||
+    facts.insuranceFundItems.length > 0 ||
     facts.hasTrafficAllowance ||
     facts.hasPromotionWelfare ||
     facts.otherWelfareItems.length > 0;
@@ -218,7 +224,12 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   );
   lines.push(`> - 员工餐：${KIND_LABEL[facts.meals]}`);
   lines.push(`> - 住宿：${KIND_LABEL[facts.accommodation]}`);
-  lines.push(`> - 保险（敏感，仅候选人主动问时可答）：${INSURANCE_LABEL[facts.insurance]}`);
+  lines.push(
+    `> - 保险购买设置（仅候选人主动问时可答，不代表五险一金）：${facts.insurancePurchase ?? '未明确'}`,
+  );
+  lines.push(
+    `> - 五险一金明细（仅候选人主动问时可答）：${facts.insuranceFundItems.length > 0 ? facts.insuranceFundItems.join('、') : '未明确（不能据此断言没有）'}`,
+  );
   lines.push(`> - 交通补贴：${facts.hasTrafficAllowance ? '💵 有' : '❓ 未明确'}`);
   if (facts.hasPromotionWelfare) {
     lines.push('> - 晋升福利：✅ 有说明');

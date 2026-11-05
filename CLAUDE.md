@@ -157,6 +157,8 @@ Catalog 仅管理可独立识别与治理的规则：Input、Tool、Output 各�
 - Service 结构顺序：logger → config 属性 → constructor(DI) → public 方法 → private helpers；单一职责，超过 ~500 行考虑拆分。
 - 命名：文件 kebab-case；类/接口 PascalCase；变量/函数 camelCase；常量 UPPER_SNAKE_CASE。
 - 完整错误处理；统一响应由 ResponseInterceptor / HttpExceptionFilter 处理，第三方回调用 `@RawResponse` 绕过包装。
+- **协议与技术改造必读**：[协议契约与重构收口规范](.claude/agents/code-standards.md#protocol-contracts-and-refactor-completion)。封闭值域使用所属领域的枚举/常量定义，类型和运行时校验共用来源；修复须覆盖本次改造的同类问题、保持线协议兼容，并明确兼容分支的退出条件。
+- 提交前按 [协议改造自查清单](.claude/agents/code-quality-guardian.md#step-3-self-validate) 核对最终代码与证据；执行验收依据真实接口契约，不能凭固定观察时长、零流量或自行增加的回调要求放行/阻断。
 
 ## Prompt 内容防腐纪律（改手册/工具 description/DB 策略/守卫规则时必读）
 

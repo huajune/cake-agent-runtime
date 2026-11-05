@@ -19,6 +19,7 @@ import type { SignupWorkOrderItem, SignupWorkOrdersResult } from '@sponge/sponge
 import type { DailyOpsReportRow } from '../entities/daily-ops-report.entity';
 import { normalizeBotImId } from '../services/bot-group-resolver.service';
 import { DailyOpsReportService } from '../services/daily-ops-report.service';
+import { CRON_JOB } from '@infra/queue/cron.constants';
 
 /** 飞书多维表格字段类型枚举（仅用到的）。 */
 const FEISHU_FIELD_TYPE = {
@@ -171,7 +172,7 @@ export class OpsDailyReportCronService {
     if (this.isReadOnlyPreview()) return;
 
     await this.cronRunner.run(
-      'ops-daily-report',
+      CRON_JOB.OPS_DAILY_REPORT,
       { timeMs: 10 * 60_000, maxRows: 200 },
       async (budget) => {
         await this.pushReport(formatLocalDate(getLocalDayStart()), budget);

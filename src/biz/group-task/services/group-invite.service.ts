@@ -19,6 +19,22 @@ import { refreshMemberCountsFromEnterpriseList } from '@tools/invite/enterprise-
 import { GroupContext } from '../group-task.types';
 import { GroupMembershipService } from './group-membership.service';
 import { GroupResolverService } from './group-resolver.service';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_KIND,
+  ACTION_STATE,
+} from '@shared-types/action-execution.contract';
+import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
+import type {
+  GroupInviteDelivery,
+  GroupInviteFailureReason,
+  GroupInviteSelection,
+} from '@shared-types/group-invite.types';
+import {
+  GROUP_INVITE_DELIVERY,
+  GROUP_INVITE_FAILURE_REASON,
+  GROUP_INVITE_SELECTION,
+} from '@shared-types/group-invite.types';
 
 const COMPAT_RETRY_DELAYS_MS = [3000, 5000, 8000];
 
@@ -51,33 +67,23 @@ export interface GroupInviteCitySnapshot {
   }>;
 }
 
-export type GroupInviteFailureReason =
-  | 'enterprise_token_missing'
-  | 'missing_bot_identity'
-  | 'no_group_available'
-  | 'no_group_in_city'
-  | 'group_full'
-  | 'candidate_not_friend'
-  | 'api_rejected'
-  | 'api_failed'
-  | 'result_unknown';
-
+export type { GroupInviteFailureReason } from '@shared-types/group-invite.types';
 export interface GroupInviteResult {
   success: boolean;
-  actionStatus?: string;
+  actionStatus?: ActionExecution<unknown>['status'];
   actionId?: string;
   requestId?: string;
   actionDispatched?: boolean;
   actionReason?: string;
-  localSync?: 'pending' | 'complete';
+  localSync?: ActionExecution<unknown>['localSync'];
   groupName?: string;
   alreadyInGroup?: boolean;
   reason?: GroupInviteFailureReason;
-  inviteDelivery?: 'direct_add' | 'invite_card';
+  inviteDelivery?: GroupInviteDelivery;
   inviteCardPendingConsent?: boolean;
   matchedIndustry?: string;
   fallbackUsed?: boolean;
-  selectionReason?: 'lowest_member_count' | 'only_option';
+  selectionReason?: GroupInviteSelection;
   citySnapshot?: GroupInviteCitySnapshot;
   rejectionReason?: string;
   totalRejected?: number;
@@ -121,11 +127,11 @@ export class GroupInviteService implements OnModuleInit {
   }
 
   onModuleInit(): void {
-    this.recoveryRegistry.register('wecom.group_add_member', {
+    this.recoveryRegistry.register(ACTION_KIND.WECOM_GROUP_ADD_MEMBER, {
       reconcile: async () => ({
-        status: 'unknown',
+        status: ACTION_STATE.UNKNOWN,
         evidence: {
-          kind: 'indeterminate',
+          kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
           requestTerminated: false,
           detail: 'membership_is_not_request_completion_evidence',
         },
@@ -165,17 +171,17 @@ export class GroupInviteService implements OnModuleInit {
     try {
       if (!this.enterpriseToken) {
         this.logger.error(`STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${input.userId})`);
-        return { success: false, reason: 'enterprise_token_missing' };
+        return { success: false, reason: GROUP_INVITE_FAILURE_REASON.ENTERPRISE_TOKEN_MISSING };
       }
       if (!input.botImId || !input.botUserId) {
         this.logger.warn(`缺少 bot 身份信息，无法拉群 (user=${input.userId})`);
-        return { success: false, reason: 'missing_bot_identity' };
+        return { success: false, reason: GROUP_INVITE_FAILURE_REASON.MISSING_BOT_IDENTITY };
       }
 
       const allGroups = await this.groupResolver.resolveGroups('兼职群', { forceRefresh: true });
       if (allGroups.length === 0) {
         this.logger.warn(`无兼职群数据 (user=${input.userId})`);
-        return { success: false, reason: 'no_group_available' };
+        return { success: false, reason: GROUP_INVITE_FAILURE_REASON.NO_GROUP_AVAILABLE };
       }
 
       const normalizedTargetCity = normalizeCity(input.city);
@@ -184,7 +190,7 @@ export class GroupInviteService implements OnModuleInit {
       );
       if (cityGroups.length === 0) {
         this.logger.log(`城市无匹配，静默跳过: ${input.city} (user=${input.userId})`);
-        return { success: false, reason: 'no_group_in_city' };
+        return { success: false, reason: GROUP_INVITE_FAILURE_REASON.NO_GROUP_IN_CITY };
       }
 
       const existingGroup = await this.findExistingGroup(input.contactWxid, cityGroups);
@@ -209,11 +215,13 @@ export class GroupInviteService implements OnModuleInit {
           `群已满: ${input.city}/${input.industry ?? '全行业'} (user=${input.userId})`,
         );
         this.sendGroupFullAlert(input, candidates);
-        return { success: false, reason: 'group_full', citySnapshot };
+        return { success: false, reason: GROUP_INVITE_FAILURE_REASON.GROUP_FULL, citySnapshot };
       }
 
       const selectionReason =
-        candidates.length === 1 ? ('only_option' as const) : ('lowest_member_count' as const);
+        candidates.length === 1
+          ? GROUP_INVITE_SELECTION.ONLY_OPTION
+          : GROUP_INVITE_SELECTION.LOWEST_MEMBER_COUNT;
       const fullGroupsDuringInvite: GroupContext[] = [];
       const rejectedGroupsDuringInvite: Array<{
         group: GroupContext;
@@ -234,7 +242,7 @@ export class GroupInviteService implements OnModuleInit {
         if (inviteApiResult.unresolved)
           return {
             success: false,
-            reason: 'result_unknown',
+            reason: GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN,
             groupName: targetGroup.groupName,
             ...this.actionReceipt(inviteApiResult.action),
           };
@@ -255,7 +263,7 @@ export class GroupInviteService implements OnModuleInit {
         if (inviteApiResult.unresolved)
           return {
             success: false,
-            reason: 'result_unknown',
+            reason: GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN,
             groupName: targetGroup.groupName,
             ...this.actionReceipt(inviteApiResult.action),
           };
@@ -305,7 +313,9 @@ export class GroupInviteService implements OnModuleInit {
           success: true,
           ...this.actionReceipt(inviteApiResult.action),
           groupName: targetGroup.groupName,
-          inviteDelivery: isDirectAdd ? 'direct_add' : 'invite_card',
+          inviteDelivery: isDirectAdd
+            ? GROUP_INVITE_DELIVERY.DIRECT_ADD
+            : GROUP_INVITE_DELIVERY.INVITE_CARD,
           inviteCardPendingConsent: inviteCardSentPendingConsent,
           matchedIndustry: targetGroup.industry,
           fallbackUsed,
@@ -328,7 +338,7 @@ export class GroupInviteService implements OnModuleInit {
         this.logger.log(
           `候选人非接客 bot 外部联系人(拉黑/删好友)，静默收口不告警: ${input.city}/${input.industry ?? '全行业'} (user=${input.userId}, groups=${rejectedGroupsDuringInvite.length})`,
         );
-        return { success: false, reason: 'candidate_not_friend' };
+        return { success: false, reason: GROUP_INVITE_FAILURE_REASON.CANDIDATE_NOT_FRIEND };
       }
 
       if (rejectedGroupsDuringInvite.length > 0) {
@@ -338,7 +348,7 @@ export class GroupInviteService implements OnModuleInit {
         this.sendInviteRejectedAlert(input, rejectedGroupsDuringInvite);
         return {
           success: false,
-          reason: 'api_rejected',
+          reason: GROUP_INVITE_FAILURE_REASON.API_REJECTED,
           groupName: rejectedGroupsDuringInvite[0].group.groupName,
           citySnapshot,
           rejectionReason: rejectedGroupsDuringInvite[0].error,
@@ -352,14 +362,18 @@ export class GroupInviteService implements OnModuleInit {
       this.sendGroupFullAlert(input, alertGroups);
       return {
         success: false,
-        reason: 'group_full',
+        reason: GROUP_INVITE_FAILURE_REASON.GROUP_FULL,
         groupName: alertGroups.length === 1 ? alertGroups[0]?.groupName : undefined,
         citySnapshot: this.buildCitySnapshot(alertGroups),
       };
     } catch (error: unknown) {
       const message = toErrorMessage(error);
       this.logger.error(`拉群失败: ${message} (user=${input.userId})`);
-      return { success: false, reason: 'api_failed', rejectionReason: message };
+      return {
+        success: false,
+        reason: GROUP_INVITE_FAILURE_REASON.API_FAILED,
+        rejectionReason: message,
+      };
     }
   }
 
@@ -421,7 +435,7 @@ export class GroupInviteService implements OnModuleInit {
       idempotencyKey: `${input.sessionId}:group:${groupName}:${input.turnKey}`,
       botImId: input.botImId,
       managerName: input.botUserId,
-      sourceChannel: 'unknown',
+      sourceChannel: ACTION_STATE.UNKNOWN,
       userId: input.userId,
       chatId: input.sessionId,
       payload: { group_name: groupName, city: input.city },
@@ -534,7 +548,7 @@ export class GroupInviteService implements OnModuleInit {
       chatId: input.chatId ?? input.sessionId,
       logicalTurnId,
       intentId: `${logicalTurnId}:${intentStep ?? 'initial'}`,
-      kind: 'wecom.group_add_member',
+      kind: ACTION_KIND.WECOM_GROUP_ADD_MEMBER,
       target: `group:${external.roomWxid}:member:${external.contactWxid}`,
       parameters: {
         imBotId: external.imBotId,
@@ -559,7 +573,7 @@ export class GroupInviteService implements OnModuleInit {
         return (
           await this.permits.evaluate({
             chatId: input.chatId ?? input.sessionId,
-            action: 'tool',
+            action: PERMITTED_ACTION.TOOL,
             botImId: external.imBotId,
             candidateIds: [input.userId, input.contactWxid],
           })
@@ -571,10 +585,13 @@ export class GroupInviteService implements OnModuleInit {
         );
         if (result.code === 0 || this.isInviteCardSentPendingConsent(result) || result.code === -9)
           return {
-            status: 'succeeded',
+            status: ACTION_STATE.SUCCEEDED,
             result,
             evidence: {
-              kind: result.code === -9 ? 'already_satisfied' : 'accepted',
+              kind:
+                result.code === -9
+                  ? ACTION_EVIDENCE_KIND.ALREADY_SATISFIED
+                  : ACTION_EVIDENCE_KIND.ACCEPTED,
               requestTerminated: true,
               goalSatisfied: result.code === -9,
               detail:
@@ -585,20 +602,23 @@ export class GroupInviteService implements OnModuleInit {
           };
         if (result.code != null && [-8, -10, 400400].includes(result.code))
           return {
-            status: 'failed',
+            status: ACTION_STATE.FAILED,
             result,
             retryable: false,
-            evidence: { kind: 'definitive_no_effect', requestTerminated: true },
+            evidence: { kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT, requestTerminated: true },
           };
         return {
-          status: 'unknown',
+          status: ACTION_STATE.UNKNOWN,
           result,
-          evidence: { kind: 'indeterminate', requestTerminated: false },
+          evidence: { kind: ACTION_EVIDENCE_KIND.INDETERMINATE, requestTerminated: false },
         };
       },
       sync: (result) => this.syncInviteAction(intent, result),
     });
-    if (!['succeeded', 'failed'].includes(action.status) || !action.result)
+    if (
+      (action.status !== ACTION_STATE.SUCCEEDED && action.status !== ACTION_STATE.FAILED) ||
+      !action.result
+    )
       return { accepted: false, code: null, unresolved: true, action };
     return { ...action.result, action };
   }

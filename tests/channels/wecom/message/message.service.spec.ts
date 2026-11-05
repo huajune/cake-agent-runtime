@@ -1,3 +1,4 @@
+import { GroupRouteCredentialsService } from '@wecom/message/credentials/group-route-credentials.service';
 import { ReplyTurnsRepository } from '@biz/reply-execution/reply-turns.repository';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
@@ -15,6 +16,7 @@ describe('MessageService', () => {
   let service: MessageService;
   const replyRecords = { appendCallback: jest.fn() };
   const config = { get: jest.fn() };
+  const groupCredentials = { verifyCallback: jest.fn() };
 
   const mockSimpleMergeService = {
     addMessage: jest.fn(),
@@ -75,6 +77,7 @@ describe('MessageService', () => {
         MessageService,
         { provide: ReplyTurnsRepository, useValue: replyRecords },
         { provide: ConfigService, useValue: config },
+        { provide: GroupRouteCredentialsService, useValue: groupCredentials },
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
         { provide: MessagePipelineService, useValue: mockPipelineService },
@@ -87,7 +90,8 @@ describe('MessageService', () => {
     service = module.get<MessageService>(MessageService);
     jest.clearAllMocks();
     replyRecords.appendCallback.mockReset().mockResolvedValue(true);
-    config.get.mockReturnValue('token-123');
+    config.get.mockReset().mockReturnValue('token-123');
+    groupCredentials.verifyCallback.mockReset().mockResolvedValue(null);
 
     mockRuntimeConfigService.isAiReplyEnabled.mockReturnValue(true);
     mockRuntimeConfigService.isMessageMergeEnabled.mockReturnValue(true);
@@ -136,6 +140,121 @@ describe('MessageService', () => {
         expect(replyRecords.appendCallback).not.toHaveBeenCalled();
       },
     );
+
+    it('matches group callbacks only within directory-verified legacy and actual corp scopes', async () => {
+      groupCredentials.verifyCallback.mockResolvedValue({
+        groupId: 'trusted-group',
+        corpIds: ['group_callback_org', 'directory-corp'],
+      });
+      replyRecords.appendCallback.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      await service.handleMessage({
+        ...validMessageData,
+        orgId: 'group_callback_org',
+        _apiType: 'group',
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        externalRequestId: 'cake_group_request',
+      });
+      expect(replyRecords.appendCallback.mock.calls.map(([input]) => input.corpId)).toEqual([
+        'group_callback_org',
+        'directory-corp',
+      ]);
+      expect(replyRecords.appendCallback).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          accountId: validMessageData.imBotId,
+          chatId: validMessageData.chatId,
+          requestId: 'cake_group_request',
+          messageType: MessageType.TEXT,
+        }),
+      );
+      await flushAsync();
+      expect(mockPipelineService.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orgId: 'group_callback_org',
+          groupId: 'trusted-group',
+          _apiType: 'group',
+        }),
+      );
+    });
+
+    it('does not ACK a managed group callback when its trusted directory is unavailable', async () => {
+      groupCredentials.verifyCallback.mockRejectedValue(
+        new Error('group_route_credentials_unavailable'),
+      );
+      await expect(
+        service.handleMessage({
+          ...validMessageData,
+          _apiType: 'group',
+          isSelf: true,
+          source: MessageSource.API_SEND,
+          externalRequestId: 'cake_group_request',
+        }),
+      ).rejects.toThrow('group_route_credentials_unavailable');
+      expect(replyRecords.appendCallback).not.toHaveBeenCalled();
+      expect(mockPipelineService.execute).not.toHaveBeenCalled();
+    });
+
+    it('does not ACK a group callback before durable evidence is saved', async () => {
+      groupCredentials.verifyCallback.mockResolvedValue({
+        groupId: 'trusted-group',
+        corpIds: ['group_callback_org'],
+      });
+      replyRecords.appendCallback.mockRejectedValue(new Error('evidence write timeout'));
+      await expect(
+        service.handleMessage({
+          ...validMessageData,
+          orgId: 'group_callback_org',
+          _apiType: 'group',
+          isSelf: true,
+          source: MessageSource.AGGREGATED_CHAT_MANUAL,
+          _sourceInferred: true,
+          externalRequestId: 'cake_group_request',
+        }),
+      ).rejects.toThrow('evidence write timeout');
+      expect(mockPipelineService.execute).not.toHaveBeenCalled();
+    });
+
+    it('freezes trusted group identity on new execute inputs without changing their legacy namespace', async () => {
+      config.get.mockImplementation((key: string) =>
+        key === 'ACTION_EXECUTION_MODE' ? 'execute' : 'token-123',
+      );
+      groupCredentials.verifyCallback.mockResolvedValue({
+        groupId: 'trusted-group',
+        corpIds: ['group_callback_org', 'directory-corp'],
+      });
+      await service.handleMessage({
+        ...validMessageData,
+        orgId: 'group_callback_org',
+        _apiType: 'group',
+      });
+      await flushAsync();
+      expect(mockPipelineService.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orgId: 'group_callback_org',
+          groupId: 'trusted-group',
+          _apiType: 'group',
+        }),
+      );
+      expect(replyRecords.appendCallback).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unverified execute group input before enqueueing it', async () => {
+      config.get.mockImplementation((key: string) =>
+        key === 'ACTION_EXECUTION_MODE' ? 'execute' : 'token-123',
+      );
+      await expect(
+        service.handleMessage({ ...validMessageData, _apiType: 'group' }),
+      ).rejects.toThrow('group_route_identity_unverified');
+      expect(mockPipelineService.execute).not.toHaveBeenCalled();
+      expect(mockSimpleMergeService.addMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps ordinary observe group inputs on the immediate-ACK legacy path', async () => {
+      const response = service.handleMessage({ ...validMessageData, _apiType: 'group' });
+      expect(response).toEqual({ success: true, message: 'Message received' });
+      await flushAsync();
+      expect(groupCredentials.verifyCallback).not.toHaveBeenCalled();
+    });
 
     it('keeps callbacks unknown when the enterprise credential is unavailable', async () => {
       config.get.mockReturnValue(undefined);

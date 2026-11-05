@@ -1,11 +1,5 @@
-/**
- * 工具调用结果分析工具
- *
- * 同时被 generator.agent（generateText 路径）和 ai-stream-trace（streamText 路径）使用，
- * 保证 tool_calls jsonb 的 resultCount / status 语义一致。
- */
-
 import { actionReceiptStatuses, actionReplayStatus } from '@infra/utils/action-receipt.util';
+import { RECEIPT_ACTION_STATUS, TOOL_REPLAY_STATUS } from '@shared-types/tool-replay.types';
 import type { ToolReplayEvidence, ToolReplayStatus } from '@shared-types/tool-replay.types';
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
 import { TOOL_ERROR_TYPES, type ToolErrorType } from '@tools/shared/tool-error-types';
@@ -17,6 +11,7 @@ import {
   toolNamesMatching,
 } from '@tools/tool-contracts';
 import type { AgentToolCall } from './generator.types';
+import { TOOL_EFFECT, TOOL_REPLAY } from '@shared-types/tool-action.contract';
 
 /**
  * 单轮内同名工具调用上限。
@@ -111,9 +106,15 @@ export function computeToolCallStatus(
   toolName?: string,
 ): AgentToolCallStatus {
   const statuses = actionReceiptStatuses(result);
-  if (statuses.some((status) => status !== 'failed' && status !== 'succeeded')) return 'unknown';
-  if (statuses.includes('succeeded')) return 'ok';
-  if (statuses.includes('failed')) return 'error';
+  if (
+    statuses.some(
+      (status) =>
+        status !== RECEIPT_ACTION_STATUS.FAILED && status !== TOOL_REPLAY_STATUS.SUCCEEDED,
+    )
+  )
+    return 'unknown';
+  if (statuses.includes(TOOL_REPLAY_STATUS.SUCCEEDED)) return 'ok';
+  if (statuses.includes(RECEIPT_ACTION_STATUS.FAILED)) return 'error';
   if (errorText && errorText.trim().length > 0) return 'error';
   if (state && /error|fail/i.test(state)) return 'error';
 
@@ -189,11 +190,13 @@ export function extractToolApiCode(result: unknown): string | number | undefined
  * booking 连续调用 2 次的样本）；失败后的重试不受此限制（自纠错合法）。
  */
 export const SIDE_EFFECT_TOOLS = toolNamesMatching(
-  (value) => value.effect === 'external_action' || value.effect === 'intervention_intent',
+  (value) =>
+    value.effect === TOOL_EFFECT.EXTERNAL_ACTION ||
+    value.effect === TOOL_EFFECT.INTERVENTION_INTENT,
 );
 
 export const REPLAY_BLOCKING_TOOLS = toolNamesMatching(
-  (value) => value.replay === 'block_on_success',
+  (value) => value.replay === TOOL_REPLAY.BLOCK_ON_SUCCESS,
 );
 
 export { TOOL_GUARDRAIL_IDS } from '@agent/guardrail/tool/tool-guardrail.catalog';
@@ -217,7 +220,7 @@ export function isToolSuccess(result: unknown): boolean {
   const r = asRecord(result);
   if (!r) return false;
   const statuses = actionReceiptStatuses(r);
-  if (statuses.length > 0) return statuses.includes('succeeded');
+  if (statuses.length > 0) return statuses.includes(TOOL_REPLAY_STATUS.SUCCEEDED);
   if (typeof r.errorType === 'string') return false;
   if (r.success === false || r.accepted === false || r.dispatched === false) return false;
   if (r.sideEffectCommitted === true) return true;
@@ -237,7 +240,7 @@ export function replayBlockingStatus(result: unknown): ToolReplayStatus | undefi
   const status = actionReplayStatus(result);
   if (status) return status;
   if (actionReceiptStatuses(result).length > 0) return undefined; // definite failure
-  if (isToolSuccess(result)) return 'succeeded';
+  if (isToolSuccess(result)) return TOOL_REPLAY_STATUS.SUCCEEDED;
   const record = asRecord(result);
   // Existing validation/business rejections may still be corrected within the old call cap.
   if (
@@ -248,7 +251,7 @@ export function replayBlockingStatus(result: unknown): ToolReplayStatus | undefi
       record.dispatched === false)
   )
     return undefined;
-  return 'unknown';
+  return TOOL_REPLAY_STATUS.UNKNOWN;
 }
 
 /** Keep parent and nested action facts separately; an unknown invitation cannot erase booking success. */
@@ -504,9 +507,9 @@ export function buildSideEffectBlockNotice(blockedTools: string[], steps?: StepL
       );
       const unresolved = outputs
         ?.map(replayBlockingStatus)
-        .find((status) => status && status !== 'succeeded');
+        .find((status) => status && status !== TOOL_REPLAY_STATUS.SUCCEEDED);
       const reason =
-        unresolved === 'blocked' || unresolved === 'cancelled'
+        unresolved === TOOL_REPLAY_STATUS.BLOCKED || unresolved === TOOL_REPLAY_STATUS.CANCELLED
           ? '本轮动作未获执行许可或已取消，不能通过换参数/工具兜底绕过'
           : unresolved
             ? '本轮动作仍在执行或结果未知，不能认定失败，也不能再次提交'

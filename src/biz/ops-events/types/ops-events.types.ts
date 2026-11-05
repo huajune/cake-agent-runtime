@@ -48,7 +48,13 @@ export type OpsEventName = (typeof OPS_EVENT_NAMES)[number];
  * 旧的 boolean 接口（`recordEvent`）把 `duplicate` 与 `failed` 都折叠成 false，
  * 对「首条插入返回值=语义判定」的调用方（如开场白判定）是隐患，故新增本三态接口。
  */
-export type OpsEventWriteResult = 'inserted' | 'duplicate' | 'failed';
+export const OPS_EVENT_WRITE_RESULT = {
+  INSERTED: 'inserted',
+  DUPLICATE: 'duplicate',
+  FAILED: 'failed',
+} as const;
+export type OpsEventWriteResult =
+  (typeof OPS_EVENT_WRITE_RESULT)[keyof typeof OPS_EVENT_WRITE_RESULT];
 
 /** 记录一个运营事件的入参。occurredAt 缺省时由 recorder 取当前时间。 */
 export interface RecordOpsEventInput {

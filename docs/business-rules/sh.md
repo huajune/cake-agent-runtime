@@ -72,6 +72,8 @@
 
 候选人明确拒绝的职责、班次和距离须跨轮承接；当前岗位存在冲突时在继续收资前说明并取得知情确认，不隐瞒绕过。
 
+轮末只提取本轮偏好增量：未变化字段填 null，回显已保存条件或合并后等价的班次 patch 不构成更新，不因缺少新证据触发丢弃告警或工具兜底。真实新增、修改和撤销仍须通过字段证据及班次原话核验；拒绝增量不能直接清空旧条件。
+
 查岗可引用本轮 precheck 读取或验证过的本人公开工期/班次答案，无须重新拼接原话。引用只证明出处，字段语义与排他性由 Agent 结合问题理解；不自动把选中班次投影为个人限制。表单修正/清空后旧引用失效，代报他人及档案预填不提供本人出处。跨轮先 query 已有表单即可复用，不重问候选人；引用失败不得丢弃仍有效的条件绕过核验。
 
 - 状态：现行基线
@@ -82,7 +84,7 @@
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/tools/job-list/candidate-card.util.spec.ts`
 - 验证：`tests/resolution/schedule/matcher.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#job_list_schedule_constraint_provenance`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.JOB_LIST_SCHEDULE_CONSTRAINT_PROVENANCE`
 - 落点：`src/tools/job-list/schedule-evidence.ts#verifyScheduleCitation`
 - 落点：`src/tools/collection/verified-work-answers.ts#collectVerifiedWorkAnswers`
 - 落点：`src/tools/duliday-interview-precheck.tool.ts#buildInterviewPrecheckTool`
@@ -90,6 +92,11 @@
 - 验证：`tests/tools/collection/verified-work-answers.spec.ts`
 - 验证：`tests/tools/tool/duliday-job-list.tool.spec.ts`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
+- 落点：`src/memory/short-term/extraction.prompt.ts#SESSION_EXTRACTION_SYSTEM_PROMPT`
+- 落点：`src/memory/short-term/extraction-evidence.ts#admitPreferenceEvidence`
+- 验证：`tests/memory/fact-evidence.spec.ts`
+- 验证：`tests/memory/short-term/session-state.service.spec.ts`
+- 验证：`tests/memory/short-term/extraction.prompt.spec.ts`
 
 ## 验证边界
 
@@ -101,6 +108,8 @@
 - 岗位 529230 的展示最短工期与标签筛选范围不一致，交独立数据核对会话与运营确认，本次不改海绵数据。
 
 ## 变更记录
+
+- 2026-11-04：按用户反馈修复确认/合同咨询回合重复输出旧偏好的问题；统一增量填 null 口径，先识别等价旧条件，再校验真实更新的证据。班次告警列出同轮所有被拒字段、原因和长度，不再宣称其他字段已保存。证据准入与招聘口径保持。
 
 - 2026-11-04：按用户修正及 audit 459023（trace `batch_6aea9566ce406a6aee2ccfb0_1793759532338`）区分公开要求与普通选择题，保留真实不合格回答；查岗复用已核验表单证据，补工期/班次边界回归。投诉回应按用户意见保持现状。
 

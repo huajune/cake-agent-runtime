@@ -24,15 +24,16 @@ priority: high
 > **FOR HUMAN DEVELOPERS**: Detailed examples and explanations
 > **FOR AI AGENTS**: See [code-quality-guardian.md](code-quality-guardian.md) for enforcement checklist
 
-**Last Updated**: 2025-11-05 16:35:00
+**Last Updated**: 2026-11-04
 **Applies To**: All TypeScript/NestJS code in this project
-**Project**: DuLiDay WeChat Service
+**Project**: Cake Agent Runtime
 
 ---
 
 ## 📋 Table of Contents
 
 - [TypeScript Standards](#typescript-standards)
+- [Protocol Contracts and Refactor Completion](#protocol-contracts-and-refactor-completion)
 - [NestJS Best Practices](#nestjs-best-practices)
 - [Code Style & Formatting](#code-style--formatting)
 - [Naming Conventions](#naming-conventions)
@@ -87,8 +88,15 @@ interface User {
   email: string;
 }
 
+// ✅ Derive closed protocol types from their runtime definition
+const REVIEW_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+} as const;
+type ReviewStatus = (typeof REVIEW_STATUS)[keyof typeof REVIEW_STATUS];
+
 // ✅ Use type for unions, intersections
-type Status = 'pending' | 'approved' | 'rejected';
 type Result = Success | Error;
 
 // ✅ Extend interfaces
@@ -129,6 +137,32 @@ async function process({
   // implementation
 }
 ```
+
+---
+
+## Protocol Contracts and Refactor Completion
+
+适用于新增或修改协议、状态机、工具契约、队列、恢复和兼容逻辑。2026-11-04 用户要求将本次运行时改造的教训纳入后续编码与自审；以下是实施要求，不表示存量代码已全部通过审计。
+
+### 唯一定义与领域归属
+
+1. **封闭值域必须有运行时定义。** 状态、模式、动作类别、协议操作、门禁标识和受控原因码由所属领域统一提供 `enum` 或 `as const` 对象。优先沿用该领域风格；类型从同一对象派生，不另写一份字符串联合。调用、分支、持久化参数、回调、通知渲染均引用定义，不能只在声明处加类型后继续散写字面量。
+2. **编译期与运行时共用值域。** DTO、配置、动态注册、JSON 和外部输入用同一定义构建 schema 或类型守卫；类型断言不等于校验。未知值按契约拒绝或明确保留为 unknown，不能静默当默认成功。数据库保留独立约束，并验证它与应用协议一致。
+3. **常量按领域归属，不能按字符串长相归并。** 不同状态机恰好同名的 `pending`、`failed` 等不能互相借用；共享协议放零依赖类型/契约层，不为复用常量制造反向依赖。开放注册键、自由文本、供应商开放值不强行封闭成枚举；边界适配后再进入内部协议。
+
+### 重构范围与兼容收口
+
+4. **修一处必须核查本次改造的同类问题。** 沿“定义 → 写入/调用 → 读取/分支 → 校验 → 恢复/回调 → 日志/通知 → 测试/文档”检查完整调用链，并用检索核对残留。不能只修用户截图所在文件。交付说明须列清覆盖范围和有意保留项及原因；避免全库机械替换把不同语义合并。
+5. **符号重构保持线协议不变。** 提取常量不能顺带更改数据库值、JSON、Redis/Lua、队列参数、RPC 操作、事件名、幂等键或请求号。确需改值时单独设计迁移与新旧版本兼容。验证应保留独立的旧协议样本、序列化快照或 SQL fixture，不能让实现和期望值同时引用新常量而掩盖协议漂移。
+6. **兼容分支必须有生命周期。** 标明服务的旧数据/旧版本、进入条件和可核验的删除条件；替代实现接管职责时同步回收失效入口、重复分支和过期注释。旧输入、群任务及回滚义务未完结时保留必要适配；禁止把旧 observe 记录升级为 execute 授权。业务时间窗口不是技术兼容垃圾，改变窗口需遵循业务规则维护流程。
+
+### 执行语义与验收依据
+
+7. **分别表达请求受理、外部结果和本地补账。** 按实际接口契约定义成功；普通回复 API 明确受理可继续发送，不额外发明逐段回调门槛。超时/unknown 不等于失败，更不构成重发许可；外部成功后仅补本地状态。原动作、输入归属、回复原文和执行身份须能跨重启保持；并发派发前先取得执行权，回退模式也不能丢弃既有 execute 义务。
+8. **重试预算必须解释计数与依据。** 明确 attempts 是否含首次、retries 是否含首次，以及按模型、工具、生成流程还是队列计数；区分推理步骤、参数纠正与网络重试。调参核对触顶样本、业务结局和延迟，不能凭固定数值断言“不影响模型”，也不能用放宽次数绕过动作权限。
+9. **验收覆盖真实边界，不制造无关门槛。** 独立审查实现与接口契约；协议值变更检查序列化和持久化兼容，执行/恢复变更覆盖并发、未知结果、补账、重启及回滚。涉及 SQL 事务、索引、权限或 Redis Lua/CAS 时验证实际实现，不能仅凭 mock 通过。缺失普通回复回调、历史 unknown 未清零、没有生产故障样本，不自动判为不合格；无流量、零错误或观察固定时长也不能算通过。不要求在真实候选人上制造故障。
+
+提交前按 [Code Quality Guardian](code-quality-guardian.md#step-3-self-validate) 逐项自查；变更范围、测试证据和未验证部分必须对应最终代码。代码与文档同步，发版说明依据实际用户影响整理，不以行数或最近一个提交代替完整范围。
 
 ---
 
@@ -721,6 +755,7 @@ Before committing code, verify:
 - [ ] No sensitive information in code
 - [ ] No new open-language regex verdict branch without a shadow-diff decision
 - [ ] New fictional prompt values come from `prompt/example-registry.ts`
+- [ ] Protocol changes satisfy [Protocol Contracts and Refactor Completion](#protocol-contracts-and-refactor-completion) and the linked self-review checklist
 
 ---
 

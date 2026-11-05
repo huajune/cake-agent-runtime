@@ -5,6 +5,8 @@ import {
 } from '@sponge/sponge.types';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { parseLocalDateTime } from '@infra/utils/date.util';
+import type { BookingDuplicateMatch } from '@shared-types/candidate-progress.types';
+import { BOOKING_DUPLICATE_MATCH } from '@shared-types/candidate-progress.types';
 
 /** 迁移期：七个读者保留各自历史窗口，不在重构中合并业务口径。 */
 export const BOOKING_SNAPSHOT_SIGNUP_WINDOW_MS = 15 * 24 * 60 * 60 * 1000;
@@ -190,7 +192,7 @@ function normalizeProgressLabel(value: unknown): string {
 export interface SnapshotDuplicateMatch {
   workOrderId: number;
   interviewTime: string | null;
-  matchedBy: 'job' | 'brand';
+  matchedBy: BookingDuplicateMatch;
   brandName: string | null;
 }
 
@@ -212,7 +214,7 @@ export function findSnapshotDuplicate<
       return {
         workOrderId: entry.workOrderId,
         interviewTime: entry.interviewTime ?? null,
-        matchedBy: 'job',
+        matchedBy: BOOKING_DUPLICATE_MATCH.JOB,
         brandName: entry.brandName ?? null,
       };
     }
@@ -223,7 +225,7 @@ export function findSnapshotDuplicate<
       return {
         workOrderId: entry.workOrderId,
         interviewTime: entry.interviewTime ?? null,
-        matchedBy: 'brand',
+        matchedBy: BOOKING_DUPLICATE_MATCH.BRAND,
         brandName: entry.brandName ?? null,
       };
     }

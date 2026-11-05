@@ -7,8 +7,14 @@ import { ActionRecordsRepository } from './action-records.repository';
 import { ActionRecoveryRegistry } from './action-recovery.registry';
 import { actionDigest } from './action-identity';
 import type { ActionCompletion, ActionRecord } from './action-execution.types';
+import {
+  ACTION_MODE,
+  ACTION_STATE,
+  LOCAL_SYNC_STATE,
+} from '@shared-types/action-execution.contract';
 
 export const ACTION_REPAIR_QUEUE = 'action-local-repair';
+export const ACTION_REPAIR_JOB = 'settle';
 interface RepairJob {
   record: ActionRecord;
   completion: ActionCompletion<unknown>;
@@ -22,7 +28,7 @@ export class ActionRepairQueue {
     try {
       await Promise.race([
         this.queue.add(
-          'settle',
+          ACTION_REPAIR_JOB,
           { record, completion },
           {
             jobId: actionDigest([record.actionId, record.owner, completion]),
@@ -51,13 +57,14 @@ export class ActionRepairProcessor {
     private readonly localSync: ActionLocalSyncService,
     @Optional() private readonly incidents?: IncidentReporterService,
   ) {}
-  @Process('settle')
+  @Process(ACTION_REPAIR_JOB)
   async settle(job: Job<RepairJob>): Promise<void> {
     const record = await this.records.settle(job.data.record, job.data.completion);
-    if (record.status !== 'succeeded' || record.localSync === 'complete') return;
+    if (record.status !== ACTION_STATE.SUCCEEDED || record.localSync === LOCAL_SYNC_STATE.COMPLETE)
+      return;
     const handler = this.handlers.get(record.intent.kind);
     if (!handler) return; // Durable pending work remains discoverable by the scanner.
-    if (record.mode !== 'execute') return;
+    if (record.mode !== ACTION_MODE.EXECUTE) return;
     await this.localSync.run(record, handler);
     await this.records.markSynced(record);
   }
@@ -68,7 +75,7 @@ export class ActionRepairProcessor {
       source: {
         subsystem: 'action-execution',
         component: 'ActionRepairProcessor',
-        action: 'settle',
+        action: ACTION_REPAIR_JOB,
         trigger: 'queue',
       },
       code: 'action.repair_queue_exhausted',
