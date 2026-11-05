@@ -191,6 +191,7 @@ describe('ReplyWorkflowService', () => {
         corpId: req.sessionRef.corpId,
         sessionId: req.sessionRef.sessionId,
         messageId: req.context?.messageId,
+        toolCallCounts: req.context?.toolCallCounts,
         messages: [
           {
             role: 'user',
@@ -934,6 +935,9 @@ describe('ReplyWorkflowService', () => {
     );
     expect(imageDescription.awaitVision).toHaveBeenCalledWith(['msg-1'], 15_000);
     expect(runner.invoke).toHaveBeenCalledTimes(2);
+    const [[first], [fallback]] = runner.invoke.mock.calls;
+    expect(first.toolCallCounts).toBeInstanceOf(Map);
+    expect(fallback.toolCallCounts).toBe(first.toolCallCounts);
     expect(runner.invoke.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         imageUrls: ['https://example.com/original-job-card.jpg'],
@@ -1922,6 +1926,46 @@ describe('ReplyWorkflowService', () => {
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
       // 无 replay：首次结果被采纳，调用方必须触发 runTurnEnd
       expect(firstRunTurnEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives a corrected city its own queries after the discarded generation used its full allowance', async () => {
+      const corrected = createMessage({
+        messageId: 'msg-corrected-city',
+        payload: { text: '改找杭州的岗位', pureText: '改找杭州的岗位' },
+      });
+      simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+        messages: [corrected],
+        snapshotSize: 1,
+      });
+      runner.invoke
+        .mockImplementationOnce(async ({ toolCallCounts }: GeneratorInvokeParams) => {
+          toolCallCounts!.set('duliday_job_list', 3);
+          return { text: '旧城市的查询结果' };
+        })
+        .mockImplementationOnce(async ({ toolCallCounts }: GeneratorInvokeParams) => {
+          expect(toolCallCounts).toBeInstanceOf(Map);
+          expect(toolCallCounts!.has('duliday_job_list')).toBe(false);
+          return { text: '已按杭州重新查岗' };
+        });
+
+      await service.processSingleMessage(createMessage());
+      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '已按杭州重新查岗' }),
+        expect.anything(),
+        true,
+      );
+    });
+
+    it('acknowledges a duplicate original input without opening a new query allowance', async () => {
+      const original = createMessage();
+      simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+        messages: [original],
+        snapshotSize: 1,
+      });
+      await service.processMergedMessages([original], 'batch-duplicate', 1);
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', 2);
     });
 
     it('Case B: 首次 Agent 完成后发现新消息，合并后重跑一次并投递第二次回复', async () => {
