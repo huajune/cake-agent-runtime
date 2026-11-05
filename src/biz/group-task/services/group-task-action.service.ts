@@ -36,6 +36,7 @@ export class GroupTaskDeferredError extends Error {
   constructor(
     readonly reason: string,
     diagnosis?: { actionId: string; requestId: string; errorCode?: string },
+    readonly definitivelyUnsent = false,
   ) {
     super(
       `group_task_deferred:${reason}` +
@@ -240,7 +241,14 @@ export class GroupTaskActionService implements OnModuleInit {
           ...diagnosis,
         }),
       );
-      throw new GroupTaskDeferredError(result.reason ?? result.status, diagnosis);
+      throw new GroupTaskDeferredError(
+        result.reason ?? result.status,
+        diagnosis,
+        !result.dispatched &&
+          (result.status === ACTION_STATE.CANCELLED ||
+            (result.evidence?.kind === ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT &&
+              result.evidence.requestTerminated)),
+      );
     }
     // External success stays success even if projection is pending; recovery repairs it.
   }

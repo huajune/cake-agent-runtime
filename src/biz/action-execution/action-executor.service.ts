@@ -148,8 +148,19 @@ export class ActionExecutorService {
       return this.existing<T>(record, false);
     }
     if (!(await this.authorized(callbacks))) {
-      await this.records.cancel(record).catch(() => false);
-      return blocked('permission_or_freshness_changed');
+      const cancelled = await this.records.cancel(record).catch(() => false);
+      return {
+        ...blocked('permission_or_freshness_changed'),
+        ...(cancelled
+          ? {
+              evidence: {
+                kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+                requestTerminated: true,
+                detail: 'registered_action_cancelled',
+              },
+            }
+          : {}),
+      };
     }
 
     let claimed: ActionRecord | null;
