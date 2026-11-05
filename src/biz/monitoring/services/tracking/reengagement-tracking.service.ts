@@ -7,6 +7,7 @@ import {
   ReengagementTouchStatus,
 } from '../../entities/reengagement-touch.entity';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
 
 /** 触达身份（写入侧各埋点共用）。昵称/bot 为渠道身份快照，随记录冗余落库，查询免关联。 */
 export interface ReengagementTouchIdentity {
@@ -26,7 +27,7 @@ export interface ReengagementTouchIdentity {
   token?: string;
   imContactId?: string;
   imRoomId?: string;
-  apiType?: 'enterprise' | 'group';
+  apiType?: WecomApiType;
   externalUserId?: string;
 }
 

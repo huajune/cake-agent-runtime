@@ -37,7 +37,7 @@ function setup(row = record) {
   const registry = { get: jest.fn().mockReturnValue(handler) };
   const localSync = { run: jest.fn(async (r, h) => h.sync?.(r)) };
   const crons = { runBatches: jest.fn(async (_id, _limits, batch) => batch(100)) };
-  const incidents = { notifyAsync: jest.fn() };
+  const incidents = { notify: jest.fn().mockResolvedValue(true) };
   return {
     incidents,
     crons,
@@ -97,13 +97,33 @@ describe('bounded action reconciliation', () => {
     expect(handler.reconcile).not.toHaveBeenCalled();
     expect(records.defer).toHaveBeenCalledWith(row, null);
     expect(records.settle).not.toHaveBeenCalled();
-    expect(incidents.notifyAsync).toHaveBeenCalledWith(
+    expect(incidents.notify).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'action.manual_review_required',
         dedupe: { key: 'action.manual_review_required:action' },
       }),
     );
   });
+  it.each(['rejected', 'unconfirmed'])(
+    'keeps an overdue unknown action discoverable when its manual alert is %s',
+    async (failure) => {
+      const row = { ...record, attempts: 7, recoveryDeadline: '2020-01-01T00:00:00Z' };
+      const { service, records, handler, incidents } = setup(row);
+      if (failure === 'rejected') incidents.notify.mockRejectedValueOnce(new Error('offline'));
+      else incidents.notify.mockResolvedValueOnce(false);
+      const startedAt = Date.now();
+      await service.recoverDue();
+      expect(records.defer).not.toHaveBeenCalledWith(row, null);
+      expect(Date.parse(records.defer.mock.calls[0][1])).toBeGreaterThan(startedAt);
+      expect(handler.reconcile).not.toHaveBeenCalled();
+      expect(records.settle).not.toHaveBeenCalled();
+      // A later confirmed notification ends automatic polling, without changing the outcome.
+      await service.recoverDue();
+      expect(incidents.notify).toHaveBeenCalledTimes(2);
+      expect(records.defer).toHaveBeenLastCalledWith(row, null);
+      expect(records.settle).not.toHaveBeenCalled();
+    },
+  );
   it('uses a late terminal success as evidence and only repairs local state', async () => {
     const { service, records, handler } = setup();
     records.terminalEvidence.mockResolvedValue({

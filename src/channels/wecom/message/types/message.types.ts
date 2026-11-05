@@ -11,6 +11,8 @@ import type {
 import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import type { TurnOutcome } from '@agent/runner/agent-runner.types';
 import type { TurnFinalizer } from '@agent/runner/turn-finalizer';
+import { REPLY_RECOVERY_TASK } from '@biz/reply-execution/reply-execution.constants';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
 
 export { AlertErrorType } from '@shared-types/tracking.types';
 
@@ -83,7 +85,7 @@ export interface DeliveryContext {
   inputOccurredAt?: string;
   replyTurn?: ReplyTurn;
   /** Whitelisted task metadata only; never credentials or message history. */
-  taskRecovery?: { kind: 'reengagement'; data: Record<string, unknown> };
+  taskRecovery?: { kind: typeof REPLY_RECOVERY_TASK.REENGAGEMENT; data: Record<string, unknown> };
   assertOwned?: () => Promise<void>;
   action?: PermittedAction;
   groupId?: string;
@@ -99,7 +101,7 @@ export interface DeliveryContext {
    * 普通被动回复不能直接复用 messageId，因为它通常等于候选人入站 messageId。
    */
   externalRequestId?: string;
-  _apiType?: 'enterprise' | 'group';
+  _apiType?: WecomApiType;
 }
 
 export interface DeliveryResult {

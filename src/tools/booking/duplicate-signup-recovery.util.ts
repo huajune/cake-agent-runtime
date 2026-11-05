@@ -1,4 +1,5 @@
 import type { DuplicateSignupReason, SignupWorkOrderItem } from '@sponge/sponge.types';
+import { DUPLICATE_SIGNUP_REASON } from '@sponge/sponge.types';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { SpongeTokenResolveContext } from '@sponge/sponge-token.config';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -21,7 +22,7 @@ export async function recoverDuplicateSignup(params: {
   onFailure: (message: string) => void;
 }): Promise<{ match?: SnapshotDuplicateMatch; ownedOrder?: SignupWorkOrderItem }> {
   const match = await findCrossAccountDuplicate(params);
-  if (!match || params.reason === 'ownership_review') return { match };
+  if (!match || params.reason === DUPLICATE_SIGNUP_REASON.OWNERSHIP_REVIEW) return { match };
   try {
     const current = await params.spongeService.fetchSignupWorkOrders(
       { phone: params.phone, onlyCurrentAccount: true },

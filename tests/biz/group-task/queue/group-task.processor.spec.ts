@@ -393,7 +393,11 @@ describe('GroupTaskProcessor', () => {
         redisMock.get.mockResolvedValue({ message: 'hi', summary: 'summary' });
         groupResolver.hasCurrentTag.mockResolvedValue(false);
         scheduledActions.executePart.mockRejectedValue(
-          new GroupTaskDeferredError('permission_or_freshness_changed', definitivelyUnsent),
+          new GroupTaskDeferredError(
+            'permission_or_freshness_changed',
+            undefined,
+            definitivelyUnsent,
+          ),
         );
         const run = invokeHandler(GroupTaskJobName.SEND, {
           ...baseSend,

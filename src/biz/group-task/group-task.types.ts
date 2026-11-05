@@ -101,6 +101,15 @@ export interface PromptInput {
 }
 
 /** 分组执行详情 */
+export const GROUP_TASK_STATUS = {
+  SUCCESS: 'success',
+  SKIPPED: 'skipped',
+  FAILED: 'failed',
+  PARTIAL: 'partial',
+  PENDING: 'pending',
+} as const;
+export type GroupTaskStatus = (typeof GROUP_TASK_STATUS)[keyof typeof GROUP_TASK_STATUS];
+
 export interface GroupExecutionDetail {
   /** 分组 key（如 "上海_餐饮"） */
   groupKey: string;
@@ -109,7 +118,7 @@ export interface GroupExecutionDetail {
   /** 数据摘要（如 "塔可贝尔: 2个岗位"） */
   dataSummary: string;
   /** 执行状态 */
-  status: 'success' | 'skipped' | 'failed' | 'partial' | 'pending';
+  status: GroupTaskStatus;
   /** 群名列表 */
   groupNames: string[];
 }
@@ -131,10 +140,10 @@ export interface TaskExecutionResult {
 
 // BI 类型从 sponge 层导出（避免 sponge→biz 反向依赖）
 export {
-  BIOrderQueryParams,
   BIOrder,
+  BIOrderQueryParams,
+  BIOrderStatusCode,
   BI_FIELD_NAMES,
   BI_FILTER_TYPES,
   BI_ORDER_STATUS,
-  BIOrderStatusCode,
 } from '@sponge/sponge.types';

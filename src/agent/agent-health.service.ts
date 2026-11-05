@@ -6,6 +6,7 @@ import { ToolRegistryService } from '@tools/tool-registry.service';
 import { RegistryService } from '@providers/registry.service';
 import { RouterService } from '@providers/router.service';
 import { ContextService } from './generator/context/context.service';
+import { TOOL_SOURCE } from '@shared-types/tool-action.contract';
 
 export interface DependencyCheck {
   ok: boolean;
@@ -68,8 +69,8 @@ export class AgentHealthService {
   }
 
   private async computeCheck(): Promise<HealthCheckResult> {
-    const builtInTools = this.toolRegistry.listBySource('built-in');
-    const mcpTools = this.toolRegistry.listBySource('mcp');
+    const builtInTools = this.toolRegistry.listBySource(TOOL_SOURCE.BUILT_IN);
+    const mcpTools = this.toolRegistry.listBySource(TOOL_SOURCE.MCP);
 
     const [redis, supabase] = await Promise.all([this.checkRedis(), this.checkSupabase()]);
 

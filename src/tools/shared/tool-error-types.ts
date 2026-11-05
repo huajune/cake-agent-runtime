@@ -16,6 +16,8 @@
  *   4) 飞书 badcase 表的"错误原因"单选字段（如已经按 errorType 收口）
  */
 export const TOOL_ERROR_TYPES = {
+  /** Durable action outcome is unresolved; automatic redispatch is forbidden. */
+  ACTION_RESULT_UNRESOLVED: 'action.result_unresolved',
   // ============================================================
   // duliday_interview_booking
   // 注意：时段/筛选答案/真实姓名等硬规则由 duliday_interview_precheck 前置拦截，

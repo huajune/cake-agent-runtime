@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai';
 import type { ToolReplayEvidence, ToolReplayStatus } from '@shared-types/tool-replay.types';
+import { TOOL_REPLAY_STATUS } from '@shared-types/tool-replay.types';
 
 /** Caller supplies semantics; the provider layer knows no business tool names. */
 export interface ToolReplayPolicy {
@@ -34,7 +35,7 @@ export class ToolReplayFence {
             execute: async (...args: Parameters<typeof execute>) => {
               if (this.blockedNames.has(name)) {
                 return {
-                  actionStatus: 'blocked',
+                  actionStatus: TOOL_REPLAY_STATUS.BLOCKED,
                   actionDispatched: false,
                   actionReason: 'same_turn_action_replay_blocked',
                   replyInstruction:
@@ -48,7 +49,7 @@ export class ToolReplayFence {
               const evidence: ToolReplayEvidence = {
                 toolName: name,
                 toolCallId,
-                status: 'executing',
+                status: TOOL_REPLAY_STATUS.EXECUTING,
               };
               this.evidenceByCall.set(key, [evidence]);
               try {
@@ -65,7 +66,7 @@ export class ToolReplayFence {
                 }
                 return result;
               } catch (error) {
-                evidence.status = 'unknown';
+                evidence.status = TOOL_REPLAY_STATUS.UNKNOWN;
                 throw error;
               }
             },

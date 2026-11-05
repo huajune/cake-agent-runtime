@@ -45,7 +45,7 @@
 - 验证：`tests/tools/job-list/candidate-card.util.spec.ts`
 - 验证：`tests/agent/guardrail/output/rules/hard-rules.service.spec.ts`
 - 验证：`tests/agent/guardrail/output/rules/brand-name-errors.rule.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#job_list_brand_provenance`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.JOB_LIST_BRAND_PROVENANCE`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
 
 ## GP-04 岗位事实纠错
@@ -133,7 +133,7 @@
 - 验证：`tests/tools/invite/invite-city-gate.spec.ts`
 - 验证：`tests/tools/tool/invite-to-group.tool.spec.ts`
 - 验证：`tests/tools/invite/invite-timing-gate.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#invite_timing_gate`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.INVITE_TIMING_GATE`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
 - 落点：`src/agent/generator/context/sections/procedural/final-check.section.ts#job_pool_vs_interview_group`
 - 验证：`tests/agent/generator/context/context.service.spec.ts`

@@ -1,18 +1,15 @@
 import { asRecord } from './object.util';
 import { toErrorMessage } from './error.util';
 import type { ToolReplayEvidence, ToolReplayStatus } from '@shared-types/tool-replay.types';
+import {
+  RECEIPT_ACTION_STATUS,
+  TOOL_REPLAY_PRECEDENCE,
+  type ReceiptActionStatus,
+} from '@shared-types/tool-replay.types';
 import type { AgentError } from '@shared-types/agent-error.types';
 
-const ACTION_STATUSES = new Set([
-  'pending',
-  'executing',
-  'unknown',
-  'succeeded',
-  'failed',
-  'blocked',
-  'cancelled',
-]);
-export type ReceiptActionStatus = ToolReplayStatus | 'failed';
+const ACTION_STATUSES: ReadonlySet<string> = new Set(Object.values(RECEIPT_ACTION_STATUS));
+export type { ReceiptActionStatus } from '@shared-types/tool-replay.types';
 
 /** Only the shared machine fields count. Prose and outer success flags are not action evidence. */
 export function actionReceiptStatuses(result: unknown): ReceiptActionStatus[] {
@@ -29,9 +26,7 @@ export function actionReceiptStatuses(result: unknown): ReceiptActionStatus[] {
 /** Unknown/blocked never mean success, but generic retries cannot grant new permission. */
 export function actionReplayStatus(result: unknown): ToolReplayStatus | undefined {
   const statuses = actionReceiptStatuses(result);
-  return (['unknown', 'executing', 'pending', 'blocked', 'cancelled', 'succeeded'] as const).find(
-    (status) => statuses.includes(status),
-  );
+  return TOOL_REPLAY_PRECEDENCE.find((status) => statuses.includes(status));
 }
 
 export function hasReplayEvidence(error: unknown): boolean {

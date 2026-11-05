@@ -1,19 +1,9 @@
-// business-rules: IB-12
 import type { ToolActionService } from './actions/tool-action.service';
 import {
   actionReceiptFields,
   isUnresolvedAction,
   unresolvedActionReceipt,
 } from './actions/business-action.util';
-/**
- * DuLiDay 取消工单工具
- *
- * 候选人主动要求取消已确认的面试预约时，自助调海绵取消工单接口完成取消。
- * 取消原因取自海绵失败原因字典（父级 pid 12001），由 LLM 据候选人原话挑选 cancelReasonId。
- * 自助优先：字典/接口失败时回执自带转人工副作用（modify_appointment + 工单号/岗位/失败原因），
- * 模型只需如实告知已转同事；无工单号时仍回退 request_handoff(modify_appointment)。
- */
-
 import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
@@ -37,6 +27,7 @@ import {
   buildToolFailureHandoffSideEffect,
   buildToolFailureReplyInstruction,
 } from '@tools/shared/tool-failure-handoff.util';
+import { ACTION_KIND } from '@shared-types/action-execution.contract';
 
 const logger = new Logger('duliday_cancel_work_order');
 
@@ -315,7 +306,7 @@ export function buildCancelWorkOrderTool(
             ? await deps.actions.executeSponge(
                 context,
                 {
-                  kind: 'sponge.cancel',
+                  kind: ACTION_KIND.SPONGE_CANCEL,
                   target: `work-order:${workOrderId}`,
                   parameters,
                   recovery: {

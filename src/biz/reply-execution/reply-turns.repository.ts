@@ -2,6 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { ReplyTurn } from './reply-execution.types';
+import {
+  REPLY_PROJECTION_STATUS,
+  REPLY_RECOVERY_TASK,
+  REPLY_TURN_STATUS,
+} from '@biz/reply-execution/reply-execution.constants';
+import { ACTION_MODE } from '@shared-types/action-execution.contract';
+import type { ReplyTurnOperation } from './reply-execution.constants';
 
 @Injectable()
 export class ReplyTurnsRepository extends BaseRepository {
@@ -10,7 +17,10 @@ export class ReplyTurnsRepository extends BaseRepository {
     super(supabase);
   }
 
-  async transition(operation: string, input: Record<string, unknown>): Promise<ReplyTurn | null> {
+  async transition(
+    operation: ReplyTurnOperation,
+    input: Record<string, unknown>,
+  ): Promise<ReplyTurn | null> {
     if (this.circuitBlocked('reply_turn')) throw new Error('reply_store_unavailable');
     const { data, error } = await this.getClient()
       .rpc('transition_agent_reply_turn', {
@@ -31,9 +41,13 @@ export class ReplyTurnsRepository extends BaseRepository {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .eq('mode', 'execute')
+      .eq('mode', ACTION_MODE.EXECUTE)
       .not('recovery->primary', 'is', null)
-      .in('status', ['preparing', 'planned', 'settled'])
+      .in('status', [
+        REPLY_TURN_STATUS.PREPARING,
+        REPLY_TURN_STATUS.PLANNED,
+        REPLY_TURN_STATUS.SETTLED,
+      ])
       .lte('next_check_at', new Date().toISOString())
       .order('next_check_at')
       .limit(25)
@@ -63,9 +77,9 @@ export class ReplyTurnsRepository extends BaseRepository {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .eq('mode', 'execute')
-      .eq('projection_status', 'pending')
-      .eq('recovery->task->>kind', 'reengagement')
+      .eq('mode', ACTION_MODE.EXECUTE)
+      .eq('projection_status', REPLY_PROJECTION_STATUS.PENDING)
+      .eq('recovery->task->>kind', REPLY_RECOVERY_TASK.REENGAGEMENT)
       .lte('projection_next_check_at', new Date().toISOString())
       .order('projection_next_check_at')
       .limit(25)

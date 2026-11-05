@@ -6,6 +6,13 @@ import type {
 } from '@biz/action-execution/action-execution.types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import type { InterviewBookingResult, WorkOrderMutationResult } from '@sponge/sponge.types';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_EXECUTION_STATUS,
+  ACTION_KIND,
+  ACTION_STATE,
+} from '@shared-types/action-execution.contract';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 export function toolActionIntent(
   context: ToolBuildContext,
@@ -30,35 +37,35 @@ export function spongeActionCompletion<T extends InterviewBookingResult | WorkOr
 ): ActionCompletion<T> {
   if (result.success && result.code === 0)
     return {
-      status: 'succeeded',
+      status: ACTION_STATE.SUCCEEDED,
       result,
       evidence: {
-        kind: 'completed',
+        kind: ACTION_EVIDENCE_KIND.COMPLETED,
         requestTerminated: true,
         ...('workOrderId' in result && result.workOrderId
           ? { externalId: String(result.workOrderId) }
           : {}),
       },
     };
-  const rejection = kind === 'sponge.booking' ? classifyBookingRejection(result) : null;
+  const rejection = kind === ACTION_KIND.SPONGE_BOOKING ? classifyBookingRejection(result) : null;
   if (rejection)
     return {
-      status: 'failed',
+      status: ACTION_STATE.FAILED,
       result,
       retryable: false,
       evidence: {
-        kind: 'definitive_no_effect',
+        kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
         requestTerminated: true,
         detail: rejection,
       },
     };
   if ('duplicateSignupReason' in result && result.duplicateSignupReason)
     return {
-      status: 'failed',
+      status: ACTION_STATE.FAILED,
       result,
       retryable: false,
       evidence: {
-        kind: 'definitive_no_effect',
+        kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
         requestTerminated: true,
         // A brand-level duplicate does not prove this exact job is already booked.
         detail: result.duplicateSignupReason,
@@ -66,19 +73,19 @@ export function spongeActionCompletion<T extends InterviewBookingResult | WorkOr
     };
   if ('applyErrorList' in result && result.applyErrorList?.length)
     return {
-      status: 'failed',
+      status: ACTION_STATE.FAILED,
       result,
       retryable: false,
       evidence: {
-        kind: 'definitive_no_effect',
+        kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
         requestTerminated: true,
         detail: 'collection_fields_rejected',
       },
     };
   return {
-    status: 'unknown',
+    status: ACTION_STATE.UNKNOWN,
     result,
-    evidence: { kind: 'indeterminate', requestTerminated: false },
+    evidence: { kind: ACTION_EVIDENCE_KIND.INDETERMINATE, requestTerminated: false },
   };
 }
 
@@ -101,10 +108,10 @@ export function unresolvedActionReceipt(
   jobId?: number,
   workOrderId?: number,
 ): Record<string, unknown> {
-  const notDispatched = action.status === 'blocked' && !action.dispatched;
+  const notDispatched = action.status === ACTION_EXECUTION_STATUS.BLOCKED && !action.dispatched;
   return {
     ...actionReceiptFields(action),
-    errorType: 'action.result_unresolved',
+    errorType: TOOL_ERROR_TYPES.ACTION_RESULT_UNRESOLVED,
     _outcome: notDispatched
       ? `本次${label}尚未执行，需要人工核实`
       : `${label}结果暂未确认，已停止自动重试，需要人工核实`,
@@ -132,5 +139,5 @@ export function unresolvedActionReceipt(
 }
 
 export function isUnresolvedAction(result: ActionExecution<unknown>): boolean {
-  return !['succeeded', 'failed'].includes(result.status);
+  return result.status !== ACTION_STATE.SUCCEEDED && result.status !== ACTION_STATE.FAILED;
 }

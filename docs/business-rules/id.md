@@ -12,7 +12,7 @@
 - 落点：`src/resolution/candidate/identity-attribution.ts#evaluateBookingNameGate`
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/resolution/candidate/identity-attribution.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#booking_real_name`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.BOOKING_REAL_NAME`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
 - 落点：`src/agent/generator/context/sections/procedural/final-check.section.ts#no_internal_terms_no_nickname`
 - 验证：`tests/agent/generator/context/context.service.spec.ts`
@@ -55,7 +55,7 @@
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/tools/collection/collection-form.service.spec.ts`
 - 验证：`tests/resolution/candidate/identity-attribution.spec.ts`
-- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#booking_name_authority`
+- 落点：`src/agent/guardrail/tool/tool-guardrail.catalog.ts#TOOL_GATE.BOOKING_NAME_AUTHORITY`
 - 验证：`tests/agent/guardrail/catalog.spec.ts`
 - 落点：`src/agent/generator/context/sections/procedural/final-check.section.ts#bare_number_reply_is_age_first`
 - 验证：`tests/agent/generator/context/context.service.spec.ts`

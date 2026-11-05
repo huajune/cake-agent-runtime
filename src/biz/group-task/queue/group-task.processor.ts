@@ -54,6 +54,11 @@ import {
   MINIPROGRAM_CARD_DELAY_MAX_MS,
   resolveHumanizedDelayMs,
 } from '../utils/humanized-delay.util';
+import { GROUP_TASK_STATUS } from '@biz/group-task/group-task.types';
+import {
+  GROUP_TASK_SEND_STATUS,
+  GROUP_TASK_TRIGGER,
+} from '@biz/group-task/queue/group-task-queue.constants';
 
 const BOT_DISPATCH_LOCK_TTL_SECONDS = 20 * 60;
 const BOT_DISPATCH_LOCK_POLL_MS = 1_000;
@@ -335,7 +340,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         await this.writeGroupResult(execId, group.imRoomId, {
           groupKey,
           groupName: group.groupName,
-          status: 'skipped',
+          status: GROUP_TASK_SEND_STATUS.SKIPPED,
           summary: notificationData.summary,
           updatedAt: Date.now(),
         });
@@ -415,7 +420,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       const previous = await this.redisService.get<GroupTaskResultSnapshot>(
         groupTaskResultKey(execId, group.imRoomId),
       );
-      if (previous?.status === 'sent') return;
+      if (previous?.status === GROUP_TASK_SEND_STATUS.SENT) return;
       // This exact original task may still need local projection repair. Let
       // its action records settle it; never overwrite known success as skipped.
     }
@@ -424,7 +429,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
         groupName: group.groupName,
-        status: 'skipped',
+        status: GROUP_TASK_SEND_STATUS.SKIPPED,
         summary: '今日已发送（幂等跳过）',
         updatedAt: Date.now(),
       });
@@ -454,7 +459,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         await this.writeGroupResult(execId, group.imRoomId, {
           groupKey,
           groupName: group.groupName,
-          status: 'skipped',
+          status: GROUP_TASK_SEND_STATUS.SKIPPED,
           summary: '今日已发送（锁内幂等跳过）',
           updatedAt: Date.now(),
         });
@@ -470,7 +475,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         await this.writeGroupResult(execId, group.imRoomId, {
           groupKey,
           groupName: group.groupName,
-          status: 'skipped',
+          status: GROUP_TASK_SEND_STATUS.SKIPPED,
           summary: '群已不再匹配抢单群标签',
           updatedAt: Date.now(),
         });
@@ -521,7 +526,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
         groupName: group.groupName,
-        status: 'sent',
+        status: GROUP_TASK_SEND_STATUS.SENT,
         summary: cache.summary,
         updatedAt: Date.now(),
       });
@@ -532,7 +537,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         await this.writeGroupResult(execId, group.imRoomId, {
           groupKey,
           groupName: group.groupName,
-          status: 'skipped',
+          status: GROUP_TASK_SEND_STATUS.SKIPPED,
           summary: '群已不再匹配抢单群标签，确认尚未发送',
           updatedAt: Date.now(),
         });
@@ -543,7 +548,10 @@ export class GroupTaskProcessor implements OnModuleInit {
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
         groupName: group.groupName,
-        status: error instanceof GroupTaskDeferredError ? 'pending' : 'failed',
+        status:
+          error instanceof GroupTaskDeferredError
+            ? GROUP_TASK_SEND_STATUS.PENDING
+            : GROUP_TASK_SEND_STATUS.FAILED,
         summary:
           error instanceof GroupTaskDeferredError ? '发送结果待核对，不自动重发' : '发送失败',
         error: errorMsg,
@@ -599,7 +607,8 @@ export class GroupTaskProcessor implements OnModuleInit {
   ): Promise<void> {
     // Cover the healthy holder's full lease without exhausting Bull send attempts.
     // Each shared lease wait remains bounded to one minute.
-    const deadline = Date.now() + BOT_DISPATCH_LOCK_TTL_SECONDS * 1_000;
+    const startedAt = Date.now();
+    const deadline = startedAt + BOT_DISPATCH_LOCK_TTL_SECONDS * 1_000;
     while (Date.now() < deadline) {
       const lease = await this.leases.acquire(lockKey, BOT_DISPATCH_LOCK_TTL_SECONDS, {
         owner: lockOwner,
@@ -609,6 +618,14 @@ export class GroupTaskProcessor implements OnModuleInit {
       if (lease) return;
       await this.delay(BOT_DISPATCH_LOCK_POLL_MS);
     }
+    this.logger.warn(
+      JSON.stringify({
+        event: 'group_task_dispatch_lock_timeout',
+        lockKey,
+        lockOwner,
+        waitedMs: Date.now() - startedAt,
+      }),
+    );
     throw new Error(`同 bot 发送锁不可用，已停止本次发送: ${groupName}`);
   }
 
@@ -665,7 +682,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         results.push({
           groupKey: 'unknown',
           groupName: groupId,
-          status: 'pending',
+          status: GROUP_TASK_SEND_STATUS.PENDING,
           summary: '未收到发送结果（可能仍在重试或消息缓存过期）',
           updatedAt: Date.now(),
         });
@@ -689,7 +706,7 @@ export class GroupTaskProcessor implements OnModuleInit {
           subsystem: 'group-task',
           component: 'GroupTaskProcessor',
           action: 'summarize',
-          trigger: 'manual',
+          trigger: GROUP_TASK_TRIGGER.MANUAL,
         },
         code: 'group_task.summary_failed',
         summary: `${type} 汇总上报失败 exec=${execId}`,
@@ -711,7 +728,7 @@ export class GroupTaskProcessor implements OnModuleInit {
           subsystem: 'group-task',
           component: 'GroupTaskProcessor',
           action: 'summarize',
-          trigger: 'cron',
+          trigger: GROUP_TASK_TRIGGER.CRON,
         },
         code: result.pendingCount
           ? 'group_task.result_pending'
@@ -731,7 +748,7 @@ export class GroupTaskProcessor implements OnModuleInit {
             skippedCount: result.skippedCount,
             errors: result.errors.slice(0, 5),
             skippedReasons: result.details
-              .filter((detail) => detail.status === 'skipped')
+              .filter((detail) => detail.status === GROUP_TASK_STATUS.SKIPPED)
               .slice(0, 10)
               .map((detail) => ({ groupKey: detail.groupKey, reason: detail.dataSummary })),
           },
@@ -768,13 +785,13 @@ export class GroupTaskProcessor implements OnModuleInit {
   }): TaskExecutionResult {
     const { type, totalGroups, startedAt, results } = params;
 
-    const successCount = results.filter((r) => r.status === 'sent').length;
-    const failedCount = results.filter((r) => r.status === 'failed').length;
-    const skippedCount = results.filter((r) => r.status === 'skipped').length;
-    const pendingCount = results.filter((r) => r.status === 'pending').length;
+    const successCount = results.filter((r) => r.status === GROUP_TASK_SEND_STATUS.SENT).length;
+    const failedCount = results.filter((r) => r.status === GROUP_TASK_SEND_STATUS.FAILED).length;
+    const skippedCount = results.filter((r) => r.status === GROUP_TASK_SEND_STATUS.SKIPPED).length;
+    const pendingCount = results.filter((r) => r.status === GROUP_TASK_SEND_STATUS.PENDING).length;
 
     const errors = results
-      .filter((r) => r.status === 'failed')
+      .filter((r) => r.status === GROUP_TASK_SEND_STATUS.FAILED)
       .map((r) => ({ groupName: r.groupName, error: r.error ?? '未知错误' }));
 
     // 按 groupKey 聚合 details（与原格式兼容）
@@ -793,7 +810,7 @@ export class GroupTaskProcessor implements OnModuleInit {
           groupKey: r.groupKey,
           groupCount: 1,
           dataSummary: r.summary,
-          status: 'failed',
+          status: GROUP_TASK_STATUS.FAILED,
           groupNames: [r.groupName],
           groupResults: [r],
         });
@@ -802,19 +819,23 @@ export class GroupTaskProcessor implements OnModuleInit {
 
     const details: GroupExecutionDetail[] = [];
     for (const detail of detailMap.values()) {
-      const allSent = detail.groupResults.every((r) => r.status === 'sent');
-      const allSkipped = detail.groupResults.every((r) => r.status === 'skipped');
-      const anySent = detail.groupResults.some((r) => r.status === 'sent');
-      const anyPending = detail.groupResults.some((r) => r.status === 'pending');
+      const allSent = detail.groupResults.every((r) => r.status === GROUP_TASK_SEND_STATUS.SENT);
+      const allSkipped = detail.groupResults.every(
+        (r) => r.status === GROUP_TASK_SEND_STATUS.SKIPPED,
+      );
+      const anySent = detail.groupResults.some((r) => r.status === GROUP_TASK_SEND_STATUS.SENT);
+      const anyPending = detail.groupResults.some(
+        (r) => r.status === GROUP_TASK_SEND_STATUS.PENDING,
+      );
       const status: GroupExecutionDetail['status'] = anyPending
-        ? 'pending'
+        ? GROUP_TASK_STATUS.PENDING
         : allSent
-          ? 'success'
+          ? GROUP_TASK_STATUS.SUCCESS
           : allSkipped
-            ? 'skipped'
+            ? GROUP_TASK_STATUS.SKIPPED
             : anySent
-              ? 'partial'
-              : 'failed';
+              ? GROUP_TASK_STATUS.PARTIAL
+              : GROUP_TASK_STATUS.FAILED;
       details.push({
         groupKey: detail.groupKey,
         groupCount: detail.groupCount,

@@ -14,6 +14,8 @@ import type { GeocodeLocationAnchor, TurnLedger } from './turn.types';
 import type { CorpusBlock } from './corpus.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import type { ToolActionContract } from './tool-action.contract';
+import type { ToolSource } from '@shared-types/tool-action.contract';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -26,7 +28,7 @@ export interface ToolSessionContext {
   token?: string;
   imContactId?: string;
   imRoomId?: string;
-  apiType?: 'enterprise' | 'group';
+  apiType?: WecomApiType;
   botUserId?: string;
   botImId?: string;
   groupId?: string;
@@ -152,7 +154,7 @@ export function createToolDefinition(def: ToolDefinition): ToolDefinition {
 export interface ToolRegistration {
   name: string;
   contract: ToolActionContract;
-  source: 'built-in' | 'mcp';
+  source: ToolSource;
   /** MCP 工具：预构建的 tool */
   tool?: AiTool;
   /** MCP 服务器名称 */

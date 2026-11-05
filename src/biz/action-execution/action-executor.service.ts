@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { describeHttpFailure, readHttpFailureCodes } from '@infra/client-http/http-request-error';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionRecordsRepository } from './action-records.repository';
@@ -13,6 +14,15 @@ import type {
   ActionMode,
   ActionRecord,
 } from './action-execution.types';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_EXECUTION_STATUS,
+  ACTION_MODE,
+  ACTION_STATE,
+  isActionMode,
+  LOCAL_SYNC_STATE,
+  type LocalSyncState,
+} from '@shared-types/action-execution.contract';
 
 const RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -29,15 +39,14 @@ export class ActionExecutorService {
     @Optional() private readonly repair?: ActionRepairQueue,
     @Optional() private readonly incidents?: IncidentReporterService,
   ) {
-    const mode = config.get<string>('ACTION_EXECUTION_MODE', 'observe');
-    if (!['off', 'observe', 'execute'].includes(mode))
-      throw new Error('Invalid ACTION_EXECUTION_MODE');
-    this.mode = mode as ActionMode;
+    const mode = config.get<string>('ACTION_EXECUTION_MODE', ACTION_MODE.OBSERVE);
+    if (!isActionMode(mode)) throw new Error('Invalid ACTION_EXECUTION_MODE');
+    this.mode = mode;
     const boundary = config.get<string>('ACTION_EXECUTION_CUTOVER_AT');
     this.cutoverAt = boundary ? Date.parse(boundary) : null;
     if (
       (this.cutoverAt !== null && !Number.isFinite(this.cutoverAt)) ||
-      (this.mode === 'execute' && this.cutoverAt === null)
+      (this.mode === ACTION_MODE.EXECUTE && this.cutoverAt === null)
     ) {
       throw new Error(
         'Execute mode requires ACTION_EXECUTION_CUTOVER_AT; preserve it during rollback',
@@ -48,7 +57,10 @@ export class ActionExecutorService {
   async execute<T>(
     intent: ActionIntent,
     callbacks: ActionCallbacks<T>,
+    /** Only inherit execute from an already persisted parent plan; never from input. */
+    options?: { persistedMode: typeof ACTION_MODE.EXECUTE },
   ): Promise<ActionExecution<T>> {
+    const mode = options?.persistedMode ?? this.mode;
     let identity: ReturnType<typeof identifyAction>;
     try {
       identity = identifyAction(intent);
@@ -56,16 +68,16 @@ export class ActionExecutorService {
       return {
         actionId: '',
         requestId: '',
-        status: 'blocked',
-        localSync: 'complete',
+        status: ACTION_EXECUTION_STATUS.BLOCKED,
+        localSync: LOCAL_SYNC_STATE.COMPLETE,
         dispatched: false,
         reason: 'invalid_action_identity',
       };
     }
     const blocked = (reason: string): ActionExecution<T> => ({
       ...identity,
-      status: 'blocked',
-      localSync: 'complete',
+      status: ACTION_EXECUTION_STATUS.BLOCKED,
+      localSync: LOCAL_SYNC_STATE.COMPLETE,
       dispatched: false,
       reason,
     });
@@ -77,18 +89,20 @@ export class ActionExecutorService {
       Date.parse(intent.recoveryWindowStartedAt) > Date.now() + 60_000
     )
       return blocked('invalid_recovery_window');
-    if (this.mode === 'execute' && (!intent.identityReliable || occurredAt < this.cutoverAt!))
+    if (mode === ACTION_MODE.EXECUTE && this.cutoverAt === null)
+      return blocked('persisted_execution_requires_cutover');
+    if (mode === ACTION_MODE.EXECUTE && (!intent.identityReliable || occurredAt < this.cutoverAt!))
       return blocked('input_before_cutover_or_identity_not_persisted');
 
     let record: ActionRecord | null = null;
     try {
-      const prepared = await this.records.prepare(intent, this.mode);
+      const prepared = await this.records.prepare(intent, mode);
       record = prepared.record;
       if (prepared.conflict) {
         if (
           prepared.conflict === 'identity_payload_mismatch' &&
-          this.mode === 'observe' &&
-          record?.mode !== 'execute' &&
+          mode === ACTION_MODE.OBSERVE &&
+          record?.mode !== ACTION_MODE.EXECUTE &&
           this.cutoverAt === null
         ) {
           this.logger.warn(`action.would_block payload conflict ${identity.actionId}`);
@@ -102,19 +116,19 @@ export class ActionExecutorService {
       }
     } catch {
       // With a cutover configured, even off/observe must honor old execute obligations.
-      if (this.cutoverAt !== null || this.mode === 'execute')
+      if (this.cutoverAt !== null || mode === ACTION_MODE.EXECUTE)
         return blocked('action_store_unavailable');
       this.logger.warn(`action.observe_store_unavailable ${identity.actionId}`);
       return this.untracked(intent, callbacks);
     }
 
-    const enforce = record?.mode === 'execute' || this.mode === 'execute';
-    if (enforce && record?.mode !== 'execute')
+    const enforce = record?.mode === ACTION_MODE.EXECUTE || mode === ACTION_MODE.EXECUTE;
+    if (enforce && record?.mode !== ACTION_MODE.EXECUTE)
       return blocked('observation_record_requires_cutover_review');
     if (!record) return this.untracked(intent, callbacks);
     if (enforce && !intent.identityReliable) return blocked('identity_not_persisted');
 
-    if (record.status === 'succeeded') {
+    if (record.status === ACTION_STATE.SUCCEEDED) {
       if (!enforce) {
         this.logger.warn(`action.would_block succeeded ${record.actionId}`);
         return this.untracked(intent, callbacks);
@@ -122,10 +136,10 @@ export class ActionExecutorService {
       return this.synchronize(record, callbacks, false);
     }
     if (
-      record.status === 'executing' ||
-      record.status === 'unknown' ||
-      record.status === 'cancelled' ||
-      (record.status === 'failed' && !record.retryable)
+      record.status === ACTION_STATE.EXECUTING ||
+      record.status === ACTION_STATE.UNKNOWN ||
+      record.status === ACTION_STATE.CANCELLED ||
+      (record.status === ACTION_STATE.FAILED && !record.retryable)
     ) {
       if (!enforce) {
         this.logger.warn(`action.would_block ${record.status} ${record.actionId}`);
@@ -140,7 +154,7 @@ export class ActionExecutorService {
         ...(cancelled
           ? {
               evidence: {
-                kind: 'definitive_no_effect' as const,
+                kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
                 requestTerminated: true,
                 detail: 'registered_action_cancelled',
               },
@@ -160,10 +174,10 @@ export class ActionExecutorService {
     // Authorization may have changed while waiting for the database claim.
     if (!(await this.authorized(callbacks))) {
       const completion: ActionCompletion<T> = {
-        status: 'failed',
+        status: ACTION_STATE.FAILED,
         retryable: false,
         evidence: {
-          kind: 'definitive_no_effect',
+          kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
           requestTerminated: true,
           detail: 'permission_changed_before_dispatch',
         },
@@ -182,16 +196,16 @@ export class ActionExecutorService {
     }
     const completion = await this.dispatch(claimed.requestId, callbacks, claimed.mode);
     const saved = await this.save(claimed, completion);
-    if (completion.status === 'succeeded') {
+    if (completion.status === ACTION_STATE.SUCCEEDED) {
       // A real external success survives both settlement and projection failures.
       const known: ActionRecord = {
         ...claimed,
-        status: 'succeeded',
+        status: ACTION_STATE.SUCCEEDED,
         result: completion.result,
         evidence: completion.evidence,
-        localSync: 'pending',
+        localSync: LOCAL_SYNC_STATE.PENDING,
       };
-      if (!saved || saved.status !== 'succeeded')
+      if (!saved || saved.status !== ACTION_STATE.SUCCEEDED)
         return enforce ? this.existing<T>(known, true) : this.synchronize(known, callbacks, true);
       return this.synchronize(saved, callbacks, true);
     }
@@ -214,18 +228,18 @@ export class ActionExecutorService {
     if (!(await this.authorized(callbacks)))
       return {
         ...identity,
-        status: 'blocked',
-        localSync: 'complete',
+        status: ACTION_EXECUTION_STATUS.BLOCKED,
+        localSync: LOCAL_SYNC_STATE.COMPLETE,
         dispatched: false,
         reason: 'permission_or_freshness_changed',
       };
     const completion = await this.dispatch(identity.requestId, callbacks, this.mode);
-    let localSync: 'complete' | 'pending' = 'complete';
-    if (completion.status === 'succeeded' && callbacks.sync) {
+    let localSync: LocalSyncState = LOCAL_SYNC_STATE.COMPLETE;
+    if (completion.status === ACTION_STATE.SUCCEEDED && callbacks.sync) {
       try {
         await callbacks.sync(completion.result);
       } catch {
-        localSync = 'pending';
+        localSync = LOCAL_SYNC_STATE.PENDING;
         this.logger.error(`action.untracked_local_sync_failed ${identity.actionId}`);
       }
     }
@@ -252,23 +266,38 @@ export class ActionExecutorService {
     callbacks: ActionCallbacks<T>,
     mode: ActionMode,
   ): Promise<ActionCompletion<T>> {
+    const startedAt = Date.now();
     try {
       const result = await callbacks.dispatch(requestId, mode);
-      if (result.status === 'succeeded' && !result.evidence.requestTerminated)
-        return { ...result, status: 'unknown' };
+      if (result.status === ACTION_STATE.SUCCEEDED && !result.evidence.requestTerminated)
+        return { ...result, status: ACTION_STATE.UNKNOWN };
       if (
-        result.status === 'failed' &&
-        (result.evidence.kind !== 'definitive_no_effect' || !result.evidence.requestTerminated)
+        result.status === ACTION_STATE.FAILED &&
+        (result.evidence.kind !== ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT ||
+          !result.evidence.requestTerminated)
       )
-        return { ...result, status: 'unknown' };
+        return { ...result, status: ACTION_STATE.UNKNOWN };
       return result;
-    } catch {
+    } catch (error) {
+      const detail = describeHttpFailure(error);
+      this.logger.warn(
+        JSON.stringify({
+          event: 'action_dispatch_unconfirmed',
+          requestId,
+          mode,
+          durationMs: Date.now() - startedAt,
+          detail,
+          ...readHttpFailureCodes(error),
+        }),
+      );
       return {
-        status: 'unknown',
+        status: ACTION_STATE.UNKNOWN,
         evidence: {
-          kind: 'indeterminate',
+          kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
           requestTerminated: false,
-          detail: 'external_call_did_not_return_terminal_evidence',
+          // Preserve the response code for diagnosis without storing upstream text/PII.
+          // A nonzero code alone is not a verified guarantee of zero external effects.
+          detail,
         },
       };
     }
@@ -289,7 +318,7 @@ export class ActionExecutorService {
     this.logger.error(
       `action.settlement_pending ${record.actionId}; external=${completion.status}`,
     );
-    if (record.mode !== 'execute') return null;
+    if (record.mode !== ACTION_MODE.EXECUTE) return null;
     try {
       await this.repair?.enqueue(record, completion);
     } catch {
@@ -317,11 +346,11 @@ export class ActionExecutorService {
     callbacks: ActionCallbacks<T>,
     dispatched: boolean,
   ): Promise<ActionExecution<T>> {
-    if (record.localSync === 'complete') return this.existing<T>(record, dispatched);
+    if (record.localSync === LOCAL_SYNC_STATE.COMPLETE) return this.existing<T>(record, dispatched);
     try {
       if (callbacks.sync) await callbacks.sync(record.result as T);
       await this.records.markSynced(record);
-      return this.existing<T>({ ...record, localSync: 'complete' }, dispatched);
+      return this.existing<T>({ ...record, localSync: LOCAL_SYNC_STATE.COMPLETE }, dispatched);
     } catch {
       this.logger.error(`action.local_sync_pending ${record.actionId}`);
       return this.existing<T>(record, dispatched);

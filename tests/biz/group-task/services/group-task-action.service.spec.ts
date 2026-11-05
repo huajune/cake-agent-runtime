@@ -14,6 +14,9 @@ import {
 import { GroupTaskType } from '@biz/group-task/group-task.types';
 import type { Job } from 'bull';
 import type { SendJobData } from '@biz/group-task/queue/group-task-queue.constants';
+import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
+import { HttpRequestError } from '@infra/client-http/http-request-error';
+import { Logger } from '@nestjs/common';
 
 describe('Group task independently settled messages', () => {
   const states = new Map<string, ActionRecord>();
@@ -34,6 +37,7 @@ describe('Group task independently settled messages', () => {
   const queue = { getJob: jest.fn() };
   const brands = { recordPushedBrandOnce: jest.fn() };
   let service: GroupTaskActionService;
+  let switchMode: (mode: 'off' | 'observe' | 'execute') => void;
   let job: Job<SendJobData>;
   const parts = [
     { id: 'main', messageType: 7, payload: { text: 'original main' }, delayMs: 0 },
@@ -97,20 +101,22 @@ describe('Group task independently settled messages', () => {
       }),
       validateClaim: jest.fn().mockResolvedValue(true),
     };
-    const config = new ConfigService({
-      ACTION_EXECUTION_MODE: 'execute',
-      ACTION_EXECUTION_CUTOVER_AT: new Date(Date.now() - 86400_000).toISOString(),
-    });
-    const executor = new ActionExecutorService(records as never, config);
-    service = new GroupTaskActionService(
-      executor,
-      registry,
-      redis as never,
-      brands as never,
-      config,
-      { getConfiguredBotList: async () => [{ wxid: 'bot', corpId: 'corp' }] } as never,
-      queue as never,
-    );
+    switchMode = (mode) => {
+      const config = new ConfigService({
+        ACTION_EXECUTION_MODE: mode,
+        ACTION_EXECUTION_CUTOVER_AT: new Date(Date.now() - 86400_000).toISOString(),
+      });
+      service = new GroupTaskActionService(
+        new ActionExecutorService(records as never, config),
+        registry,
+        redis as never,
+        brands as never,
+        config,
+        { getConfiguredBotList: async () => [{ wxid: 'bot', corpId: 'corp' }] } as never,
+        queue as never,
+      );
+    };
+    switchMode('execute');
     job = {
       id: 'original-job',
       timestamp: Date.now(),
@@ -171,6 +177,92 @@ describe('Group task independently settled messages', () => {
       service.executePart(job, cache, parts[0], dispatch, async () => false),
     ).rejects.toMatchObject({ definitivelyUnsent: false });
     expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['observe', 'execute'] as const)(
+    '%s sends original error codes and correlation IDs to the queue without leaking the response',
+    async (mode) => {
+      switchMode(mode);
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        await service.freezePlan(job, [parts[0]]);
+        const dispatch = jest
+          .fn()
+          .mockRejectedValue(
+            new ProviderBusinessError(-8, 'never-record-this candidate-private-text'),
+          );
+        const failure: unknown = await service
+          .executePart(job, cache, parts[0], dispatch, async () => true)
+          .catch((error: unknown) => error);
+        expect(failure).toBeInstanceOf(GroupTaskDeferredError);
+        if (!(failure instanceof Error)) throw new Error('expected deferred send');
+        expect(failure.message).toContain('group_task_deferred:unknown');
+        expect(failure.message).toContain('errorCode=provider_business_error:-8');
+        expect(failure.message).toContain('actionId=');
+        expect(failure.message).toContain('requestId=cake_');
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('"jobId":"original-job"'));
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('"partId":"main"'));
+        const diagnostics =
+          failure.message + warn.mock.calls.map(([entry]) => String(entry)).join('\n');
+        expect(diagnostics).not.toContain('never-record-this');
+        expect(diagnostics).not.toContain('candidate-private-text');
+        expect(diagnostics).not.toContain('original main');
+        expect(queue.getJob).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it('HTTP errors remain unknown and a repeated execute job does not resend', async () => {
+    await service.freezePlan(job, [parts[0]]);
+    const dispatch = jest
+      .fn()
+      .mockRejectedValue(new HttpRequestError('private-response', 429, 'ERR_BAD_REQUEST'));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(
+        service.executePart(job, cache, parts[0], dispatch, async () => true),
+      ).rejects.toThrow('errorCode=http_error:429:ERR_BAD_REQUEST');
+    }
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['observe', 'off'] as const)(
+    'retains execute for an unregistered remaining part after rollback to %s',
+    async (mode) => {
+      await service.freezePlan(job, parts);
+      const first = jest.fn().mockResolvedValue(undefined);
+      await expect(
+        service.executePart(job, cache, parts[0], first, async () => true),
+      ).rejects.toBeInstanceOf(GroupTaskDeferredError);
+      const main = [...states.values()][0];
+      states.set(main.actionId, { ...main, status: 'succeeded', result: { sent: true } });
+      switchMode(mode);
+      await service.executePart(job, cache, parts[0], first, async () => true);
+      const next = jest.fn().mockResolvedValue(undefined);
+      await expect(
+        service.executePart(job, cache, parts[1], next, async () => true),
+      ).rejects.toBeInstanceOf(GroupTaskDeferredError);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(next).toHaveBeenCalledWith(expect.stringMatching(/^cake_/));
+      expect([...states.values()][1].mode).toBe('execute');
+      await expect(
+        service.executePart(job, cache, parts[1], next, async () => true),
+      ).rejects.toBeInstanceOf(GroupTaskDeferredError);
+      expect(next).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not promote a frozen observation task after cutover', async () => {
+    switchMode('observe');
+    await service.freezePlan(job, parts);
+    switchMode('execute');
+    const dispatch = jest.fn();
+    await expect(
+      service.executePart(job, cache, parts[0], dispatch, async () => true),
+    ).rejects.toThrow('observation_task_requires_cutover_review');
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it('after main success, an unknown follow-up cannot resend the main message or change payload', async () => {

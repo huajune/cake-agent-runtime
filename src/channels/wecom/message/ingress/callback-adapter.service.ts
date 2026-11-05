@@ -11,6 +11,9 @@ import {
   GroupMessageCallbackWrapperSchema,
 } from './message-callback.schema';
 import { z } from 'zod';
+import { LEGACY_GROUP_CORP_ID } from '../credentials/group-route-credentials.service';
+import type { WecomApiType } from '@shared-types/wecom-api.types';
+import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
 /**
  * 消息回调适配器服务
@@ -30,7 +33,7 @@ export class MessageCallbackAdapterService {
    * @param body 原始回调数据
    * @returns 'enterprise' | 'group' | 'unknown'
    */
-  detectCallbackType(body: unknown): 'enterprise' | 'group' | 'unknown' {
+  detectCallbackType(body: unknown): WecomApiType | 'unknown' {
     if (!body || typeof body !== 'object') {
       return 'unknown';
     }
@@ -39,7 +42,7 @@ export class MessageCallbackAdapterService {
 
     // 企业级回调特征：有 orgId 字段且数据在顶层
     if (typeof obj.orgId === 'string' && obj.messageType !== undefined) {
-      return 'enterprise';
+      return WECOM_API_TYPE.ENTERPRISE;
     }
 
     // 小组级回调特征：有 data 字段且 data 内有 type 字段
@@ -50,7 +53,7 @@ export class MessageCallbackAdapterService {
       (data as Record<string, unknown>).type !== undefined &&
       typeof (data as Record<string, unknown>).messageId === 'string'
     ) {
-      return 'group';
+      return WECOM_API_TYPE.GROUP;
     }
 
     return 'unknown';
@@ -69,9 +72,10 @@ export class MessageCallbackAdapterService {
     // 字段名称映射和转换
     const enterpriseCallback: EnterpriseMessageCallbackDto = {
       // 企业级特有字段（小组级没有，使用默认值）
-      orgId: this.extractOrgIdFromToken(groupCallback.token), // 从 token 提取或使用默认值
+      orgId: LEGACY_GROUP_CORP_ID, // 保留既有记忆/账本命名空间，不把它当作企业身份
       groupId: undefined, // 小组级没有此字段
-      source: this.inferSourceFromGroupCallback(groupCallback), // 根据 isSelf 等字段推断 source
+      source: groupCallback.source ?? this.inferSourceFromGroupCallback(groupCallback),
+      _sourceInferred: groupCallback.source == null,
 
       // 字段名称映射
       messageType: groupCallback.type, // type → messageType
@@ -87,6 +91,7 @@ export class MessageCallbackAdapterService {
       botId: groupCallback.botId,
       chatId: groupCallback.chatId,
       messageId: groupCallback.messageId,
+      externalRequestId: groupCallback.externalRequestId,
       contactType: groupCallback.contactType,
       payload: groupCallback.payload,
       avatar: groupCallback.avatar,
@@ -101,7 +106,7 @@ export class MessageCallbackAdapterService {
       roomWecomChatId: groupCallback.roomWecomChatId ?? undefined,
 
       // 内部标记：标识为小组级回调转换而来（用于动态 API 选择）
-      _apiType: 'group',
+      _apiType: WECOM_API_TYPE.GROUP,
     };
 
     this.logger.debug(
@@ -122,14 +127,14 @@ export class MessageCallbackAdapterService {
     this.logger.log(`检测到回调类型: ${callbackType}`);
 
     switch (callbackType) {
-      case 'enterprise':
+      case WECOM_API_TYPE.ENTERPRISE:
         // 已经是企业级格式，但需要补充可能缺失的字段
         // 注意：企业级格式没有 _apiType 字段，默认使用企业级 API
         return this.normalizeEnterpriseCallback(
           this.parseOrThrow(EnterpriseMessageCallbackInputSchema, body, callbackType),
         );
 
-      case 'group':
+      case WECOM_API_TYPE.GROUP:
         // 小组级格式，需要转换
         const wrapper = this.parseOrThrow(GroupMessageCallbackWrapperSchema, body, callbackType);
         const converted = this.convertGroupToEnterprise(wrapper.data);
@@ -236,37 +241,7 @@ export class MessageCallbackAdapterService {
     return MessageSource.MOBILE_PUSH;
   }
 
-  /**
-   * 从小组级回调生成 orgId
-   * @param token 小组级 token（用于日志）
-   * @returns orgId
-   *
-   * 说明：
-   * - 小组级回调没有 orgId 字段
-   * - 使用固定值标识来自小组级回调
-   * - 注意：该固定值会作为 corpId 进入记忆键与 ops_events 维度（对同一候选人恒定即可，
-   *   企业级/小组级两种回调格式不可对同一批用户混用）
-   */
-  private extractOrgIdFromToken(token: string): string {
-    this.logger.debug(`生成 orgId for 小组级回调: token=${this.maskToken(token)}`);
-    return 'group_callback_org';
-  }
-
-  /**
-   * 脱敏 token（日志记录用）
-   */
-  private maskToken(token: string): string {
-    if (!token || token.length < 8) {
-      return '****';
-    }
-    return `${token.substring(0, 4)}****${token.substring(token.length - 4)}`;
-  }
-
-  private parseOrThrow<T>(
-    schema: z.ZodSchema<T>,
-    body: unknown,
-    callbackType: 'enterprise' | 'group',
-  ): T {
+  private parseOrThrow<T>(schema: z.ZodSchema<T>, body: unknown, callbackType: WecomApiType): T {
     const parsed = schema.safeParse(body);
     if (parsed.success) {
       return parsed.data;

@@ -1,0 +1,1536 @@
+{
+  "reviewerSource": "codex",
+  "reportDate": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "productionModeChanged": false,
+  "productionWrites": false,
+  "realProviderDispatchesByThisAcceptance": 0,
+  "productionStateSummary": {
+    "checkedAt": "2026-11-04T06:21:05.479Z",
+    "source": "production Supabase agent_action_records; read-only REST GET",
+    "privacy": "No user/chat/action IDs, recovery payloads, Redis fields, messages or reply/tool content selected. Only aggregate counts persisted.",
+    "bound": {
+      "limit": 500,
+      "timeoutMs": 5000,
+      "pagination": false
+    },
+    "queries": [
+      {
+        "name": "booking-before-classification",
+        "kind": "sponge.booking",
+        "startInclusive": "2026-10-23T00:00:00+08:00",
+        "endExclusive": "2026-10-26T17:27:40+08:00",
+        "select": "mode,status,local_sync,result_code:result->code,evidence_kind:evidence->kind",
+        "httpStatus": 200,
+        "possiblyTruncated": false,
+        "summary": {
+          "count": 38,
+          "modes": {
+            "observe": 38
+          },
+          "statuses": {
+            "succeeded": 30,
+            "unknown": 8
+          },
+          "localSync": {
+            "complete": 38
+          },
+          "codeAndState": {
+            "0 / succeeded": 30,
+            "30058 / unknown": 7,
+            "30049 / unknown": 1
+          },
+          "succeededEvidence": {
+            "completed": 30
+          },
+          "succeededPending": 0
+        }
+      },
+      {
+        "name": "booking-after-classification",
+        "kind": "sponge.booking",
+        "startInclusive": "2026-10-26T17:27:40+08:00",
+        "endExclusive": "2026-11-04T14:20:00+08:00",
+        "select": "mode,status,local_sync,result_code:result->code,evidence_kind:evidence->kind",
+        "httpStatus": 200,
+        "possiblyTruncated": false,
+        "summary": {
+          "count": 50,
+          "modes": {
+            "observe": 50
+          },
+          "statuses": {
+            "succeeded": 39,
+            "failed": 11
+          },
+          "localSync": {
+            "complete": 50
+          },
+          "codeAndState": {
+            "0 / succeeded": 39,
+            "30058 / failed": 11
+          },
+          "succeededEvidence": {
+            "completed": 39
+          },
+          "succeededPending": 0
+        }
+      },
+      {
+        "name": "invites-after-cas-fix",
+        "kind": "wecom.group_add_member",
+        "startInclusive": "2026-10-28T18:09:34+08:00",
+        "endExclusive": "2026-11-04T14:20:00+08:00",
+        "select": "mode,status,local_sync,result_code:result->code,evidence_kind:evidence->kind",
+        "httpStatus": 200,
+        "possiblyTruncated": false,
+        "summary": {
+          "count": 18,
+          "modes": {
+            "observe": 18
+          },
+          "statuses": {
+            "failed": 1,
+            "cancelled": 1,
+            "succeeded": 16
+          },
+          "localSync": {
+            "complete": 18
+          },
+          "codeAndState": {
+            "400400 / failed": 1,
+            "null / cancelled": 1,
+            "0 / succeeded": 16
+          },
+          "succeededEvidence": {
+            "accepted": 16
+          },
+          "succeededPending": 0
+        }
+      }
+    ]
+  },
+  "deployments": [
+    {
+      "runId": 40298700675,
+      "url": "https://github.com/huajune/cake-agent-runtime/actions/runs/40298700675",
+      "jobs": [
+        {
+          "name": "test",
+          "status": "completed",
+          "conclusion": "success",
+          "startedAt": "2026-10-26T09:19:55Z",
+          "completedAt": "2026-10-26T09:22:51Z"
+        },
+        {
+          "name": "deploy",
+          "status": "completed",
+          "conclusion": "success",
+          "startedAt": "2026-10-26T09:23:46Z",
+          "completedAt": "2026-10-26T09:27:40Z"
+        },
+        {
+          "name": "notify",
+          "status": "waiting",
+          "conclusion": null,
+          "startedAt": "2026-10-26T09:27:40Z",
+          "completedAt": null
+        }
+      ]
+    },
+    {
+      "runId": 40668805537,
+      "url": "https://github.com/huajune/cake-agent-runtime/actions/runs/40668805537",
+      "jobs": [
+        {
+          "name": "test",
+          "status": "completed",
+          "conclusion": "success",
+          "startedAt": "2026-10-28T10:01:30Z",
+          "completedAt": "2026-10-28T10:04:58Z"
+        },
+        {
+          "name": "deploy",
+          "status": "completed",
+          "conclusion": "success",
+          "startedAt": "2026-10-28T10:06:23Z",
+          "completedAt": "2026-10-28T10:09:34Z"
+        },
+        {
+          "name": "notify",
+          "status": "completed",
+          "conclusion": "failure",
+          "startedAt": "2026-10-28T10:09:34Z",
+          "completedAt": "2026-10-28T10:10:17Z"
+        }
+      ]
+    }
+  ],
+  "fixes": [
+    {
+      "number": 1468,
+      "title": "fix(runtime): 修复邀请记忆补账并补充 execute 恢复验收",
+      "mergedAt": "2026-10-28T08:58:11Z",
+      "sha": "56bbb8b00b51b46a2fefa68558a32499b4c60af6",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1468",
+      "firstVerifiedDeployedVersion": "v11.15.0",
+      "inAuditedDevelopHistory": true
+    },
+    {
+      "number": 1458,
+      "title": "fix: 按业务返回码区分报名失败与结果未知",
+      "mergedAt": "2026-10-26T08:57:58Z",
+      "sha": "4febfae2ccf3c3c6dcd38b16c5c9a2c1b608aa03",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1458",
+      "firstVerifiedDeployedVersion": "v11.14.2",
+      "inAuditedDevelopHistory": true
+    }
+  ],
+  "deploymentEvidenceCapturedAt": "2026-11-04T03:40:05.712Z",
+  "tests": {
+    "recordedAt": "2026-11-04T06:20:39.038568+00:00",
+    "testedCheckout": "current working tree (develop plus concurrent uncommitted WIP)",
+    "comparisonTag": "v11.15.0",
+    "runs": [
+      {
+        "command": "pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/tools/actions/tool-action.service.spec.ts tests/tools/actions/business-action.util.spec.ts tests/memory/redis.store.spec.ts tests/biz/action-execution/action-executor.service.spec.ts tests/biz/action-execution/action-recovery.service.spec.ts tests/biz/action-execution/action-local-sync.service.spec.ts",
+        "exitCode": 0,
+        "suitesPassed": 6,
+        "suitesTotal": 6,
+        "testsPassed": 82,
+        "testsTotal": 82,
+        "snapshots": 0,
+        "reportedSeconds": 3.127
+      },
+      {
+        "command": "pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/tools/tool/duliday-interview-booking.tool.spec.ts --testNamePattern='code (30058|30049)|action (unknown|executing|blocked)'",
+        "exitCode": 0,
+        "suitesPassed": 1,
+        "suitesTotal": 1,
+        "testsPassed": 5,
+        "testsSkippedByFilter": 60,
+        "testsTotal": 65,
+        "snapshots": 0,
+        "reportedSeconds": 2.286
+      },
+      {
+        "command": "pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/biz/group-task/services/group-invite.service.spec.ts tests/tools/invite/group-invite-pipeline.spec.ts",
+        "exitCode": 0,
+        "suitesPassed": 2,
+        "suitesTotal": 2,
+        "testsPassed": 42,
+        "testsTotal": 42,
+        "snapshots": 0,
+        "reportedSeconds": 2.392
+      }
+    ],
+    "totals": {
+      "distinctTestFiles": 9,
+      "testsExecutedAndPassed": 129,
+      "testsFailed": 0,
+      "testsNotExecutedBecauseOfNameFilter": 60
+    },
+    "logFiles": [],
+    "logEvidence": "Output was observed directly in tool execution results. No standalone log file was saved; none is claimed.",
+    "limitations": [
+      "These commands ran in the shared current working tree, not an isolated checkout of v11.15.0.",
+      "Imported transitive dependencies may read concurrent WIP, including turn.types.ts and turn-ledger.ts; selected file equality does not establish complete dependency equality.",
+      "File comparisons were made when recording this result, after the tests; they are not a frozen filesystem snapshot of test execution time.",
+      "This is a deterministic selected-test run, not full CI, a fresh real-model replay, or a production execute-mode acceptance.",
+      "The 60 tests excluded by testNamePattern did not run and are not counted as passed.",
+      "External providers, database, Redis, and notifications are test doubles in these test suites. No production request or outgoing message was made by this subtask.",
+      "Historical isolated PostgreSQL and Redis test scripts were inspected but not rerun.",
+      "Expected fault-injection ERROR/WARN log lines occurred in passing tests and are not evidence of production faults."
+    ],
+    "headRecordedAfterRuns": "5f647daf8b5ab97680f49cd93bcb98f6c0ed9472"
+  },
+  "tagComparison": {
+    "timing": "After tests; not a frozen snapshot of test execution time",
+    "matchingPaths": [
+      "src/sponge/booking-rejection.ts",
+      "src/tools/actions/tool-action.service.ts",
+      "src/tools/actions/business-action.util.ts",
+      "src/tools/duliday-interview-booking.tool.ts",
+      "src/memory/stores/redis.store.ts",
+      "src/memory/stores/hash-field-cas.ts",
+      "src/biz/action-execution/action-executor.service.ts",
+      "src/biz/action-execution/action-recovery.service.ts",
+      "src/biz/action-execution/action-local-sync.service.ts",
+      "src/biz/action-execution/action-repair.queue.ts",
+      "src/biz/group-task/services/group-invite.service.ts",
+      "src/tools/invite/group-invite-pipeline.ts",
+      "tests/tools/actions/tool-action.service.spec.ts",
+      "tests/tools/actions/business-action.util.spec.ts",
+      "tests/memory/redis.store.spec.ts",
+      "tests/biz/action-execution/action-executor.service.spec.ts",
+      "tests/biz/action-execution/action-recovery.service.spec.ts",
+      "tests/biz/action-execution/action-local-sync.service.spec.ts",
+      "tests/tools/tool/duliday-interview-booking.tool.spec.ts",
+      "tests/biz/group-task/services/group-invite.service.spec.ts",
+      "tests/tools/invite/group-invite-pipeline.spec.ts",
+      "tests/helpers/tool-context.fixture.ts",
+      "tests/helpers/action-executor.fixture.ts"
+    ],
+    "differingPaths": [
+      "src/types/turn.types.ts",
+      "src/agent/generator/preparation/turn-ledger.ts"
+    ]
+  },
+  "isolatedEnvironment": {
+    "status": "passed",
+    "details": "replyChainFollowup.isolatedEnvironment",
+    "initialUnavailableCheckPreservedAt": "isolatedEnvironmentInitialCheck",
+    "productionModeChanged": false
+  },
+  "notVerified": [
+    "invitation memory beyond the single authorized sample and actual group membership",
+    "final reply wording",
+    "handoff delivery and operator handling",
+    "real provider request terminal lookup",
+    "trusted real channel callbacks",
+    "all production instance configuration",
+    "real operating-system application/worker restart and deployed HTTP ingress",
+    "actual Redis reply pending/ACK behavior in the application chain",
+    "deployment of this local follow-up code"
+  ],
+  "authorizedSampleChecks": {
+    "checkedAt": "2026-11-04T06:30:20.876Z",
+    "reviewerSource": "codex",
+    "scope": {
+      "candidateInvitationLimit": 1,
+      "rejectedBookingLimit": 1,
+      "rawPersonalDataPersisted": false,
+      "productionWrites": false,
+      "productionModeChanged": false
+    },
+    "selection": {
+      "order": "latest created_at within each fix deployment window",
+      "endExclusive": "2026-11-04T06:30:20.876Z",
+      "invitationStartInclusive": "2026-10-28T18:09:34+08:00",
+      "bookingStartInclusive": "2026-10-26T17:27:40+08:00"
+    },
+    "method": {
+      "supabase": "REST GET; each query limit 1; 5 second timeout; no pagination",
+      "redis": "One exact candidate session key; EXISTS, TTL, HGET invitedGroups only; no Lua, scan, refresh or service getter"
+    },
+    "queries": [
+      {
+        "label": "one-candidate-invitation",
+        "method": "GET",
+        "table": "agent_action_records",
+        "rowLimit": 1,
+        "httpStatus": 200,
+        "returnedRows": 1
+      },
+      {
+        "label": "one-invitation-associated-memory",
+        "service": "Redis",
+        "commands": [
+          "EXISTS",
+          "TTL",
+          "HGET invitedGroups"
+        ],
+        "exactKeys": 1,
+        "httpStatus": 200
+      },
+      {
+        "label": "one-rejected-booking",
+        "method": "GET",
+        "table": "agent_action_records",
+        "rowLimit": 1,
+        "httpStatus": 200,
+        "returnedRows": 1
+      },
+      {
+        "label": "same-booking-exact-handoff",
+        "method": "GET",
+        "table": "handoff_events",
+        "rowLimit": 1,
+        "httpStatus": 200,
+        "returnedRows": 1
+      },
+      {
+        "label": "same-booking-current-hosting",
+        "method": "GET",
+        "table": "user_hosting_status",
+        "rowLimit": 1,
+        "httpStatus": 200,
+        "returnedRows": 1
+      }
+    ],
+    "invitation": {
+      "sampled": true,
+      "candidatePredicate": true,
+      "mode": "observe",
+      "actionStatus": "succeeded",
+      "localSync": "complete",
+      "accepted": true,
+      "actualMembershipVerified": false,
+      "sessionHashExists": true,
+      "ttlState": "positive_not_expired",
+      "invitedGroupsPresent": true,
+      "invitedGroupsValidArray": true,
+      "originalGroupMatched": true,
+      "cityMatched": true,
+      "industryMatched": true,
+      "invitationTimeRelation": "same_original_invitation_time",
+      "conclusion": "sample_memory_readback_passed"
+    },
+    "booking": {
+      "sampled": true,
+      "mode": "observe",
+      "actionStatus": "failed",
+      "localSync": "complete",
+      "rejectionCode": 30058,
+      "handoffExactKeyFound": true,
+      "handoffReasonMatched": true,
+      "handoffOutcome": "resumed",
+      "handoffResolutionTimePresent": true,
+      "currentHostingRowFound": true,
+      "databaseIsPaused": false,
+      "pauseSourceIsIntervention": false,
+      "permanentPause": false,
+      "pauseExpiryIsFuture": null,
+      "pauseWithinTwoMinutesOfHandoff": true,
+      "resumeTimePresent": true,
+      "notificationDeliveryVerified": false,
+      "operatorAcknowledgmentVerified": false,
+      "businessResolutionVerified": false,
+      "conclusion": "see_individual_status_conclusions",
+      "interpretedConclusion": "exact_handoff_record_verified_and_hosting_resumed_business_resolution_not_verified",
+      "interpretationLimits": [
+        "resumed is hosting-state recovery, not proof of notification delivery or human handling",
+        "pause timestamp within two minutes is correlation, not delivery evidence",
+        "resume clears pause source and expiry fields"
+      ]
+    }
+  },
+  "isolatedEnvironmentInitialCheck": {
+    "checked_at": "2026-11-04T06:16:24.455617+00:00",
+    "docker_socket_exists": false,
+    "node_modules_available": true,
+    "status": "not_run",
+    "reason": "Docker client installed, but cannot connect to daemon at configured unix socket. No images can be inventoried.",
+    "postgres_coldload": "not_run",
+    "postgres_restart": "not_run",
+    "redis_cas": "not_run",
+    "created_containers": [],
+    "mutated_existing_containers": false,
+    "started_services": false,
+    "downloaded_images": false
+  },
+  "replyChainFollowup": {
+    "recordedAt": "2026-11-04T07:08:18.810208+00:00",
+    "reviewerSource": "codex",
+    "testedCheckout": "shared develop working tree; local uncommitted task changes; not a released tag acceptance",
+    "head": "7f4bd6428f07348539cf302bd99d23b004072f1a",
+    "localVersion": "11.15.1",
+    "deployed": false,
+    "productionModeChanged": false,
+    "productionWrites": false,
+    "realProviderDispatches": 0,
+    "controlledTestAccountAvailable": false,
+    "realProviderReplyChainAccepted": false,
+    "isolatedEnvironment": {
+      "recordedAt": "2026-11-04T06:51:47.054392+00:00",
+      "reviewerSource": "codex",
+      "productionAccessed": false,
+      "productionModeChanged": false,
+      "repositoryApplicationStarted": false,
+      "externalMessagesSent": false,
+      "extraSoftwareInstalled": false,
+      "imagesDownloaded": false,
+      "dockerDesktopStartedByTask": true,
+      "dockerVersion": "28.0.4",
+      "dockerAccessRequiresEscalated": true,
+      "isolation": [
+        {
+          "name": "cake-runtime-pg-reply-20261104-0701",
+          "image": "postgres:15-alpine",
+          "networkMode": "none",
+          "publishedPorts": false,
+          "running": false,
+          "cleanupStatus": "removed_after_successful_acceptance"
+        },
+        {
+          "name": "cake-runtime-redis-cas-reply-20261104-0701",
+          "image": "redis:6-alpine",
+          "networkMode": "none",
+          "publishedPorts": false,
+          "running": false,
+          "cleanupStatus": "removed_after_successful_acceptance"
+        }
+      ],
+      "database": "cake_projection_reply_chain_20261104_0701",
+      "postgresColdload": {
+        "status": "passed",
+        "command": "python3 tests/biz/action-execution/verify-runtime-postgres.py --container cake-runtime-pg-reply-20261104-0701 --database cake_projection_reply_chain_20261104_0701 --output /private/tmp/cake-reply-acceptance-20261104/postgres-coldload",
+        "evidenceDirectory": "/private/tmp/cake-reply-acceptance-20261104/postgres-coldload",
+        "coverage": [
+          "real legacy dependency chain",
+          "six runtime migrations",
+          "SQL fault and permissions",
+          "reply identity and callback transaction contract",
+          "action and booking concurrent transactions"
+        ]
+      },
+      "postgresRestart": {
+        "status": "passed",
+        "command": "python3 tests/biz/action-execution/runtime-restart-drill.py --container cake-runtime-pg-reply-20261104-0701 --database cake_projection_reply_chain_20261104_0701",
+        "coverage": [
+          "actual database restart",
+          "no redispatch",
+          "rollback isolation",
+          "original input and plan",
+          "exact late callback evidence"
+        ]
+      },
+      "redisCas": {
+        "status": "passed",
+        "command": "TS_NODE_TRANSPILE_ONLY=true node -r ts-node/register tests/memory/hash-field-cas.redis.cjs cake-runtime-redis-cas-reply-20261104-0701",
+        "coverage": [
+          "raw bytes",
+          "competing writer",
+          "TTL expiry",
+          "recreation ABA",
+          "background no revival",
+          "live initialization",
+          "stage TTL"
+        ]
+      },
+      "logs": [
+        {
+          "path": "/private/tmp/cake-reply-acceptance-20261104/postgres-restart.log",
+          "sha256": "20fde57a7bc0d5853230a59b57a3dc05e2797c13affcd4bc9faf64f18abdf34f",
+          "passed": true
+        },
+        {
+          "path": "/private/tmp/cake-reply-acceptance-20261104/redis-cas.log",
+          "sha256": "2dd84d839edbea944b8a33e6bee34e6ee477da7e265d2f0516eec61db7277974",
+          "passed": true
+        }
+      ],
+      "limits": [
+        "Synthetic fixtures only; no real provider dispatch or callback evidence.",
+        "PostgreSQL restart is not a full application or worker restart."
+      ],
+      "cleanup": {
+        "completedAt": "2026-11-04T07:05:56.395058+00:00",
+        "command": "docker rm -f cake-runtime-pg-reply-20261104-0701 cake-runtime-redis-cas-reply-20261104-0701",
+        "exitCode": 0,
+        "onlyTaskContainersRemoved": true
+      }
+    },
+    "replyChain": {
+      "schemaVersion": 1,
+      "recordedAt": "2026-11-04T07:04:31Z",
+      "acceptanceKind": "local_application_services_and_postgresql_with_simulated_provider",
+      "status": "passed",
+      "testFile": "tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts",
+      "helperFile": "tests/helpers/runtime-postgres-client.fixture.ts",
+      "command": "CAKE_REPLY_TEST_CONTAINER=cake-runtime-pg-reply-20261104-0701 CAKE_REPLY_TEST_DATABASE=cake_projection_reply_chain_app_20261104_0701 pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts",
+      "workingDirectory": "repository root",
+      "environment": {
+        "container": "cake-runtime-pg-reply-20261104-0701",
+        "database": "cake_projection_reply_chain_app_20261104_0701",
+        "postgresVersion": "15-alpine",
+        "containerNetworkMode": "none",
+        "publishedPorts": [],
+        "fixtureDataOnly": true,
+        "databaseLifecycle": "Dedicated disposable clone of the validated SQL fixture; only this cloned database was truncated before each case. Root removed the two task containers after the final acceptance, retaining conclusions and logs.",
+        "containerRemovedAfterAcceptance": true
+      },
+      "observedResult": {
+        "exitCode": 0,
+        "testSuitesPassed": 1,
+        "testsPassed": 5,
+        "testsFailed": 0,
+        "testsSkipped": 0,
+        "totalSeconds": 75.894,
+        "cases": [
+          {
+            "name": "confirms enterprise reply after execute restart; rejects wrong/duplicate receipts and ACKs original inputs only",
+            "status": "passed",
+            "durationMs": 9027
+          },
+          {
+            "name": "confirms group reply after execute restart; rejects wrong/duplicate receipts and ACKs original inputs only",
+            "status": "passed",
+            "durationMs": 11128
+          },
+          {
+            "name": "confirms enterprise reply after observe restart; rejects wrong/duplicate receipts and ACKs original inputs only",
+            "status": "passed",
+            "durationMs": 15251
+          },
+          {
+            "name": "confirms group reply after observe restart; rejects wrong/duplicate receipts and ACKs original inputs only",
+            "status": "passed",
+            "durationMs": 11111
+          },
+          {
+            "name": "does not move a frozen reply to another group when its original input is replayed",
+            "status": "passed",
+            "durationMs": 2711
+          }
+        ]
+      },
+      "evidenceProvenance": {
+        "source": "Observed exec_command/write_stdin tool output from the final complete five-case Jest run, rerun after the new enterprise-ingress credential check",
+        "standaloneRawLogFile": null,
+        "note": "No separate raw log file was retained. The result and durations above were transcribed from the tool output; this JSON is an acceptance summary, not a raw execution log."
+      },
+      "realComponents": [
+        "Nest TestingModule provider construction, initialization, close and reconstruction",
+        "MessageIngressController method, callback normalization and MessageService callback admission",
+        "GroupRouteCredentialsService parsing and current-directory lookup logic",
+        "ReplyWorkflowService, reply plan freezing, MessageDeliveryService and MessageSenderService request construction",
+        "ActionExecutorService, ActionRecoveryService, ReplyRecoveryService and durable repository operations",
+        "Repository SQL functions and records in the isolated PostgreSQL database"
+      ],
+      "verifiedBehaviors": [
+        "Two reply segments are frozen before dispatch and retain stable external request IDs across service reconstruction.",
+        "Provider acceptance alone leaves the first segment unconfirmed; recovery records unknown without dispatching again or acknowledging the input.",
+        "Callbacks with mismatched token, account, chat, request ID or text do not complete the action.",
+        "Duplicate exact callbacks do not create additional callback evidence or repeat dispatch.",
+        "Exact callback evidence is consumed by ActionRecovery; ReplyRecovery then dispatches only the remaining frozen segment.",
+        "Existing execute plans retain execute semantics after reconstruction in observe mode.",
+        "The group route resolves a rotated current credential without storing either credential in the persisted recovery payload.",
+        "Both segments finish succeeded with complete local synchronization; the durable turn becomes acked.",
+        "The actual workflow calls acknowledgement and deduplication for the original input only; the simulated later pending input remains.",
+        "The model boundary is invoked once; recovery reuses the persisted reply.",
+        "Replaying the original input after account migration to another group does not dispatch the remaining segment or acknowledge the turn."
+      ],
+      "simulatedBoundariesAndLimits": [
+        "Provider HTTP send responses and callback bodies are synthetic. No Stride or WeCom messages were sent.",
+        "The trusted group directory is supplied by a mocked global fetch response, while the actual credential resolver parses and validates it.",
+        "Redis lease, pending-message storage and deduplication are test doubles. Actual Redis execution, ACK Lua behavior, Redis durability and distributed locking are not validated by this suite.",
+        "The controller is invoked directly inside Nest; the deployed HTTP listener, ingress proxy and middleware are not validated.",
+        "Restart means closing and reconstructing the Nest TestingModule while preserving external fixture state, not restarting the application OS process.",
+        "The actual PostgreSQL server-restart drill belongs to the separate SQL acceptance; this suite does not restart PostgreSQL.",
+        "Model output and unrelated business side effects are simulated.",
+        "This result does not establish real platform callback shape, delivery reliability, credential-directory availability or production readiness."
+      ],
+      "production": {
+        "modeChanged": false,
+        "credentialsRead": false,
+        "dataReadOrWritten": false,
+        "externalMessagesSent": false
+      },
+      "additionalChecks": {
+        "eslintNewFiles": "passed with zero warnings",
+        "prettierNewFiles": "passed",
+        "diffWhitespaceCheck": "passed",
+        "defaultExecution": "The integration suite is opt-in and skipped when both dedicated fixture environment variables are absent."
+      },
+      "readOnlyPersistedModeReview": {
+        "status": "no_actionable_findings",
+        "scope": [
+          "src/biz/action-execution/action-executor.service.ts",
+          "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts",
+          "ActionRecordsRepository prepare/claim/validateClaim behavior and the corresponding SQL transitions",
+          "Existing off/observe inheritance, observation-record rejection and missing-cutover/storage unit regressions"
+        ],
+        "reasoning": [
+          "The sole production persistedMode call site first rejects any parent reply turn whose stored mode is not execute.",
+          "Inherited execute is used for preparing a new child and for all enforcement decisions; missing cutover, unreliable identity, database failure or an absent/non-execute action row blocks before dispatch.",
+          "Existing observation action records are not promoted into execute. Existing execute succeeded/executing/unknown/cancelled/nonretryable-failed records retain their existing result rather than invoking dispatch again.",
+          "Claim conflicts, ownership expiry and ownership-query failure remain fail-closed. SQL serializes the resource and retains the immutable action mode and registered request ID.",
+          "Both request dispatch and recovery continue to use the registered execute request ID; unknown results stop the reply before any later segment."
+        ],
+        "changesMadeDuringReview": false,
+        "limit": "A source review and synthetic-provider integration cannot prove real provider idempotency or actual callback behavior."
+      }
+    },
+    "readOnlyProviderDirectory": {
+      "checkedAt": "2026-11-04T06:54:44.163Z",
+      "operation": "one read-only getGroupBots directory request",
+      "providerWrites": false,
+      "productionModeChanged": false,
+      "rawResponsePersisted": false,
+      "provesCallbackEcho": false,
+      "httpStatus": 200,
+      "groupCount": 8,
+      "accountCount": 9,
+      "credentialReadyAccountCount": 9,
+      "duplicateIdentity": false,
+      "conclusion": "current_directory_shape_supports_resolver"
+    },
+    "qualityChecks": [
+      {
+        "command": "pnpm run typecheck",
+        "exitCode": 0,
+        "logFile": "/private/tmp/cake-reply-acceptance-20261104/typecheck-final.log",
+        "afterLastSourceChange": true
+      },
+      {
+        "command": "pnpm run lint:check",
+        "exitCode": 0,
+        "logFile": "/private/tmp/cake-reply-acceptance-20261104/lint-final.log",
+        "note": "Full source lint passed; the last two changed workflow files also passed targeted ESLint."
+      },
+      {
+        "command": "pnpm run format:check",
+        "exitCode": 0,
+        "logFile": "/private/tmp/cake-reply-acceptance-20261104/format-final.log"
+      },
+      {
+        "command": "pnpm run build",
+        "exitCode": 0,
+        "logFile": "/private/tmp/cake-reply-acceptance-20261104/build-final.log",
+        "afterLastSourceChange": true
+      }
+    ],
+    "tests": {
+      "fullJest": {
+        "command": "pnpm exec jest --runInBand --watchman=false --silent --json --outputFile=/private/tmp/cake-reply-acceptance-20261104/jest-all.json",
+        "exitCode": 1,
+        "totals": {
+          "numPassedTests": 9190,
+          "numFailedTests": 3,
+          "numPendingTests": 10,
+          "numPassedTestSuites": 561,
+          "numFailedTestSuites": 1,
+          "numPendingTestSuites": 2,
+          "numTotalTests": 9203,
+          "numTotalTestSuites": 564,
+          "success": false
+        },
+        "logFile": "/private/tmp/cake-reply-acceptance-20261104/jest-all.log",
+        "failure": "Only center-http.spec.ts failed: sandbox listen EPERM; no assertion/code failure was established before bind failed."
+      },
+      "httpRerun": {
+        "command": "pnpm exec jest --runInBand --watchman=false --silent --runTestsByPath tests/biz/center-dashboard/center-http.spec.ts --json --outputFile=/private/tmp/cake-reply-acceptance-20261104/http-rerun.json",
+        "exitCode": 0,
+        "totals": {
+          "numPassedTests": 3,
+          "numFailedTests": 0,
+          "numPendingTests": 0,
+          "numPassedTestSuites": 1,
+          "numFailedTestSuites": 0,
+          "numPendingTestSuites": 0,
+          "numTotalTests": 3,
+          "numTotalTestSuites": 1,
+          "success": true
+        },
+        "logFile": "/private/tmp/cake-reply-acceptance-20261104/http-rerun.log",
+        "environment": "Permitted temporary local HTTP listener; mocked business service; no production connection."
+      },
+      "finalWorkflowRegression": {
+        "command": "pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/channels/wecom/message/application/reply-workflow.service.spec.ts",
+        "exitCode": 0,
+        "testsPassed": 86,
+        "testsFailed": 0,
+        "logFile": "/private/tmp/cake-reply-acceptance-20261104/workflow-final.log",
+        "scope": "After the final one-line change, resumed preparing turns propagate frozen groupId to model/tool context and delivery. Full Jest had run before that final addition."
+      },
+      "defaultSkippedSuites": [
+        {
+          "path": "tests/tools/job-list/render-real-data.spec.ts",
+          "tests": 5,
+          "followup": "not_run_real_data_cases_outside_this_acceptance"
+        },
+        {
+          "path": "tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts",
+          "tests": 5,
+          "followup": "explicitly_run_and_passed_against_isolated_postgresql"
+        }
+      ],
+      "unresolvedFailures": 0,
+      "notFullCi": true,
+      "limits": [
+        "No production provider sends or original callbacks.",
+        "No full application OS worker restart, deployed ingress or proxy acceptance.",
+        "The SQL-backed reply chain uses simulated Redis pending/lease/ack boundaries; the separate Redis CAS drill does not validate reply ACK Lua.",
+        "No fresh real-model evaluations, full app DI smoke boot, web build or full ci:check is claimed.",
+        "The final workflow regression follows the full-suite run; numbers are per run and must not be summed as distinct tests."
+      ]
+    },
+    "sourceSnapshotAfterRuns": [
+      {
+        "path": "src/biz/action-execution/action-executor.service.ts",
+        "sha256": "7209a67556cb77dc505adc01e0ffc99c2ad61043e07a93fb794711ceb878c3de"
+      },
+      {
+        "path": "src/channels/wecom/message-sender/message-sender.service.ts",
+        "sha256": "698be4b871a0b14c94d6ccb34a701b777a23c522964a5b9e3c20be02528c80bd"
+      },
+      {
+        "path": "src/channels/wecom/message/application/reply-workflow.service.ts",
+        "sha256": "41f00c7884d0a0afe4b50a6b5d5ce0bde9b93e8c16df81c7e78ed171f34158c1"
+      },
+      {
+        "path": "src/channels/wecom/message/credentials/group-route-credentials.service.ts",
+        "sha256": "b1e2eab5b6c93ff4f461c73837a306f405405776385474cb55ee422e55bcfbfd"
+      },
+      {
+        "path": "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts",
+        "sha256": "6b7c74fcf0bccc39cb1742d4af673b53b8922d12a94d4621a24ec364cf103e87"
+      },
+      {
+        "path": "src/channels/wecom/message/delivery/reply-recovery.service.ts",
+        "sha256": "72eebb414df923e97647a71e04dcd71604b20daa445b73e1f0be8f7adbb06ac9"
+      },
+      {
+        "path": "src/channels/wecom/message/ingress/callback-adapter.service.ts",
+        "sha256": "3beb65bb100b6b0cde7b31ef063a681b09dbec7fc1d5524896b733feb61868e1"
+      },
+      {
+        "path": "src/channels/wecom/message/ingress/message-callback.dto.ts",
+        "sha256": "838c37099a53069fb714e4537908920244a1f8e166bd38f04ee34e86dc08162f"
+      },
+      {
+        "path": "src/channels/wecom/message/ingress/message-callback.schema.ts",
+        "sha256": "683d54d423fa528b7f7922b1638f2c8bf051a7edc515f2103700f3f5b9ba67a4"
+      },
+      {
+        "path": "src/channels/wecom/message/message.module.ts",
+        "sha256": "c90246afe70233dd4a3af11a5f384d404fd6ed613b65405272ea0b4be82e78a3"
+      },
+      {
+        "path": "src/channels/wecom/message/message.service.ts",
+        "sha256": "f0f1788d009077ce39e893e897beeb964af48bed69b16c52bc049f5cdd6f3c16"
+      },
+      {
+        "path": "src/infra/client-http/http-client.factory.ts",
+        "sha256": "9e11551f1f7b753b804430d829b06419c8502d6f4eaff4848e3b5db774f655d8"
+      },
+      {
+        "path": "src/infra/client-http/http-log-sanitizer.ts",
+        "sha256": "558ed6eb9d0c80e59917837f55bd65043c7ee05e6f9c875786354753d113a0db"
+      },
+      {
+        "path": "tests/biz/action-execution/action-executor.service.spec.ts",
+        "sha256": "5124ce6a0f964a0231f9ac88a39a56794cf2c3c280e482fb180bb6caaf1c8aa3"
+      },
+      {
+        "path": "tests/channels/wecom/message-sender/message-sender.service.spec.ts",
+        "sha256": "7bce773b4424626d47cb9b770fa5e827bbe68a7c2d39cb9df827b196d21821dc"
+      },
+      {
+        "path": "tests/channels/wecom/message/application/reply-workflow.service.spec.ts",
+        "sha256": "060b9cda40760d71c991f94a64bf6ed00299aa6e5e5ad4f89c4fc3ee8bb25338"
+      },
+      {
+        "path": "tests/channels/wecom/message/credentials/group-route-credentials.service.spec.ts",
+        "sha256": "a8adafd69a94c2d7c3e539ce0452978dba9557c532c8a6fc85a5d2e9937acd4f"
+      },
+      {
+        "path": "tests/channels/wecom/message/delivery/durable-reply-delivery.service.spec.ts",
+        "sha256": "9aeac69bbafe50f371f5f958a08ce17d523916ff29e51477ad9f19715ecb8c24"
+      },
+      {
+        "path": "tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts",
+        "sha256": "a8dfadc63b1e1131d8d4ee010e159f554983e5b8e49ec7ef10d4f204973b3488"
+      },
+      {
+        "path": "tests/channels/wecom/message/delivery/reply-recovery.service.spec.ts",
+        "sha256": "bce35b828012eccb421038728b09919fb099a03d9de18bab866338de220b63fa"
+      },
+      {
+        "path": "tests/channels/wecom/message/message.module.spec.ts",
+        "sha256": "a9d4741a5930ecb336b89ce6c836259e99751f27f60a6d0168415b799aaca062"
+      },
+      {
+        "path": "tests/channels/wecom/message/message.service.spec.ts",
+        "sha256": "dc01b0fac1c15745bd19a32ef3a248324474713a77364e21b3b575af0d9bc9ca"
+      },
+      {
+        "path": "tests/channels/wecom/message/services/callback-adapter.service.spec.ts",
+        "sha256": "82ab39736d50567d05f13045cefe7b8af088b87f267c2247db20e47851a9c06f"
+      },
+      {
+        "path": "tests/helpers/runtime-postgres-client.fixture.ts",
+        "sha256": "0243db30687502d33536d22b5d30c1d7413b699be845e7db1934990cccefba03"
+      },
+      {
+        "path": "tests/infra/client-http/http-client.factory.spec.ts",
+        "sha256": "7a2267e02da38218ec29c84fc5f18a2b3de442b7e318e78f234fe9c042a1847e"
+      }
+    ],
+    "remainingExecuteGates": [
+      "Real provider send and original trusted callback, then second frozen segment and final input acknowledgement for every enabled route.",
+      "Unknown-result alert reaches an actual responder, with a practiced original-request verification path and auditable handling.",
+      "Release the reviewed code and verify actual worker restart, production migrations/RPCs, cutover boundary, in-flight obligations and consistent instance configuration; no cutover is authorized by this report."
+    ],
+    "readiness": "not_ready_for_execute",
+    "remainingExecuteGatesScope": "Historical assessment before explicit user correction. Ordinary reply terminal-callback gate is withdrawn; see ordinaryReplyAcceptanceFollowup."
+  },
+  "replyContinuationFollowup": {
+    "recordedAt": "2026-11-04T07:51:57.505350+00:00",
+    "status": "superseded and removed before deployment at explicit user direction; historical verification only",
+    "scope": "ordinary execute reply continuation and missing-callback handling only",
+    "productionModeChanged": false,
+    "productionAccessed": false,
+    "productionWrites": false,
+    "realProviderDispatches": 0,
+    "head": "7f4bd6428f07348539cf302bd99d23b004072f1a",
+    "checkout": "shared working tree with unrelated concurrent business-rule changes preserved",
+    "migration": "supabase/migrations/20261104090000_reply_callback_recovery.sql",
+    "behavior": {
+      "healthyCallback": "verified durable evidence -> existing message-merge named continuation job -> exact action recovery -> original reply under conversation lease and current permit; no cron dependency",
+      "missingCallback": "60 seconds from original persisted pre-dispatch marker -> unknown and review_required; no resend, no dependent segment, no input ACK",
+      "markerMeaning": "dispatch boundary only, not proof that HTTP was sent or delivered",
+      "notification": "await existing incident delivery result; false/error remains retryable by queue and database scan; delivery confirmation is not operator acceptance",
+      "lateCallback": "terminal evidence wins; original attempt may settle and original plan resume under current permissions",
+      "queueFailure": "no dispatch before marker and timeout enqueue confirmation; callback enqueue error propagates before ACK; durable scanner remains fallback",
+      "retry": {
+        "queue": "Bull native exponential",
+        "initialDelayMs": 1000,
+        "attempts": 12,
+        "enqueueConfirmationTimeoutMs": 2000
+      },
+      "excluded": "proactive tasks, reengagement, observe delivery changes, booking/invitation policy, new rollout controls"
+    },
+    "verification": {
+      "unit": {
+        "command": "pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/biz/action-execution/action-executor.service.spec.ts tests/biz/action-execution/action-recovery.service.spec.ts tests/channels/wecom/message/message.service.spec.ts tests/channels/wecom/message/message.processor.spec.ts tests/channels/wecom/message/message.module.spec.ts tests/channels/wecom/message/delivery/durable-reply-delivery.service.spec.ts tests/channels/wecom/message/delivery/reply-recovery.service.spec.ts tests/channels/wecom/message/delivery/reply-continuation.queue.spec.ts tests/channels/wecom/message/application/reply-workflow.service.spec.ts",
+        "suitesPassed": 9,
+        "testsPassed": 232,
+        "testsFailed": 0,
+        "seconds": 8.116,
+        "log": "/private/tmp/cake-reply-continuation-20261104/targeted-tests.log"
+      },
+      "sql": {
+        "status": "passed",
+        "newAssertions": 56,
+        "coldLoadAndExistingSqlRegression": "passed",
+        "repeatMigration": "passed",
+        "actualPostgresRestart": "passed",
+        "concurrentTimeoutSameFence": "passed",
+        "lateCallbackOriginalAttempt": "passed",
+        "logs": "/private/tmp/reply-callback-sql-20261104/",
+        "manifest": "/private/tmp/reply-callback-sql-20261104/cold-run/manifest.json",
+        "command": "python3 tests/biz/action-execution/verify-runtime-postgres.py --container cake-runtime-pg-reply-callback-20261104 --database cake_projection_reply_callback_cold_20261104 --output /private/tmp/reply-callback-sql-20261104/cold-run"
+      },
+      "indexPointLookup": {
+        "syntheticActions": 100000,
+        "syntheticEvidence": 200000,
+        "queries": 3,
+        "indexUsed": true,
+        "actualRowsEach": 1,
+        "limitation": "synthetic point-query evidence, not production distribution or sustained load measurement"
+      },
+      "chain": {
+        "testsPassed": 8,
+        "testsFailed": 0,
+        "seconds": 78.45,
+        "realComponents": "Nest services, queue producer, registered MessageProcessor handler, actual PostgreSQL SQL/RPC",
+        "simulated": "Bull transport/scheduling, Redis lease/pending, provider HTTP/directory, model, incident receiver",
+        "cronUsedForHappyPath": false,
+        "command": "CAKE_REPLY_TEST_CONTAINER=cake-runtime-pg-reply-callback-20261104 CAKE_REPLY_TEST_DATABASE=cake_projection_reply_chain_app_callback_20261104 pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts",
+        "logEvidence": "Final tool output recorded by reply_chain_harness agent: 8/8 passed, 78.45 seconds. No standalone log file was saved."
+      },
+      "quality": {
+        "typecheck": "passed",
+        "relatedEslint": "passed",
+        "backendBuild": "passed",
+        "logs": "/private/tmp/cake-reply-continuation-20261104/",
+        "format": "passed"
+      }
+    },
+    "limitations": [
+      "No real platform callback or production latency was validated.",
+      "Bull timing/durability and real notification reception were simulated in the service chain.",
+      "The 60-second threshold is application waiting policy, not a provider SLA; infrastructure failure can add delay.",
+      "Missing terminal evidence remains unknown and requires original-request verification; no automatic retry of the external send.",
+      "Code and migration must be released together; no deployment or execute switch was performed.",
+      "Selected suites were run; the earlier full-suite run in replyChainFollowup does not validate this subsequent patch."
+    ],
+    "sourceHashes": {
+      "src/biz/action-execution/action-execution.module.ts": "30662c84372dbaf89d7606c80ae6b153882e6f054374ba13b507ae4b13fb2a76",
+      "src/biz/action-execution/action-execution.types.ts": "8f082e91eb1a6365fd7aa0dfba55b6bf2701c24b35e299fbe41821c40e23da27",
+      "src/biz/action-execution/action-executor.service.ts": "efe6c5cc84cdf6f15b3d263edfa1bf57bad63290d76e47e991d067c3dec6fb33",
+      "src/biz/action-execution/action-records.repository.ts": "40894806405ed0211fc4e94b4f4ce8f643f2112c80b21aec0bf75f0cf869417e",
+      "src/biz/action-execution/action-recovery.service.ts": "bf45514b7bb88368e221554b0c7ca30bc59cff6dcc0671b81eb3c945a732ebd5",
+      "src/biz/reply-execution/reply-turns.repository.ts": "8f09007628e1ac167de74c755ea8dca55becd56ada8bc7291a62e3d1aebcfe58",
+      "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts": "bb497ef425343f4e26e94f6e2c5414a016d0138f6b5a11ddabc246f35622adf1",
+      "src/channels/wecom/message/delivery/reply-recovery.service.ts": "d9b5a3145f57638baa83fcafdf4e45c13069bafcea9a035e5bcf6b4040a4e8c6",
+      "src/channels/wecom/message/delivery/reply-continuation.queue.ts": "d13d07ff891fb6bf337410c39551aab29ee546d27b49c8637b6797813e9c27c4",
+      "src/channels/wecom/message/message.service.ts": "297eb52ff64de1d300f3e37a661c80a4f59ed744f0790d72584cf4b6b6d46f6f",
+      "src/channels/wecom/message/message.module.ts": "cff149c2d1a8552c9b2a19f39ae61c3d224ed060bedf6bda6f13a6e591681623",
+      "src/channels/wecom/message/runtime/message.processor.ts": "b537d79a8a51ebca3fee48726c7c67b8bbf4ce11db1b389fe3ccfce07c05a53c",
+      "supabase/migrations/20261104090000_reply_callback_recovery.sql": "5caf776b4cee263d82ca80f82e153631320717a0acef7c40058edc3b2d109673"
+    },
+    "isolatedContainerCleanup": "Completed: removed only cake-runtime-pg-reply-callback-20261104 and its temporary volume after verifying network=none and no published ports.",
+    "supersededBy": "ordinaryReplyAcceptanceFollowup",
+    "activeRequirement": false,
+    "migrationRemovedBeforeDeployment": true
+  },
+  "ordinaryReplyAcceptanceFollowup": {
+    "recordedAt": "2026-11-04T08:32:31.752627+00:00",
+    "userRequirement": "Ordinary replies must not wait for terminal callbacks segment by segment.",
+    "scope": "ordinary persisted inbound execute reply turns with recovery.primary",
+    "productionModeChanged": false,
+    "productionAccessed": false,
+    "productionWrites": false,
+    "realProviderDispatches": 0,
+    "deployed": false,
+    "behavior": {
+      "success": "Explicit send API errcode=0 -> succeeded with accepted evidence -> next segment in the same flow -> input ACK after all segments and local completion.",
+      "evidence": "requestTerminated=true means the send API request has a confirmed acceptance result; kind remains accepted and detail explicitly excludes delivery/read confirmation.",
+      "noCallback": "No wait, no timeout job, no callback-dependent continuation.",
+      "uncertainNetworkResult": "Original action remains unknown; no blind resend or changed request ID.",
+      "recovery": "Existing action repair, reply scan, frozen plan/request identities, conversation lease and current permission check remain.",
+      "legacyUnknown": "Old accepted/requestTerminated:false records are not automatically promoted or rewritten.",
+      "otherActions": "No change to booking, invitation, proactive task or reengagement completion rules."
+    },
+    "removed": [
+      "reply-continuation queue producer, registered worker, fixture and dedicated tests",
+      "60-second callback timeout marker, incident retry and targeted recovery methods",
+      "undeployed 20261104090000_reply_callback_recovery.sql and its SQL tests",
+      "action callback claim argument and reply-specific repository RPC additions"
+    ],
+    "database": "Existing deployed-schema contracts suffice; no new migration or generalized success exception.",
+    "verification": {
+      "unit": {
+        "command": "pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/biz/action-execution/action-executor.service.spec.ts tests/biz/action-execution/action-recovery.service.spec.ts tests/channels/wecom/message/delivery/durable-reply-delivery.service.spec.ts tests/channels/wecom/message/delivery/reply-recovery.service.spec.ts tests/channels/wecom/message/message.service.spec.ts tests/channels/wecom/message/message.processor.spec.ts tests/channels/wecom/message/message.module.spec.ts tests/channels/wecom/message/application/reply-workflow.service.spec.ts",
+        "suitesPassed": 8,
+        "testsPassed": 197,
+        "testsFailed": 0,
+        "seconds": 7.826,
+        "log": "/private/tmp/cake-reply-submit-20261104/targeted-tests.log"
+      },
+      "typecheck": {
+        "status": "passed",
+        "command": "pnpm run typecheck",
+        "log": "/private/tmp/cake-reply-submit-20261104/typecheck.log"
+      },
+      "eslint": {
+        "status": "passed",
+        "command": "pnpm exec eslint (related source and tests) --max-warnings=0",
+        "log": "/private/tmp/cake-reply-submit-20261104/lint.log"
+      },
+      "build": {
+        "status": "passed",
+        "command": "pnpm run build",
+        "log": "/private/tmp/cake-reply-submit-20261104/build.log"
+      },
+      "format": {
+        "status": "passed",
+        "command": "pnpm exec prettier --check (related source, tests and acceptance docs)",
+        "log": "/private/tmp/cake-reply-submit-20261104/format.log"
+      },
+      "chain": {
+        "suitesPassed": 1,
+        "testsPassed": 6,
+        "testsFailed": 0,
+        "seconds": 12.451,
+        "log": "/private/tmp/cake-reply-submit-20261104/reply-chain.integration.log",
+        "realComponents": "Nest workflow, sender adapter, action/reply repositories, SQL and original action repair processor",
+        "simulatedComponents": "Provider HTTP/directory, model, Redis pending/lease and action repair queue transport",
+        "noCallbackHappyPath": "enterprise and group both send two segments and ACK original input without callbacks or cron",
+        "failureCoverage": [
+          "unknown send after restart is not resent",
+          "accepted first segment survives a database interruption and observe restart",
+          "failed settlement is repaired without resending either segment",
+          "frozen group route cannot move on input replay"
+        ],
+        "schema": "fresh cold-load of existing migrations; removed callback RPC/migration absent",
+        "command": "CAKE_REPLY_TEST_CONTAINER=cake-runtime-pg-reply-submit-20261104 CAKE_REPLY_TEST_DATABASE=cake_projection_reply_chain_app_submit_20261104 pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts"
+      },
+      "coldLoad": {
+        "status": "passed",
+        "manifest": "/private/tmp/cake-reply-submit-20261104/sql/manifest.json",
+        "newMigrations": 0,
+        "command": "python3 tests/biz/action-execution/verify-runtime-postgres.py --container cake-runtime-pg-reply-submit-20261104 --database cake_projection_reply_chain_app_submit_20261104 --output /private/tmp/cake-reply-submit-20261104/sql"
+      }
+    },
+    "supersedes": "replyContinuationFollowup and the ordinary terminal-callback gate in prior acceptance conclusions",
+    "limitations": [
+      "Tests simulate provider HTTP, model and Redis boundaries; no real outgoing message or production latency measurement.",
+      "Changes are local and production mode remains unchanged."
+    ],
+    "sourceHashes": {
+      "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts": "adce8256ae25216a8c05083ed844009d5d4529e04706e2a147476478ca29ded1",
+      "src/channels/wecom/message/message.service.ts": "f0f1788d009077ce39e893e897beeb964af48bed69b16c52bc049f5cdd6f3c16",
+      "src/channels/wecom/message/runtime/message.processor.ts": "d61e8bb80448f4cbc5e7da9fd9cb8151598344800a7ba626b0d9e7045bc77a4f",
+      "src/channels/wecom/message/message.module.ts": "c90246afe70233dd4a3af11a5f384d404fd6ed613b65405272ea0b4be82e78a3",
+      "src/biz/action-execution/action-executor.service.ts": "7209a67556cb77dc505adc01e0ffc99c2ad61043e07a93fb794711ceb878c3de",
+      "src/biz/action-execution/action-records.repository.ts": "879b0f49ac5ce6fe42d477a31ab34f7d43c71f51f8f76f5bcc5d03b64353b180",
+      "src/biz/action-execution/action-recovery.service.ts": "8a9c8ae1aa74fe29e432c15a82429654ce9a63c47cc78c5ba73814259f3a3733",
+      "src/channels/wecom/message/delivery/reply-recovery.service.ts": "050954b00f0e576237f6b9502d3da9e78677582dc076fc5c7b4d57de1aa1b66d"
+    },
+    "status": "passed: local implementation and isolated validation; not deployed",
+    "isolatedContainerCleanup": "Completed; removed only this task no-network/no-port PostgreSQL container and temporary volume."
+  },
+  "correctedCriteriaReview": {
+    "recordedAt": "2026-11-04T08:59:52.313216+00:00",
+    "head": "7f4bd6428f07348539cf302bd99d23b004072f1a",
+    "engineeringReadiness": "passed_for_reviewed_working_tree",
+    "productionSwitchNow": false,
+    "productionBlocker": "reviewed_patch_not_deployed_and_cutover_task_boundary_not_executed",
+    "productionModeChanged": false,
+    "productionWrites": false,
+    "newMigrations": [],
+    "providerDispatches": 0,
+    "automatedAiReviewUsed": false,
+    "fixes": [
+      "manual_notification_failure_retains_bounded_retry",
+      "group_task_frozen_execute_mode_survives_rollback",
+      "preserve_safe_provider_business_code_without_inventing_terminal_evidence"
+    ],
+    "verification": {
+      "ciCommand": "pnpm run ci:check",
+      "ciInitialExitCode": 1,
+      "ciStaticAndBuild": "passed",
+      "fullJest": {
+        "passedSuites": 563,
+        "failedSuites": 1,
+        "skippedSuites": 2,
+        "passedTests": 9225,
+        "failedTests": 3,
+        "skippedTests": 12,
+        "snapshotsPassed": 3,
+        "onlyFailure": "center-http.spec.ts local listen EPERM"
+      },
+      "httpRerun": {
+        "passedTests": 3,
+        "command": "pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/biz/center-dashboard/center-http.spec.ts"
+      },
+      "targeted": {
+        "passedSuites": 4,
+        "passedTests": 72
+      },
+      "sqlServiceChain": {
+        "passedTests": 7,
+        "command": "CAKE_REPLY_TEST_CONTAINER=cake-runtime-pg-execute-review-20261104 CAKE_REPLY_TEST_DATABASE=cake_projection_reply_chain_app_review_20261104 pnpm exec jest --runInBand --watchman=false --runTestsByPath tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts"
+      },
+      "coldSqlAndConcurrency": "passed",
+      "actualPostgresRestart": "passed",
+      "actualRedisCas": "passed",
+      "actualRedisInputAckLua": "passed",
+      "remainingFailedTests": 0,
+      "remainingSkippedTests": {
+        "count": 5,
+        "scope": "existing real job data cases"
+      },
+      "logs": "/private/tmp/cake-execute-review-20261104/"
+    },
+    "productionReadback": {
+      "checkedAt": "2026-11-04T08:57:36.829Z",
+      "version": "11.15.1",
+      "mode": "observe(default)",
+      "cutover": null,
+      "healthHttp": 200,
+      "checks": {
+        "redis": true,
+        "supabase": true
+      }
+    },
+    "limitations": [
+      "No provider sends or candidate test actions.",
+      "Provider HTTP, directory, model, incident receiver and chain Redis/Bull boundaries simulated.",
+      "Physical PostgreSQL restart and actual Redis Lua verified; not a production worker fault injection.",
+      "Source remains a shared, uncommitted working tree; unrelated changes preserved."
+    ],
+    "sourceHashes": {
+      "src/biz/action-execution/action-executor.service.ts": "cc37bb1c3d83e4f53f61b2eec3a268fc3fb003ba107c72acf9208f69e97e2170",
+      "src/biz/action-execution/action-recovery.service.ts": "51644d16447c907297d6c2008a1bfc0d15a10450919f089cb43ab0a76bb3c9a7",
+      "src/biz/group-task/queue/group-task-queue.constants.ts": "00020a446e7582d62756fdcfc3cc42f91b172948f9cb3a9040ba43fa7a4d5275",
+      "src/biz/group-task/services/group-task-action.service.ts": "4d5f19085e11246bf47038cbd815b32345e7d38afc7ed60151ee52be42d5ef6f",
+      "src/channels/wecom/message-sender/message-sender.service.ts": "c7b2c2967f0978f384c1d3ce5663914f5ceec56bf4a3ae8bf7e1174c6ca08cae",
+      "src/infra/client-http/http-log-sanitizer.ts": "4e6201d27ab032d9e0e190c44c9e805263d2efaaa257da875f65899b3f432d08",
+      "src/infra/client-http/provider-business-error.ts": "eba0f99b674542f215763f9894f9b0940848d6fec7a752900e65e8f1f42d9f89",
+      "src/channels/wecom/message/message.service.ts": "f0f1788d009077ce39e893e897beeb964af48bed69b16c52bc049f5cdd6f3c16",
+      "src/channels/wecom/message/application/reply-workflow.service.ts": "41f00c7884d0a0afe4b50a6b5d5ce0bde9b93e8c16df81c7e78ed171f34158c1",
+      "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts": "adce8256ae25216a8c05083ed844009d5d4529e04706e2a147476478ca29ded1",
+      "src/channels/wecom/message/delivery/reply-recovery.service.ts": "050954b00f0e576237f6b9502d3da9e78677582dc076fc5c7b4d57de1aa1b66d",
+      "src/channels/wecom/message/credentials/group-route-credentials.service.ts": "b1e2eab5b6c93ff4f461c73837a306f405405776385474cb55ee422e55bcfbfd",
+      "tests/biz/action-execution/action-recovery.service.spec.ts": "74b5733e545f2eab7aaef9a3ebac3cd5660d509a387d6df5671f4400edf47c5f",
+      "tests/biz/group-task/services/group-task-action.service.spec.ts": "346a4b33843ad36108e7ee32de676b2496d3d2151c77b4ccbd4f3d9056d0bfd7",
+      "tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts": "ce6dc6d72c83b43c3a856c537e761d1f050b6678d6ba21ca02e9981d412e79c6"
+    }
+  },
+  "localOrganization": {
+    "recordedAt": "2026-11-04T09:15:01.282504+00:00",
+    "branch": "codex/local-changes-20261104",
+    "base": "7f4bd6428f07348539cf302bd99d23b004072f1a",
+    "localOnly": true,
+    "pushed": false,
+    "deployed": false,
+    "productionAccessed": false,
+    "productionModeChanged": false,
+    "productionWrites": false,
+    "newMigrations": [],
+    "newEnvironmentVariables": [],
+    "fileCount": 54,
+    "codeAndTestsUnchangedDuringOrganization": true,
+    "groups": [
+      {
+        "name": "insurance",
+        "fileCount": 17,
+        "paths": [
+          "docs/business-rules/README.md",
+          "docs/business-rules/sw.md",
+          "docs/prompt-rule-ledger.md",
+          "src/agent/generator/context/sections/procedural/red-lines.section.ts",
+          "src/agent/generator/context/sections/procedural/rules/sw.md",
+          "src/agent/guardrail/output/rules/insurance-policy-claims.rule.ts",
+          "src/tools/job-list/render.util.ts",
+          "src/tools/job-list/welfare-facts.util.ts",
+          "tests/agent/generator/context/manual-loader.spec.ts",
+          "tests/agent/generator/context/red-lines-insurance.spec.ts",
+          "tests/agent/generator/prompt-compatibility.spec.ts",
+          "tests/agent/guardrail/output/rules/hard-rules.restored-sentinels.spec.ts",
+          "tests/tools/job-list/render.util.spec.ts",
+          "tests/tools/job-list/welfare-facts.util.spec.ts",
+          "tests/tools/job-list/sponge-unread-fields.spec.ts",
+          "tests/tools/job-list/insurance-fields.render.spec.ts",
+          "tests/fixtures/sponge-jobs/insurance-fields.json"
+        ]
+      },
+      {
+        "name": "transport",
+        "fileCount": 6,
+        "paths": [
+          "src/channels/wecom/message-sender/message-sender.service.ts",
+          "src/infra/client-http/http-client.factory.ts",
+          "src/infra/client-http/http-log-sanitizer.ts",
+          "src/infra/client-http/provider-business-error.ts",
+          "tests/channels/wecom/message-sender/message-sender.service.spec.ts",
+          "tests/infra/client-http/http-client.factory.spec.ts"
+        ]
+      },
+      {
+        "name": "runtime",
+        "fileCount": 27,
+        "paths": [
+          "src/biz/action-execution/action-executor.service.ts",
+          "src/biz/action-execution/action-recovery.service.ts",
+          "src/biz/group-task/queue/group-task-queue.constants.ts",
+          "src/biz/group-task/services/group-task-action.service.ts",
+          "src/biz/reply-execution/README.md",
+          "src/channels/wecom/message/application/reply-workflow.service.ts",
+          "src/channels/wecom/message/credentials/group-route-credentials.service.ts",
+          "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts",
+          "src/channels/wecom/message/delivery/reply-recovery.service.ts",
+          "src/channels/wecom/message/ingress/callback-adapter.service.ts",
+          "src/channels/wecom/message/ingress/message-callback.dto.ts",
+          "src/channels/wecom/message/ingress/message-callback.schema.ts",
+          "src/channels/wecom/message/message.module.ts",
+          "src/channels/wecom/message/message.service.ts",
+          "tests/biz/action-execution/action-executor.service.spec.ts",
+          "tests/biz/action-execution/action-recovery.service.spec.ts",
+          "tests/biz/group-task/services/group-task-action.service.spec.ts",
+          "tests/channels/wecom/message/application/reply-workflow.service.spec.ts",
+          "tests/channels/wecom/message/credentials/group-route-credentials.service.spec.ts",
+          "tests/channels/wecom/message/delivery/durable-reply-delivery.service.spec.ts",
+          "tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts",
+          "tests/channels/wecom/message/delivery/reply-recovery.service.spec.ts",
+          "tests/channels/wecom/message/message.module.spec.ts",
+          "tests/channels/wecom/message/message.processor.spec.ts",
+          "tests/channels/wecom/message/message.service.spec.ts",
+          "tests/channels/wecom/message/services/callback-adapter.service.spec.ts",
+          "tests/helpers/runtime-postgres-client.fixture.ts"
+        ]
+      },
+      {
+        "name": "docs",
+        "fileCount": 4,
+        "paths": [
+          "docs/README.md",
+          "docs/technical/runtime-execute-readiness-2026-10-28.md",
+          "docs/technical/runtime-acceptance-2026-11-04.md",
+          "docs/technical/runtime-acceptance-2026-11-04.json"
+        ]
+      }
+    ],
+    "codeCommits": [
+      "63af5fe119adf6cad0f3eb72f965bbb04e8eb784",
+      "68dd1d21b4312500a2d0a6bf593829f366d27b1d",
+      "024fe2ca96520e8db7edeb6265c86c5fdb1a1eae"
+    ],
+    "verification": {
+      "command": "pnpm run ci:check",
+      "exitCode": 0,
+      "staticAndBuild": "passed",
+      "passedSuites": 564,
+      "skippedSuites": 2,
+      "failedSuites": 0,
+      "passedTests": 9228,
+      "skippedTests": 12,
+      "failedTests": 0,
+      "snapshotsPassed": 3,
+      "testSeconds": 184.257,
+      "skips": {
+        "isolatedReplyChain": 7,
+        "existingRealJobData": 5
+      },
+      "isolatedEvidence": "Seven opt-in SQL reply-chain cases and PostgreSQL/Redis drills reuse correctedCriteriaReview with matching source hashes; not rerun in this organization task.",
+      "changedFileFormatCheck": "passed",
+      "relativeDocumentLinks": "passed",
+      "gitDiffCheck": "passed",
+      "logDirectory": "/private/tmp/cake-local-cleanup-20261104"
+    },
+    "sourceHashes": {
+      "src/agent/generator/context/sections/procedural/red-lines.section.ts": "623132be90654386d0938f6dc5e346102c45ff7b29b50db78e87685d4928e1bd",
+      "src/agent/generator/context/sections/procedural/rules/sw.md": "a2996112a8364b8efa82297397d926ec4129983647c54451960571e21fdc75ef",
+      "src/agent/guardrail/output/rules/insurance-policy-claims.rule.ts": "5f852bd52bc877bdc965be227355e3e6bb9c3cc7cedbd2bee5b3514a7c3428db",
+      "src/tools/job-list/render.util.ts": "006fbd7f260a19fd7c63b63164ec1e8ee5e87a4fe9b2903051301006dee3e6e7",
+      "src/tools/job-list/welfare-facts.util.ts": "4cb606cf4ede97671a99d44c2235ea9379d0a09f9e6015b31dede5a9377d1d27",
+      "tests/agent/generator/context/manual-loader.spec.ts": "40c9ad7be4b9548577075938b71d55190ec8ce3d9071ae0ceafd533d57063c31",
+      "tests/agent/generator/context/red-lines-insurance.spec.ts": "e2a5ae3ad8367eafbb6f9cae0f285c3b3d876971af3fac844eee201d7f910638",
+      "tests/agent/generator/prompt-compatibility.spec.ts": "961e11c96f95f229dec76f3d2f176f2f948a4bf4aab868c46c452945794a008b",
+      "tests/agent/guardrail/output/rules/hard-rules.restored-sentinels.spec.ts": "241c1c5217d9c880e9572baed51253e57809b54eab0407508c560db9d900ee80",
+      "tests/tools/job-list/render.util.spec.ts": "fb85960094930ebb7234678331324eb2ad47cb2d818ebe0a831e0bc46bcef5d2",
+      "tests/tools/job-list/welfare-facts.util.spec.ts": "3695839c820199984338a79e1521b22c66db68ee2fb06e37e2194fd684e61ab9",
+      "tests/tools/job-list/sponge-unread-fields.spec.ts": "1bc76d5596314ddfcd46c1c876ddab96535554f84b1f3badd469ad9b9371ffe2",
+      "tests/tools/job-list/insurance-fields.render.spec.ts": "27214f297640e2b8ac34ea7fd063a243cb0d5016c24c31b51395ef470091f1de",
+      "tests/fixtures/sponge-jobs/insurance-fields.json": "d2c1c6cd3511636e9a5f4b0e05aee840feeabdfb857e71041359d3c97ef5f0cc",
+      "src/channels/wecom/message-sender/message-sender.service.ts": "c7b2c2967f0978f384c1d3ce5663914f5ceec56bf4a3ae8bf7e1174c6ca08cae",
+      "src/infra/client-http/http-client.factory.ts": "9e11551f1f7b753b804430d829b06419c8502d6f4eaff4848e3b5db774f655d8",
+      "src/infra/client-http/http-log-sanitizer.ts": "4e6201d27ab032d9e0e190c44c9e805263d2efaaa257da875f65899b3f432d08",
+      "src/infra/client-http/provider-business-error.ts": "eba0f99b674542f215763f9894f9b0940848d6fec7a752900e65e8f1f42d9f89",
+      "tests/channels/wecom/message-sender/message-sender.service.spec.ts": "68a00813a7ade2c25deb78bf3a4458881360168a9ab72e1ee1672f4cd4cb71ff",
+      "tests/infra/client-http/http-client.factory.spec.ts": "7a2267e02da38218ec29c84fc5f18a2b3de442b7e318e78f234fe9c042a1847e",
+      "src/biz/action-execution/action-executor.service.ts": "cc37bb1c3d83e4f53f61b2eec3a268fc3fb003ba107c72acf9208f69e97e2170",
+      "src/biz/action-execution/action-recovery.service.ts": "51644d16447c907297d6c2008a1bfc0d15a10450919f089cb43ab0a76bb3c9a7",
+      "src/biz/group-task/queue/group-task-queue.constants.ts": "00020a446e7582d62756fdcfc3cc42f91b172948f9cb3a9040ba43fa7a4d5275",
+      "src/biz/group-task/services/group-task-action.service.ts": "4d5f19085e11246bf47038cbd815b32345e7d38afc7ed60151ee52be42d5ef6f",
+      "src/channels/wecom/message/application/reply-workflow.service.ts": "41f00c7884d0a0afe4b50a6b5d5ce0bde9b93e8c16df81c7e78ed171f34158c1",
+      "src/channels/wecom/message/credentials/group-route-credentials.service.ts": "b1e2eab5b6c93ff4f461c73837a306f405405776385474cb55ee422e55bcfbfd",
+      "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts": "adce8256ae25216a8c05083ed844009d5d4529e04706e2a147476478ca29ded1",
+      "src/channels/wecom/message/delivery/reply-recovery.service.ts": "050954b00f0e576237f6b9502d3da9e78677582dc076fc5c7b4d57de1aa1b66d",
+      "src/channels/wecom/message/ingress/callback-adapter.service.ts": "3beb65bb100b6b0cde7b31ef063a681b09dbec7fc1d5524896b733feb61868e1",
+      "src/channels/wecom/message/ingress/message-callback.dto.ts": "838c37099a53069fb714e4537908920244a1f8e166bd38f04ee34e86dc08162f",
+      "src/channels/wecom/message/ingress/message-callback.schema.ts": "683d54d423fa528b7f7922b1638f2c8bf051a7edc515f2103700f3f5b9ba67a4",
+      "src/channels/wecom/message/message.module.ts": "c90246afe70233dd4a3af11a5f384d404fd6ed613b65405272ea0b4be82e78a3",
+      "src/channels/wecom/message/message.service.ts": "f0f1788d009077ce39e893e897beeb964af48bed69b16c52bc049f5cdd6f3c16",
+      "tests/biz/action-execution/action-executor.service.spec.ts": "e7d8fd4672d930139db63b12621ceaf434b6568d28a040306862fdb295c005f3",
+      "tests/biz/action-execution/action-recovery.service.spec.ts": "74b5733e545f2eab7aaef9a3ebac3cd5660d509a387d6df5671f4400edf47c5f",
+      "tests/biz/group-task/services/group-task-action.service.spec.ts": "346a4b33843ad36108e7ee32de676b2496d3d2151c77b4ccbd4f3d9056d0bfd7",
+      "tests/channels/wecom/message/application/reply-workflow.service.spec.ts": "060b9cda40760d71c991f94a64bf6ed00299aa6e5e5ad4f89c4fc3ee8bb25338",
+      "tests/channels/wecom/message/credentials/group-route-credentials.service.spec.ts": "a8adafd69a94c2d7c3e539ce0452978dba9557c532c8a6fc85a5d2e9937acd4f",
+      "tests/channels/wecom/message/delivery/durable-reply-delivery.service.spec.ts": "fb1c4af5a87517456fc789f06af590d6ad60e2348a7d0989197a38a18b6c74f9",
+      "tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts": "ce6dc6d72c83b43c3a856c537e761d1f050b6678d6ba21ca02e9981d412e79c6",
+      "tests/channels/wecom/message/delivery/reply-recovery.service.spec.ts": "bce35b828012eccb421038728b09919fb099a03d9de18bab866338de220b63fa",
+      "tests/channels/wecom/message/message.module.spec.ts": "e1106ba826c8ccb720d8c2d893a72cb060d2341e98ead060214814e28315dcba",
+      "tests/channels/wecom/message/message.processor.spec.ts": "88ad633a7be1e95fa1cb959353e4cb2cdf63964758a7928b4c26cc807f61a744",
+      "tests/channels/wecom/message/message.service.spec.ts": "dc01b0fac1c15745bd19a32ef3a248324474713a77364e21b3b575af0d9bc9ca",
+      "tests/channels/wecom/message/services/callback-adapter.service.spec.ts": "82ab39736d50567d05f13045cefe7b8af088b87f267c2247db20e47851a9c06f",
+      "tests/helpers/runtime-postgres-client.fixture.ts": "0243db30687502d33536d22b5d30c1d7413b699be845e7db1934990cccefba03"
+    }
+  },
+  "runtimeProtocolConsolidation": {
+    "recordedAt": "2026-11-04T10:21:43.390600+00:00",
+    "baselineCommit": "78a10a29d9fc1c632355e4404cb42bd787c1c148",
+    "branch": "codex/local-changes-20261104",
+    "reviewSource": "codex",
+    "scopeSourceFiles": 158,
+    "method": "Follow original A-G changes and runtime followups through declarations, callers, runtime validation and persisted protocol readers. Use domain-owned as-const vocabularies and derived types; retain open extension keys and third-party protocols.",
+    "changedCodeFiles": [
+      "src/agent/reengagement/touch-ledger.types.ts",
+      "src/biz/action-execution/action-records.constants.ts",
+      "src/biz/reply-execution/reply-execution.constants.ts",
+      "src/infra/queue/cron.constants.ts",
+      "src/types/action-execution.contract.ts",
+      "src/types/action-permit.types.ts",
+      "src/types/candidate-progress.types.ts",
+      "src/types/group-invite.types.ts",
+      "src/types/wecom-api.types.ts",
+      "scripts/business-rules/check.ts",
+      "src/agent/agent-health.service.ts",
+      "src/agent/generator/generator.types.ts",
+      "src/agent/generator/tool-call-analysis.ts",
+      "src/agent/guardrail/tool/tool-guardrail.catalog.ts",
+      "src/agent/reengagement/follow-up-scheduler.service.ts",
+      "src/agent/reengagement/follow-up.processor.ts",
+      "src/agent/reengagement/reengagement-command.service.ts",
+      "src/agent/reengagement/touch-ledger.service.ts",
+      "src/agent/runner/agent-runner.types.ts",
+      "src/agent/runner/turn-outcome-intervention.service.ts",
+      "src/biz/action-execution/action-execution.types.ts",
+      "src/biz/action-execution/action-executor.service.ts",
+      "src/biz/action-execution/action-records.repository.ts",
+      "src/biz/action-execution/action-recovery.service.ts",
+      "src/biz/action-execution/action-repair.queue.ts",
+      "src/biz/action-permit/services/action-permit.service.ts",
+      "src/biz/candidate-progress/policies/legacy-progress.policies.ts",
+      "src/biz/candidate-progress/services/candidate-progress.service.ts",
+      "src/biz/feishu-sync/chat-record.service.ts",
+      "src/biz/group-task/group-task.types.ts",
+      "src/biz/group-task/queue/group-task-queue.constants.ts",
+      "src/biz/group-task/queue/group-task.processor.ts",
+      "src/biz/group-task/services/group-invite.service.ts",
+      "src/biz/group-task/services/group-task-action.service.ts",
+      "src/biz/group-task/services/group-task-scheduler.service.ts",
+      "src/biz/monitoring/services/tracking/message-tracking.service.ts",
+      "src/biz/monitoring/services/tracking/reengagement-tracking.service.ts",
+      "src/biz/ops-events/critical-event.processor.ts",
+      "src/biz/ops-events/crons/ops-daily-report.cron.ts",
+      "src/biz/ops-events/crons/sponge-status-poll.cron.ts",
+      "src/biz/ops-events/repositories/ops-events.repository.ts",
+      "src/biz/ops-events/services/action-ops-event.service.ts",
+      "src/biz/ops-events/services/ops-events-recorder.service.ts",
+      "src/biz/ops-events/types/ops-events.types.ts",
+      "src/biz/reply-execution/reply-execution.types.ts",
+      "src/biz/reply-execution/reply-turns.repository.ts",
+      "src/biz/reply-execution/reply-turns.service.ts",
+      "src/biz/test-suite/services/test-execution.service.ts",
+      "src/channels/wecom/message-sender/message-sender.service.ts",
+      "src/channels/wecom/message/application/filter-rules/message-filter.rules.ts",
+      "src/channels/wecom/message/application/message-processing-failure.service.ts",
+      "src/channels/wecom/message/application/reply-workflow.service.ts",
+      "src/channels/wecom/message/delivery/delivery.service.ts",
+      "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts",
+      "src/channels/wecom/message/delivery/reply-recovery.service.ts",
+      "src/channels/wecom/message/ingress/callback-adapter.service.ts",
+      "src/channels/wecom/message/ingress/message-callback.dto.ts",
+      "src/channels/wecom/message/ingress/message-callback.schema.ts",
+      "src/channels/wecom/message/message.service.ts",
+      "src/channels/wecom/message/runtime/message.processor.ts",
+      "src/channels/wecom/message/types/message.types.ts",
+      "src/infra/queue/cron-runner.service.ts",
+      "src/infra/utils/action-receipt.util.ts",
+      "src/llm/tool-replay-fence.ts",
+      "src/memory/stores/supabase.store.ts",
+      "src/notification/renderers/ops-card.renderer.ts",
+      "src/notification/services/private-chat-monitor-notifier.service.ts",
+      "src/observability/observer.interface.ts",
+      "src/sponge/interview-booking-result.util.ts",
+      "src/sponge/sponge.types.ts",
+      "src/tools/actions/business-action.util.ts",
+      "src/tools/actions/tool-action.service.ts",
+      "src/tools/booking/duplicate-booking-receipt.util.ts",
+      "src/tools/booking/duplicate-signup-recovery.util.ts",
+      "src/tools/duliday-cancel-work-order.tool.ts",
+      "src/tools/duliday-interview-booking.tool.ts",
+      "src/tools/duliday-modify-interview-time.tool.ts",
+      "src/tools/invite-to-group.tool.ts",
+      "src/tools/invite/post-booking-group-invite.ts",
+      "src/tools/send-store-location.tool.ts",
+      "src/tools/shared/tool-error-types.ts",
+      "src/tools/tool-contracts.ts",
+      "src/tools/tool-registry.service.ts",
+      "src/types/tool-action.contract.ts",
+      "src/types/tool-replay.types.ts",
+      "src/types/tool.types.ts",
+      "tests/biz/action-execution/action-executor.service.spec.ts",
+      "tests/tools/actions/tool-action.service.spec.ts",
+      "tests/tools/tool-contracts.spec.ts"
+    ],
+    "sourceHashes": {
+      "src/agent/reengagement/touch-ledger.types.ts": "a23668ae3dc56dc0663feeb6472bd8cc4159bbb0d661345bc945a63d25159f96",
+      "src/biz/action-execution/action-records.constants.ts": "ed39845377f3c06544315dea309219702cb0dc75ee4943c21921bdb85bebca2a",
+      "src/biz/reply-execution/reply-execution.constants.ts": "834b82d14f272a68ef0f62153fb1e6b1497fec97d01f27637fffe22aa273a956",
+      "src/infra/queue/cron.constants.ts": "a0d3f00ec2d6e55149f7bfbbb00b7b375ab02ab4bce2f660595f2efd24d67a9e",
+      "src/types/action-execution.contract.ts": "0fa94dea1df24bfac75c8bf7a0b08f9194ee06c3c16f28871daa4e983a799536",
+      "src/types/action-permit.types.ts": "3c8c0ac3f96d5a431d99038506499e40b396ffb83d0e38f340306f617675aef6",
+      "src/types/candidate-progress.types.ts": "b67f81b24835c4030d301f8f8c0d55e75f939d19ab42209bbeb4424f6a57748b",
+      "src/types/group-invite.types.ts": "a7d736a792f9a96cd9fcae164bc96283d5507268ae2b4430fed17f02bce5af6f",
+      "src/types/wecom-api.types.ts": "c2f50d3cf0043691f2fe7b15d8019e911ca8c82bec90844f43ef985489acfea6",
+      "scripts/business-rules/check.ts": "3b405ee65533af4fefe9e32bc50bc4a6a64f94266a8dc982af8ceb81c38d2677",
+      "src/agent/agent-health.service.ts": "c25cb0c4a970699370f80df09e3ea33ce5d0c99d6690ed546d8699c2ad76ba0a",
+      "src/agent/generator/generator.types.ts": "a9d41e0474e11e4d4097ce78c555b4d8664d96abcccbec2ff344d33f611e5810",
+      "src/agent/generator/tool-call-analysis.ts": "df72b85bd29920afd413099b154571324dcea873f316fb20c73b9b9f607ca9a5",
+      "src/agent/guardrail/tool/tool-guardrail.catalog.ts": "b8fb914191708ce6ced38c2263ccdeab5070b6abf74efb049d32c8ac88335c34",
+      "src/agent/reengagement/follow-up-scheduler.service.ts": "04953e9dd66200cfd97abaae92baef7f6e181e18febeaa1ca6f7d97bba5393f5",
+      "src/agent/reengagement/follow-up.processor.ts": "3ee1ff7ad9a2cba22050f02cba7c4ca8116e977267b7524eb02e5ecb083945d3",
+      "src/agent/reengagement/reengagement-command.service.ts": "d19b9431b11d0e5d280fa8d28f9201bbc40dadecf5c85a1208a9b8a83104e728",
+      "src/agent/reengagement/touch-ledger.service.ts": "ecf8383882ff6c0507815d1e62922d944d5c4cc644642e4af1260fd1ee253c50",
+      "src/agent/runner/agent-runner.types.ts": "a40f6e40ab0d536b80ce3bfb21b91088c97fd33ee6a32468f8b25480b1ba90f5",
+      "src/agent/runner/turn-outcome-intervention.service.ts": "c5b9057e2d489cc954d38907781d795e2680cc03d44ec0adc4487a96c645a620",
+      "src/biz/action-execution/action-execution.types.ts": "8954fd7ece9724be371413aaee9c5468c624b5c4c05ffe541643e0f70ea75f7a",
+      "src/biz/action-execution/action-executor.service.ts": "83e5dc93d5c6360ca5c3a794f407d489c7e3680df0dfb28f47a0ae34f6a3361d",
+      "src/biz/action-execution/action-records.repository.ts": "826f63bd0664866c7027ad7ba616c1b103239a4e4e7192168ee0ab6a3bf2b6ec",
+      "src/biz/action-execution/action-recovery.service.ts": "f776d2ab994deefa43855ecc33c8e66fc74931ab849393d96fbca353682a3cd6",
+      "src/biz/action-execution/action-repair.queue.ts": "9046658fd85ce304d4ea9652e622b6f9df523a0ca7f13437734c409ad713a9c0",
+      "src/biz/action-permit/services/action-permit.service.ts": "e4e1a651488decf6b530750bdd452afef23ac2a84c0bce3995eaf6828b60f121",
+      "src/biz/candidate-progress/policies/legacy-progress.policies.ts": "087b37b9988932d38babe0b68244d0ec4ed2dad9eff96ec5a5e444d06b24b57d",
+      "src/biz/candidate-progress/services/candidate-progress.service.ts": "f0f3f906c893854e5a6662d551e325c2559b83d625f987b2f50ccffc02413bb9",
+      "src/biz/feishu-sync/chat-record.service.ts": "a3d685bda9468a99ff1387a1016fe51f7832552e8bc33eb547927cb8b936c46c",
+      "src/biz/group-task/group-task.types.ts": "69dcebfc452da743f319901da4f7eaf1cb79937693b92ef725be0c6a47a8500d",
+      "src/biz/group-task/queue/group-task-queue.constants.ts": "e4bd8e20c2b127e11674b0ea9056513b8925debeb92d4a03dddc964d1977fa79",
+      "src/biz/group-task/queue/group-task.processor.ts": "599ea7bfea6c132edb841e53bb6c80350f3b49b4eadfe6437631b0a323315f2c",
+      "src/biz/group-task/services/group-invite.service.ts": "4be742de130f3b5db83d31460d621ac4ee03192255e6e963021c56a8fa97e96b",
+      "src/biz/group-task/services/group-task-action.service.ts": "06e22c9ccbc0a22f327e4e5d2918140d98a6b6128f56011baee5c45a926cbefd",
+      "src/biz/group-task/services/group-task-scheduler.service.ts": "6d070ccc484593e70bbaf6518d8e3a6be7d4963eb69812e8a2075733dc23e4d3",
+      "src/biz/monitoring/services/tracking/message-tracking.service.ts": "d1e5f21789138c5e51b30ebecaa8efa8078a1eb3dd74eb2d46c6a3ac5908e3d5",
+      "src/biz/monitoring/services/tracking/reengagement-tracking.service.ts": "1250accb55d28533878e4261715ec83aaa44a364839cc50fda3841a8cc229b2b",
+      "src/biz/ops-events/critical-event.processor.ts": "b7037a2df25a3a2dc402c75ba269257c2800e21e19bbbd350439013fdbf6d8eb",
+      "src/biz/ops-events/crons/ops-daily-report.cron.ts": "22dac54b074b5930679e169a9c792ee81ddb4909a82f79b5a80ce6e4c95d300d",
+      "src/biz/ops-events/crons/sponge-status-poll.cron.ts": "fb21b23f9c6d6965f8205506c96b99777f26c36dde06272bb684937b144e8820",
+      "src/biz/ops-events/repositories/ops-events.repository.ts": "ec6aa48bd03eba49ce21965280442e9d134f2a7d6f8422812b0db6d926ff76c2",
+      "src/biz/ops-events/services/action-ops-event.service.ts": "e46ba7faad16e3243f7bc479f7ae8b0888ed922652f9eedd72ba0aae4f056880",
+      "src/biz/ops-events/services/ops-events-recorder.service.ts": "214199ded96ea3eb27708cf270a7999cd0a48205949e3beaa691a4d3ae84ce97",
+      "src/biz/ops-events/types/ops-events.types.ts": "6af55eef7672cefeeb58c1329e8f16b03be91606388d53d60e95870edfdb5d8b",
+      "src/biz/reply-execution/reply-execution.types.ts": "5eda31b2fa5f1a4d793bbed26489686b8912d690fdb4846ae60a3a4e5272cd7a",
+      "src/biz/reply-execution/reply-turns.repository.ts": "66bef634114873c6683bfb2d4d783c2efbbde87feebaccfadb29ab425f5db13d",
+      "src/biz/reply-execution/reply-turns.service.ts": "60b6525dd28835af8c5727391f359c2c6804ed2e257f5c7d16e009a5236874dc",
+      "src/biz/test-suite/services/test-execution.service.ts": "ee2f55f5d9f7b7a1275a52507fd851c7a35f0791033491cd49cbe9b7eae9b400",
+      "src/channels/wecom/message-sender/message-sender.service.ts": "79e7a019e51515612da8da1f84b7964fe8eac01f1a90656ebc94c5545ed6cd88",
+      "src/channels/wecom/message/application/filter-rules/message-filter.rules.ts": "6fbb0dfd63341deb9d1f6f32ee4b4a076addbeeef0347a09f37cf8ff65ed65c1",
+      "src/channels/wecom/message/application/message-processing-failure.service.ts": "8a5a585d0d209e8aa5011cb472d8a0a31074cb1ca838892c7d6f3c586138d717",
+      "src/channels/wecom/message/application/reply-workflow.service.ts": "d2b5f75f4826a1b9ec30c8f15905397a0c4492a0c82c6f53190cff133720d69a",
+      "src/channels/wecom/message/delivery/delivery.service.ts": "2a0224da11bab80ce3d3d2710d2154f48935cfa4957b197e5caffbc473c55b2e",
+      "src/channels/wecom/message/delivery/durable-reply-delivery.service.ts": "a3b858e63e5db3a335f2c9a96d479f693d7f3cf0c030e6a84f412fe27003a4e3",
+      "src/channels/wecom/message/delivery/reply-recovery.service.ts": "615dca93853f924651b3b1d6a8ab55803afbf130a59d73dd6b6912e657e5e25d",
+      "src/channels/wecom/message/ingress/callback-adapter.service.ts": "09d3fe9c212ac535a3ee401d7f742e30f7f8c967b88be7b5806fa2174bdab0cd",
+      "src/channels/wecom/message/ingress/message-callback.dto.ts": "12d9fb5f605da8a141193ea4cd637a599d97520ade6fcc7ea0162420c6defd5e",
+      "src/channels/wecom/message/ingress/message-callback.schema.ts": "927d1301d34f30bb0dd67695464353ae49ee9db9e0b159553cb122311ae11403",
+      "src/channels/wecom/message/message.service.ts": "7c910caeee79db631ef4c3fd62dc6f8200c905f7bfa8cb180f25b4f847be3959",
+      "src/channels/wecom/message/runtime/message.processor.ts": "30dac949ec93f6d350501f26f24dc2edc39094cb598323418b8119dc25e6a50e",
+      "src/channels/wecom/message/types/message.types.ts": "4e204ad353328dc8727b6dc02f5eb7b3dc526b5b329c46c221b3960c08cda697",
+      "src/infra/queue/cron-runner.service.ts": "abb4e97aa9cbdcf95cabfce4f4f23dcda18baa9cfb0eff698be49c135ac0912e",
+      "src/infra/utils/action-receipt.util.ts": "3532e30359ad34fbaab05b7fe63629b5a8e412bc2a73478c72d1ed86a64b9134",
+      "src/llm/tool-replay-fence.ts": "43e27df3485dd65a0f8b702bd2d1ab635989eeb5ce401a6a7827dd1da6b61447",
+      "src/memory/stores/supabase.store.ts": "9e837f9985e5c90956e3e6891c726c8aad01be391a89efd9bdf364df6b16e75b",
+      "src/notification/renderers/ops-card.renderer.ts": "8cc42b14bc47acc81088215cbc8099c6f11c7d61cb1fdb481952c7368a6b431c",
+      "src/notification/services/private-chat-monitor-notifier.service.ts": "b215df9b1926301e7fd5aa0c485f11fbe8c2b7ee3ab5a122f0d821d1523372d4",
+      "src/observability/observer.interface.ts": "28c3f784db0111130af154cb727d9d523e726d8ea6e194e4be6bf33ea451771c",
+      "src/sponge/interview-booking-result.util.ts": "fbeee936a545488deceac5af8bf6be354f4383748751db4fda08187dbd8be1cb",
+      "src/sponge/sponge.types.ts": "118e82e68f8d85e9e603f9a4e596e26a00e26e3e2573298f6cf9546ed1c5a3ff",
+      "src/tools/actions/business-action.util.ts": "e8b0a6c59385586d073aeeb73418678c6c0882ee52b0b2591eba9733b4b607d6",
+      "src/tools/actions/tool-action.service.ts": "df3070171b3ceeedf037c46b62c1a2acba79b41accabe86637d37b7813ebe9aa",
+      "src/tools/booking/duplicate-booking-receipt.util.ts": "15fff118d5c48d60e26a44514c7efff9e4c2b064dcc1303e69babb4556245660",
+      "src/tools/booking/duplicate-signup-recovery.util.ts": "3ed9b18e688b4ea348bbde897390e2f61c0c9af620ec4466d5a166585b41fe2c",
+      "src/tools/duliday-cancel-work-order.tool.ts": "98a7bd04834429b9fe943c31f64b2477d9c31cc449aef4a8ab91d35248eadd53",
+      "src/tools/duliday-interview-booking.tool.ts": "fc3cde14d7dabbc05ab0a33019021637400badd0f1e527a2a0584b5d83364eed",
+      "src/tools/duliday-modify-interview-time.tool.ts": "74a7932f2da31acb86b7347caf1d506186a8fcbb2196fcd24fe62ae6d82a4e39",
+      "src/tools/invite-to-group.tool.ts": "c8f3f1d0c5e5c7e0debb2358a78c81876230ab5bcd9fa4ea0d785e15178e6f8d",
+      "src/tools/invite/post-booking-group-invite.ts": "f9ab68145354b818f8d9652d8995376608d45c6d2d483976d113f8b69f133c15",
+      "src/tools/send-store-location.tool.ts": "c4151bc33f733ccb432d34f254a10d54badc3d91e1a942f34ad3d6fbef1726d8",
+      "src/tools/shared/tool-error-types.ts": "30ea12812f6a2858fed65005a09f87d56acba5146a70e71573f6bca5963c9263",
+      "src/tools/tool-contracts.ts": "111a3268d60f3d169660d30b26f5faafe04ab9c6e5a6dfd0b52885bc6d28bccb",
+      "src/tools/tool-registry.service.ts": "27593b1524372270722299c987bfa618134254fe5c43ea3cfc8ce664939bd718",
+      "src/types/tool-action.contract.ts": "8d7d0c6ed897a41ad2d434485eab67a7b79528d361b66432770e505c543e0923",
+      "src/types/tool-replay.types.ts": "92817572dfa4f4cae19c1ed8f20902a0ce2b0ce9061c0bcec2317ba3a5f2620d",
+      "src/types/tool.types.ts": "54137debbbc66983b56b13427c0c1a676a73646695f619a0595fdd52e1bc3bf0",
+      "tests/biz/action-execution/action-executor.service.spec.ts": "3f2bd6cf31bfda8356c50bc7c489c97148e97ecdecd3c5f2fa4c43bd73518bc6",
+      "tests/tools/actions/tool-action.service.spec.ts": "f3e980e768dac10f1e865105d7c8eb9124f2a42f7e4cdeb649e9b52cde4234a0",
+      "tests/tools/tool-contracts.spec.ts": "e97fdc1621a10df38ccd16b2ab85d1efeca7d042a68dbc45a92a37acf18adf68"
+    },
+    "wireCompatibility": {
+      "builtInToolPoliciesByteEquivalent": true,
+      "tools": 15,
+      "actionAndReplySqlVocabularyCompatible": true,
+      "evidenceVocabularyCompatible": true,
+      "builtInActionIdentityKindsCompatible": true,
+      "note": "Source-level protocol comparison; not a database migration or live SQL execution.",
+      "baseline": "78a10a29d9fc1c632355e4404cb42bd787c1c148"
+    },
+    "validation": {
+      "command": "pnpm run ci:check",
+      "exitCode": 0,
+      "suitesPassed": 564,
+      "suitesSkipped": 2,
+      "testsPassed": 9249,
+      "testsSkipped": 12,
+      "snapshotsPassed": 3,
+      "newTests": 21,
+      "log": "/private/tmp/cake-runtime-contracts-20261104/ci-final-verified.log",
+      "businessRules": 55,
+      "businessTopics": 7
+    },
+    "verificationLimits": [
+      "Default 7 opt-in PostgreSQL reply-chain tests and 5 existing real-job-data tests remain skipped in this run.",
+      "SQL vocabulary comparison is source-level; no database migration/restart drill rerun.",
+      "No live model, provider, production query, deployment or mode switch performed."
+    ],
+    "productionChanged": false,
+    "migrationsChanged": false,
+    "committed": false,
+    "pushed": false
+  }
+}

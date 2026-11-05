@@ -1,9 +1,9 @@
 // business-rules: SW-02
 import { createOutputRuleFinding } from '../output-rule-catalog';
 
-const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
+const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|公积金|意外险|雇主责任险/;
 const INSURANCE_POLICY_PROMISE_PATTERN =
-  /(?:有|交|缴|买|包|含|提供|上)[^。！？\n]{0,6}(?:五险(?:一金)?|社保|保险|意外险|雇主责任险)/;
+  /(?:有|交|缴|买|包|含|提供|上)[^。！？\n]{0,6}(?:五险(?:一金)?|公积金|社保|保险|意外险|雇主责任险)/;
 
 /**
  * 任职要求语境：岗位把"社保证明/劳动合同"当作应聘门槛（典型是"第二职业"类岗位要求
@@ -49,7 +49,7 @@ function splitClaimSentences(text: string): string[] {
  * - 不判断岗位实际是否提供保险，也不解析 jobSalary/benefits 字段。
  *
  * 维护边界：
- * - 如果新增政策词（如公积金、商业险）需要同等收敛，补到 INSURANCE_POLICY_TERM_PATTERN。
+ * - 公积金与保险/社保共用主动提及边界；如新增政策词，补到 INSURANCE_POLICY_TERM_PATTERN。
  *
  * 跨轮豁免：候选人可能上轮问"交社保吗"、Agent 先反问门店、本轮才作答——此时本轮
  * userMessage（如"第一个"）不含保险词，但这仍是"候选人问、Agent 答"，不是主动外抛。

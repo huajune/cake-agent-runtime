@@ -1,3 +1,4 @@
+// business-rules: SH-05
 import type { BrandItem } from '@/sponge/sponge.types';
 import type { BrandAliasHint } from '@resolution/turn-hints/producers/rule-track';
 import type { SessionFacts } from './short-term.types';
@@ -11,6 +12,11 @@ import { isSessionFactValue } from './short-term.types';
  */
 export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎。只从候选人本轮表达中提取表单外软事实。
 
+输出的是本轮增量，不是完整档案：[已有偏好]和[历史对话]仅用于理解指代与比较变化，不得回填或复述其中未变化的字段。
+preferences 的固定字段没有本轮新增、修改或明确撤销时一律填 null；null 表示保持旧值，不表示清空。
+纯确认、致谢或仅询问岗位/合同事实而没有表达本人偏好变化时，preferences 全部填 null，不生成偏好证据或班次引用。
+例如已有“晚上8点以后”，本轮只说“好的”；或已有出勤条件，本轮只问“没做满六个月门店不要了怎么办”：都不重复输出旧班次、城市或其他偏好。
+
 允许输出：
 - preferences：salary、position、schedule、city、district、location、labor_form、
   delayed_intent、short_term、open_position、time_windows、schedule_constraint、available_after
@@ -22,7 +28,7 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎�
   每条证据最多200个Unicode字符，优先用一句话（建议30—100字）提炼，只写该字段的依据。
   保留人物归属、否定、例外、前提条件、时间范围及不确定性；不得为满足字数删掉这些关键语义。
   不复述其他字段、历史全量事实或推理过程；不要复制整段消息，也不要用省略号截头截尾。
-  无法在预算内完整表达时，省略本轮该字段更新，不能猜测或丢失条件后强行写入。
+  无法在预算内完整表达时，本轮该偏好字段填 null，不能猜测或丢失条件后强行写入。
 - schedule_constraint_citation.quote 和 labor_form_intent.quote：选取足以保留限定的连续原话，最多200个Unicode字符；不得改写或截断拼接。
 - reasoning：仅说明本轮有无变化，不列逐字段推理链，不作为字段证据；无新信息固定写“本轮无新信息”
 
@@ -31,7 +37,7 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎�
    身高、体重、户籍等报名资料。
 2. 禁止输出报名门店、报名岗位、面试时间等事务状态。
 3. 只采信候选人自己的表达；招聘广告、助手话术、岗位要求不是候选人偏好。
-4. 省略表示本轮没有变化；明确撤销/清空时用 labor_form_intent.clear 或相应字段的空值。
+4. preferences 中 null 表示本轮没有变化；明确撤销/清空时用 labor_form_intent.clear、文本空串、列表空数组，或 schedule_constraint 对应子字段的 null / [] / false；不要用整个偏好字段的 null 表示撤销。
 5. 城市只接受候选人明示或唯一归属地理线索；同名商圈、品牌名中的地名不得推断城市。
 6. position 只记录工种，不能把经营品类自动推成具体岗位。
 7. brand_intents 只记录本轮新表达；无法链接的排斥可用 brand=null。

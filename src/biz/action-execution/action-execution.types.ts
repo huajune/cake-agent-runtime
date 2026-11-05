@@ -1,12 +1,16 @@
-export type ActionMode = 'off' | 'observe' | 'execute';
-export type ActionState =
-  | 'registered'
-  | 'executing'
-  | 'succeeded'
-  | 'failed'
-  | 'unknown'
-  | 'cancelled';
-export type LocalSyncState = 'pending' | 'complete';
+import type {
+  ActionEvidenceKind,
+  ActionExecutionStatus,
+  ActionMode,
+  ActionState,
+  LocalSyncState,
+} from '@shared-types/action-execution.contract';
+import { ACTION_STATE } from '@shared-types/action-execution.contract';
+export type {
+  ActionMode,
+  ActionState,
+  LocalSyncState,
+} from '@shared-types/action-execution.contract';
 
 export interface ActionIntent {
   corpId: string;
@@ -15,6 +19,7 @@ export interface ActionIntent {
   logicalTurnId: string;
   /** Stable, validated intent version; normally the persisted logical turn ID. */
   intentId: string;
+  /** Registry extension key; built-in callers use ACTION_KIND from the shared contract. */
   kind: string;
   /** Conflict domain, e.g. work-order:123 (shared by cancel and modify). */
   target: string;
@@ -30,7 +35,7 @@ export interface ActionIntent {
 }
 
 export interface ActionEvidence {
-  kind: 'completed' | 'accepted' | 'already_satisfied' | 'definitive_no_effect' | 'indeterminate';
+  kind: ActionEvidenceKind;
   externalId?: string;
   goalSatisfied?: boolean;
   /** An authoritative terminal response, not merely a current-state observation. */
@@ -39,14 +44,18 @@ export interface ActionEvidence {
 }
 
 export type ActionCompletion<T> =
-  | { status: 'succeeded'; result: T; evidence: ActionEvidence }
-  | { status: 'failed'; result?: T; evidence: ActionEvidence; retryable: boolean }
-  | { status: 'unknown' | 'executing'; result?: T; evidence: ActionEvidence };
+  | { status: typeof ACTION_STATE.SUCCEEDED; result: T; evidence: ActionEvidence }
+  | { status: typeof ACTION_STATE.FAILED; result?: T; evidence: ActionEvidence; retryable: boolean }
+  | {
+      status: typeof ACTION_STATE.UNKNOWN | typeof ACTION_STATE.EXECUTING;
+      result?: T;
+      evidence: ActionEvidence;
+    };
 
 export interface ActionExecution<T> {
   actionId: string;
   requestId: string;
-  status: ActionState | 'blocked';
+  status: ActionExecutionStatus;
   result?: T;
   evidence?: ActionEvidence;
   localSync: LocalSyncState;

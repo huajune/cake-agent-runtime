@@ -19,6 +19,10 @@ import {
   DeliveryFailureError,
 } from '../types';
 import type { AgentError } from '@shared-types/agent-error.types';
+import {
+  TOOL_REPLAY_STATUS,
+  UNRESOLVED_TOOL_REPLAY_STATUSES,
+} from '@shared-types/tool-replay.types';
 
 @Injectable()
 export class MessageProcessingFailureService {
@@ -369,23 +373,22 @@ export class MessageProcessingFailureService {
       (item) =>
         item.toolName === 'duliday_interview_booking' &&
         !item.component &&
-        item.status === 'succeeded',
+        item.status === TOOL_REPLAY_STATUS.SUCCEEDED,
     );
     const invitePending = evidence.some(
       (item) =>
-        item.component === 'groupInvite' &&
-        ['unknown', 'executing', 'pending'].includes(item.status),
+        item.component === 'groupInvite' && UNRESOLVED_TOOL_REPLAY_STATUSES.has(item.status),
     );
     if (bookingSucceeded && invitePending) {
       return '报名已有成功回执，进群邀请的结果还需要核实，先不用重复报名或重复邀请。';
     }
-    if (evidence.every((item) => item.status === 'succeeded')) {
+    if (evidence.every((item) => item.status === TOOL_REPLAY_STATUS.SUCCEEDED)) {
       return '刚才的操作已有成功回执，详细情况还需要确认，先不用重复提交。';
     }
-    if (evidence.some((item) => item.status === 'succeeded')) {
+    if (evidence.some((item) => item.status === TOOL_REPLAY_STATUS.SUCCEEDED)) {
       return '部分操作已有成功回执，其余还需要确认，先不用重复提交。';
     }
-    if (evidence.some((item) => ['unknown', 'executing', 'pending'].includes(item.status))) {
+    if (evidence.some((item) => UNRESOLVED_TOOL_REPLAY_STATUSES.has(item.status))) {
       return '刚才的操作结果暂时还不能确认，先不用重复提交，请等核实后的结果。';
     }
     return '这次操作暂时没有执行，请等确认后再处理。';
