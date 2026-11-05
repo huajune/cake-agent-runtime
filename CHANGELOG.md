@@ -91,7 +91,7 @@
 - PR #1483 提交 `5e50c37b` 的远端 CI 已通过，包括构建、单元测试和 AppModule DI 冒烟。[CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/41818430713)
 - PR #1483 2026-11-05 10:24（北京时间），官方 Codex 完成本次手动重审，结果为零项发现，GitHub 已为同一提交记录正式批准。[审查回执](https://github.com/huajune/cake-agent-runtime/pull/1483#issuecomment-6647971169) · [正式批准](https://github.com/huajune/cake-agent-runtime/pull/1483#pullrequestreview-5778978874)
 - PR #1483 已按仓库约定停用旧 Claude 审查工作流。Codex 验证流程已撤销旧任务因认证失败而生成的阻塞评审。
-- PR #1483 本次班次抽取的真实 Agent 链路及逐条业务评审尚未执行；本地测试不替代该业务验证。
+- PR #1483 2026-11-05，用户确认该部分已完成验证，并明确要求沿用已做验证直接发版。本次发布执行沿用这一确认，未重复执行该链路。
 <!-- release:pending:end -->
 
 ## [11.15.1] - 2026-11-04
