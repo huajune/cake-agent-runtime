@@ -105,6 +105,9 @@ export interface DeliveryContext {
 }
 
 export interface DeliveryResult {
+  /** Exact text accepted by the send API. Never includes unsent/unknown segments. */
+  acceptedText?: string;
+  unknownSegments?: number;
   success: boolean;
   segmentCount: number;
   failedSegments: number;

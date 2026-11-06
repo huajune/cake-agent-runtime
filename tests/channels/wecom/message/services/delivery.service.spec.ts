@@ -1,3 +1,4 @@
+import { HttpRequestError } from '@infra/client-http/http-request-error';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import { MessageSenderService } from '@wecom/message-sender/message-sender.service';
@@ -60,8 +61,9 @@ describe('MessageDeliveryService', () => {
 
     service = module.get<MessageDeliveryService>(MessageDeliveryService);
     jest.clearAllMocks();
+    mockMessageSenderService.sendMessage.mockReset();
 
-    mockMessageSenderService.sendMessage.mockResolvedValue({ success: true });
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0 });
     mockTypingPolicyService.shouldSplit.mockImplementation((content: string) =>
       MessageSplitter.needsSplit(content),
     );
@@ -144,8 +146,10 @@ describe('MessageDeliveryService', () => {
 
     it('assigns stable per-segment externalRequestIds and reuses them on retry', async () => {
       mockMessageSenderService.sendMessage
-        .mockRejectedValueOnce(new Error('transient'))
-        .mockResolvedValue({ success: true });
+        .mockRejectedValueOnce(
+          new HttpRequestError('connection refused', undefined, 'ECONNREFUSED'),
+        )
+        .mockResolvedValue({ errcode: 0 });
 
       await service.deliverReply(
         { content: 'First paragraph\n\nSecond paragraph' },
@@ -379,14 +383,13 @@ describe('MessageDeliveryService', () => {
       );
     });
 
-    it('should expose delivered segment count for partial failures (retry exhausted)', async () => {
-      // 段 1 成功；段 2 两次都失败（重试耗尽）；段 3 成功。
-      // 调用序：seg1=call1, seg2=call2(失败)+call3(重试失败), seg3=call4。
+    it('stops at an unknown second segment without retrying it or sending the third', async () => {
+      // First accepted, second ambiguous: never send the second again or reach the third.
       mockMessageSenderService.sendMessage
-        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ errcode: 0 })
         .mockRejectedValueOnce(new Error('Segment 2 failed'))
         .mockRejectedValueOnce(new Error('Segment 2 retry failed'))
-        .mockResolvedValueOnce({ success: true });
+        .mockResolvedValueOnce({ errcode: 0 });
 
       let error: DeliveryFailureError | null = null;
       try {
@@ -402,16 +405,21 @@ describe('MessageDeliveryService', () => {
       expect(error).toBeInstanceOf(DeliveryFailureError);
       expect(error?.result.segmentCount).toBe(3);
       expect(error?.result.failedSegments).toBe(1);
-      expect(error?.result.deliveredSegments).toBe(2);
+      expect(error?.result.deliveredSegments).toBe(1);
+      expect(error?.result.unknownSegments).toBe(1);
+      expect(error?.result.acceptedText).toBe('First part');
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(2);
     });
 
     it('should recover a transient segment failure via one retry', async () => {
       // 段 2 首次失败、重试成功 → 整体投递成功,不抛 DeliveryFailureError。
       mockMessageSenderService.sendMessage
-        .mockResolvedValueOnce({ success: true }) // seg1
-        .mockRejectedValueOnce(new Error('transient')) // seg2 first attempt
-        .mockResolvedValueOnce({ success: true }) // seg2 retry
-        .mockResolvedValueOnce({ success: true }); // seg3
+        .mockResolvedValueOnce({ errcode: 0 }) // seg1
+        .mockRejectedValueOnce(
+          new HttpRequestError('connection refused', undefined, 'ECONNREFUSED'),
+        ) // seg2 first attempt
+        .mockResolvedValueOnce({ errcode: 0 }) // seg2 retry
+        .mockResolvedValueOnce({ errcode: 0 }); // seg3
 
       const result = await service.deliverReply(
         { content: 'First part\n\nSecond part\n\nThird part' },
@@ -454,6 +462,35 @@ describe('MessageDeliveryService', () => {
       await service.onModuleInit();
 
       expect((service as any).calculateDelay('短句', false)).toBe(2500);
+    });
+  });
+  it.each([undefined, {}, { errcode: '0' }, { success: true }])(
+    'does not accept an unconfirmed API response %p',
+    async (response) => {
+      mockMessageSenderService.sendMessage.mockResolvedValue(response);
+      await expect(
+        service.deliverReply({ content: 'one' }, deliveryContext, false),
+      ).rejects.toMatchObject({
+        result: { segmentCount: 1, unknownSegments: 1, deliveredSegments: 0 },
+      });
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not project unsent text when hosting is paused between segments', async () => {
+    mockActionPermitService.evaluate
+      .mockResolvedValueOnce({ allowed: true })
+      .mockResolvedValueOnce({ allowed: true })
+      .mockResolvedValue({ allowed: false, reason: 'hosting_paused' });
+    const result = await service.deliverReply(
+      { content: 'accepted text\n\nunsent text' },
+      deliveryContext,
+      false,
+    );
+    expect(result).toMatchObject({
+      skipped: true,
+      acceptedText: 'accepted text',
+      deliveredSegments: 1,
     });
   });
 });

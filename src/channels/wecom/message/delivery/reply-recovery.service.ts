@@ -8,7 +8,11 @@ import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyWorkflowService } from '../application/reply-workflow.service';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
-import { REPLY_TURN_STATUS } from '@biz/reply-execution/reply-execution.constants';
+import {
+  REPLY_TURN_STATUS,
+  REPLY_DELIVERY_POLICY,
+  REPLY_DELIVERY_OUTCOME,
+} from '@biz/reply-execution/reply-execution.constants';
 import { CRON_JOB } from '@infra/queue/cron.constants';
 import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
@@ -62,6 +66,13 @@ export class ReplyRecoveryService {
   }
 
   private async resumeTurn(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<void> {
+    if (turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
+      const terminal = await this.turns.interrupt(turn);
+      if (terminal.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.INTERRUPTED)
+        this.manualReview(turn.logicalTurnId, 'ordinary_reply_interrupted_no_resend');
+      await this.workflow.resumePersistedReply(terminal, '', assertOwned);
+      return;
+    }
     if (!turn.plan && turn.status === REPLY_TURN_STATUS.PREPARING) {
       this.logger.error(
         `reply.manual_review_required generation_interrupted ${turn.logicalTurnId}`,

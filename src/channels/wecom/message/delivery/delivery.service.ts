@@ -1,3 +1,9 @@
+import {
+  REPLY_DELIVERY_POLICY,
+  REPLY_DELIVERY_OUTCOME,
+  REPLY_TURN_STATUS,
+} from '@biz/reply-execution/reply-execution.constants';
+import { ReplySendError, classifyReplySendError } from './reply-send-error';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
@@ -65,7 +71,7 @@ export class MessageDeliveryService implements OnModuleInit {
   ): Promise<DeliveryResult> {
     // Resolve/freeze before any provider call. A stored plan is always authoritative.
     const turn = await this.prepareReplyPlan(reply, context);
-    if (turn && this.durable) {
+    if (turn && this.durable && turn.deliveryPolicy !== REPLY_DELIVERY_POLICY.SINGLE_PASS) {
       if (recordMonitoring) await this.wecomObservability.markDeliveryStart(context.messageId);
       const result = await this.durable.deliver(turn, context);
       if (recordMonitoring)
@@ -79,8 +85,10 @@ export class MessageDeliveryService implements OnModuleInit {
       }
       return result;
     }
+    context = { ...context, replyTurn: turn ?? context.replyTurn };
     const startTime = Date.now();
     const { messageId, contactName } = context;
+    let knownResult: DeliveryResult | undefined;
 
     try {
       if (recordMonitoring) {
@@ -109,13 +117,14 @@ export class MessageDeliveryService implements OnModuleInit {
         this.logger.warn(
           `[${contactName}] 投递前行动许可拒绝（${denied}），${reply.content.length} 字符回复全部丢弃 (chatId=${context.chatId})`,
         );
+        await this.finishOrdinary(turn, skippedResult);
         return skippedResult;
       }
 
       const needsSplit = this.typingPolicy.shouldSplit(reply.content);
-      const result = needsSplit
+      const result = (knownResult = needsSplit
         ? await this.deliverSegments(reply.content, context)
-        : await this.deliverSingle(reply.content, context);
+        : await this.deliverSingle(reply.content, context));
 
       const totalTime = Date.now() - startTime;
 
@@ -126,27 +135,38 @@ export class MessageDeliveryService implements OnModuleInit {
         `[${contactName}] 消息发送完成，耗时 ${totalTime}ms，发送 ${result.segmentCount} 个片段`,
       );
 
+      await this.finishOrdinary(turn, result);
       return { ...result, totalTime };
     } catch (error) {
-      if (error instanceof ReplyDeferredError) throw error;
       const totalTime = Date.now() - startTime;
       const errorMessage = toErrorMessage(error);
       const failureResult =
         error instanceof DeliveryFailureError
           ? { ...error.result, totalTime }
-          : {
-              success: false,
-              segmentCount: 0,
-              failedSegments: 1,
-              deliveredSegments: 0,
-              totalTime,
-              error: errorMessage,
-            };
+          : knownResult
+            ? { ...knownResult, totalTime, error: errorMessage }
+            : {
+                success: false,
+                segmentCount: 0,
+                failedSegments: 1,
+                deliveredSegments: 0,
+                totalTime,
+                error: errorMessage,
+                unknownSegments: error instanceof ReplySendError && error.unknownResult ? 1 : 0,
+              };
 
       if (recordMonitoring) {
-        await this.wecomObservability.markDeliveryEnd(messageId, failureResult);
+        await Promise.resolve(
+          this.wecomObservability.markDeliveryEnd(messageId, failureResult),
+        ).catch(() => undefined);
       }
 
+      try {
+        await this.finishOrdinary(turn, failureResult);
+      } catch (settleError) {
+        // Preserve accepted text even if its terminal summary still needs local acknowledgement repair.
+        throw new DeliveryFailureError(toErrorMessage(settleError), failureResult);
+      }
       this.logger.error(`[${contactName}] 消息发送失败: ${errorMessage}`);
       throw new DeliveryFailureError(errorMessage, failureResult);
     }
@@ -194,6 +214,11 @@ export class MessageDeliveryService implements OnModuleInit {
   ): Promise<ReplyTurn | undefined> {
     const turn = await this.durable?.resolveTurn(context);
     if (!turn || !this.durable) return undefined;
+    if (turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
+      return turn.status === REPLY_TURN_STATUS.PREPARING
+        ? this.durable.turns.startDelivery(turn)
+        : turn;
+    }
     const segments = !reply.content.trim()
       ? []
       : this.typingPolicy.shouldSplit(reply.content)
@@ -212,7 +237,9 @@ export class MessageDeliveryService implements OnModuleInit {
         outboundContent,
         this.segmentExternalRequestId(context, 0, 1),
       );
-      await this.wecomObservability.markFirstSegmentSent(context.messageId);
+      await Promise.resolve(this.wecomObservability.markFirstSegmentSent(context.messageId)).catch(
+        () => undefined,
+      );
 
       this.logger.log(`[${contactName}] 单条消息发送成功: "${this.truncate(outboundContent)}"`);
       return {
@@ -220,12 +247,21 @@ export class MessageDeliveryService implements OnModuleInit {
         segmentCount: 1,
         failedSegments: 0,
         deliveredSegments: 1,
+        acceptedText: outboundContent,
         totalTime: 0,
       };
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.error(`[${contactName}] 单条消息发送失败: ${errorMessage}`);
-      throw error;
+      throw new DeliveryFailureError(errorMessage, {
+        success: false,
+        segmentCount: 1,
+        deliveredSegments: 0,
+        failedSegments: 1,
+        unknownSegments: error instanceof ReplySendError && error.unknownResult ? 1 : 0,
+        acceptedText: '',
+        totalTime: 0,
+      });
     }
   }
 
@@ -241,6 +277,8 @@ export class MessageDeliveryService implements OnModuleInit {
     this.logger.debug(`[${contactName}] 拆分结果: ${JSON.stringify(segments)}`);
 
     let successCount = 0;
+    const accepted: string[] = [];
+    let unknownSegments = 0;
     let failedCount = 0;
     let firstSegmentSent = false;
     let pauseInterrupted: ActionDenialReason | undefined;
@@ -280,16 +318,21 @@ export class MessageDeliveryService implements OnModuleInit {
           i,
         );
         successCount++;
+        accepted.push(segment);
         if (!firstSegmentSent) {
           firstSegmentSent = true;
-          await this.wecomObservability.markFirstSegmentSent(context.messageId);
+          await Promise.resolve(
+            this.wecomObservability.markFirstSegmentSent(context.messageId),
+          ).catch(() => undefined);
         }
       } catch (error) {
         failedCount++;
+        unknownSegments += error instanceof ReplySendError && error.unknownResult ? 1 : 0;
         const errorMessage = toErrorMessage(error);
         this.logger.error(
           `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败（含重试）: ${errorMessage}`,
         );
+        if (!context.taskRecovery) break;
       }
     }
 
@@ -307,6 +350,8 @@ export class MessageDeliveryService implements OnModuleInit {
       segmentCount: segments.length,
       failedSegments: failedCount,
       deliveredSegments: successCount,
+      acceptedText: accepted.join('\n\n'),
+      unknownSegments,
       totalTime: 0,
       skipped: Boolean(pauseInterrupted) || undefined,
       skipReason: pauseInterrupted,
@@ -355,6 +400,8 @@ export class MessageDeliveryService implements OnModuleInit {
     externalRequestId?: string,
     segmentIndex = 0,
   ): Promise<void> {
+    if (context.replyTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS && this.durable)
+      return this.durable.sendOrdinarySegment(context.replyTurn, context, text, segmentIndex);
     if (this.durable)
       return this.durable.observeLegacy(context, text, segmentIndex, () =>
         this.sendLegacySegment(context, text, externalRequestId),
@@ -371,7 +418,7 @@ export class MessageDeliveryService implements OnModuleInit {
     let lastError: unknown;
     for (let attempt = 0; attempt <= SEGMENT_SEND_RETRIES; attempt += 1) {
       try {
-        await this.messageSenderService.sendMessage({
+        const response = await this.messageSenderService.sendMessage({
           token,
           imBotId,
           imContactId,
@@ -382,22 +429,40 @@ export class MessageDeliveryService implements OnModuleInit {
           externalRequestId,
           _apiType,
         });
+        if (!context.taskRecovery && response?.errcode !== 0)
+          throw new ReplySendError(true, false, 'reply_send_result_unconfirmed');
         if (attempt > 0) {
           this.logger.log(`[${context.contactName}] 单段重试第 ${attempt} 次发送成功`);
         }
         return;
       } catch (error) {
-        lastError = error;
+        lastError = context.taskRecovery ? error : classifyReplySendError(error);
+        if (lastError instanceof ReplySendError && !lastError.retryable) throw lastError;
         if (attempt < SEGMENT_SEND_RETRIES) {
           const errorMessage = toErrorMessage(error);
           this.logger.warn(
             `[${context.contactName}] 单段发送失败,${SEGMENT_SEND_RETRY_DELAY_MS}ms 后重试: ${errorMessage}`,
           );
-          await this.sleep(SEGMENT_SEND_RETRY_DELAY_MS);
+          await this.sleep(SEGMENT_SEND_RETRY_DELAY_MS * 2 ** attempt);
         }
       }
     }
     throw lastError;
+  }
+
+  private async finishOrdinary(turn: ReplyTurn | undefined, result: DeliveryResult): Promise<void> {
+    if (turn?.deliveryPolicy !== REPLY_DELIVERY_POLICY.SINGLE_PASS || !this.durable) return;
+    await this.durable.turns.settle(turn, {
+      outcome: result.unknownSegments
+        ? REPLY_DELIVERY_OUTCOME.UNKNOWN
+        : !result.success
+          ? REPLY_DELIVERY_OUTCOME.INCOMPLETE
+          : result.skipped
+            ? REPLY_DELIVERY_OUTCOME.SKIPPED
+            : REPLY_DELIVERY_OUTCOME.COMPLETE,
+      accepted: result.deliveredSegments ?? 0,
+      total: result.segmentCount,
+    });
   }
 
   /** 同一段重试复用同一 externalRequestId；多段则用稳定段序号避免渠道幂等误吞后续段。 */

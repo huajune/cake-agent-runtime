@@ -107,6 +107,7 @@ new = [
  '20261021110000_booking_poll_seek_index.sql',
  '20261021130000_version_booking_projections.sql',
  '20261023060000_runtime_retention_batches.sql',
+ '20261106160000_ordinary_reply_single_pass.sql',
 ]
 for name in new:
     apply(name, source('supabase/migrations/' + name, delivery='reply_turns' in name))
@@ -117,12 +118,14 @@ for path in [
  'tests/biz/action-execution/action-retention.postgres.sql',
  'tests/biz/action-execution/booking-projection.postgres.sql',
  'tests/biz/reply-execution/reply-turns.integration.sql',
+ 'tests/biz/reply-execution/ordinary-reply.integration.sql',
 ]:
     apply(Path(path).name, source(path, delivery='reply-execution' in path))
 apply('action-ops-projection.integration.sql', source('tests/biz/action-execution/action-ops-projection.integration.sql'))
 
 for path, argv in [
  ('tests/biz/action-execution/action-records-concurrency.py', [args.container, args.database]),
+ ('tests/biz/reply-execution/ordinary-reply-concurrency.py', [args.container, args.database]),
  ('tests/biz/action-execution/booking-projection-concurrency.py', ['--container', args.container, '--database', args.database]),
 ]:
     script = args.output / Path(path).name

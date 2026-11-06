@@ -4,6 +4,7 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { ReplyTurn } from './reply-execution.types';
 import {
   REPLY_PROJECTION_STATUS,
+  isReplyDeliveryPolicy,
   REPLY_RECOVERY_TASK,
   REPLY_TURN_STATUS,
 } from '@biz/reply-execution/reply-execution.constants';
@@ -110,6 +111,8 @@ export class ReplyTurnsRepository extends BaseRepository {
   }
 
   private fromDb(row: Record<string, unknown>): ReplyTurn {
+    if (!isReplyDeliveryPolicy(row.delivery_policy))
+      throw new Error('reply_delivery_policy_schema_unconfirmed');
     return {
       corpId: row.corp_id as string,
       accountId: row.account_id as string,
@@ -122,6 +125,8 @@ export class ReplyTurnsRepository extends BaseRepository {
       owner: row.owner as string | null,
       fence: row.fence as number,
       plan: row.plan as ReplyTurn['plan'],
+      deliveryPolicy: row.delivery_policy as ReplyTurn['deliveryPolicy'],
+      deliveryResult: row.delivery_result as ReplyTurn['deliveryResult'],
       recovery: row.recovery as Record<string, unknown>,
       projectionStatus: row.projection_status as ReplyTurn['projectionStatus'],
     };

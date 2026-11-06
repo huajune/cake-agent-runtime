@@ -83,6 +83,7 @@ type SendCall = { url: string; body: Record<string, unknown> };
 isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   let client: RuntimePostgresClientFixture;
   let module: TestingModule | undefined;
+  let legacyFrozen: boolean;
   let groupToken: string;
   let directoryGroupId: string;
   let sendCalls: SendCall[];
@@ -103,6 +104,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   beforeEach(() => {
     // This database is explicitly disposable and separate from the SQL drill database.
     client.query('TRUNCATE public.agent_action_records, public.agent_reply_turns CASCADE;');
+    legacyFrozen = false;
     groupToken = 'fixture-group-credential-v1';
     directoryGroupId = groupId;
     sendCalls = [];
@@ -172,6 +174,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         'buildSuccessMetadata',
         'markDeliveryStart',
         'markDeliveryEnd',
+        'markFirstSegmentSent',
       ].map((name) => [name, jest.fn().mockResolvedValue(undefined)]),
     );
     module = await Test.createTestingModule({
@@ -278,7 +281,11 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         },
         {
           provide: TypingPolicyService,
-          useValue: { shouldSplit: () => true, getSnapshot: () => ({ splitSend: true }) },
+          useValue: {
+            shouldSplit: () => true,
+            getSnapshot: () => ({ splitSend: true }),
+            calculateDelay: () => 0,
+          },
         },
         {
           provide: MessageProcessingFailureService,
@@ -335,6 +342,36 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       ],
     }).compile();
     const workflow = module.get(ReplyWorkflowService);
+    if (legacyFrozen) {
+      // Simulate the old writer, so compatibility tests retain a real frozen SQL obligation.
+      const repository = module.get(ReplyTurnsRepository);
+      const transition = repository.transition.bind(repository);
+      jest.spyOn(repository, 'transition').mockImplementation((operation, input) =>
+        transition(
+          operation,
+          operation === 'open'
+            ? {
+                ...input,
+                deliveryPolicy: 'frozen',
+                recovery: {
+                  ...(input.recovery as object),
+                  userMessage: '开始验收',
+                  primary: {
+                    ...(input.recovery as { primary: object }).primary,
+                    messageId: inboundId,
+                    messageType: MessageType.TEXT,
+                    source: MessageSource.MOBILE_PUSH,
+                    isSelf: false,
+                    timestamp: Date.now(),
+                    payload: { text: '开始验收' },
+                    contactName: '隔离测试',
+                  },
+                },
+              }
+            : input,
+        ),
+      );
+    }
     await module.init();
     jest.spyOn(module.get(ActionRecoveryService), 'recoverDue');
     jest.spyOn(module.get(ReplyRecoveryService), 'recoverDue');
@@ -378,6 +415,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     return client.query<{
       turn: {
         status: string;
+        delivery_policy: string;
+        delivery_result: { outcome: string; accepted: number; total: number };
         recovery: Record<string, unknown>;
         plan: { segments: Array<{ requestId: string }> };
       };
@@ -385,13 +424,14 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         status: string;
         local_sync: string;
         dispatch_attempt_id: string;
+        request_id: string;
         result: unknown;
         evidence: ActionRecord['evidence'];
       }>;
       callbackEvidenceCount: number;
     }>(`SELECT json_build_object(
-      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,plan FROM agent_reply_turns LIMIT 1) t),
-      'actions',(SELECT coalesce(json_agg(a ORDER BY a.created_at),'[]'::json) FROM (SELECT status,local_sync,dispatch_attempt_id,result,evidence,created_at FROM agent_action_records) a),
+      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,plan,delivery_policy,delivery_result FROM agent_reply_turns LIMIT 1) t),
+      'actions',(SELECT coalesce(json_agg(a ORDER BY a.created_at),'[]'::json) FROM (SELECT status,local_sync,dispatch_attempt_id,request_id,result,evidence,created_at FROM agent_action_records) a),
       'callbackEvidenceCount',(SELECT count(*) FROM agent_action_evidence WHERE completion->'result'->>'stage'='delivery_callback'));`);
   }
 
@@ -437,7 +477,9 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     }
     expect(state.callbackEvidenceCount).toBe(0);
     expect(sendCalls.map((call) => call.body.externalRequestId)).toEqual(
-      state.turn.plan.segments.map((segment) => segment.requestId),
+      state.turn.delivery_policy === 'single_pass'
+        ? state.actions.map((action) => action.request_id)
+        : state.turn.plan.segments.map((segment) => segment.requestId),
     );
     expect(ackPendingMessageIds).toHaveBeenCalledWith(chatId, [inboundId]);
     expect(markMessageAsProcessedAsync).toHaveBeenCalledWith(inboundId);
@@ -465,6 +507,11 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       expect(sendCalls).toHaveLength(2);
       expect(sendCalls.map((call) => (call.body.payload as { text: string }).text)).toEqual(parts);
       assertAcceptedTurn();
+      expect(databaseState().turn).toMatchObject({
+        delivery_policy: 'single_pass',
+        plan: null,
+        delivery_result: { outcome: 'complete', accepted: 2, total: 2 },
+      });
       expect(module!.get(ActionRecoveryService).recoverDue).not.toHaveBeenCalled();
       expect(module!.get(ReplyRecoveryService).recoverDue).not.toHaveBeenCalled();
       expect(repairJobs).toHaveLength(0);
@@ -478,7 +525,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     30000,
   );
 
-  it('retains an unknown send and its original plan after restart without blindly retrying', async () => {
+  it('legacy frozen: retains an unknown send and its original plan after restart without blindly retrying', async () => {
+    legacyFrozen = true;
     await start();
     onSend = async () => {
       throw new Error('simulated transport timeout');
@@ -507,7 +555,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(pending).toEqual(new Set([inboundId, newerInputId]));
   }, 30000);
 
-  it('retries an unconfirmed manual notification after restart without redispatching an unknown send', async () => {
+  it('legacy frozen: retries an unconfirmed manual notification after restart without redispatching an unknown send', async () => {
+    legacyFrozen = true;
     await start();
     onSend = async () => {
       throw new Error('simulated transport timeout');
@@ -537,7 +586,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(ackPendingMessageIds).not.toHaveBeenCalled();
   }, 30000);
 
-  it('resumes only the unsent group segment after a database interruption and observe restart', async () => {
+  it('legacy frozen: resumes only the unsent group segment after a database interruption and observe restart', async () => {
+    legacyFrozen = true;
     await start();
     const failure = interruptBeforeSecondAction();
     await submitInput('group');
@@ -561,7 +611,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     assertAcceptedTurn();
   }, 30000);
 
-  it('repairs an accepted API result after database write failures without sending either segment again', async () => {
+  it('legacy frozen: repairs an accepted API result after database write failures without sending either segment again', async () => {
+    legacyFrozen = true;
     await start();
     jest
       .spyOn(module!.get(ActionRecordsRepository), 'settle')
@@ -592,7 +643,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     assertAcceptedTurn();
   }, 30000);
 
-  it('does not move the unsent segment to another group when the original input is replayed', async () => {
+  it('legacy frozen: does not move the unsent segment to another group when the original input is replayed', async () => {
+    legacyFrozen = true;
     await start();
     const failure = interruptBeforeSecondAction();
     await submitInput('group');
@@ -609,5 +661,191 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(JSON.stringify(databaseState().turn.recovery)).not.toContain(directoryGroupId);
     expect(ackPendingMessageIds).not.toHaveBeenCalled();
     expect(runInboundTurn).toHaveBeenCalledTimes(1);
+  }, 30000);
+  it('closes an unknown ordinary send, preserves evidence and admits the next user input', async () => {
+    await start();
+    onSend = async () => {
+      throw new Error('simulated timeout');
+    };
+    await submitInput('enterprise');
+    expect(sendCalls).toHaveLength(1);
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      plan: null,
+      delivery_result: { outcome: 'unknown' },
+    });
+    expect(databaseState().actions[0].status).toBe('unknown');
+    onSend = undefined;
+    await restart('observe');
+    await recoverStoredTurn();
+    await submitInput('enterprise');
+    expect(sendCalls).toHaveLength(1);
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    await restart('execute');
+    const next = await module!
+      .get(ReplyTurnsService)
+      .open(
+        { corpId: 'fixture-corp', accountId, chatId },
+        [newerInputId],
+        new Date().toISOString(),
+        { primary: { orgId: 'fixture-corp', imBotId: accountId, chatId } },
+      );
+    expect(next?.inputIds).toEqual([newerInputId]);
+    expect(next?.logicalTurnId).not.toBeUndefined();
+  }, 30000);
+
+  it('keeps an accepted first segment and stops on a second-segment error without a saved plan', async () => {
+    await start();
+    const failure = interruptBeforeSecondAction();
+    await submitInput('enterprise');
+    failure.mockRestore();
+    expect(sendCalls).toHaveLength(1);
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      plan: null,
+      delivery_result: { outcome: 'incomplete', accepted: 1, total: 2 },
+    });
+    await restart('observe');
+    await recoverStoredTurn();
+    await submitInput('enterprise');
+    expect(sendCalls).toHaveLength(1);
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('repairs only the original input ACK after a restart', async () => {
+    await start();
+    ackPendingMessageIds.mockRejectedValue(new Error('Redis ACK unavailable'));
+    await submitInput('enterprise');
+    expect(databaseState().turn).toMatchObject({ status: 'settled', plan: null });
+    expect(sendCalls).toHaveLength(2);
+    ackPendingMessageIds.mockImplementation(async (_chat: string, ids: string[]) => {
+      ids.forEach((id) => pending.delete(id));
+      return ids.length;
+    });
+    await restart('observe');
+    await recoverStoredTurn();
+    assertAcceptedTurn();
+  }, 30000);
+
+  it('closes an expired live send after a service restart without generating or continuing its text', async () => {
+    await start();
+    const turns = module!.get(ReplyTurnsService);
+    const turn = await turns.open(
+      { corpId: 'fixture-corp', accountId, chatId },
+      [inboundId],
+      new Date().toISOString(),
+      {
+        primary: {
+          orgId: 'fixture-corp',
+          imBotId: accountId,
+          chatId,
+          imContactId: 'fixture-contact',
+          imRoomId: '',
+        },
+      },
+    );
+    const sending = await turns.startDelivery(turn!);
+    await module!.get(DurableReplyDeliveryService).sendOrdinarySegment(
+      sending,
+      {
+        replyTurn: sending,
+        token: enterpriseToken,
+        imBotId: accountId,
+        imContactId: 'fixture-contact',
+        imRoomId: '',
+        chatId,
+        messageId: inboundId,
+        contactName: '隔离测试',
+      },
+      parts[0],
+      0,
+    );
+    expect(databaseState().turn.plan).toBeNull();
+    // Stop after one accepted API call, before any finish/ACK, as a killed worker would.
+    await restart('observe');
+    client.query("UPDATE agent_reply_turns SET generation_until=now()-interval '1 second';");
+    await recoverStoredTurn();
+    expect(sendCalls).toHaveLength(1);
+    expect(runInboundTurn).not.toHaveBeenCalled();
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      plan: null,
+      delivery_result: { outcome: 'interrupted' },
+    });
+    expect(pending).toEqual(new Set([newerInputId]));
+    await expect(
+      module!.get(DurableReplyDeliveryService).sendOrdinarySegment(
+        sending,
+        {
+          token: enterpriseToken,
+          imBotId: accountId,
+          imContactId: 'fixture-contact',
+          imRoomId: '',
+          chatId,
+          messageId: inboundId,
+          contactName: '隔离测试',
+        },
+        parts[1],
+        1,
+      ),
+    ).rejects.toThrow();
+    expect(sendCalls).toHaveLength(1);
+  }, 30000);
+  it('repairs booking follow-up admission after restart without repeating the model or booking', async () => {
+    await start();
+    runInboundTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '报名已提交' },
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { name: 'not-retained', phone: 'not-retained' },
+          result: { success: true, workOrderId: 12345 },
+        },
+      ],
+    });
+    const anchors = module!.get(ReengagementAnchorService).handleToolAnchors as jest.Mock;
+    anchors.mockRejectedValue(new Error('Redis admission unavailable'));
+    await submitInput('enterprise');
+    expect(sendCalls).toHaveLength(0);
+    expect(databaseState().turn).toMatchObject({ status: 'settled', plan: null });
+    expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('not-retained');
+    expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('报名已提交');
+    await restart('observe');
+    await recoverStoredTurn();
+    expect(module!.get(ReengagementAnchorService).handleToolAnchors).toHaveBeenCalledWith(
+      {
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {},
+            result: { success: true, workOrderId: 12345 },
+          },
+        ],
+      },
+      expect.objectContaining({
+        logicalTurnId: expect.any(String),
+        assertOwned: expect.any(Function),
+      }),
+    );
+    expect(databaseState().turn.status).toBe('acked');
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    expect(sendCalls).toHaveLength(0);
+  }, 30000);
+
+  it('retains accepted ordinary results through failed action writes and repairs them without resending', async () => {
+    await start();
+    jest
+      .spyOn(module!.get(ActionRecordsRepository), 'settle')
+      .mockRejectedValueOnce(new Error('database settlement unavailable'))
+      .mockRejectedValueOnce(new Error('database settlement unavailable'));
+    await submitInput('enterprise');
+    expect(sendCalls).toHaveLength(2);
+    expect(databaseState().turn.status).toBe('acked');
+    expect(repairJobs).toHaveLength(1);
+    await restart('observe');
+    await module!.get(ActionRepairProcessor).settle({ data: repairJobs[0] } as never);
+    await recoverStoredTurn();
+    assertAcceptedTurn();
   }, 30000);
 });
