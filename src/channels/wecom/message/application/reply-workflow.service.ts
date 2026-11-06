@@ -54,6 +54,7 @@ import {
   REPLY_DELIVERY_POLICY,
   REPLY_DELIVERY_OUTCOME,
   REPLY_PROJECTION_STATUS,
+  REPLY_REVIEW_REASON,
 } from '@biz/reply-execution/reply-execution.constants';
 import type { WecomApiType } from '@shared-types/wecom-api.types';
 import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
@@ -363,6 +364,7 @@ export class ReplyWorkflowService {
     // 若随后 replay，丢弃本版 finalizer，避免把「未发出的回复」污染到 session 记忆里。
     let agentResult: AgentInvokeResult;
     let deliveryResult: DeliveryResult | undefined;
+    let businessEffects: Record<string, unknown> | undefined;
     if (durableTurn?.plan) {
       agentResult = this.restoreReplyResult(durableTurn);
     } else {
@@ -378,6 +380,9 @@ export class ReplyWorkflowService {
         });
       } catch (error) {
         if (!durableTurn || !this.replyTurns || error instanceof ReplyDeferredError) throw error;
+        // 模型中断前可能已经提交业务动作。未知工具终态不能当作“无需补账”确认输入。
+        if (durableTurn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS)
+          throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
         await this.processingFailureService.handleProcessingError(error, parsed, {
           scenario,
           traceId,
@@ -561,8 +566,8 @@ export class ReplyWorkflowService {
         channelIdentity: reengagementChannelIdentity,
       };
       if (durableTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
-        const effects = ordinaryReplyEffects(agentResult.toolCalls, toolAnchorContext);
-        if (effects) durableTurn = await this.replyTurns!.saveEffects(durableTurn, effects);
+        businessEffects = ordinaryReplyEffects(agentResult.toolCalls, toolAnchorContext);
+        durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
       }
       if (agentResult.outcome?.kind !== 'reply') {
         // 同轮已提交的报名/改约/取消结果：先把确定性回执发给候选人，再提交暂停/告警
@@ -781,6 +786,12 @@ export class ReplyWorkflowService {
         acceptedText: deliveryFailure?.acceptedText,
       });
       if (durableTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
+        // 只重试同一份最小业务结果，绝不重跑工具。仍写不进去则保留原输入待核实。
+        if (durableTurn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
+          if (!businessEffects)
+            throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
+          durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
+        }
         // Finish the original input even when text is incomplete. Never re-run its model/tools.
         // A failed terminal write is ack-only work after the lease expires, not a new send.
         await this.processingFailureService.handleProcessingError(
@@ -944,6 +955,11 @@ export class ReplyWorkflowService {
   private async ackDurableTurn(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<void> {
     try {
       await assertOwned?.();
+      if (
+        turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS &&
+        turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE
+      )
+        throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
       if (
         turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS &&
         turn.projectionStatus === REPLY_PROJECTION_STATUS.PENDING

@@ -416,6 +416,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       turn: {
         status: string;
         delivery_policy: string;
+        projection_status: string;
         delivery_result: { outcome: string; accepted: number; total: number };
         recovery: Record<string, unknown>;
         plan: { segments: Array<{ requestId: string }> };
@@ -430,7 +431,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       }>;
       callbackEvidenceCount: number;
     }>(`SELECT json_build_object(
-      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,plan,delivery_policy,delivery_result FROM agent_reply_turns LIMIT 1) t),
+      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,plan,delivery_policy,delivery_result,projection_status FROM agent_reply_turns LIMIT 1) t),
       'actions',(SELECT coalesce(json_agg(a ORDER BY a.created_at),'[]'::json) FROM (SELECT status,local_sync,dispatch_attempt_id,request_id,result,evidence,created_at FROM agent_action_records) a),
       'callbackEvidenceCount',(SELECT count(*) FROM agent_action_evidence WHERE completion->'result'->>'stage'='delivery_callback'));`);
   }
@@ -744,7 +745,21 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         },
       },
     );
-    const sending = await turns.startDelivery(turn!);
+    // 真实工作流会在取得发送权前确认最小业务结局（空集合也须明确）。
+    const checkpoint = await turns.saveEffects(turn!, {
+      toolCalls: [],
+      context: {
+        traceId: turn!.logicalTurnId,
+        logicalTurnId: turn!.logicalTurnId,
+        inputOccurredAt: turn!.inputOccurredAt,
+        corpId: 'fixture-corp',
+        userId: 'fixture-contact',
+        chatId,
+        isGroupChat: false,
+      },
+    });
+    await turns.completeProjection(checkpoint);
+    const sending = await turns.startDelivery(checkpoint);
     await module!.get(DurableReplyDeliveryService).sendOrdinarySegment(
       sending,
       {
@@ -831,6 +846,98 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(databaseState().turn.status).toBe('acked');
     expect(runInboundTurn).toHaveBeenCalledTimes(1);
     expect(sendCalls).toHaveLength(0);
+  }, 30000);
+
+  it.each(['once', 'persistent'] as const)(
+    'preserves successful booking effects when saving them fails %s',
+    async (failure) => {
+      await start();
+      runInboundTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '报名已提交' },
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {},
+            result: { success: true, workOrderId: 12345 },
+          },
+        ],
+      });
+      const repository = module!.get(ReplyTurnsRepository);
+      const transition = repository.transition.bind(repository);
+      let failures = 0;
+      jest.spyOn(repository, 'transition').mockImplementation(async (operation, input) => {
+        if (operation === 'save_effects' && (failure === 'persistent' || failures++ === 0))
+          throw new Error('RPC failed before commit');
+        return transition(operation, input);
+      });
+      await submitInput('enterprise');
+      expect(sendCalls).toHaveLength(0);
+      if (failure === 'once') {
+        expect(databaseState().turn).toMatchObject({
+          status: 'acked',
+          projection_status: 'complete',
+        });
+        expect(module!.get(ReengagementAnchorService).handleToolAnchors).toHaveBeenCalledWith(
+          {
+            toolCalls: [
+              {
+                toolName: 'duliday_interview_booking',
+                args: {},
+                result: { success: true, workOrderId: 12345 },
+              },
+            ],
+          },
+          expect.objectContaining({ logicalTurnId: expect.any(String) }),
+        );
+      } else {
+        expect(databaseState().turn).toMatchObject({
+          status: 'preparing',
+          projection_status: 'none',
+        });
+        expect(ackPendingMessageIds).not.toHaveBeenCalled();
+        await restart('observe');
+        client.query(
+          "UPDATE agent_reply_turns SET generation_until=now()-interval '1 second',next_check_at=now()-interval '1 second';",
+        );
+        await recoverStoredTurn();
+        expect(module!.get(IncidentReporterService).notifyAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: 'reply.manual_review_required',
+            error: expect.objectContaining({
+              message: expect.stringContaining('business_effects_unconfirmed'),
+            }),
+          }),
+        );
+        // 入站重试也不能把尚未确认的业务义务吞掉。
+        await submitInput('enterprise');
+        expect(databaseState().turn.status).not.toBe('acked');
+        expect(pending.has(inboundId)).toBe(true);
+        expect(ackPendingMessageIds).not.toHaveBeenCalled();
+      }
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+      expect(sendCalls).toHaveLength(0);
+    },
+    30000,
+  );
+
+  it('retains an interrupted model turn for business review without retrying tools', async () => {
+    await start();
+    runInboundTurn.mockRejectedValue(new Error('model failed after a possible business tool'));
+    await submitInput('enterprise');
+    expect(databaseState().turn.status).toBe('preparing');
+    expect(ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(sendCalls).toHaveLength(0);
+    await restart('observe');
+    client.query(
+      "UPDATE agent_reply_turns SET generation_until=now()-interval '1 second',next_check_at=now()-interval '1 second';",
+    );
+    await recoverStoredTurn();
+    expect(module!.get(IncidentReporterService).notifyAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'reply.manual_review_required' }),
+    );
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    expect(pending.has(inboundId)).toBe(true);
   }, 30000);
 
   it('retains accepted ordinary results through failed action writes and repairs them without resending', async () => {

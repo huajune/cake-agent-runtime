@@ -12,6 +12,8 @@ import {
   REPLY_TURN_STATUS,
   REPLY_DELIVERY_POLICY,
   REPLY_DELIVERY_OUTCOME,
+  REPLY_PROJECTION_STATUS,
+  REPLY_REVIEW_REASON,
 } from '@biz/reply-execution/reply-execution.constants';
 import { CRON_JOB } from '@infra/queue/cron.constants';
 import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
@@ -67,6 +69,11 @@ export class ReplyRecoveryService {
 
   private async resumeTurn(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<void> {
     if (turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
+      if (turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
+        // 生成或业务结果保存中断：无法证明是否有已成功的报名/改约，不能吞掉原输入。
+        this.manualReview(turn.logicalTurnId, REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
+        return;
+      }
       const terminal = await this.turns.interrupt(turn);
       if (terminal.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.INTERRUPTED)
         this.manualReview(turn.logicalTurnId, 'ordinary_reply_interrupted_no_resend');

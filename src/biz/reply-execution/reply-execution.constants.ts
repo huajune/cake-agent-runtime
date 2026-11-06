@@ -14,6 +14,10 @@ export const REPLY_PROJECTION_STATUS = {
 export type ReplyProjectionStatus =
   (typeof REPLY_PROJECTION_STATUS)[keyof typeof REPLY_PROJECTION_STATUS];
 
+export const REPLY_REVIEW_REASON = {
+  BUSINESS_EFFECTS_UNCONFIRMED: 'business_effects_unconfirmed',
+} as const;
+
 export const REPLY_TURN_OPERATION = {
   OPEN: 'open',
   PLAN: 'plan',

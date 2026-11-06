@@ -48,7 +48,7 @@ type AnchorContext = Parameters<ReengagementAnchorService['handleToolAnchors']>[
 export function ordinaryReplyEffects(
   calls: AgentToolCall[] | undefined,
   context: AnchorContext,
-): Record<string, unknown> | undefined {
+): Record<string, unknown> {
   const toolCalls = (calls ?? [])
     .filter((call) => (TOOL_EFFECT_NAMES as readonly string[]).includes(call.toolName))
     .map((call) => {
@@ -71,9 +71,9 @@ export function ordinaryReplyEffects(
         },
       };
     });
-  if (!toolCalls.some((call) => call.result.success) || context.isGroupChat) return undefined;
   return effectsSchema.parse({
-    toolCalls,
+    // 空集合也是生成已结束、无需业务补账的证据；不能和保存失败混为一谈。
+    toolCalls: context.isGroupChat ? [] : toolCalls,
     context: { ...context, isGroupChat: Boolean(context.isGroupChat) },
   });
 }
