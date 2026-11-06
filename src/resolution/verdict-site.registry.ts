@@ -32,6 +32,13 @@ export interface VerdictSiteRegistration {
  */
 export const VERDICT_SITE_REGISTRY = [
   {
+    id: 'precheck_receipt_progress_hint',
+    authority: 'hint',
+    effect: 'advisory',
+    source: 'src/agent/generator/tool-call-analysis.ts#buildPrecheckProgressNotice',
+    rationale: '只投影工具的 nextAction 与未执行标记，不读取回复措辞、不裁决候选人事实或预约状态。',
+  },
+  {
     id: 'job_list_schedule_evidence',
     authority: 'notary',
     effect: 'reject',

@@ -5,6 +5,7 @@ import type { AgentToolCall } from '@agent/generator/generator.types';
 import { buildDateTimeGroundingLines } from '@agent/generator/context/sections/working/datetime.section';
 import type { GuardViolation } from '@shared-types/guardrail.contract';
 import type { TurnLedger } from '@shared-types/turn.types';
+import { GROUP_INVITE_DELIVERY } from '@shared-types/group-invite.types';
 import type {
   FinalizedVisualFactField,
   VisualFactFieldKey,
@@ -235,7 +236,16 @@ export class ReplyRepairAgent {
 
     if (precheck) {
       const lines = [
+        precheck.jobId ? `- 最近实际校验的岗位：${precheck.jobId}` : null,
         precheck.nextAction ? `- 下一步：${precheck.nextAction}` : null,
+        '- 预检完成/ready_to_book 不代表预约已提交；只能按本人同岗位的真实报名回执或已核实在途工单确认面试。',
+        precheck.unexecutedErrorType
+          ? `- 最后一次请求未执行（${precheck.unexecutedErrorType}），未产生新校验结果；上方保留的是此前实际结果，不代表纠参已通过。`
+          : null,
+        ...(precheck.rejectedAnswers ?? []).map(
+          (item) =>
+            `- 拒收字段：${item.labelTitle}；处理：${item.action ?? '按原回执核实'}；${item.hint ?? ''}`,
+        ),
         precheck.missingFields.length ? `- 待补字段：${precheck.missingFields.join('、')}` : null,
         precheck.requiredFieldsToCollectNow.length
           ? `- 现在要收：${precheck.requiredFieldsToCollectNow.join('、')}`
@@ -274,11 +284,11 @@ export class ReplyRepairAgent {
     if (invite.success && invite.alreadyInGroup) {
       return `- 候选人本来就在群${group}里，本轮没有新拉群或新发邀请`;
     }
-    if (invite.success && invite.delivery === 'direct_add') {
+    if (invite.success && invite.delivery === GROUP_INVITE_DELIVERY.DIRECT_ADD) {
       return `- 已把候选人直接拉进群${group}`;
     }
     if (invite.success) {
-      return invite.delivery === 'invite_card'
+      return invite.delivery === GROUP_INVITE_DELIVERY.INVITE_CARD
         ? `- 已发送群${group}的入群邀请卡片，候选人点卡片后才入群`
         : `- 已发送群${group}的入群邀请`;
     }

@@ -13,7 +13,9 @@ export const RUNTIME_RETRY_LIMITS = Object.freeze({
   emptyZeroToolRetries: 1,
   modelAttempts: 3,
   sameToolCalls: 3,
-  precheckCalls: 2,
+  // query → validate → 修正引用，或 contract_changed → query → validate。
+  // 同一原始输入跨模型重试共享预算；第 4 次仍由执行入口拒绝。
+  precheckCalls: 3,
   deliverySegmentRetries: 1,
 });
 

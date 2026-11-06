@@ -46,7 +46,8 @@ describe('real AI SDK / local fake provider fault injection (no network)', () =>
   it.each([
     { name: 'duliday_job_list', batches: [2, 2], permitted: 3 },
     { name: 'duliday_job_list', batches: [1, 1, 1, 1], permitted: 3 },
-    { name: 'duliday_interview_precheck', batches: [1, 1, 1], permitted: 2 },
+    { name: 'duliday_interview_precheck', batches: [1, 1, 1, 1], permitted: 3 },
+    { name: 'duliday_interview_precheck', batches: [2, 2], permitted: 3 },
   ])(
     'bounds actual $name executions even if the model ignores activeTools',
     async ({ name, batches, permitted }) => {
@@ -114,7 +115,7 @@ describe('real AI SDK / local fake provider fault injection (no network)', () =>
       doGenerate: async () => {
         step++;
         if (step === 3) throw new Error('provider timeout after completed prechecks');
-        return step <= 4 ? toolReply([String(step)], name) : textReply;
+        return step <= 5 ? toolReply([String(step)], name) : textReply;
       },
     });
     const options = {
@@ -126,6 +127,7 @@ describe('real AI SDK / local fake provider fault injection (no network)', () =>
     expect(first.steps.flatMap((s) => s.toolResults).map((r) => r.output)).toEqual([
       expect.objectContaining({ success: false }),
       expect.objectContaining({ success: true, nextAction: 'ready_to_book' }),
+      expect.objectContaining({ success: true, nextAction: 'ready_to_book' }),
       expect.objectContaining({ errorType: TOOL_ERROR_TYPES.TURN_CALL_LIMIT_REACHED }),
     ]);
 
@@ -136,9 +138,9 @@ describe('real AI SDK / local fake provider fault injection (no network)', () =>
         }),
       ).generate({ ...options, tools: toolsForTurn(budget) });
     await requestAgain(counts);
-    expect(execute).toHaveBeenCalledTimes(2);
-    await requestAgain(new Map());
     expect(execute).toHaveBeenCalledTimes(3);
+    await requestAgain(new Map());
+    expect(execute).toHaveBeenCalledTimes(4);
   });
 
   it('parallel duplicate tool calls dispatch once', async () => {

@@ -4,6 +4,7 @@ import { VERDICT_SITE_AUTHORITIES, VERDICT_SITE_REGISTRY } from '@resolution/ver
 
 describe('VERDICT_SITE_REGISTRY', () => {
   const expectedSiteIds = [
+    'precheck_receipt_progress_hint',
     'job_list_schedule_evidence',
     'memory_health_certificate_closed_state',
     'collection_citation_verification',
