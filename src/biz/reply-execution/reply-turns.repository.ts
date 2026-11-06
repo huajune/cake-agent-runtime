@@ -3,9 +3,7 @@ import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { ReplyTurn } from './reply-execution.types';
 import {
-  REPLY_PROJECTION_STATUS,
   isReplyDeliveryPolicy,
-  REPLY_RECOVERY_TASK,
   REPLY_TURN_STATUS,
 } from '@biz/reply-execution/reply-execution.constants';
 import { ACTION_MODE } from '@shared-types/action-execution.contract';
@@ -74,21 +72,6 @@ export class ReplyTurnsRepository extends BaseRepository {
     return data === true;
   }
 
-  async dueTaskProjections(): Promise<ReplyTurn[]> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .eq('mode', ACTION_MODE.EXECUTE)
-      .eq('projection_status', REPLY_PROJECTION_STATUS.PENDING)
-      .eq('recovery->task->>kind', REPLY_RECOVERY_TASK.REENGAGEMENT)
-      .lte('projection_next_check_at', new Date().toISOString())
-      .order('projection_next_check_at')
-      .limit(25)
-      .abortSignal(AbortSignal.timeout(5000));
-    if (error) throw error;
-    return (data ?? []).map((row) => this.fromDb(row));
-  }
-
   async redact(limit = 100): Promise<number> {
     const { data, error } = await this.getClient()
       .rpc('redact_completed_agent_reply_turns', { p_limit: limit })
@@ -97,17 +80,6 @@ export class ReplyTurnsRepository extends BaseRepository {
     if (!Number.isSafeInteger(data) || data < 0 || data > limit)
       throw new Error('Invalid reply retention count');
     return data;
-  }
-
-  async confirmed(turn: ReplyTurn): Promise<boolean> {
-    const { data, error } = await this.getClient()
-      .rpc('agent_reply_plan_confirmed', {
-        p_corp_id: turn.corpId,
-        p_turn_id: turn.logicalTurnId,
-      })
-      .abortSignal(AbortSignal.timeout(5000));
-    if (error) throw error;
-    return data === true;
   }
 
   private fromDb(row: Record<string, unknown>): ReplyTurn {

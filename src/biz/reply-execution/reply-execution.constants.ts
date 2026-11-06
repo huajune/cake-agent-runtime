@@ -26,13 +26,10 @@ export const REPLY_TURN_OPERATION = {
   ACK: 'ack',
   DEFER: 'defer',
   PROJECT: 'project',
-  DEFER_PROJECTION: 'defer_projection',
 } as const;
 export type ReplyTurnOperation = (typeof REPLY_TURN_OPERATION)[keyof typeof REPLY_TURN_OPERATION];
 
-export const REPLY_RECOVERY_TASK = { REENGAGEMENT: 'reengagement' } as const;
-
-/** Frozen is only for proactive tasks and obligations created by older versions. */
+/** Frozen is retained only for inbound obligations created by older versions. */
 export const REPLY_DELIVERY_POLICY = {
   FROZEN: 'frozen',
   SINGLE_PASS: 'single_pass',

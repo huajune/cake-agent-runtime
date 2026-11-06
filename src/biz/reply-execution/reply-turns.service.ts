@@ -127,9 +127,6 @@ export class ReplyTurnsService {
   async completeProjection(turn: ReplyTurn): Promise<void> {
     await this.update(turn, REPLY_TURN_OPERATION.PROJECT);
   }
-  async deferProjection(turn: ReplyTurn): Promise<void> {
-    await this.update(turn, REPLY_TURN_OPERATION.DEFER_PROJECTION);
-  }
   private inputContext(recovery: Record<string, unknown>): Record<string, unknown> {
     const primary = recovery.primary as Record<string, unknown>;
     // Only route identity is needed to authorize this live turn and acknowledge its input later.

@@ -16,7 +16,6 @@ import { ActionPermitService } from '@biz/action-permit/services/action-permit.s
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import type { DeliveryContext, DeliveryResult } from '../types';
-import { REPLY_RECOVERY_TASK } from '@biz/reply-execution/reply-execution.constants';
 import {
   ACTION_EVIDENCE_KIND,
   ACTION_KIND,
@@ -51,35 +50,9 @@ export class DurableReplyDeliveryService implements OnModuleInit {
 
   async resolveTurn(context: DeliveryContext): Promise<ReplyTurn | undefined> {
     if (context.replyTurn) return context.replyTurn;
-    if (!context.logicalTurnId || !context.inputOccurredAt || !context.corpId) {
-      if (this.turns.mode === ACTION_MODE.EXECUTE)
-        throw new ReplyDeferredError('delivery_identity_not_persisted');
-      return undefined;
-    }
-    if (
-      this.turns.mode === ACTION_MODE.EXECUTE &&
-      context.taskRecovery?.kind === REPLY_RECOVERY_TASK.REENGAGEMENT
-    ) {
-      const data = context.taskRecovery.data as { jobData?: { dispatchDueAt?: number } };
-      const due = data.jobData?.dispatchDueAt;
-      if (
-        typeof due !== 'number' ||
-        !Number.isFinite(due) ||
-        due < Date.parse(context.inputOccurredAt) ||
-        due > Date.now() + 60_000 ||
-        due <= Date.now() - 24 * 3600_000
-      )
-        throw new ReplyDeferredError('task_dispatch_window_unconfirmed_or_expired');
-    }
-    return this.turns.open(
-      { corpId: context.corpId, accountId: context.imBotId, chatId: context.chatId },
-      [`task:${context.logicalTurnId}`],
-      context.inputOccurredAt,
-      {
-        action: context.action ?? PERMITTED_ACTION.REPLY,
-        ...(context.taskRecovery ? { task: context.taskRecovery } : {}),
-      },
-    );
+    if (this.turns.mode === ACTION_MODE.EXECUTE)
+      throw new ReplyDeferredError('delivery_identity_not_persisted');
+    return undefined;
   }
 
   async prepare(
@@ -104,6 +77,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   async deliver(turn: ReplyTurn, context: DeliveryContext): Promise<DeliveryResult> {
     if (turn.mode !== ACTION_MODE.EXECUTE)
       throw new ReplyDeferredError('reply_plan_not_executable');
+    if (!turn.recovery.primary) throw new ReplyDeferredError('non_inbound_reply_runtime_retired');
     if (!turn.plan) throw new ReplyDeferredError('missing_reply_plan');
     let completed = 0;
     let cancelled = false;
@@ -140,25 +114,14 @@ export class DurableReplyDeliveryService implements OnModuleInit {
                 mode === ACTION_MODE.EXECUTE ? requestId : context.externalRequestId,
               _apiType: context._apiType,
             });
-            if (turn.recovery.primary) {
-              if (response?.errcode !== 0) throw new Error('reply_send_result_unconfirmed');
-              return {
-                status: ACTION_STATE.SUCCEEDED,
-                result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
-                evidence: {
-                  kind: ACTION_EVIDENCE_KIND.ACCEPTED,
-                  requestTerminated: true,
-                  detail: 'send_api_accepted; not_delivery_or_read_receipt',
-                },
-              };
-            }
+            if (response?.errcode !== 0) throw new Error('reply_send_result_unconfirmed');
             return {
-              status: ACTION_STATE.EXECUTING,
+              status: ACTION_STATE.SUCCEEDED,
               result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
               evidence: {
                 kind: ACTION_EVIDENCE_KIND.ACCEPTED,
-                requestTerminated: false,
-                detail: 'Await provider delivery callback; not delivered/read',
+                requestTerminated: true,
+                detail: 'send_api_accepted; not_delivery_or_read_receipt',
               },
             };
           },
@@ -309,7 +272,6 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             await dispatch();
           } catch (error) {
             externalError = error;
-            if (context.taskRecovery) throw error;
             const failure = classifyReplySendError(error);
             return {
               status: failure.unknownResult ? ACTION_STATE.UNKNOWN : ACTION_STATE.FAILED,
@@ -324,11 +286,11 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             };
           }
           return {
-            status: context.taskRecovery ? ACTION_STATE.EXECUTING : ACTION_STATE.SUCCEEDED,
+            status: ACTION_STATE.SUCCEEDED,
             result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
             evidence: {
               kind: ACTION_EVIDENCE_KIND.ACCEPTED,
-              requestTerminated: !context.taskRecovery,
+              requestTerminated: true,
             },
           };
         },
@@ -339,16 +301,6 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   }
 
   private intent(turn: ReplyTurn, text: string, index: number): ActionIntent {
-    const task = turn.recovery.task as
-      | {
-          kind?: string;
-          data?: { jobData?: { dispatchDueAt?: number } };
-        }
-      | undefined;
-    const due =
-      task?.kind === REPLY_RECOVERY_TASK.REENGAGEMENT
-        ? task.data?.jobData?.dispatchDueAt
-        : undefined;
     return {
       corpId: turn.corpId,
       accountId: turn.accountId,
@@ -359,9 +311,6 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       target: `chat:${turn.chatId}:reply:${turn.logicalTurnId}:segment:${index}`,
       parameters: { text, index, version: 1 },
       occurredAt: turn.inputOccurredAt,
-      ...(typeof due === 'number' && Number.isFinite(due)
-        ? { recoveryWindowStartedAt: new Date(due).toISOString() }
-        : {}),
       identityReliable: true,
       recovery: { logicalTurnId: turn.logicalTurnId, index },
     };

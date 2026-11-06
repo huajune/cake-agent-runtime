@@ -1,21 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { RedisService } from '@infra/redis/redis.service';
-import type { FollowUpJob } from './follow-up-scheduler.service';
 import { TOUCH_RESERVE_RESULT, TOUCH_SLOT_STATE } from '@agent/reengagement/touch-ledger.types';
 import type { ReserveResult, TouchSlotState } from './touch-ledger.types';
-
-export interface TouchRecovery {
-  jobData: FollowUpJob;
-  replyText: string;
-  batchId: string;
-  sentAt: number;
-}
-
-export interface UnknownTouchSlot {
-  key: string;
-  state: typeof TOUCH_SLOT_STATE.UNKNOWN;
-}
 
 /**
  * 触达底账（频控 + outbox 幂等状态机）。
@@ -132,14 +119,6 @@ return 1
     }
   }
 
-  async saveRecovery(key: string, recovery: TouchRecovery): Promise<void> {
-    await this.redis.setNx(`reengagement:recovery:${key}`, recovery, this.SLOT_TTL_S);
-  }
-
-  async getRecovery(key: string): Promise<TouchRecovery | null> {
-    return this.redis.get<TouchRecovery>(`reengagement:recovery:${key}`);
-  }
-
   /** 近 24h 已 **sent** 的触达次数（频控用）。 */
   async countSentIn24h(sessionId: string, now: number): Promise<number> {
     const raw = await this.redis.lrange<number | string>(this.sentListKey(sessionId), 0, -1);
@@ -190,59 +169,5 @@ return 1
     const candidateRepliedAt = options?.candidateRepliedAt;
     if (candidateRepliedAt != null && candidateRepliedAt > lastTouchAt) return false;
     return true;
-  }
-
-  /**
-   * 补偿查询入口：扫描状态不明的触达槽，供运维/人工核对外部平台投递状态。
-   *
-   * 返回的 key 是业务幂等键（`${sessionId}:${scenarioCode}:${anchorEventId}`，与
-   * ReengagementTrackingService.touchKey 同源），不含 Redis 前缀。
-   */
-  async listUnknownSlots(limit = 100): Promise<UnknownTouchSlot[]> {
-    if (limit <= 0) return [];
-    const result: UnknownTouchSlot[] = [];
-    const checkpointKey = 'reengagement:unknown-scan:v2';
-    const checkpoint = await this.redis.get<{ cursor: string | number; pending: string[] }>(
-      checkpointKey,
-    );
-    let cursor: string | number = checkpoint?.cursor ?? 0;
-    let pending = checkpoint?.pending ?? [];
-    const deadline = Date.now() + 5000;
-    let pages = 0;
-    let inspected = 0;
-    while (inspected < 100 && result.length < limit && Date.now() < deadline) {
-      if (pending.length === 0) {
-        if (pages >= 5) break;
-        const [next, keys] = await this.redis.scan(cursor, {
-          match: 'reengagement:touch:*',
-          count: 100,
-        });
-        cursor = next;
-        pending = keys;
-        pages++;
-      }
-      while (
-        pending.length > 0 &&
-        inspected < 100 &&
-        result.length < limit &&
-        Date.now() < deadline
-      ) {
-        const redisKey = pending[0];
-        const state = await this.redis.get<TouchSlotState>(redisKey);
-        pending.shift();
-        inspected++;
-        if (state !== TOUCH_SLOT_STATE.UNKNOWN && state !== TOUCH_SLOT_STATE.DELIVERY_ATTEMPTED)
-          continue;
-        result.push({
-          key: redisKey.replace(/^reengagement:touch:/, ''),
-          state: TOUCH_SLOT_STATE.UNKNOWN,
-        });
-      }
-      if (pending.length === 0 && String(cursor) === '0') break;
-    }
-    // SCAN COUNT is a hint. Preserve the unconsumed page so a large page or low
-    // result budget cannot permanently starve its later unknown entries.
-    await this.redis.setex(checkpointKey, this.SLOT_TTL_S, { cursor, pending });
-    return result;
   }
 }

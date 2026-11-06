@@ -4,10 +4,9 @@ import {
   REPLY_TURN_STATUS,
 } from '@biz/reply-execution/reply-execution.constants';
 import { ReplySendError, classifyReplySendError } from './reply-send-error';
-import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import { type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
-import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
@@ -50,7 +49,6 @@ export class MessageDeliveryService implements OnModuleInit {
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly actionPermit: ActionPermitService,
     @Optional() private readonly durable?: DurableReplyDeliveryService,
-    @Optional() private readonly recoveryLease?: ReplyRecoveryLeaseService,
   ) {}
 
   async onModuleInit() {
@@ -70,19 +68,16 @@ export class MessageDeliveryService implements OnModuleInit {
     recordMonitoring: boolean = true,
   ): Promise<DeliveryResult> {
     // Resolve/freeze before any provider call. A stored plan is always authoritative.
-    const turn = await this.prepareReplyPlan(reply, context);
+    // Proactive tasks own their lifecycle; share only the stateless channel sender.
+    const turn =
+      context.action === PERMITTED_ACTION.PROACTIVE
+        ? undefined
+        : await this.prepareReplyPlan(reply, context);
     if (turn && this.durable && turn.deliveryPolicy !== REPLY_DELIVERY_POLICY.SINGLE_PASS) {
       if (recordMonitoring) await this.wecomObservability.markDeliveryStart(context.messageId);
       const result = await this.durable.deliver(turn, context);
       if (recordMonitoring)
         await this.wecomObservability.markDeliveryEnd(context.messageId, result);
-      // Task memberships have no inbound Redis messages. Their domain repairs touch/events separately.
-      if (!turn.recovery.primary) {
-        await context.assertOwned?.();
-        const settled = await this.durable.turns.settle(turn);
-        await context.assertOwned?.();
-        await this.durable.turns.acked(settled);
-      }
       return result;
     }
     context = { ...context, replyTurn: turn ?? context.replyTurn };
@@ -170,41 +165,6 @@ export class MessageDeliveryService implements OnModuleInit {
       this.logger.error(`[${contactName}] 消息发送失败: ${errorMessage}`);
       throw new DeliveryFailureError(errorMessage, failureResult);
     }
-  }
-
-  async beginReply(context: DeliveryContext): Promise<ReplyTurn | undefined> {
-    return this.durable?.resolveTurn(context);
-  }
-
-  /** Proactive local repair after callbacks; permission changes do not undo delivery evidence. */
-  async completeConfirmedReply(
-    turn: ReplyTurn,
-    assertOwned?: () => Promise<void>,
-  ): Promise<boolean> {
-    if (!this.durable || turn.recovery.primary) return false;
-    if (!(await this.durable.turns.repository.confirmed(turn))) return false;
-    await assertOwned?.();
-    const settled = await this.durable.turns.settle(turn);
-    await assertOwned?.();
-    await this.durable.turns.acked(settled);
-    return true;
-  }
-
-  async pendingReplyTasks(): Promise<ReplyTurn[]> {
-    return this.durable?.turns.repository.dueTaskProjections() ?? [];
-  }
-  async finishReplyTask(turn: ReplyTurn): Promise<void> {
-    await this.durable?.turns.completeProjection(turn);
-  }
-  async deferReplyTask(turn: ReplyTurn): Promise<void> {
-    await this.durable?.turns.deferProjection(turn);
-  }
-  async withReplyRecovery<T>(
-    turn: ReplyTurn,
-    task: (assertOwned: () => Promise<void>) => Promise<T>,
-  ): Promise<T | undefined> {
-    if (!this.recoveryLease) throw new ReplyDeferredError('reply_recovery_lease_unavailable');
-    return this.recoveryLease.run(turn.chatId, task);
   }
 
   async prepareReplyPlan(
@@ -332,7 +292,7 @@ export class MessageDeliveryService implements OnModuleInit {
         this.logger.error(
           `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败（含重试）: ${errorMessage}`,
         );
-        if (!context.taskRecovery) break;
+        break;
       }
     }
 
@@ -400,6 +360,8 @@ export class MessageDeliveryService implements OnModuleInit {
     externalRequestId?: string,
     segmentIndex = 0,
   ): Promise<void> {
+    if (context.action === PERMITTED_ACTION.PROACTIVE)
+      return this.sendLegacySegment(context, text, externalRequestId);
     if (context.replyTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS && this.durable)
       return this.durable.sendOrdinarySegment(context.replyTurn, context, text, segmentIndex);
     if (this.durable)
@@ -429,14 +391,14 @@ export class MessageDeliveryService implements OnModuleInit {
           externalRequestId,
           _apiType,
         });
-        if (!context.taskRecovery && response?.errcode !== 0)
+        if (response?.errcode !== 0)
           throw new ReplySendError(true, false, 'reply_send_result_unconfirmed');
         if (attempt > 0) {
           this.logger.log(`[${context.contactName}] 单段重试第 ${attempt} 次发送成功`);
         }
         return;
       } catch (error) {
-        lastError = context.taskRecovery ? error : classifyReplySendError(error);
+        lastError = classifyReplySendError(error);
         if (lastError instanceof ReplySendError && !lastError.retryable) throw lastError;
         if (attempt < SEGMENT_SEND_RETRIES) {
           const errorMessage = toErrorMessage(error);

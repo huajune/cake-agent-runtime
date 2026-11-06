@@ -11,7 +11,6 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     expire: jest.Mock;
     lrange: jest.Mock;
     eval: jest.Mock;
-    scan: jest.Mock;
   };
   let ledger: TouchLedgerService;
 
@@ -45,10 +44,6 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
         if (Number(args[1]) > Number(store.get(keys[2]) ?? 0)) store.set(keys[2], args[1]);
         return 1;
       }),
-      scan: jest.fn(async () => [
-        0,
-        Array.from(store.keys()).filter((key) => key.startsWith('reengagement:touch:')),
-      ]),
     };
     ledger = new TouchLedgerService(redis as never);
   });
@@ -92,18 +87,6 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     expect(await ledger.countSentIn24h('s1', 2001)).toBe(2);
     expect(await ledger.getLastTouchAt('s1')).toBe(2000);
     expect(redis.eval.mock.calls[2][0]).toContain("'NX', 'EX'");
-  });
-
-  it('retains the unused SCAN page across runs when Redis returns more than COUNT or the result budget', async () => {
-    for (let i = 0; i < 240; i++) store.set(`reengagement:touch:k${i}`, 'unknown');
-    const recovered: string[] = [];
-    for (let i = 0; i < 10; i++)
-      recovered.push(...(await ledger.listUnknownSlots(25)).map((slot) => slot.key));
-    expect(new Set(recovered).size).toBe(240);
-    expect(redis.scan).toHaveBeenCalledTimes(1);
-    expect(
-      redis.get.mock.calls.filter(([key]) => String(key).startsWith('reengagement:touch:')),
-    ).toHaveLength(240);
   });
 
   it('isOverFrequencyLimit flips at 2 sent within 24h', async () => {
@@ -157,16 +140,6 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
     expect(await ledger.countSentIn24h('s1', now)).toBe(0);
   });
 
-  it('lists unknown slots for compensation', async () => {
-    await ledger.reserve('s1:opening_no_reply:1000');
-    await ledger.markFailedOrUnknown('s1:opening_no_reply:1000', 'unknown');
-    await ledger.reserve('s1:opening_no_reply:2000');
-    await ledger.markFailedOrUnknown('s1:opening_no_reply:2000', 'failed');
-
-    await expect(ledger.listUnknownSlots()).resolves.toEqual([
-      { key: 's1:opening_no_reply:1000', state: 'unknown' },
-    ]);
-  });
   describe('acquireOnce（运营提醒等一次性副作用的幂等占位）', () => {
     it('首次占位成功，同 key 再次占位失败，key 走独立前缀不与触达槽混用', async () => {
       await expect(ledger.acquireOnce('chat_interview_time_mismatch:wo1:iv2:chat3')).resolves.toBe(

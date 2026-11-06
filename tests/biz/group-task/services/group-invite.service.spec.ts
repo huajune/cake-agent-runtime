@@ -120,6 +120,39 @@ describe('GroupInviteService', () => {
     );
   });
 
+  it('keeps proactive invitation independent of the inbound action store and cutover', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    actions.execute.mockRejectedValue(new Error('inbound runtime unavailable'));
+    roomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
+    const result = await service.invite({ ...input, action: 'proactive' });
+    expect(result).toMatchObject({ success: true, inviteDelivery: 'direct_add' });
+    expect(actions.execute).not.toHaveBeenCalled();
+    expect(memoryService.saveInvitedGroup).toHaveBeenCalledTimes(1);
+    expect(permits.evaluate).toHaveBeenCalledWith(expect.objectContaining({ action: 'proactive' }));
+  });
+
+  it('does not try another group after an unknown proactive invitation', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([makeGroup(), makeGroup({ imRoomId: 'room-2' })]);
+    roomService.addMemberEnterprise.mockRejectedValue(new Error('timeout'));
+    expect(await service.invite({ ...input, action: 'proactive' })).toMatchObject({
+      success: false,
+      reason: 'result_unknown',
+    });
+    expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+    expect(actions.execute).not.toHaveBeenCalled();
+    expect(memoryService.saveInvitedGroup).not.toHaveBeenCalled();
+  });
+
+  it('refuses proactive invitations when the proactive permission closes', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    permits.evaluate.mockResolvedValue({ allowed: false });
+    expect(await service.invite({ ...input, action: 'proactive' })).toMatchObject({
+      success: false,
+    });
+    expect(roomService.addMemberEnterprise).not.toHaveBeenCalled();
+    expect(actions.execute).not.toHaveBeenCalled();
+  });
+
   it('treats errcode -10 as full and sends the group-full alert', async () => {
     groupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 199 })]);
     roomService.addMemberEnterprise.mockResolvedValue({ errcode: -10, errmsg: '群人数达到上限' });

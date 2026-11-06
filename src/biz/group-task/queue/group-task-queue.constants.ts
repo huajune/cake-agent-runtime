@@ -118,9 +118,10 @@ export interface PrepareJobData {
 
 export interface SendJobData {
   startedAt?: number;
-  dispatchPlan?: GroupTaskDispatchPlan;
-  /** Persisted before the optional preview call; unknown sends are not repeated. */
-  previewAttempted?: boolean;
+  /** Retirement guard only: old runtime plans may contain already-sent/unknown parts. */
+  dispatchPlan?: unknown;
+  /** Original job attempted external sending; retries must not replay a partial/unknown batch. */
+  sendAttempted?: boolean;
   execId: string;
   type: GroupTaskType;
   timeSlot?: TimeSlot;
@@ -136,20 +137,6 @@ export interface SendJobData {
   totalGroups: number;
   /** 不同群之间的最小等待时间，实际随机为 1~2 倍 */
   sendDelayMs: number;
-}
-
-export interface GroupTaskDispatchPlan {
-  /** Frozen admission mode; missing on legacy plans and never inferred as execute. */
-  mode?: import('@shared-types/action-execution.contract').ActionMode;
-  corpId: string;
-  logicalTurnId: string;
-  occurredAt: string;
-  parts: Array<{
-    id: string;
-    messageType: number;
-    payload: Record<string, unknown>;
-    delayMs: number;
-  }>;
 }
 
 export interface SummarizeJobData {

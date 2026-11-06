@@ -11,7 +11,6 @@ import type {
 import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import type { TurnOutcome } from '@agent/runner/agent-runner.types';
 import type { TurnFinalizer } from '@agent/runner/turn-finalizer';
-import { REPLY_RECOVERY_TASK } from '@biz/reply-execution/reply-execution.constants';
 import type { WecomApiType } from '@shared-types/wecom-api.types';
 
 export { AlertErrorType } from '@shared-types/tracking.types';
@@ -85,7 +84,6 @@ export interface DeliveryContext {
   inputOccurredAt?: string;
   replyTurn?: ReplyTurn;
   /** Whitelisted task metadata only; never credentials or message history. */
-  taskRecovery?: { kind: typeof REPLY_RECOVERY_TASK.REENGAGEMENT; data: Record<string, unknown> };
   assertOwned?: () => Promise<void>;
   action?: PermittedAction;
   groupId?: string;
