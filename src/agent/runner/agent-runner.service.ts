@@ -1069,7 +1069,11 @@ export class AgentRunnerService {
       text,
       responseMessages: this.repairAssistantResponseMessages(result.responseMessages, text),
       runTurnEnd: previousRunTurnEnd
-        ? (options) => previousRunTurnEnd({ ...options, assistantTextOverride: text })
+        ? (options) =>
+            previousRunTurnEnd({
+              ...options,
+              assistantTextOverride: options?.assistantTextOverride ?? text,
+            })
         : undefined,
     };
   }

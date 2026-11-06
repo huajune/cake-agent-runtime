@@ -139,6 +139,8 @@ Catalog 仅管理可独立识别与治理的规则：Input、Tool、Output 各�
 `TurnFinalizer` 只负责 `runTurnEnd` 记忆收尾；人工介入由 Replay 定局后的
 `TurnOutcomeInterventionService.commit()` 独立提交。报名、拉群等已提交业务动作不能在修复中重做。
 
+运行时动作账本、输入回合与 observe/execute 切换只服务主聊。群定时任务沿用 Bull/Redis 去重和飞书通知；复聊沿用自己的触达槽、频控和记录。共用渠道发送能力不能引入主聊动作存储或 cutover 依赖。
+
 复聊（reengagement）是独立链路：**不复用主 generator**，走专用 ReengagementAgent（所有场景一次性结构化 LLM 调用，无工具无多步；blockReason fail-closed + 复读/姓名确定性兜底），全生命周期落 `reengagement_touch_records`。
 
 ## Configuration

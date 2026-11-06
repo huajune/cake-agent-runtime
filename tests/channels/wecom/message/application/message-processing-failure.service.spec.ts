@@ -135,12 +135,18 @@ describe('MessageProcessingFailureService', () => {
     });
 
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
-    expect(alertService.sendAlert).not.toHaveBeenCalled();
+    expect(alertService.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'message.delivery_failed',
+        impact: expect.objectContaining({ requiresHumanIntervention: true }),
+      }),
+      { persist: false },
+    );
     expect(wecomObservability.buildFailureMetadata).toHaveBeenCalledWith(
       'trace-1',
       expect.objectContaining({
         extraResponse: expect.objectContaining({
-          phase: 'delivery-partial',
+          phase: 'delivery-incomplete',
         }),
       }),
     );
@@ -149,6 +155,37 @@ describe('MessageProcessingFailureService', () => {
     });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-2');
+  });
+
+  it('does not send fallback after a first-segment timeout and reports the unknown result', async () => {
+    const error = new DeliveryFailureError('timeout', {
+      success: false,
+      segmentCount: 2,
+      failedSegments: 1,
+      deliveredSegments: 0,
+      unknownSegments: 1,
+      acceptedText: '',
+      totalTime: 30_000,
+    });
+    await service.handleProcessingError(error, {
+      chatId: 'chat',
+      contactName: '测试',
+      messageId: 'unknown-input',
+      imBotId: 'bot',
+    } as ReturnType<typeof MessageParser.parse>);
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(alertService.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: '回复发送结果未知，未自动重发',
+      }),
+      { persist: false },
+    );
+    expect(wecomObservability.buildFailureMetadata).toHaveBeenCalledWith(
+      'unknown-input',
+      expect.objectContaining({
+        extraResponse: expect.objectContaining({ phase: 'delivery-unknown' }),
+      }),
+    );
   });
 
   it('should route fallback alerts to the mapped receiver when bot id is known', async () => {

@@ -89,6 +89,7 @@ describe('tool action contracts', () => {
           toolCalls: [
             { toolName: 'duliday_interview_precheck' },
             { toolName: 'duliday_interview_precheck' },
+            { toolName: 'duliday_interview_precheck' },
             { toolName: 'duliday_job_list' },
             { toolName: 'duliday_job_list' },
           ],

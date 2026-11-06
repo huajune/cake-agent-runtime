@@ -1,3 +1,10 @@
+import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
+import { sleep } from '@infra/utils/async.util';
+import {
+  ReplySendError,
+  classifyReplySendError,
+  isRetryableReplyEvidence,
+} from './reply-send-error';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
@@ -9,7 +16,6 @@ import { ActionPermitService } from '@biz/action-permit/services/action-permit.s
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import type { DeliveryContext, DeliveryResult } from '../types';
-import { REPLY_RECOVERY_TASK } from '@biz/reply-execution/reply-execution.constants';
 import {
   ACTION_EVIDENCE_KIND,
   ACTION_KIND,
@@ -44,35 +50,9 @@ export class DurableReplyDeliveryService implements OnModuleInit {
 
   async resolveTurn(context: DeliveryContext): Promise<ReplyTurn | undefined> {
     if (context.replyTurn) return context.replyTurn;
-    if (!context.logicalTurnId || !context.inputOccurredAt || !context.corpId) {
-      if (this.turns.mode === ACTION_MODE.EXECUTE)
-        throw new ReplyDeferredError('delivery_identity_not_persisted');
-      return undefined;
-    }
-    if (
-      this.turns.mode === ACTION_MODE.EXECUTE &&
-      context.taskRecovery?.kind === REPLY_RECOVERY_TASK.REENGAGEMENT
-    ) {
-      const data = context.taskRecovery.data as { jobData?: { dispatchDueAt?: number } };
-      const due = data.jobData?.dispatchDueAt;
-      if (
-        typeof due !== 'number' ||
-        !Number.isFinite(due) ||
-        due < Date.parse(context.inputOccurredAt) ||
-        due > Date.now() + 60_000 ||
-        due <= Date.now() - 24 * 3600_000
-      )
-        throw new ReplyDeferredError('task_dispatch_window_unconfirmed_or_expired');
-    }
-    return this.turns.open(
-      { corpId: context.corpId, accountId: context.imBotId, chatId: context.chatId },
-      [`task:${context.logicalTurnId}`],
-      context.inputOccurredAt,
-      {
-        action: context.action ?? PERMITTED_ACTION.REPLY,
-        ...(context.taskRecovery ? { task: context.taskRecovery } : {}),
-      },
-    );
+    if (this.turns.mode === ACTION_MODE.EXECUTE)
+      throw new ReplyDeferredError('delivery_identity_not_persisted');
+    return undefined;
   }
 
   async prepare(
@@ -97,6 +77,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   async deliver(turn: ReplyTurn, context: DeliveryContext): Promise<DeliveryResult> {
     if (turn.mode !== ACTION_MODE.EXECUTE)
       throw new ReplyDeferredError('reply_plan_not_executable');
+    if (!turn.recovery.primary) throw new ReplyDeferredError('non_inbound_reply_runtime_retired');
     if (!turn.plan) throw new ReplyDeferredError('missing_reply_plan');
     let completed = 0;
     let cancelled = false;
@@ -133,25 +114,14 @@ export class DurableReplyDeliveryService implements OnModuleInit {
                 mode === ACTION_MODE.EXECUTE ? requestId : context.externalRequestId,
               _apiType: context._apiType,
             });
-            if (turn.recovery.primary) {
-              if (response?.errcode !== 0) throw new Error('reply_send_result_unconfirmed');
-              return {
-                status: ACTION_STATE.SUCCEEDED,
-                result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
-                evidence: {
-                  kind: ACTION_EVIDENCE_KIND.ACCEPTED,
-                  requestTerminated: true,
-                  detail: 'send_api_accepted; not_delivery_or_read_receipt',
-                },
-              };
-            }
+            if (response?.errcode !== 0) throw new Error('reply_send_result_unconfirmed');
             return {
-              status: ACTION_STATE.EXECUTING,
+              status: ACTION_STATE.SUCCEEDED,
               result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
               evidence: {
                 kind: ACTION_EVIDENCE_KIND.ACCEPTED,
-                requestTerminated: false,
-                detail: 'Await provider delivery callback; not delivered/read',
+                requestTerminated: true,
+                detail: 'send_api_accepted; not_delivery_or_read_receipt',
               },
             };
           },
@@ -186,6 +156,94 @@ export class DurableReplyDeliveryService implements OnModuleInit {
     };
   }
 
+  /** One live pass; only attempted segments enter the action ledger, never a whole text plan. */
+  async sendOrdinarySegment(
+    turn: ReplyTurn,
+    context: DeliveryContext,
+    text: string,
+    index: number,
+  ): Promise<void> {
+    if (turn.mode !== ACTION_MODE.EXECUTE)
+      throw new ReplyDeferredError('ordinary_reply_not_executable');
+    for (let attempt = 0; attempt <= RUNTIME_RETRY_LIMITS.deliverySegmentRetries; attempt++) {
+      const execution = await this.executor.execute(
+        this.intent(turn, text, index),
+        {
+          authorize: async () => {
+            await context.assertOwned?.();
+            await this.turns.assertDeliveryActive(turn);
+            return (
+              await this.permit.evaluate({
+                chatId: turn.chatId,
+                action: context.action ?? PERMITTED_ACTION.REPLY,
+                botImId: turn.accountId,
+                groupId: context.groupId,
+                candidateIds: [context.imContactId],
+              })
+            ).allowed;
+          },
+          dispatch: async (requestId) => {
+            await context.assertOwned?.();
+            await this.turns.assertDeliveryActive(turn);
+            try {
+              const response = await this.sender.sendMessage({
+                token: context.token,
+                imBotId: turn.accountId,
+                imContactId: context.imContactId,
+                imRoomId: context.imRoomId,
+                chatId: turn.chatId,
+                messageType: SendMessageType.TEXT,
+                payload: { text },
+                externalRequestId: requestId,
+                _apiType: context._apiType,
+              });
+              if (response?.errcode !== 0)
+                throw new ReplySendError(true, false, 'reply_send_result_unconfirmed');
+              return {
+                status: ACTION_STATE.SUCCEEDED,
+                result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
+                evidence: {
+                  kind: ACTION_EVIDENCE_KIND.ACCEPTED,
+                  requestTerminated: true,
+                  detail: 'send_api_accepted; not_delivery_or_read_receipt',
+                },
+              };
+            } catch (error) {
+              const failure = classifyReplySendError(error);
+              return {
+                status: failure.unknownResult ? ACTION_STATE.UNKNOWN : ACTION_STATE.FAILED,
+                retryable: failure.retryable,
+                evidence: {
+                  kind: failure.unknownResult
+                    ? ACTION_EVIDENCE_KIND.INDETERMINATE
+                    : ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+                  requestTerminated: !failure.unknownResult,
+                  detail: failure.message,
+                },
+              };
+            }
+          },
+        },
+        { persistedMode: turn.mode },
+      );
+      if (execution.status === ACTION_STATE.SUCCEEDED) return;
+      const retryable =
+        execution.status === ACTION_STATE.FAILED &&
+        execution.evidence?.kind === ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT &&
+        execution.evidence.requestTerminated &&
+        isRetryableReplyEvidence(execution.evidence.detail);
+      if (retryable && attempt < RUNTIME_RETRY_LIMITS.deliverySegmentRetries) {
+        await sleep(800 * 2 ** attempt);
+        continue;
+      }
+      throw new ReplySendError(
+        execution.status === ACTION_STATE.UNKNOWN || execution.status === ACTION_STATE.EXECUTING,
+        false,
+        execution.reason ?? execution.evidence?.detail ?? execution.status,
+      );
+    }
+  }
+
   async observeLegacy(
     context: DeliveryContext,
     text: string,
@@ -214,12 +272,26 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             await dispatch();
           } catch (error) {
             externalError = error;
-            throw error;
+            const failure = classifyReplySendError(error);
+            return {
+              status: failure.unknownResult ? ACTION_STATE.UNKNOWN : ACTION_STATE.FAILED,
+              retryable: false,
+              evidence: {
+                kind: failure.unknownResult
+                  ? ACTION_EVIDENCE_KIND.INDETERMINATE
+                  : ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+                requestTerminated: !failure.unknownResult,
+                detail: failure.message,
+              },
+            };
           }
           return {
-            status: ACTION_STATE.EXECUTING,
+            status: ACTION_STATE.SUCCEEDED,
             result: { stage: ACTION_EVIDENCE_KIND.ACCEPTED },
-            evidence: { kind: ACTION_EVIDENCE_KIND.ACCEPTED, requestTerminated: false },
+            evidence: {
+              kind: ACTION_EVIDENCE_KIND.ACCEPTED,
+              requestTerminated: true,
+            },
           };
         },
       },
@@ -229,16 +301,6 @@ export class DurableReplyDeliveryService implements OnModuleInit {
   }
 
   private intent(turn: ReplyTurn, text: string, index: number): ActionIntent {
-    const task = turn.recovery.task as
-      | {
-          kind?: string;
-          data?: { jobData?: { dispatchDueAt?: number } };
-        }
-      | undefined;
-    const due =
-      task?.kind === REPLY_RECOVERY_TASK.REENGAGEMENT
-        ? task.data?.jobData?.dispatchDueAt
-        : undefined;
     return {
       corpId: turn.corpId,
       accountId: turn.accountId,
@@ -249,9 +311,6 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       target: `chat:${turn.chatId}:reply:${turn.logicalTurnId}:segment:${index}`,
       parameters: { text, index, version: 1 },
       occurredAt: turn.inputOccurredAt,
-      ...(typeof due === 'number' && Number.isFinite(due)
-        ? { recoveryWindowStartedAt: new Date(due).toISOString() }
-        : {}),
       identityReliable: true,
       recovery: { logicalTurnId: turn.logicalTurnId, index },
     };

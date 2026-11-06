@@ -1,8 +1,4 @@
 import { RedisLeaseService } from '@infra/queue/redis-lease.service';
-import {
-  GroupTaskActionService,
-  GroupTaskDeferredError,
-} from '@biz/group-task/services/group-task-action.service';
 import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
@@ -54,14 +50,10 @@ describe('GroupTaskProcessor', () => {
   };
   let groupResolver: { resolveGroups: jest.Mock; hasCurrentTag: jest.Mock };
   let notificationSender: {
-    buildDispatchParts: jest.Mock;
-    previewPrepared: jest.Mock;
-    sendPreparedPart: jest.Mock;
     sendToGroup: jest.Mock;
     sendTextToGroup: jest.Mock;
     reportToFeishu: jest.Mock;
   };
-  let scheduledActions: { freezePlan: jest.Mock; executePart: jest.Mock };
   let brandRotation: { recordPushedBrand: jest.Mock };
   let llm: { generateSimple: jest.Mock };
   let partTimeStrategy: {
@@ -109,14 +101,10 @@ describe('GroupTaskProcessor', () => {
     };
 
     notificationSender = {
-      buildDispatchParts: jest.fn().mockReturnValue([]),
-      previewPrepared: jest.fn(),
-      sendPreparedPart: jest.fn(),
       sendToGroup: jest.fn().mockResolvedValue(undefined),
       sendTextToGroup: jest.fn().mockResolvedValue(undefined),
       reportToFeishu: jest.fn().mockResolvedValue(undefined),
     };
-    scheduledActions = { freezePlan: jest.fn(), executePart: jest.fn() };
 
     brandRotation = {
       recordPushedBrand: jest.fn().mockResolvedValue(undefined),
@@ -138,7 +126,6 @@ describe('GroupTaskProcessor', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RedisLeaseService,
-        { provide: GroupTaskActionService, useValue: scheduledActions },
         { provide: QueueFailureService, useValue: { report: jest.fn(), exhausted: jest.fn() } },
         GroupTaskProcessor,
         { provide: getQueueToken(GROUP_TASK_QUEUE_NAME), useValue: queueMock },
@@ -176,7 +163,11 @@ describe('GroupTaskProcessor', () => {
             ? 'handleSend'
             : 'handleSummarize'
     ];
-    return handler.call(processor, { data } as unknown);
+    return handler.call(processor, {
+      data,
+      update: jest.fn().mockResolvedValue(undefined),
+      discard: jest.fn(),
+    } as unknown);
   };
 
   describe('plan', () => {
@@ -330,6 +321,27 @@ describe('GroupTaskProcessor', () => {
   });
 
   describe('send', () => {
+    it('does not replay the main text when the follow-up failed and the same Bull job restarts', async () => {
+      redisMock.get.mockResolvedValue({ message: 'main', followUpMessage: 'extra', summary: 's' });
+      notificationSender.sendTextToGroup.mockRejectedValueOnce(new Error('timeout'));
+      const job = {
+        data: { ...baseSend },
+        update: jest.fn().mockResolvedValue(undefined),
+        discard: jest.fn(),
+      };
+      const send = (
+        processor as unknown as { handleSend(job: unknown): Promise<void> }
+      ).handleSend.bind(processor);
+      await expect(send(job)).rejects.toThrow('timeout');
+      expect(job.data.sendAttempted).toBe(true);
+      expect(job.discard).toHaveBeenCalled();
+      await expect(send(job)).rejects.toThrow('群任务已有发送尝试');
+      expect(notificationSender.sendToGroup).toHaveBeenCalledTimes(1);
+      expect(notificationSender.sendTextToGroup).toHaveBeenCalledTimes(1);
+      expect(job.update.mock.invocationCallOrder[0]).toBeLessThan(
+        notificationSender.sendToGroup.mock.invocationCallOrder[0],
+      );
+    });
     const baseSend: SendJobData = {
       execId: 'exec-1',
       type: GroupTaskType.PART_TIME_JOB,
@@ -353,7 +365,6 @@ describe('GroupTaskProcessor', () => {
         type: GroupTaskType.ORDER_GRAB,
       });
       expect(groupResolver.hasCurrentTag).toHaveBeenCalledWith(group, '抢单群');
-      expect(scheduledActions.freezePlan).not.toHaveBeenCalled();
       expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
       expect(redisMock.setex).toHaveBeenCalledWith(
         groupTaskResultKey(baseSend.execId, group.imRoomId),
@@ -362,100 +373,16 @@ describe('GroupTaskProcessor', () => {
       );
     });
 
-    it('摘标后的已冻结抢单可以核对结果，但不再授权新的发送', async () => {
-      redisMock.get.mockResolvedValue({ message: 'hi', summary: 'summary' });
-      groupResolver.hasCurrentTag.mockResolvedValue(false);
-      scheduledActions.executePart.mockImplementation(
-        async (_job, _cache, _part, dispatch, authorize) => {
-          expect(await authorize()).toBe(false);
-          if (await authorize()) await dispatch();
-        },
-      );
-      await invokeHandler(GroupTaskJobName.SEND, {
-        ...baseSend,
-        type: GroupTaskType.ORDER_GRAB,
-        dispatchPlan: {
-          corpId: 'corp',
-          logicalTurnId: 'original',
-          occurredAt: new Date().toISOString(),
-          parts: [{ id: 'main', messageType: 7, payload: { text: 'hi' }, delayMs: 0 }],
-        },
-      });
-      expect(scheduledActions.executePart).toHaveBeenCalledTimes(1);
-      expect(notificationSender.previewPrepared).not.toHaveBeenCalled();
-      expect(notificationSender.sendPreparedPart).not.toHaveBeenCalled();
-      expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
-    });
-
-    it.each([true, false])(
-      '摘标后的冻结任务按未发送证据收口（已确认=%s）',
-      async (definitivelyUnsent) => {
-        redisMock.get.mockResolvedValue({ message: 'hi', summary: 'summary' });
-        groupResolver.hasCurrentTag.mockResolvedValue(false);
-        scheduledActions.executePart.mockRejectedValue(
-          new GroupTaskDeferredError(
-            'permission_or_freshness_changed',
-            undefined,
-            definitivelyUnsent,
-          ),
-        );
-        const run = invokeHandler(GroupTaskJobName.SEND, {
-          ...baseSend,
-          type: GroupTaskType.ORDER_GRAB,
-          dispatchPlan: {
-            corpId: 'corp',
-            logicalTurnId: 'original',
-            occurredAt: new Date().toISOString(),
-            parts: [{ id: 'main', messageType: 7, payload: { text: 'hi' }, delayMs: 0 }],
-          },
-        });
-        if (definitivelyUnsent) await expect(run).resolves.toBeUndefined();
-        else await expect(run).rejects.toBeInstanceOf(GroupTaskDeferredError);
-        expect(redisMock.setex).toHaveBeenCalledWith(
-          groupTaskResultKey(baseSend.execId, baseSend.group.imRoomId),
-          expect.any(Number),
-          expect.objectContaining({ status: definitivelyUnsent ? 'skipped' : 'pending' }),
-        );
-        expect(notificationSender.sendPreparedPart).not.toHaveBeenCalled();
-      },
-    );
-
-    it('routes frozen parts through the action protocol and keeps an unknown extra pending', async () => {
-      const parts = [
-        { id: 'main', messageType: 7, payload: { text: 'original main' }, delayMs: 0 },
-        { id: 'follow-up', messageType: 7, payload: { text: 'original extra' }, delayMs: 0 },
-      ];
-      redisMock.get.mockResolvedValue({ message: 'changed cache', summary: 'summary' });
-      scheduledActions.executePart.mockImplementation(async (_job, _cache, part, dispatch) => {
-        await dispatch(`cake_${part.id}`);
-        if (part.id === 'follow-up') throw new GroupTaskDeferredError('unknown');
-      });
+    it('keeps legacy runtime jobs pending without replaying any part', async () => {
       await expect(
         invokeHandler(GroupTaskJobName.SEND, {
           ...baseSend,
-          dispatchPlan: {
-            corpId: 'corp',
-            logicalTurnId: 'original-task',
-            occurredAt: new Date().toISOString(),
-            parts,
-          },
+          dispatchPlan: { mode: 'observe', parts: [{ id: 'main' }] },
         }),
-      ).rejects.toBeInstanceOf(GroupTaskDeferredError);
-      expect(notificationSender.sendPreparedPart).toHaveBeenNthCalledWith(
-        1,
-        baseSend.group,
-        parts[0],
-        'cake_main',
-      );
-      expect(notificationSender.sendPreparedPart).toHaveBeenNthCalledWith(
-        2,
-        baseSend.group,
-        parts[1],
-        'cake_follow-up',
-      );
+      ).rejects.toThrow('群任务已有发送尝试');
       expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
       expect(redisMock.setex).toHaveBeenCalledWith(
-        groupTaskResultKey('exec-1', 'r-1'),
+        groupTaskResultKey(baseSend.execId, baseSend.group.imRoomId),
         expect.any(Number),
         expect.objectContaining({ status: 'pending' }),
       );
@@ -488,7 +415,6 @@ describe('GroupTaskProcessor', () => {
         },
       });
       expect(redisMock.setex).not.toHaveBeenCalled();
-      expect(notificationSender.sendPreparedPart).not.toHaveBeenCalled();
       expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
     });
 
@@ -504,8 +430,6 @@ describe('GroupTaskProcessor', () => {
           parts: [{ id: 'main', messageType: 7, payload: { text: 'hi' }, delayMs: 0 }],
         },
       });
-      expect(scheduledActions.executePart).not.toHaveBeenCalled();
-      expect(notificationSender.sendPreparedPart).not.toHaveBeenCalled();
       expect(notificationSender.sendToGroup).toHaveBeenCalledWith(
         baseSend.group,
         'hi',
@@ -560,21 +484,6 @@ describe('GroupTaskProcessor', () => {
       expect(delaySpy).toHaveBeenCalledWith(180_000);
       randomSpy.mockRestore();
       nowSpy.mockRestore();
-    });
-
-    it('attempts the auxiliary preview once across retries and tolerates preview outages', async () => {
-      const job = { data: { ...baseSend }, update: jest.fn().mockResolvedValue(undefined) };
-      const preview = processor as unknown as {
-        previewPreparedOnce(job: unknown, message: string, type: GroupTaskType): Promise<void>;
-      };
-      notificationSender.previewPrepared.mockRejectedValueOnce(new Error('webhook offline'));
-      await preview.previewPreparedOnce(job, 'content', baseSend.type);
-      await preview.previewPreparedOnce(job, 'content', baseSend.type);
-      expect(job.data.previewAttempted).toBe(true);
-      expect(notificationSender.previewPrepared).toHaveBeenCalledTimes(1);
-      expect(job.update.mock.invocationCallOrder[0]).toBeLessThan(
-        notificationSender.previewPrepared.mock.invocationCallOrder[0],
-      );
     });
 
     it('does not dispatch on lock exhaustion and sends once when the original job retries', async () => {
@@ -657,7 +566,7 @@ describe('GroupTaskProcessor', () => {
       expect(notificationSender.sendToGroup).toHaveBeenCalledTimes(2);
     });
 
-    it('should rethrow without setting idempotency key when send fails (Bull retry can then re-run)', async () => {
+    it('preserves uncertain sending as pending without setting a success marker', async () => {
       redisMock.exists.mockResolvedValue(0);
       redisMock.get.mockResolvedValue({ message: 'hi', summary: 's' });
       notificationSender.sendToGroup.mockRejectedValue(new Error('企微限流'));
@@ -673,7 +582,7 @@ describe('GroupTaskProcessor', () => {
       expect(redisMock.setex).toHaveBeenCalledWith(
         groupTaskResultKey('exec-1', 'r-1'),
         expect.any(Number),
-        expect.objectContaining({ status: 'failed', error: '企微限流' }),
+        expect.objectContaining({ status: 'pending', error: '企微限流' }),
       );
       expect(redisMock.setex).toHaveBeenCalledWith(
         groupTaskBotLastDispatchKey('bot-1'),

@@ -11,7 +11,6 @@ export const CRON_JOB = {
   GROUP_WORK_TIPS: 'group-work-tips',
   ACTION_RETENTION: 'action-retention',
   REPLY_RETENTION: 'reply-retention',
-  REENGAGEMENT_TOUCH_RECOVERY: 'reengagement-touch-recovery',
 } as const;
 export type CronJob = (typeof CRON_JOB)[keyof typeof CRON_JOB];
 

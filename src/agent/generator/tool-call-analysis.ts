@@ -1,3 +1,4 @@
+// business-rules: IB-04, GP-10
 import { actionReceiptStatuses, actionReplayStatus } from '@infra/utils/action-receipt.util';
 import { RECEIPT_ACTION_STATUS, TOOL_REPLAY_STATUS } from '@shared-types/tool-replay.types';
 import type { ToolReplayEvidence, ToolReplayStatus } from '@shared-types/tool-replay.types';
@@ -12,6 +13,7 @@ import {
 } from '@tools/tool-contracts';
 import type { AgentToolCall } from './generator.types';
 import { TOOL_EFFECT, TOOL_REPLAY } from '@shared-types/tool-action.contract';
+import { GROUP_INVITE_DELIVERY } from '@shared-types/group-invite.types';
 
 /**
  * 单轮内同名工具调用上限。
@@ -22,8 +24,8 @@ import { TOOL_EFFECT, TOOL_REPLAY } from '@shared-types/tool-action.contract';
 export const MAX_SAME_TOOL_CALLS_PER_TURN = DEFAULT_TOOL_CALL_LIMIT;
 
 /**
- * precheck 是同一岗位的确定性校验，不应靠换参数穷举；保留一次纠正遗漏入参的机会，
- * 第二次后即屏蔽，避免身份/补充字段识别异常时单轮连续调用 4~5 次。
+ * precheck 允许 query → validate → 修正引用的三步流程；仍不允许换参数穷举。
+ * 契约刷新、参数纠正和模型重试共享同一原始输入的预算。
  */
 export const MAX_PRECHECK_CALLS_PER_TURN =
   BUILT_IN_TOOL_CONTRACTS.duliday_interview_precheck.maxCallsPerTurn;
@@ -514,9 +516,44 @@ export function buildSideEffectBlockNotice(blockedTools: string[], steps?: StepL
           : unresolved
             ? '本轮动作仍在执行或结果未知，不能认定失败，也不能再次提交'
             : '本轮已成功执行（副作用已生效）';
-      return `⚠️ 系统拦截：工具 \`${name}\` ${reason}，不可重复调用。请按已有业务证据如实收敛回复；未知结果交统一核实恢复，不能宣称成功或提示用户重新提交。`;
+      const receipt = !unresolved ? buildGroupDeliveryNotice(name, outputs ?? []) : '';
+      return `⚠️ 系统拦截：工具 \`${name}\` ${reason}，不可重复调用。${receipt}请按已有业务证据如实收敛回复；未知结果交统一核实恢复，不能宣称成功或提示用户重新提交。`;
     })
     .join('\n');
+}
+
+/** 发送邀请成功不是成员入群成功；同样适用于 booking 的复合回执。只读机器字段。 */
+function buildGroupDeliveryNotice(name: string, outputs: unknown[]): string {
+  const latest = asRecord(outputs.at(-1));
+  const invite = name === 'invite_to_group' ? latest : asRecord(latest?.groupInvite);
+  if (invite?.success !== true) return '';
+  if (invite.alreadyInGroup === true) return '候选人原已在群，本轮没有新邀请。';
+  const delivery = invite.inviteDelivery ?? invite.delivery;
+  if (delivery === GROUP_INVITE_DELIVERY.DIRECT_ADD) return '回执确认已直接加入该群。';
+  return (
+    '群邀请只确认已发送；尚未确认候选人入群，不能说“已经把你拉进群”。' +
+    (delivery === GROUP_INVITE_DELIVERY.INVITE_CARD
+      ? '请带实际群名，说明点击邀请卡片入群。'
+      : '请按原回执告知邀请结果，不猜测投递方式。')
+  );
+}
+
+/**
+ * 把当前预检状态留在步骤末尾，防止限次/重试提示掩盖原回执。
+ * 这是给模型的事实提示，不按自然语言裁决回复，也不推断候选人是否已报名。
+ */
+export function buildPrecheckProgressNotice(steps: StepLike[]): string {
+  const results = steps.flatMap((step) =>
+    (step.toolResults ?? []).filter((result) => result.toolName === 'duliday_interview_precheck'),
+  );
+  const latest = [...results]
+    .reverse()
+    .map((result) => asRecord(result.output))
+    .find((result) => result?.toolExecuted !== false);
+  if (typeof latest?.nextAction !== 'string') return '';
+  const jobId = asRecord(latest.job)?.jobId;
+  const job = typeof jobId === 'number' ? `（岗位 ${jobId}）` : '';
+  return `本轮最近一次实际预检${job}的 nextAction=${latest.nextAction}。precheck 的 success=true 只表示校验调用完成，ready_to_book 也只表示可以提交，均不是预约成功。按原回执继续收资、纠参或调用 booking；只有当前候选人、当前岗位的成功 booking/改约回执或已核实的在途工单能支撑“面试约在某时/已经约好”。尚未提交时可介绍可约时段或征询时间，不得敲定预约、保证将收到面试通知。达到调用上限也不能改变这些事实。`;
 }
 
 /**
@@ -548,7 +585,7 @@ export function buildToolCallLimitNotice(
   if (blockedTools.length === 0) return '';
   const lines = blockedTools.map(
     (name) =>
-      `⚠️ 系统拦截：工具 \`${name}\` 在本轮已达调用上限（${limit} 次），不可再继续调用。请基于已有工具结果回复，只陈述已核实的信息。如需候选人补充资料，只询问缺少的信息。`,
+      `⚠️ 系统拦截：工具 \`${name}\` 在本轮已达调用上限（${limit} 次），不可再继续调用，超限请求没有执行、没有产生新结果。请基于已有工具结果回复，只陈述已核实的信息；不得把未查询/未校验/未提交说成已完成。已有原话只是引用提交失败时，不要重复索要资料或要求用户发确认词来刷新次数；需要核实时按既有 request_handoff 边界收尾。`,
   );
   return lines.join('\n');
 }

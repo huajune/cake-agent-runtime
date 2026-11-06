@@ -1,3 +1,5 @@
+import type { GroupInviteDelivery } from '@shared-types/group-invite.types';
+
 /** 回复修复专用的工具与视觉证据投影；保留既有 packet 形状，具体 Prompt 由 ReplyRepairAgent 渲染。 */
 export interface RepairEvidencePacket {
   draftReply: string;
@@ -61,11 +63,15 @@ export interface JobListEvidenceItem {
 }
 
 export interface PrecheckEvidence {
+  jobId?: number;
   nextAction?: string;
   requiredFieldsToCollectNow: string[];
   missingFields: string[];
   interviewTimeMode?: string;
   blockedReason?: string;
+  /** 未执行的超限请求不能覆盖前一次真实校验结果。 */
+  unexecutedErrorType?: string;
+  rejectedAnswers?: Array<{ labelTitle: string; action?: string; hint?: string }>;
 }
 
 export interface BookingEvidence {
@@ -105,7 +111,7 @@ export interface GroupInviteEvidence {
   groupName?: string;
   alreadyInGroup?: boolean;
   /** direct_add=已直接入群；invite_card=只发了邀请卡片，候选人点卡片才入群。 */
-  delivery?: 'direct_add' | 'invite_card';
+  delivery?: GroupInviteDelivery;
   errorType?: string;
 }
 

@@ -1,5 +1,10 @@
 import type { ActionMode } from '../action-execution/action-execution.types';
-import type { ReplyProjectionStatus, ReplyTurnStatus } from './reply-execution.constants';
+import type {
+  ReplyProjectionStatus,
+  ReplyTurnStatus,
+  ReplyDeliveryPolicy,
+  ReplyDeliveryOutcome,
+} from './reply-execution.constants';
 
 export interface ReplyTurnScope {
   corpId: string;
@@ -22,7 +27,18 @@ export interface ReplyPlan {
   resume?: Record<string, unknown>;
 }
 
+/** Summary only: no generated reply body, model result or resumable send plan. */
+export interface ReplyDeliverySummary {
+  outcome: ReplyDeliveryOutcome;
+  accepted?: number;
+  total?: number;
+}
+
 export interface ReplyTurn extends ReplyTurnScope {
+  /** Absent only on pre-migration fixtures/obligations; treated as frozen. */
+  deliveryPolicy?: ReplyDeliveryPolicy;
+  deliveryResult?: ReplyDeliverySummary;
+
   logicalTurnId: string;
   inputIds: string[];
   inputOccurredAt: string;

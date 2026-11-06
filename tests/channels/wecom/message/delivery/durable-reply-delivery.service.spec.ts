@@ -24,7 +24,7 @@ const turn: ReplyTurn = {
       requestId: `r${index}`,
     })),
   },
-  recovery: {},
+  recovery: { primary: { orgId: 'corp', imBotId: 'bot', chatId: 'chat' } },
 };
 const context = {
   token: 'secret',
@@ -59,72 +59,17 @@ describe('reply segment external-result boundaries', () => {
     turns.mode = 'execute';
   });
 
-  it('accepts an old booking anchor with a fresh frozen schedule and preserves the same action fingerprint', async () => {
-    const due = Date.now() - 1000;
-    const oldAnchor = new Date(due - 7 * 86400_000).toISOString();
-    const taskRecovery = {
-      kind: 'reengagement' as const,
-      data: { jobData: { dispatchDueAt: due } },
-    };
-    const persisted = {
-      ...turn,
-      inputOccurredAt: oldAnchor,
-      recovery: { task: taskRecovery },
-      plan: null,
-    };
-    turns.open.mockResolvedValue(persisted);
-    expect(
-      await service.resolveTurn({
+  it('does not create a synthetic reply input for a scheduled task', async () => {
+    await expect(
+      service.resolveTurn({
         ...context,
         replyTurn: undefined,
         corpId: 'corp',
         logicalTurnId: 'task-key',
-        inputOccurredAt: oldAnchor,
-        taskRecovery,
+        inputOccurredAt: turn.inputOccurredAt,
       }),
-    ).toEqual(persisted);
-    turns.savePlan.mockImplementation(async (value, plan) => ({ ...value, plan }));
-    const frozen = await service.prepare(persisted, 'same text', ['same text']);
-    executor.execute.mockImplementation(async (intent: ActionIntent) => {
-      expect(intent.occurredAt).toBe(oldAnchor);
-      expect(intent.recoveryWindowStartedAt).toBe(new Date(due).toISOString());
-      const { identifyAction } = await import('@biz/action-execution/action-identity');
-      expect(identifyAction(intent).actionId).toBe(frozen.plan!.segments[0].actionId);
-      return { status: 'succeeded' };
-    });
-    await service.deliver(frozen, context);
-    expect(sender.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it.each([undefined, Date.now() - 25 * 3600_000, Date.now() + 120_000])(
-    'refuses to create a new execute plan without a current original due time (%s)',
-    async (due) => {
-      await expect(
-        service.resolveTurn({
-          ...context,
-          replyTurn: undefined,
-          corpId: 'corp',
-          logicalTurnId: 'task-key',
-          inputOccurredAt: new Date(Date.now() - 7 * 86400_000).toISOString(),
-          taskRecovery: { kind: 'reengagement', data: { jobData: { dispatchDueAt: due } } },
-        }),
-      ).rejects.toThrow('task_dispatch_window_unconfirmed_or_expired');
-      expect(turns.open).not.toHaveBeenCalled();
-      expect(sender.sendMessage).not.toHaveBeenCalled();
-    },
-  );
-
-  it('observation preserves old admission when legacy jobs lack the frozen schedule', async () => {
-    turns.mode = 'observe';
-    await service.resolveTurn({
-      ...context,
-      replyTurn: undefined,
-      corpId: 'corp',
-      logicalTurnId: 'task-key',
-      inputOccurredAt: turn.inputOccurredAt,
-      taskRecovery: { kind: 'reengagement', data: { jobData: {} } },
-    });
-    expect(turns.open).toHaveBeenCalled();
+    ).rejects.toThrow('delivery_identity_not_persisted');
+    expect(turns.open).not.toHaveBeenCalled();
   });
 
   it('retains a successful first segment and stops at unknown second without reaching third', async () => {
@@ -142,21 +87,12 @@ describe('reply segment external-result boundaries', () => {
     expect(executor.execute).not.toHaveBeenCalled();
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
-  it('retains the existing proactive-task confirmation policy and registered request ID', async () => {
-    executor.execute.mockImplementation(
-      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => {
-        const result = await handlers.dispatch('stable-provider-request', 'execute');
-        return { ...result, dispatched: true };
-      },
-    );
-    await expect(service.deliver(turn, context)).rejects.toThrow('segment_0_executing');
-    expect(sender.sendMessage).toHaveBeenCalledTimes(1);
-    expect(sender.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        externalRequestId: 'stable-provider-request',
-        payload: { text: 'first' },
-      }),
-    );
+  it('does not resume a historical proactive plan through the inbound runtime', async () => {
+    await expect(
+      service.deliver({ ...turn, recovery: { task: { kind: 'reengagement' } } }, context),
+    ).rejects.toThrow('non_inbound_reply_runtime_retired');
+    expect(executor.execute).not.toHaveBeenCalled();
+    expect(sender.sendMessage).not.toHaveBeenCalled();
   });
 
   it.each(['enterprise', 'group'] as const)(

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import type { TurnLedger } from '@shared-types/turn.types';
+import { GROUP_INVITE_DELIVERY } from '@shared-types/group-invite.types';
 import type {
   BookingEvidence,
   GeocodeEvidence,
@@ -144,26 +145,49 @@ export class RepairEvidenceBuilder {
   }
 
   private buildPrecheckEvidence(toolCalls: AgentToolCall[]): PrecheckEvidence | undefined {
-    const call = [...toolCalls]
+    const calls = [...toolCalls]
       .reverse()
-      .find((item) => item.toolName === 'duliday_interview_precheck' && item.result);
+      .filter((item) => item.toolName === 'duliday_interview_precheck' && item.result);
+    const lastRequest = readRecord(calls[0]?.result);
+    const call = calls.find((item) => readRecord(item.result)?.toolExecuted !== false);
     const result = readRecord(call?.result);
-    if (!result) return undefined;
+    if (!result && !lastRequest) return undefined;
 
-    const checklist = readRecord(result.bookingChecklist);
-    const interview = readRecord(result.interview);
-    const ageBoundary = readRecord(result.ageBoundary);
-    const nameFieldGuard = readRecord(result.nameFieldGuard);
+    const checklist = readRecord(result?.bookingChecklist);
+    const interview = readRecord(result?.interview);
+    const ageBoundary = readRecord(result?.ageBoundary);
+    const nameFieldGuard = readRecord(result?.nameFieldGuard);
     return {
-      nextAction: readString(result.nextAction),
+      jobId: readNumber(readRecord(result?.job)?.jobId),
+      nextAction: readString(result?.nextAction),
       requiredFieldsToCollectNow: readStringArray(checklist?.requiredFieldsToCollectNow),
       missingFields: readStringArray(checklist?.missingFields),
       interviewTimeMode:
-        readString(interview?.interviewTimeMode) ?? readString(result.interviewTimeMode),
+        readString(interview?.interviewTimeMode) ?? readString(result?.interviewTimeMode),
       blockedReason:
-        readString(result.blockedReason) ??
+        readString(result?.blockedReason) ??
         readString(ageBoundary?.reason) ??
         readString(nameFieldGuard?.reason),
+      ...(lastRequest?.toolExecuted === false
+        ? { unexecutedErrorType: readString(lastRequest.errorType) }
+        : {}),
+      ...(Array.isArray(result?.rejectedAnswers)
+        ? {
+            rejectedAnswers: result.rejectedAnswers.flatMap((entry: unknown) => {
+              const rejected = readRecord(entry);
+              const labelTitle = readString(rejected?.labelTitle);
+              return labelTitle
+                ? [
+                    {
+                      labelTitle,
+                      action: readString(rejected?.action),
+                      hint: readString(rejected?.hint),
+                    },
+                  ]
+                : [];
+            }),
+          }
+        : {}),
     };
   }
 
@@ -482,7 +506,9 @@ function readBoolean(value: unknown): boolean | undefined {
 }
 
 function readInviteDelivery(value: unknown): GroupInviteEvidence['delivery'] {
-  return value === 'direct_add' || value === 'invite_card' ? value : undefined;
+  return value === GROUP_INVITE_DELIVERY.DIRECT_ADD || value === GROUP_INVITE_DELIVERY.INVITE_CARD
+    ? value
+    : undefined;
 }
 
 function readStringArray(value: unknown): string[] {
