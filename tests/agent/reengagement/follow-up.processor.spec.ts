@@ -1,6 +1,9 @@
 import { FollowUpProcessor } from '@agent/reengagement/follow-up.processor';
-import { ReplyDeferredError } from '@biz/reply-execution/reply-execution.types';
-import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/follow-up-scheduler.service';
+import {
+  REENGAGEMENT_JOB_NAME,
+  type FollowUpJob,
+} from '@agent/reengagement/follow-up-scheduler.service';
+import type { Job } from 'bull';
 import type { ReengagementSessionState } from '@memory/recall.types';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
@@ -14,8 +17,8 @@ const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSe
   ...over,
 });
 
-const makeJob = (over: Partial<Record<string, unknown>> = {}) =>
-  ({
+const makeJob = (over: Partial<Record<string, unknown>> = {}) => {
+  const job = {
     id: 'job-1',
     data: {
       sessionRef,
@@ -24,7 +27,12 @@ const makeJob = (over: Partial<Record<string, unknown>> = {}) =>
       anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
     },
     ...over,
-  }) as never;
+    update: jest.fn(async (data: FollowUpJob) => {
+      job.data = data;
+    }),
+  };
+  return job as never;
+};
 
 const asExecution = (outcome: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
   outcome,
@@ -39,9 +47,6 @@ describe('FollowUpProcessor', () => {
   let session: { getReengagementState: jest.Mock; getSessionState: jest.Mock };
   let reengagementAgent: { compose: jest.Mock };
   let touchLedger: {
-    saveRecovery: jest.Mock;
-    getRecovery: jest.Mock;
-    listUnknownSlots: jest.Mock;
     isOverFrequencyLimit: jest.Mock;
     isInSessionTouchCooldown: jest.Mock;
     reserve: jest.Mock;
@@ -74,14 +79,7 @@ describe('FollowUpProcessor', () => {
   let candidateProgress: { read: jest.Mock };
   let delivery: {
     deliver: jest.Mock;
-    beginReply: jest.Mock;
-    completeConfirmedReply: jest.Mock;
-    pendingReplyTasks: jest.Mock;
-    finishReplyTask: jest.Mock;
-    deferReplyTask: jest.Mock;
-    withReplyRecovery: jest.Mock;
   };
-  const failures = { report: jest.fn() };
   let requestContext: { get: jest.Mock; run: jest.Mock };
 
   beforeEach(() => {
@@ -111,9 +109,6 @@ describe('FollowUpProcessor', () => {
       ),
     };
     touchLedger = {
-      saveRecovery: jest.fn().mockResolvedValue(undefined),
-      getRecovery: jest.fn().mockResolvedValue(null),
-      listUnknownSlots: jest.fn().mockResolvedValue([]),
       isOverFrequencyLimit: jest.fn().mockResolvedValue(false),
       isInSessionTouchCooldown: jest.fn().mockResolvedValue(false),
       reserve: jest.fn().mockResolvedValue('reserved'),
@@ -194,14 +189,6 @@ describe('FollowUpProcessor', () => {
     };
     messageProcessing = { getLatestReceivedAtByChatId: jest.fn().mockResolvedValue(null) };
     delivery = {
-      beginReply: jest.fn().mockResolvedValue(undefined),
-      completeConfirmedReply: jest.fn().mockResolvedValue(false),
-      pendingReplyTasks: jest.fn().mockResolvedValue([]),
-      finishReplyTask: jest.fn().mockResolvedValue(undefined),
-      deferReplyTask: jest.fn().mockResolvedValue(undefined),
-      withReplyRecovery: jest.fn(async (_turn, task) =>
-        task(jest.fn().mockResolvedValue(undefined)),
-      ),
       deliver: jest.fn().mockResolvedValue({
         success: true,
         segmentCount: 1,
@@ -234,11 +221,6 @@ describe('FollowUpProcessor', () => {
       candidateProgress as never,
       withDelivery ? (delivery as never) : undefined,
       requestContext as never,
-      {
-        run: async (_id: string, _limits: unknown, task: (budget: unknown) => Promise<void>) =>
-          task({ checkpoint: jest.fn() }),
-      } as never,
-      failures as never,
     );
 
   it('paused proactive action stops before model generation', async () => {
@@ -269,222 +251,6 @@ describe('FollowUpProcessor', () => {
     buildProcessor().onModuleInit();
 
     expect(queue.process).toHaveBeenCalledWith(REENGAGEMENT_JOB_NAME, 2, expect.any(Function));
-  });
-
-  it('resumes the immutable reply plan for an unknown touch without generating new text', async () => {
-    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 24, 2));
-    systemConfig.getAgentReplyConfig.mockResolvedValue({
-      reengagementEnabled: true,
-      reengagementShadow: false,
-    });
-    delivery.beginReply.mockResolvedValue({
-      logicalTurnId: 'stable-turn',
-      status: 'planned',
-      plan: { text: 'original text', segments: [] },
-    });
-    touchLedger.reserve.mockResolvedValue('duplicate_inflight');
-    delivery.deliver.mockRejectedValue(new ReplyDeferredError('executing'));
-    await expect(buildProcessor().process(makeJob())).resolves.toBeUndefined();
-    expect(reengagementAgent.compose).not.toHaveBeenCalled();
-    expect(delivery.deliver).toHaveBeenCalledWith(
-      expect.objectContaining({ reply: { text: 'original text' } }),
-      expect.objectContaining({
-        idempotencyKey: 'sess-1:opening_no_reply:evt-1',
-        context: expect.objectContaining({
-          logicalTurnId: 'sess-1:opening_no_reply:evt-1',
-          inputOccurredAt: '2026-06-24T02:00:00.000Z',
-        }),
-      }),
-    );
-    expect(touchLedger.markSent).not.toHaveBeenCalled();
-    expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
-      'sess-1:opening_no_reply:evt-1',
-      'unknown',
-    );
-  });
-
-  it('repairs a confirmed touch after permissions close without sending or generating again', async () => {
-    const key = 'sess-1:opening_no_reply:evt-1';
-    touchLedger.listUnknownSlots.mockResolvedValue([{ key, state: 'unknown' }]);
-    touchLedger.getRecovery.mockResolvedValue({
-      jobData: {
-        sessionRef,
-        scenarioCode: 'opening_no_reply',
-        anchorEventId: 'evt-1',
-        anchorAt: 1782266400000,
-      },
-      sentAt: 1782266400000,
-      batchId: 'stable-turn',
-    });
-    delivery.beginReply.mockResolvedValue({
-      logicalTurnId: 'stable-turn',
-      status: 'planned',
-      plan: { text: 'original text', segments: [] },
-    });
-    delivery.completeConfirmedReply.mockResolvedValue(true);
-    systemConfig.getAgentReplyConfig.mockResolvedValue({ reengagementEnabled: false });
-    await buildProcessor().recoverUnknownTouches();
-    expect(touchLedger.markSent).toHaveBeenCalledWith(key, 'sess-1', 1782266400000);
-    expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(reengagementAgent.compose).not.toHaveBeenCalled();
-    expect(tracking.trackSent).toHaveBeenCalledWith(
-      expect.anything(),
-      'original text',
-      'stable-turn',
-    );
-  });
-
-  it('retains legacy unknown touches for manual review when no immutable evidence exists', async () => {
-    touchLedger.listUnknownSlots.mockResolvedValue([{ key: 'legacy', state: 'unknown' }]);
-    await buildProcessor().recoverUnknownTouches();
-    expect(failures.report).toHaveBeenCalledWith(
-      'reengagement.touch_manual_review',
-      'legacy',
-      expect.any(String),
-    );
-    expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(reengagementAgent.compose).not.toHaveBeenCalled();
-    expect(touchLedger.markSent).not.toHaveBeenCalled();
-  });
-
-  const pendingTask = (over: Record<string, unknown> = {}) => ({
-    corpId: 'corp-1',
-    accountId: 'bot-1',
-    chatId: 'sess-1',
-    logicalTurnId: 'persistent-task',
-    status: 'planned',
-    projectionStatus: 'pending',
-    inputOccurredAt: new Date(Date.now() - 4 * 86400_000).toISOString(),
-    plan: { text: 'original frozen text', segments: [{ index: 0, actionId: 'a' }] },
-    recovery: {
-      task: {
-        kind: 'reengagement',
-        data: {
-          jobData: {
-            sessionRef,
-            scenarioCode: 'post_interview_onboarding',
-            anchorEventId: 'evt-old',
-            anchorAt: Date.now() - 4 * 86400_000,
-            workOrderId: 42,
-          },
-          sentAt: 1782266400000,
-          batchId: 'original-model-trace',
-        },
-      },
-    },
-    ...over,
-  });
-
-  it('repairs a four-day-old confirmed touch with no Redis recovery and without a new send', async () => {
-    const turn = pendingTask();
-    delivery.pendingReplyTasks.mockResolvedValue([turn]);
-    delivery.completeConfirmedReply.mockResolvedValue(true);
-    touchLedger.getRecovery.mockResolvedValue(null);
-    touchLedger.listUnknownSlots.mockResolvedValue([]);
-    await buildProcessor().recoverUnknownTouches();
-    expect(scheduler.scheduleOnboardingCheck).toHaveBeenCalledWith(
-      expect.objectContaining({ workOrderId: 42, anchorAt: 1782266400000 }),
-    );
-    expect(scheduler.scheduleOnboardingCheck.mock.invocationCallOrder[0]).toBeLessThan(
-      touchLedger.markSent.mock.invocationCallOrder[0],
-    );
-    expect(delivery.finishReplyTask).toHaveBeenCalledWith(turn);
-    expect(reengagementAgent.compose).not.toHaveBeenCalled();
-    expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(delivery.beginReply).not.toHaveBeenCalled();
-  });
-
-  it('does not mark sent or complete the projection when the dependent queue admission fails', async () => {
-    const turn = pendingTask();
-    delivery.pendingReplyTasks.mockResolvedValue([turn]);
-    delivery.completeConfirmedReply.mockResolvedValue(true);
-    scheduler.scheduleOnboardingCheck.mockResolvedValueOnce({
-      scheduled: false,
-      reason: 'enqueue_error',
-    });
-    const processor = buildProcessor();
-    await processor.recoverUnknownTouches();
-    expect(touchLedger.markSent).not.toHaveBeenCalled();
-    expect(delivery.finishReplyTask).not.toHaveBeenCalled();
-    await processor.recoverUnknownTouches();
-    expect(delivery.finishReplyTask).toHaveBeenCalledTimes(1);
-    expect(touchLedger.markSent).toHaveBeenCalledTimes(1);
-    expect(delivery.deliver).not.toHaveBeenCalled();
-  });
-
-  it('never records cancelled terminal plans as a sent touch during durable repair', async () => {
-    const turn = pendingTask({ status: 'acked' });
-    delivery.pendingReplyTasks.mockResolvedValue([turn]);
-    delivery.completeConfirmedReply.mockResolvedValue(false);
-    await buildProcessor().recoverUnknownTouches();
-    expect(touchLedger.markSent).not.toHaveBeenCalled();
-    expect(scheduler.scheduleOnboardingCheck).not.toHaveBeenCalled();
-    expect(delivery.finishReplyTask).toHaveBeenCalledWith(turn);
-    expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
-      'sess-1:post_interview_onboarding:evt-old',
-      'failed',
-    );
-  });
-
-  it('does not turn a cancelled acknowledged plan into sent history or frequency', async () => {
-    const key = 'sess-1:opening_no_reply:evt-1';
-    touchLedger.listUnknownSlots.mockResolvedValue([{ key, state: 'unknown' }]);
-    touchLedger.getRecovery.mockResolvedValue({
-      jobData: {
-        sessionRef,
-        scenarioCode: 'opening_no_reply',
-        anchorAt: 1782266400000,
-        anchorEventId: 'evt-1',
-      },
-      sentAt: 1782266400000,
-      batchId: 'original-trace',
-    });
-    delivery.beginReply.mockResolvedValue({
-      logicalTurnId: 'stable-turn',
-      status: 'acked',
-      plan: { text: 'cancelled text', segments: [] },
-    });
-    delivery.completeConfirmedReply.mockResolvedValue(false);
-    await buildProcessor().recoverUnknownTouches();
-    expect(delivery.completeConfirmedReply).toHaveBeenCalled();
-    expect(touchLedger.markSent).not.toHaveBeenCalled();
-    expect(tracking.trackSent).not.toHaveBeenCalled();
-    expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(failures.report).toHaveBeenCalledWith(
-      'reengagement.touch_manual_review',
-      key,
-      expect.any(String),
-    );
-  });
-
-  it('does not regenerate or send an unknown plan after the scenario rollout closes', async () => {
-    const now = Date.UTC(2026, 5, 24, 2);
-    jest.spyOn(Date, 'now').mockReturnValue(now);
-    const key = 'sess-1:opening_no_reply:evt-1';
-    touchLedger.listUnknownSlots.mockResolvedValue([{ key, state: 'unknown' }]);
-    touchLedger.getRecovery.mockResolvedValue({
-      jobData: {
-        sessionRef,
-        scenarioCode: 'opening_no_reply',
-        anchorAt: now,
-        anchorEventId: 'evt-1',
-      },
-      sentAt: now,
-      batchId: 'stable-turn',
-    });
-    delivery.beginReply.mockResolvedValue({
-      logicalTurnId: 'stable-turn',
-      status: 'planned',
-      plan: { text: 'original text', segments: [] },
-    });
-    systemConfig.getAgentReplyConfig.mockResolvedValue({
-      reengagementEnabled: true,
-      reengagementShadow: true,
-    });
-    await buildProcessor().recoverUnknownTouches();
-    expect(delivery.deliver).not.toHaveBeenCalled();
-    expect(reengagementAgent.compose).not.toHaveBeenCalled();
-    expect(touchLedger.markSent).not.toHaveBeenCalled();
   });
 
   it('候选人待答闸：最后一条候选人消息从未进处理管道时停止触达（badcase recvqz4yWbdIKm 静默丢 turn）', async () => {
@@ -3179,6 +2945,76 @@ describe('FollowUpProcessor', () => {
       expect(touchLedger.markSent.mock.invocationCallOrder[0]).toBeLessThan(
         scheduler.scheduleOnboardingCheck.mock.invocationCallOrder[0],
       );
+    });
+
+    it.each(['enqueue', 'markSent'])(
+      'retries only onboarding local work after %s fails',
+      async (failure) => {
+        const sentAt = Date.UTC(2026, 7, 20, 2, 0, 0);
+        jest.spyOn(Date, 'now').mockReturnValue(sentAt);
+        sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+        session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+        systemConfig.getAgentReplyConfig.mockResolvedValue({
+          reengagementEnabled: true,
+          reengagementShadow: false,
+          reengagementScenarioRollout: { post_interview_onboarding: true },
+        });
+        if (failure === 'enqueue') {
+          scheduler.scheduleOnboardingCheck.mockResolvedValueOnce({
+            scheduled: false,
+            reason: 'enqueue_error',
+          });
+        } else {
+          touchLedger.markSent.mockRejectedValueOnce(new Error('Redis unavailable'));
+        }
+        const job = onboardingJob() as Job<FollowUpJob>;
+        await expect(buildProcessor().process(job)).rejects.toThrow();
+
+        // 模拟进程重启：只继承 Bull 已保存的 payload，外部已确认成功的消息不能再发。
+        expect(job.update).toHaveBeenCalledWith(
+          expect.objectContaining({ onboardingTouchAcceptedAt: sentAt }),
+        );
+        const persisted = JSON.parse(JSON.stringify((job.update as jest.Mock).mock.calls[0][0]));
+        jest.spyOn(Date, 'now').mockReturnValue(sentAt + 60_000);
+        touchLedger.isInSessionTouchCooldown.mockResolvedValue(true);
+        touchLedger.isOverFrequencyLimit.mockResolvedValue(true);
+        touchLedger.reserve.mockResolvedValue('duplicate_sent');
+        sponge.getWorkOrderById.mockRejectedValue(
+          new Error('must not requery for local scheduling'),
+        );
+        await buildProcessor().process(makeJob({ data: persisted }));
+
+        expect(delivery.deliver).toHaveBeenCalledTimes(1);
+        expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
+        expect(touchLedger.reserve).toHaveBeenCalledTimes(1);
+        expect(scheduler.scheduleOnboardingCheck).toHaveBeenLastCalledWith({
+          sessionRef,
+          workOrderId: 901,
+          anchorAt: sentAt,
+          channelIdentity: expect.objectContaining({ botImId: 'bot-1' }),
+        });
+        expect(touchLedger.markSent).toHaveBeenLastCalledWith(
+          expect.any(String),
+          sessionRef.sessionId,
+          sentAt,
+        );
+      },
+    );
+
+    it('does not schedule onboarding checks when the delivery result is unknown', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+        reengagementScenarioRollout: { post_interview_onboarding: true },
+      });
+      delivery.deliver.mockRejectedValue(new Error('provider timeout'));
+      const job = onboardingJob() as Job<FollowUpJob>;
+      await expect(buildProcessor().process(job)).rejects.toThrow('provider timeout');
+      expect(job.update).not.toHaveBeenCalled();
+      expect(scheduler.scheduleOnboardingCheck).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(expect.any(String), 'unknown');
     });
 
     it('ends the +48h check silently after the work order reaches onboarding success', async () => {

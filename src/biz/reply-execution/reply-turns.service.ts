@@ -9,8 +9,12 @@ import {
   type ReplyPlan,
   type ReplyTurn,
   type ReplyTurnScope,
+  type ReplyDeliverySummary,
 } from './reply-execution.types';
-import { REPLY_TURN_OPERATION } from '@biz/reply-execution/reply-execution.constants';
+import {
+  REPLY_TURN_OPERATION,
+  REPLY_DELIVERY_POLICY,
+} from '@biz/reply-execution/reply-execution.constants';
 import { ACTION_MODE, isActionMode } from '@shared-types/action-execution.contract';
 import type { ReplyTurnOperation } from './reply-execution.constants';
 
@@ -61,7 +65,10 @@ export class ReplyTurnsService {
         ...scope,
         inputIds: [...new Set(inputIds)],
         inputOccurredAt,
-        recovery,
+        recovery: recovery.primary ? this.inputContext(recovery) : recovery,
+        deliveryPolicy: recovery.primary
+          ? REPLY_DELIVERY_POLICY.SINGLE_PASS
+          : REPLY_DELIVERY_POLICY.FROZEN,
         logicalTurnId: randomUUID(),
         owner: randomUUID(),
         mode: this.mode,
@@ -93,8 +100,23 @@ export class ReplyTurnsService {
     }
     return this.update(turn, REPLY_TURN_OPERATION.PLAN, { plan });
   }
-  async settle(turn: ReplyTurn): Promise<ReplyTurn> {
-    return this.update(turn, REPLY_TURN_OPERATION.SETTLE);
+  async saveEffects(turn: ReplyTurn, effects: Record<string, unknown>): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.SAVE_EFFECTS, { effects });
+  }
+  async startDelivery(turn: ReplyTurn): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.START_DELIVERY);
+  }
+  async assertInputActive(turn: ReplyTurn): Promise<void> {
+    await this.update(turn, REPLY_TURN_OPERATION.CHECK_INPUT);
+  }
+  async assertDeliveryActive(turn: ReplyTurn): Promise<void> {
+    await this.update(turn, REPLY_TURN_OPERATION.CHECK_DELIVERY);
+  }
+  async interrupt(turn: ReplyTurn): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.INTERRUPT);
+  }
+  async settle(turn: ReplyTurn, deliveryResult?: ReplyDeliverySummary): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.SETTLE, { deliveryResult });
   }
   async acked(turn: ReplyTurn): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.ACK);
@@ -105,9 +127,18 @@ export class ReplyTurnsService {
   async completeProjection(turn: ReplyTurn): Promise<void> {
     await this.update(turn, REPLY_TURN_OPERATION.PROJECT);
   }
-  async deferProjection(turn: ReplyTurn): Promise<void> {
-    await this.update(turn, REPLY_TURN_OPERATION.DEFER_PROJECTION);
+  private inputContext(recovery: Record<string, unknown>): Record<string, unknown> {
+    const primary = recovery.primary as Record<string, unknown>;
+    // Only route identity is needed to authorize this live turn and acknowledge its input later.
+    // No original text/model result is retained for background regeneration.
+    const keys = ['orgId', 'imBotId', 'chatId', 'imContactId', 'imRoomId', 'groupId', '_apiType'];
+    return {
+      primary: Object.fromEntries(
+        keys.filter((key) => primary[key] !== undefined).map((key) => [key, primary[key]]),
+      ),
+    };
   }
+
   private async update(
     turn: ReplyTurn,
     operation: ReplyTurnOperation,

@@ -13,6 +13,73 @@ function visualLedger(raw: { description?: string } & Record<string, unknown>) {
 describe('RepairEvidenceBuilder', () => {
   const builder = new RepairEvidenceBuilder();
 
+  it('keeps the last actual precheck and rejected citation when a correction never executed', () => {
+    const packet = builder.build({
+      reply: '面试约在今天下午',
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_precheck',
+          args: {},
+          result: {
+            success: true,
+            nextAction: 'collect_fields',
+            job: { jobId: 101 },
+            bookingChecklist: { missingFields: ['姓名'] },
+            rejectedAnswers: [
+              {
+                labelTitle: '姓名',
+                action: 'retry_submission',
+                hint: '按本人原话修正引用，不要重复询问',
+              },
+            ],
+          },
+        },
+        {
+          toolName: 'duliday_interview_precheck',
+          args: {},
+          result: {
+            success: false,
+            errorType: 'shared.turn_call_limit_reached',
+            toolExecuted: false,
+          },
+        },
+      ],
+    });
+    expect(packet.evidence.precheck).toMatchObject({
+      jobId: 101,
+      nextAction: 'collect_fields',
+      missingFields: ['姓名'],
+      unexecutedErrorType: 'shared.turn_call_limit_reached',
+      rejectedAnswers: [
+        {
+          labelTitle: '姓名',
+          action: 'retry_submission',
+          hint: '按本人原话修正引用，不要重复询问',
+        },
+      ],
+    });
+    expect(packet.evidence.booking).toBeUndefined();
+  });
+
+  it('does not restore an outdated ready verdict after an actually executed failure', () => {
+    const packet = builder.build({
+      reply: '核实中',
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_precheck',
+          args: {},
+          result: { nextAction: 'ready_to_book' },
+        },
+        {
+          toolName: 'duliday_interview_precheck',
+          args: {},
+          result: { success: false, errorType: 'precheck.contract_changed' },
+        },
+      ],
+    });
+    expect(packet.evidence.precheck?.nextAction).toBeUndefined();
+  });
+
   it('extracts job/precheck/booking/geocode evidence from tool calls', () => {
     const packet = builder.build({
       reply: '已帮你约好明天下午面试',

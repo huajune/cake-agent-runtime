@@ -39,6 +39,8 @@ import {
 const COMPAT_RETRY_DELAYS_MS = [3000, 5000, 8000];
 
 export interface GroupInviteInput {
+  /** Independent proactive tasks use their own touch slot, never the inbound action runtime. */
+  action?: typeof PERMITTED_ACTION.PROACTIVE | typeof PERMITTED_ACTION.TOOL;
   corpId: string;
   userId: string;
   sessionId: string;
@@ -308,6 +310,18 @@ export class GroupInviteService implements OnModuleInit {
         this.logger.log(
           `拉群成功: ${targetGroup.groupName} (user=${input.userId}, city=${input.city}, industry=${input.industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed}, pendingConsent=${inviteCardSentPendingConsent})`,
         );
+        if (!inviteApiResult.action) {
+          await this.memoryService
+            .saveInvitedGroup(input.corpId, input.userId, input.sessionId, {
+              groupName: targetGroup.groupName,
+              city: input.city,
+              industry: input.industry,
+              invitedAt: new Date().toISOString(),
+            })
+            .catch((error: unknown) => {
+              this.logger.warn(`写入 invitedGroups 失败（不重发邀请）: ${toErrorMessage(error)}`);
+            });
+        }
         this.recordGroupInvited(input, targetGroup.groupName);
         return {
           success: true,
@@ -541,6 +555,38 @@ export class GroupInviteService implements OnModuleInit {
     intentStep?: string;
   }): Promise<InviteApiResult> {
     const { input, targetGroup, intentStep, ...external } = params;
+    if (input.action === PERMITTED_ACTION.PROACTIVE) {
+      if (
+        !(
+          await this.permits.evaluate({
+            chatId: input.chatId ?? input.sessionId,
+            action: PERMITTED_ACTION.PROACTIVE,
+            botImId: external.imBotId,
+            candidateIds: [input.userId, input.contactWxid],
+          })
+        ).allowed
+      )
+        return {
+          accepted: false,
+          code: null,
+          unresolved: true,
+          error: 'proactive_permission_denied',
+        };
+      try {
+        const result = this.parseInviteApiResult(
+          await this.roomService.addMemberEnterprise(external),
+        );
+        const known =
+          result.code === 0 ||
+          result.code === -9 ||
+          this.isInviteCardSentPendingConsent(result) ||
+          (result.code != null && [-8, -10, 400400].includes(result.code));
+        return { ...result, ...(!known ? { unresolved: true } : {}) };
+      } catch (error) {
+        // An ambiguous invitation must not fall through to another group or retry.
+        return { accepted: false, code: null, unresolved: true, error: toErrorMessage(error) };
+      }
+    }
     const logicalTurnId = input.logicalTurnId ?? input.turnKey;
     const intent: ActionIntent = {
       corpId: input.corpId,

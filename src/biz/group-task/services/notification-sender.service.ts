@@ -13,7 +13,6 @@ import {
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
-import type { GroupTaskDispatchPlan } from '../queue/group-task-queue.constants';
 import {
   INTRA_GROUP_MESSAGE_DELAY_MS,
   MINIPROGRAM_CARD_DELAY_MAX_MS,
@@ -67,8 +66,13 @@ export class NotificationSenderService {
     type: GroupTaskType,
     dryRun: boolean,
   ): Promise<void> {
-    // 飞书群始终发一份（试运行=预览，生产=监控）
-    await this.sendFeishuPreview(group, message, type, dryRun);
+    // 飞书群始终发一份（试运行=预览，生产=监控）；监控失败不阻断生产群发。
+    try {
+      await this.sendFeishuPreview(group, message, type, dryRun);
+    } catch (error) {
+      if (dryRun) throw error;
+      this.notifyFeishuSendFailure(GROUP_TASK_TYPE_NAMES[type] || type, group, error, false);
+    }
 
     // 试运行模式：只发飞书，不发企微群
     if (dryRun) return;
@@ -104,66 +108,6 @@ export class NotificationSenderService {
       '跟随文本',
       INTRA_GROUP_MESSAGE_DELAY_MS,
     );
-  }
-
-  buildDispatchParts(
-    message: string,
-    followUp: string | undefined,
-    type: GroupTaskType,
-  ): GroupTaskDispatchPlan['parts'] {
-    const parts: GroupTaskDispatchPlan['parts'] = [
-      { id: 'main', messageType: 7, payload: { text: message }, delayMs: 0 },
-    ];
-    if (type === GroupTaskType.PART_TIME_JOB && this.miniprogramAppid && this.miniprogramUsername) {
-      parts.push({
-        id: 'mini-program',
-        messageType: 9,
-        delayMs: resolveHumanizedDelayMs(MINIPROGRAM_CARD_DELAY_MIN_MS, {
-          minFactor: 1,
-          maxFactor: MINIPROGRAM_CARD_DELAY_MAX_MS / MINIPROGRAM_CARD_DELAY_MIN_MS,
-        }),
-        payload: {
-          appid: this.miniprogramAppid,
-          username: this.miniprogramUsername,
-          title: MINIPROGRAM_DEFAULTS.TITLE,
-          thumbUrl: this.miniprogramThumbUrl,
-          pagePath: MINIPROGRAM_DEFAULTS.PAGE_PATH,
-          description: MINIPROGRAM_DEFAULTS.DESCRIPTION,
-        },
-      });
-    }
-    if (followUp)
-      parts.push({
-        id: 'follow-up',
-        messageType: 7,
-        payload: { text: followUp },
-        delayMs: INTRA_GROUP_MESSAGE_DELAY_MS,
-      });
-    return parts;
-  }
-
-  async sendPreparedPart(
-    group: GroupContext,
-    part: GroupTaskDispatchPlan['parts'][number],
-    requestId?: string,
-  ): Promise<void> {
-    this.assertEnterpriseSendable(group);
-    await this.sendEnterpriseGroupMessage(
-      group,
-      part.messageType,
-      part.payload,
-      part.id,
-      part.delayMs,
-      requestId,
-    );
-  }
-
-  async previewPrepared(group: GroupContext, message: string, type: GroupTaskType): Promise<void> {
-    try {
-      await this.sendFeishuPreview(group, message, type, false);
-    } catch (error) {
-      this.notifyFeishuSendFailure(GROUP_TASK_TYPE_NAMES[type] || type, group, error, false);
-    }
   }
 
   /**
@@ -327,7 +271,6 @@ export class NotificationSenderService {
     payload: Record<string, unknown>,
     label: string,
     delayBeforeMs = 0,
-    externalRequestId?: string,
   ): Promise<void> {
     if (delayBeforeMs > 0) {
       this.logger.debug(
@@ -342,7 +285,6 @@ export class NotificationSenderService {
       imRoomId: group.imRoomId,
       messageType,
       payload,
-      ...(externalRequestId ? { externalRequestId } : {}),
     });
   }
 

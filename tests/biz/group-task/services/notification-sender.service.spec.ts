@@ -126,10 +126,10 @@ describe('NotificationSenderService', () => {
       expect(messageSenderService.sendMessage).toHaveBeenCalled();
     });
 
-    it('labels prepared preview as production and tolerates webhook exceptions', async () => {
+    it('labels the preview as production and tolerates webhook exceptions', async () => {
       opsNotifierService.sendGroupTaskPreview.mockRejectedValueOnce(new Error('webhook offline'));
       await expect(
-        service.previewPrepared(mockGroup, 'content', GroupTaskType.ORDER_GRAB),
+        service.sendToGroup(mockGroup, 'content', GroupTaskType.ORDER_GRAB, false),
       ).resolves.toBeUndefined();
       expect(opsNotifierService.sendGroupTaskPreview).toHaveBeenCalledWith(
         expect.objectContaining({ dryRun: false }),

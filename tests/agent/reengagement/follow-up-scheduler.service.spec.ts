@@ -364,7 +364,6 @@ describe('FollowUpSchedulerService', () => {
         scenarioCode: 'opening_no_reply',
         anchorEventId: 'evt-1',
         anchorAt,
-        dispatchDueAt: expectedFireAt,
       },
       expect.objectContaining({
         jobId: 'sess-1:opening_no_reply:evt-1',

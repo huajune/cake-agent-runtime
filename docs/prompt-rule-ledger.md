@@ -1095,6 +1095,14 @@ AI 等通知回执存在流程备注时，以备注首句为通知事实，不�
 - **运行时对应**：`src/memory/fact-evidence.ts` 定义 Unicode 预算，`src/memory/short-term/extraction-evidence.ts` 与 `facts.service.ts` 按字段拒绝缺失、空或超预算的模型增量并记录拒绝原因，保留旧事实。既有引用核验与用工形式裁决保持；表单、工具和历史证据不套用模型预算。
 - **完整保存与测试**：短期/长期、上下文及 Supabase 读写不再机械截短证据，迁移 `20261027110000_preserve_memory_evidence.sql` 移除数据库截断。`tests/memory/fact-evidence.spec.ts`、`tests/memory/short-term/session-state.service.spec.ts`、`tests/memory/long-term.service.spec.ts` 和 `tests/memory/supabase.store.spec.ts` 覆盖预算、拒绝增量、末尾条件及存储完整性。
 
+### 2026-11-06 预检与群邀请回执的收尾提示
+
+- **证据**：线上脱敏样本 `2afde530616f036f` 的 query→validate 返回 `value_not_in_source_text / retry_submission`，第三次纠参被旧两次上限拒绝，却确认面试已约；`b11c19663c81648f` 的邀请卡片回执被说成已入群。
+- **居所**：`tool-call-analysis.ts#buildPrecheckProgressNotice` 在主 Agent 每步末尾提示最近实际预检状态及预约确认所需的真实证据；`buildToolCallLimitNotice` 明确未执行的请求不产生新事实。预检预算三次，覆盖查表、校验、纠参或契约刷新，跨模型重试不重置。
+- **群回执**：`invite-to-group.tool.ts` 删除“success=true 即可说已拉群”的含混描述；`buildSideEffectBlockNotice` 根据投递方式区分卡片发送、直接入群、原已在群，报名后自动邀请采用同一口径，未知结果仍禁止重试。
+- **修复上下文**：`RepairEvidenceBuilder` 保留最近实际校验、拒收指令和未执行错误；`ReplyRepairAgent` 不再将超限回执投影为无状态。共享 `GroupInviteDelivery`，不重定义协议值。
+- **边界**：只读机器回执并给模型提示，未新增开放语言正则裁决或第二个语义审查模型；既有守卫不因此扩权。单测和真实模型回归分别报告，不能把提示当作必然拦截保证。
+
 ### 2026-11-04 轮末增量与证据拒绝诊断
 
 - **来源与时效**：用户要求修复班次抽取和告警；生产样本为纯确认和合同咨询回合仍输出多项无合格证据的偏好。常设增量契约修复，不改变招聘筛选口径。

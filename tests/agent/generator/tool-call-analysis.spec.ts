@@ -1,5 +1,6 @@
 import {
   buildSideEffectBlockNotice,
+  buildPrecheckProgressNotice,
   buildToolCallLimitNotice,
   blocksReplay,
   collectCalledToolNames,
@@ -349,14 +350,20 @@ describe('tool-call-analysis', () => {
       expect(findToolsExceedingLimit(steps, 3)).toEqual([]);
     });
 
-    it('blocks precheck after its stricter per-turn limit', () => {
+    it('allows query, validate and one correction before blocking precheck', () => {
+      expect(
+        findToolsExceedingLimit([
+          callStep('duliday_interview_precheck'),
+          callStep('duliday_interview_precheck'),
+        ]),
+      ).toEqual([]);
       const steps = Array.from({ length: MAX_PRECHECK_CALLS_PER_TURN }, () =>
         callStep('duliday_interview_precheck'),
       );
       expect(findToolsExceedingLimit(steps, MAX_PRECHECK_CALLS_PER_TURN)).toEqual([
         'duliday_interview_precheck',
       ]);
-      expect(MAX_PRECHECK_CALLS_PER_TURN).toBeLessThan(MAX_SAME_TOOL_CALLS_PER_TURN);
+      expect(MAX_PRECHECK_CALLS_PER_TURN).toBe(3);
     });
 
     it('defaults to MAX_SAME_TOOL_CALLS_PER_TURN', () => {
@@ -479,6 +486,33 @@ describe('tool-call-analysis', () => {
   });
 
   describe('buildSideEffectBlockNotice', () => {
+    it.each(['invite_to_group', 'duliday_interview_booking'])(
+      'keeps invitation acceptance separate from membership in %s',
+      (name) => {
+        const invite = { success: true, inviteDelivery: 'invite_card', delivery: 'invite_card' };
+        const output = name === 'invite_to_group' ? invite : { success: true, groupInvite: invite };
+        const notice = buildSideEffectBlockNotice(
+          [name],
+          [{ toolResults: [{ toolName: name, output }] }],
+        );
+        expect(notice).toContain('尚未确认候选人入群');
+        expect(notice).toContain('点击邀请卡片');
+      },
+    );
+
+    it.each([
+      [{ success: true, inviteDelivery: 'direct_add' }, '回执确认已直接加入该群'],
+      [{ success: true, alreadyInGroup: true }, '原已在群'],
+      [{ success: true }, '不猜测投递方式'],
+      [{ success: true, actionStatus: 'unknown', inviteDelivery: 'invite_card' }, '结果未知'],
+    ])('respects authoritative delivery/unknown receipts: %j', (output, expected) => {
+      const notice = buildSideEffectBlockNotice(
+        ['invite_to_group'],
+        [{ toolResults: [{ toolName: 'invite_to_group', output }] }],
+      );
+      expect(notice).toContain(expected);
+      if ('actionStatus' in output) expect(notice).not.toContain('群邀请只确认已发送');
+    });
     it('returns empty string when nothing blocked', () => {
       expect(buildSideEffectBlockNotice([])).toBe('');
     });
@@ -507,6 +541,42 @@ describe('tool-call-analysis', () => {
     it('uses default limit when not provided', () => {
       const notice = buildToolCallLimitNotice(['a']);
       expect(notice).toContain(String(MAX_SAME_TOOL_CALLS_PER_TURN));
+    });
+  });
+
+  describe('buildPrecheckProgressNotice', () => {
+    const step = (output: unknown) => ({
+      toolResults: [{ toolName: 'duliday_interview_precheck', output }],
+    });
+    it('preserves the actual result after a denied correction, without treating it as booking success', () => {
+      const notice = buildPrecheckProgressNotice([
+        step({ success: true, nextAction: 'collect_fields', job: { jobId: 101 } }),
+        step({
+          success: false,
+          toolExecuted: false,
+          errorType: TOOL_ERROR_TYPES.TURN_CALL_LIMIT_REACHED,
+        }),
+      ]);
+      expect(notice).toContain('岗位 101');
+      expect(notice).toContain('nextAction=collect_fields');
+      expect(notice).toContain('均不是预约成功');
+      expect(notice).toContain('已核实的在途工单');
+    });
+    it('does not reuse a previous ready verdict after a later executed failure', () => {
+      expect(
+        buildPrecheckProgressNotice([
+          step({ nextAction: 'ready_to_book', success: true }),
+          step({ success: false, errorType: TOOL_ERROR_TYPES.PRECHECK_CONTRACT_CHANGED }),
+        ]),
+      ).toBe('');
+    });
+    it('retains the booked-work-order path rather than asserting no booking exists', () => {
+      const notice = buildPrecheckProgressNotice([
+        step({ nextAction: 'already_booked', success: true }),
+      ]);
+      expect(notice).toContain('nextAction=already_booked');
+      expect(notice).toContain('已核实的在途工单');
+      expect(buildPrecheckProgressNotice([])).toBe('');
     });
   });
 

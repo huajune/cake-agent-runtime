@@ -3,8 +3,7 @@ import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { ReplyTurn } from './reply-execution.types';
 import {
-  REPLY_PROJECTION_STATUS,
-  REPLY_RECOVERY_TASK,
+  isReplyDeliveryPolicy,
   REPLY_TURN_STATUS,
 } from '@biz/reply-execution/reply-execution.constants';
 import { ACTION_MODE } from '@shared-types/action-execution.contract';
@@ -73,21 +72,6 @@ export class ReplyTurnsRepository extends BaseRepository {
     return data === true;
   }
 
-  async dueTaskProjections(): Promise<ReplyTurn[]> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .eq('mode', ACTION_MODE.EXECUTE)
-      .eq('projection_status', REPLY_PROJECTION_STATUS.PENDING)
-      .eq('recovery->task->>kind', REPLY_RECOVERY_TASK.REENGAGEMENT)
-      .lte('projection_next_check_at', new Date().toISOString())
-      .order('projection_next_check_at')
-      .limit(25)
-      .abortSignal(AbortSignal.timeout(5000));
-    if (error) throw error;
-    return (data ?? []).map((row) => this.fromDb(row));
-  }
-
   async redact(limit = 100): Promise<number> {
     const { data, error } = await this.getClient()
       .rpc('redact_completed_agent_reply_turns', { p_limit: limit })
@@ -98,18 +82,9 @@ export class ReplyTurnsRepository extends BaseRepository {
     return data;
   }
 
-  async confirmed(turn: ReplyTurn): Promise<boolean> {
-    const { data, error } = await this.getClient()
-      .rpc('agent_reply_plan_confirmed', {
-        p_corp_id: turn.corpId,
-        p_turn_id: turn.logicalTurnId,
-      })
-      .abortSignal(AbortSignal.timeout(5000));
-    if (error) throw error;
-    return data === true;
-  }
-
   private fromDb(row: Record<string, unknown>): ReplyTurn {
+    if (!isReplyDeliveryPolicy(row.delivery_policy))
+      throw new Error('reply_delivery_policy_schema_unconfirmed');
     return {
       corpId: row.corp_id as string,
       accountId: row.account_id as string,
@@ -122,6 +97,8 @@ export class ReplyTurnsRepository extends BaseRepository {
       owner: row.owner as string | null,
       fence: row.fence as number,
       plan: row.plan as ReplyTurn['plan'],
+      deliveryPolicy: row.delivery_policy as ReplyTurn['deliveryPolicy'],
+      deliveryResult: row.delivery_result as ReplyTurn['deliveryResult'],
       recovery: row.recovery as Record<string, unknown>,
       projectionStatus: row.projection_status as ReplyTurn['projectionStatus'],
     };

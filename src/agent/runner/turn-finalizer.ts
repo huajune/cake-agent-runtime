@@ -14,11 +14,19 @@
  * ```
  */
 export class TurnFinalizer {
-  private run?: (opts?: { includeAssistantText?: boolean }) => Promise<void>;
+  private run?: (opts?: {
+    includeAssistantText?: boolean;
+    assistantTextOverride?: string;
+  }) => Promise<void>;
   private pending?: Promise<void>;
 
   private constructor(
-    run: ((opts?: { includeAssistantText?: boolean }) => Promise<void>) | undefined,
+    run:
+      | ((opts?: {
+          includeAssistantText?: boolean;
+          assistantTextOverride?: string;
+        }) => Promise<void>)
+      | undefined,
     private readonly onError?: (error: unknown) => void,
   ) {
     this.run = run;
@@ -28,7 +36,12 @@ export class TurnFinalizer {
    * 包装 runner 暴露的 `runTurnEnd` 闭包（生成路径必然存在；已被上游接管时返回空操作句柄）。
    */
   static from(
-    run: ((opts?: { includeAssistantText?: boolean }) => Promise<void>) | undefined,
+    run:
+      | ((opts?: {
+          includeAssistantText?: boolean;
+          assistantTextOverride?: string;
+        }) => Promise<void>)
+      | undefined,
     onError?: (error: unknown) => void,
   ): TurnFinalizer {
     return new TurnFinalizer(run, onError);
@@ -40,11 +53,14 @@ export class TurnFinalizer {
    * `delivered=false`（守卫拦截 / 主动沉默 / 投递失败 / 托管暂停）时只记用户侧记忆，不把
    * 未送达的回复投影成助手轮次，避免下一轮「幽灵复聊」。
    */
-  settle(opts: { delivered: boolean }): void {
+  settle(opts: { delivered: boolean; acceptedText?: string }): void {
     const run = this.run;
     if (!run) return;
     this.run = undefined;
-    this.pending = run({ includeAssistantText: opts.delivered }).catch((error) => {
+    this.pending = run({
+      includeAssistantText: opts.delivered,
+      ...(opts.acceptedText !== undefined ? { assistantTextOverride: opts.acceptedText } : {}),
+    }).catch((error) => {
       this.onError?.(error);
     });
   }

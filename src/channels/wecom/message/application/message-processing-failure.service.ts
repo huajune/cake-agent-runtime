@@ -168,15 +168,43 @@ export class MessageProcessingFailureService {
         });
     }
 
-    if ((deliveryError?.result.deliveredSegments ?? 0) > 0) {
-      this.logger.warn(`[${contactName}] 回复已部分发送，跳过降级回复 [${traceId}]`);
+    if (deliveryError) {
+      await this.alertService
+        .sendAlert(
+          {
+            code: 'message.delivery_failed',
+            summary: deliveryError.result.unknownSegments
+              ? '回复发送结果未知，未自动重发'
+              : '回复未完整处理，请核实',
+            severity: AlertLevel.ERROR,
+            source: {
+              subsystem: 'wecom',
+              component: 'MessageProcessingFailureService',
+              action: 'finishReply',
+              trigger: 'http',
+            },
+            scope: { chatId, messageId: traceId, scenario },
+            impact: {
+              userVisible: (deliveryError.result.deliveredSegments ?? 0) > 0,
+              requiresHumanIntervention: true,
+            },
+            diagnostics: { error: diagnosticError, payload: { delivery: deliveryError.result } },
+            routing: errorReceiver ? { atUsers: [errorReceiver] } : undefined,
+            dedupe: { key: `message.delivery_failed:${traceId}` },
+          },
+          { persist: false },
+        )
+        .catch((alertError: unknown) => {
+          this.logger.error(`回复异常告警失败: ${toErrorMessage(alertError)}`);
+        });
+      this.logger.warn(`[${contactName}] 回复投递已结束，保留结果并跳过降级回复 [${traceId}]`);
       const failureMetadata = await this.wecomObservability.buildFailureMetadata(traceId, {
         scenario,
         errorType,
         errorMessage,
         batchId: options?.batchId,
         extraResponse: {
-          phase: 'delivery-partial',
+          phase: deliveryError.result.unknownSegments ? 'delivery-unknown' : 'delivery-incomplete',
           dispatchMode: options?.dispatchMode,
           delivery: deliveryError?.result,
         },

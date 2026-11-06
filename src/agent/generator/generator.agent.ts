@@ -25,6 +25,7 @@ import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import {
   buildSideEffectBlockNotice,
+  buildPrecheckProgressNotice,
   buildToolCallLimitNotice,
   collectCalledToolNames,
   collectToolReplayEvidence,
@@ -349,7 +350,8 @@ export class GeneratorAgent {
         baseTools.includes(name),
       );
       const blocked = Array.from(new Set([...overused, ...skipReplyBlocked, ...sideEffectBlocked]));
-      if (blocked.length === 0) return {};
+      const precheckNotice = buildPrecheckProgressNotice(steps);
+      if (blocked.length === 0 && !precheckNotice) return {};
 
       const activeTools = baseTools.filter((name) => !blocked.includes(name));
       const noticeParts: string[] = [];
@@ -365,14 +367,17 @@ export class GeneratorAgent {
       }
       const sideEffectNotice = buildSideEffectBlockNotice(sideEffectBlocked, steps);
       if (sideEffectNotice) noticeParts.push(sideEffectNotice);
+      if (precheckNotice) noticeParts.push(precheckNotice);
       const instructions =
         noticeParts.length > 0
           ? `${baseInstructions}\n\n${noticeParts.join('\n')}`
           : baseInstructions;
 
-      logger.warn(
-        `工具调用硬截断: blocked=${blocked.join(',')} stepCount=${steps.length} sessionId=${sessionId}`,
-      );
+      if (blocked.length > 0) {
+        logger.warn(
+          `工具调用硬截断: blocked=${blocked.join(',')} stepCount=${steps.length} sessionId=${sessionId}`,
+        );
+      }
 
       return {
         activeTools,

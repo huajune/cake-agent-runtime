@@ -121,13 +121,15 @@
 
 ## GP-10 拉群时机与后续边界
 
-按当前邀群契约选择城市与群，已有邀请走去重；无岗收口后不主动续推，候选人提出新诉求时再处理。报名后的群用途与报名回执一致。
+按当前邀群契约选择城市与群，已有邀请走去重；无岗收口后不主动续推，候选人提出新诉求时再处理。报名后的群用途与报名回执一致。invite_card 成功只代表邀请已发送，不代表候选人已入群；direct_add 和已核实 alreadyInGroup 分别说明本轮直接加入和原已在群。invitedGroups 邀请记录不能证明成员状态。
 
 - 状态：现行基线
 - 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
 - 落点：`src/agent/reengagement/scenario-registry.ts#generationPolicy`
 - 落点：`src/tools/invite/invite-city-gate.ts`
 - 落点：`src/tools/invite-to-group.tool.ts#buildInviteToGroupTool`
+- 落点：`src/agent/generator/tool-call-analysis.ts#buildSideEffectBlockNotice`
+- 验证：`tests/agent/generator/tool-call-analysis.spec.ts`
 - 落点：`src/tools/invite/invite-timing-gate.ts`
 - 验证：`tests/agent/reengagement/scenario-registry.spec.ts`
 - 验证：`tests/tools/invite/invite-city-gate.spec.ts`
@@ -149,5 +151,7 @@
 - 2026-10-23 测试环境冒烟的“美团外卖未合作”预期缺少合作状态依据；实际 instructions/toolDefinitions 和工具结果均不能证明该前提。执行 `f1f6da14-e949-4e7d-8127-0f699d06e070` 标记 skipped / 测试资产不可评估，不算业务通过或失败，不由此新增“不合作”规则。
 
 ## 变更记录
+
+- 2026-11-06：线上脱敏样本 `b11c19663c81648f` 把邀请卡片成功说成已入群。统一工具描述和步骤末尾成功提示，覆盖普通邀群、报名后的复合回执、直接入群及未知结果；保持现有渠道契约，不等待普通回复的自发回调。
 
 - 2026-10-23：首次按主题建立口径、执行落点与验证关联；机械拆分手册，保持文案与顺序；不新增业务裁定。

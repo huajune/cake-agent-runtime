@@ -1,3 +1,4 @@
+import { ordinaryReplyEffects, readOrdinaryReplyEffects } from './ordinary-reply-effects';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
@@ -31,7 +32,7 @@ import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-schedule
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
-import { DeliveryContext, AgentInvokeResult } from '../types';
+import { DeliveryContext, AgentInvokeResult, DeliveryFailureError, DeliveryResult } from '../types';
 import type { AgentError } from '@shared-types/agent-error.types';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
 import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.service';
@@ -48,7 +49,13 @@ import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import { BotService } from '../../bot/bot.service';
 import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
-import { REPLY_TURN_STATUS } from '@biz/reply-execution/reply-execution.constants';
+import {
+  REPLY_TURN_STATUS,
+  REPLY_DELIVERY_POLICY,
+  REPLY_DELIVERY_OUTCOME,
+  REPLY_PROJECTION_STATUS,
+  REPLY_REVIEW_REASON,
+} from '@biz/reply-execution/reply-execution.constants';
 import type { WecomApiType } from '@shared-types/wecom-api.types';
 import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
@@ -338,6 +345,8 @@ export class ReplyWorkflowService {
       modelId: overrideModelId,
       thinking,
       hasNewerUserInput: async () => {
+        if (durableTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS)
+          await this.replyTurns!.assertInputActive(durableTurn);
         const { messages: newerMessages } = await this.fetchPendingSinceAgentStart(
           chatId,
           consumedPending,
@@ -354,6 +363,8 @@ export class ReplyWorkflowService {
     // 每次运行都返回独立的 turn-end 闭包；先由 TurnFinalizer 持有，不在生成结束时执行。
     // 若随后 replay，丢弃本版 finalizer，避免把「未发出的回复」污染到 session 记忆里。
     let agentResult: AgentInvokeResult;
+    let deliveryResult: DeliveryResult | undefined;
+    let businessEffects: Record<string, unknown> | undefined;
     if (durableTurn?.plan) {
       agentResult = this.restoreReplyResult(durableTurn);
     } else {
@@ -369,6 +380,9 @@ export class ReplyWorkflowService {
         });
       } catch (error) {
         if (!durableTurn || !this.replyTurns || error instanceof ReplyDeferredError) throw error;
+        // 模型中断前可能已经提交业务动作。未知工具终态不能当作“无需补账”确认输入。
+        if (durableTurn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS)
+          throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
         await this.processingFailureService.handleProcessingError(error, parsed, {
           scenario,
           traceId,
@@ -498,7 +512,7 @@ export class ReplyWorkflowService {
         });
       }
 
-      if (durableTurn) {
+      if (durableTurn && durableTurn.deliveryPolicy !== REPLY_DELIVERY_POLICY.SINGLE_PASS) {
         await params.assertOwned?.();
         const outbound =
           agentResult.outcome?.kind === 'handoff'
@@ -533,6 +547,28 @@ export class ReplyWorkflowService {
         botUserId: agentCallParams.botUserId,
         userMessage: content,
       };
+      const reengagementChannelIdentity = this.buildReengagementChannelIdentity(
+        parsed,
+        params.primaryMessage,
+        stableBotUserId,
+      );
+      const toolAnchorContext = {
+        assertOwned: params.assertOwned,
+        traceId: durableTurn?.logicalTurnId ?? traceId,
+        ...{
+          logicalTurnId: durableTurn?.logicalTurnId,
+          inputOccurredAt: durableTurn?.inputOccurredAt,
+        },
+        chatId,
+        userId: agentCallParams.userId,
+        corpId: agentCallParams.corpId,
+        isGroupChat: Boolean(params.primaryMessage.imRoomId),
+        channelIdentity: reengagementChannelIdentity,
+      };
+      if (durableTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
+        businessEffects = ordinaryReplyEffects(agentResult.toolCalls, toolAnchorContext);
+        durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
+      }
       if (agentResult.outcome?.kind !== 'reply') {
         // 同轮已提交的报名/改约/取消结果：先把确定性回执发给候选人，再提交暂停/告警
         // （PRD R5.1 第 3 条）。顺序不能反：暂停后 deliverReply 会因托管暂停被跳过。
@@ -554,24 +590,19 @@ export class ReplyWorkflowService {
         await this.outcomeFinalizer.commit(agentResult.outcome, sideEffectContext);
         if (receiptPending) throw receiptPending;
       }
-      const reengagementChannelIdentity = this.buildReengagementChannelIdentity(
-        parsed,
-        params.primaryMessage,
-        stableBotUserId,
+      const terminalSettled = this.reengagementAnchors.handleToolAnchors(
+        agentResult,
+        toolAnchorContext,
       );
-      const terminalSettled = this.reengagementAnchors.handleToolAnchors(agentResult, {
-        assertOwned: params.assertOwned,
-        traceId: durableTurn?.logicalTurnId ?? traceId,
-        ...{
-          logicalTurnId: durableTurn?.logicalTurnId,
-          inputOccurredAt: durableTurn?.inputOccurredAt,
-        },
-        chatId,
-        userId: agentCallParams.userId,
-        corpId: agentCallParams.corpId,
-        isGroupChat: Boolean(params.primaryMessage.imRoomId),
-        channelIdentity: reengagementChannelIdentity,
-      });
+      // Business anchors are repaired independently from ordinary reply text.
+      if (
+        durableTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS &&
+        durableTurn.projectionStatus === REPLY_PROJECTION_STATUS.PENDING
+      ) {
+        await terminalSettled;
+        await this.replyTurns!.completeProjection(durableTurn);
+        durableTurn.projectionStatus = REPLY_PROJECTION_STATUS.COMPLETE;
+      }
       // A durable plan must remain recoverable until its local facts and follow-up jobs persist.
       // Recovery reuses this plan and logical identity; it never regenerates or resubmits tools.
       if (durableTurn) await terminalSettled;
@@ -651,7 +682,7 @@ export class ReplyWorkflowService {
         replyTurn: durableTurn,
         assertOwned: params.assertOwned,
       };
-      const deliveryResult = await this.deliveryService.deliverReply(
+      deliveryResult = await this.deliveryService.deliverReply(
         agentResult.reply,
         deliveryContext,
         true,
@@ -711,7 +742,13 @@ export class ReplyWorkflowService {
 
       // 投递结局已知：仅当回复真实送达才把助手轮次投影进记忆；托管暂停/失败丢弃时
       // 只记用户侧记忆（delivered=false），与上方守卫拦截分支对称。
-      agentResult.turnFinalizer?.settle({ delivered: replyDelivered });
+      agentResult.turnFinalizer?.settle({
+        delivered:
+          deliveryResult.acceptedText !== undefined
+            ? Boolean(deliveryResult.acceptedText)
+            : replyDelivered,
+        acceptedText: deliveryResult.acceptedText,
+      });
 
       const successMetadata = await this.buildSuccessMetadata(
         traceId,
@@ -743,7 +780,46 @@ export class ReplyWorkflowService {
       // 投递/观测异常：回复未确认送达，但本轮用户消息的记忆收尾（事实提取等）不能一并丢——
       // 否则候选人已提供的姓名/手机号/意向在重试外的路径上永久丢失。只记用户侧，不投影助手轮次。
       // settle 幂等：若前面已按投递结局触发过，这里是 no-op。
-      agentResult.turnFinalizer?.settle({ delivered: false });
+      const deliveryFailure = error instanceof DeliveryFailureError ? error.result : deliveryResult;
+      agentResult.turnFinalizer?.settle({
+        delivered: Boolean(deliveryFailure?.acceptedText),
+        acceptedText: deliveryFailure?.acceptedText,
+      });
+      if (durableTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
+        // 只重试同一份最小业务结果，绝不重跑工具。仍写不进去则保留原输入待核实。
+        if (durableTurn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
+          if (!businessEffects)
+            throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
+          durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
+        }
+        // Finish the original input even when text is incomplete. Never re-run its model/tools.
+        // A failed terminal write is ack-only work after the lease expires, not a new send.
+        await this.processingFailureService.handleProcessingError(
+          error instanceof DeliveryFailureError
+            ? error
+            : new DeliveryFailureError(
+                toErrorMessage(error),
+                deliveryFailure ?? {
+                  success: false,
+                  segmentCount: 0,
+                  deliveredSegments: 0,
+                  failedSegments: 0,
+                  totalTime: 0,
+                },
+              ),
+          parsed,
+          { scenario, traceId, processedMessageIds: durableTurn.inputIds },
+        );
+        const settled = await this.replyTurns!.settle(durableTurn, {
+          outcome: deliveryFailure?.unknownSegments
+            ? REPLY_DELIVERY_OUTCOME.UNKNOWN
+            : REPLY_DELIVERY_OUTCOME.INCOMPLETE,
+          accepted: deliveryFailure?.deliveredSegments ?? 0,
+          total: deliveryFailure?.segmentCount ?? 0,
+        });
+        await this.ackDurableTurn(settled, params.assertOwned);
+        return;
+      }
       if (durableTurn && !(error instanceof ReplyDeferredError))
         throw new ReplyDeferredError('reply_local_repair_pending');
       throw error;
@@ -787,6 +863,11 @@ export class ReplyWorkflowService {
     await assertOwned?.();
     if (turn.status === REPLY_TURN_STATUS.SETTLED || turn.status === REPLY_TURN_STATUS.ACKED) {
       await this.ackDurableTurn(turn, assertOwned);
+      return;
+    }
+    if (turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
+      await assertOwned?.();
+      await this.ackDurableTurn(await this.replyTurns!.interrupt(turn), assertOwned);
       return;
     }
     if (!turn.plan) throw new ReplyDeferredError('no_recoverable_reply_plan');
@@ -874,6 +955,22 @@ export class ReplyWorkflowService {
   private async ackDurableTurn(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<void> {
     try {
       await assertOwned?.();
+      if (
+        turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS &&
+        turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE
+      )
+        throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
+      if (
+        turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS &&
+        turn.projectionStatus === REPLY_PROJECTION_STATUS.PENDING
+      ) {
+        const effects = readOrdinaryReplyEffects(turn.recovery.effects);
+        await this.reengagementAnchors.handleToolAnchors(
+          { toolCalls: effects.toolCalls },
+          { ...effects.context, assertOwned },
+        );
+        await this.replyTurns!.completeProjection(turn);
+      }
       await this.simpleMergeService.ackPendingMessageIds(turn.chatId, turn.inputIds);
       for (const id of turn.inputIds) {
         await assertOwned?.();

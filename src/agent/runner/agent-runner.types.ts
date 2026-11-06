@@ -140,7 +140,10 @@ export interface TurnOutcome {
    * `includeAssistantText=false`（默认 true）：回复未真实送达（守卫拦截/沉默/投递失败）时，
    * 只记用户侧记忆，不投影助手轮次。
    */
-  runTurnEnd?: (opts?: { includeAssistantText?: boolean }) => Promise<void>;
+  runTurnEnd?: (opts?: {
+    includeAssistantText?: boolean;
+    assistantTextOverride?: string;
+  }) => Promise<void>;
   /** 普通介入的提交元数据；入站风险由 guardrail 归因及 conversation_risk 意图完整表达。 */
   handoff?: {
     source: 'agent_tool' | 'output_guardrail';

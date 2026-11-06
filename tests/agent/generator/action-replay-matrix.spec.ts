@@ -110,7 +110,7 @@ describe('external action replay fault matrix', () => {
     ).toEqual([]);
   });
 
-  it('all eight layers keep their existing ceilings and contracts read the shared limits', () => {
+  it('keeps retry ceilings while allowing the three-step precheck correction path', () => {
     expect(RUNTIME_RETRY_LIMITS).toEqual({
       crashJobAttempts: 3,
       crashStalledRecoveries: 2,
@@ -121,11 +121,11 @@ describe('external action replay fault matrix', () => {
       emptyZeroToolRetries: 1,
       modelAttempts: 3,
       sameToolCalls: 3,
-      precheckCalls: 2,
+      precheckCalls: 3,
       deliverySegmentRetries: 1,
     });
     expect(MESSAGE_MERGE_JOB_OPTIONS.attempts).toBe(3);
-    expect(BUILT_IN_TOOL_CONTRACTS.duliday_interview_precheck.maxCallsPerTurn).toBe(2);
+    expect(BUILT_IN_TOOL_CONTRACTS.duliday_interview_precheck.maxCallsPerTurn).toBe(3);
     expect(BUILT_IN_TOOL_CONTRACTS.send_store_location.replay).toBe('block_on_success');
     expect([1, 2, 3, 5, Infinity, NaN, -1].map(boundedModelAttempts)).toEqual([
       1, 2, 3, 3, 3, 3, 1,

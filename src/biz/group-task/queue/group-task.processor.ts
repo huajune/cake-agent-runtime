@@ -1,10 +1,6 @@
 import { retainedJobs } from '@infra/queue/queue-policy';
 import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { QueueFailureService } from '@infra/queue/queue-failure.service';
-import {
-  GroupTaskActionService,
-  GroupTaskDeferredError,
-} from '../services/group-task-action.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
@@ -83,7 +79,6 @@ export class GroupTaskProcessor implements OnModuleInit {
     private readonly redisService: RedisService,
     private readonly leases: RedisLeaseService,
     private readonly queueFailures: QueueFailureService,
-    private readonly scheduledActions: GroupTaskActionService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
     private readonly brandRotation: BrandRotationService,
@@ -416,16 +411,11 @@ export class GroupTaskProcessor implements OnModuleInit {
     // 幂等守护：跨 exec、跨重试共享。只在"成功后"写入，失败留白可重试。
     const dailyKey = groupTaskDailySentKey(type, execDate, timeSlot, group.imRoomId);
     const alreadySent = await this.redisService.exists(dailyKey);
-    if (alreadySent && job.data.dispatchPlan) {
+    if (alreadySent) {
       const previous = await this.redisService.get<GroupTaskResultSnapshot>(
         groupTaskResultKey(execId, group.imRoomId),
       );
       if (previous?.status === GROUP_TASK_SEND_STATUS.SENT) return;
-      // This exact original task may still need local projection repair. Let
-      // its action records settle it; never overwrite known success as skipped.
-    }
-    if (alreadySent && !job.data.dispatchPlan) {
-      this.logger.log(`[send] 已发送，跳过: ${group.groupName}`);
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
         groupName: group.groupName,
@@ -434,6 +424,19 @@ export class GroupTaskProcessor implements OnModuleInit {
         updatedAt: Date.now(),
       });
       return;
+    }
+    // Retire only persisted runtime plans; new scheduled jobs never create one.
+    // Remove this branch after retained old jobs have been inspected/expired.
+    if (!dryRun && (job.data.dispatchPlan != null || job.data.sendAttempted)) {
+      await this.writeGroupResult(execId, group.imRoomId, {
+        groupKey,
+        groupName: group.groupName,
+        status: GROUP_TASK_SEND_STATUS.PENDING,
+        summary: '已有发送尝试或历史计划，保留原结果待核对，不自动重发',
+        updatedAt: Date.now(),
+      });
+      job.discard();
+      throw new Error('群任务已有发送尝试，需核实原结果');
     }
 
     const cache = await this.redisService.get<GroupTaskMessageCache>(msgRedisKey);
@@ -451,10 +454,9 @@ export class GroupTaskProcessor implements OnModuleInit {
     await this.acquireBotDispatchLock(lockKey, lockOwner, group.groupName);
 
     let dispatchAttempted = false;
-    let eligible = true;
     try {
       // 等锁期间可能已有另一个 exec 完成了同群发送，锁内再查一次避免重复投递。
-      if (!job.data.dispatchPlan && (await this.redisService.exists(dailyKey))) {
+      if (await this.redisService.exists(dailyKey)) {
         this.logger.log(`[send] 等锁期间已发送，跳过: ${group.groupName}`);
         await this.writeGroupResult(execId, group.imRoomId, {
           groupKey,
@@ -467,11 +469,11 @@ export class GroupTaskProcessor implements OnModuleInit {
       }
 
       await this.waitForBotDispatchWindow(botId, group.groupName, sendDelayMs);
-      eligible =
+      const eligible =
         dryRun ||
         type !== GroupTaskType.ORDER_GRAB ||
         (await this.groupResolver.hasCurrentTag(group, this.orderGrabStrategy.tagPrefix));
-      if (!eligible && !job.data.dispatchPlan) {
+      if (!eligible) {
         await this.writeGroupResult(execId, group.imRoomId, {
           groupKey,
           groupName: group.groupName,
@@ -482,33 +484,9 @@ export class GroupTaskProcessor implements OnModuleInit {
         return;
       }
       if (!dryRun) {
-        await this.scheduledActions.freezePlan(
-          job,
-          this.notificationSender.buildDispatchParts(cache.message, cache.followUpMessage, type),
-        );
-      }
-      if (!dryRun && job.data.dispatchPlan) {
-        // 已冻结的任务仍可核对先前的投递结果，新的对外发送须通过标签校验。
-        if (eligible) await this.previewPreparedOnce(job, cache.message, type);
-        for (const part of job.data.dispatchPlan.parts) {
-          await this.scheduledActions.executePart(
-            job,
-            cache,
-            part,
-            async (requestId) => {
-              dispatchAttempted = true;
-              await this.notificationSender.sendPreparedPart(group, part, requestId);
-            },
-            async () =>
-              eligible &&
-              this.leases.renew({
-                key: lockKey,
-                owner: lockOwner,
-                ttlSeconds: BOT_DISPATCH_LOCK_TTL_SECONDS,
-              }),
-          );
-        }
-        return;
+        const data = { ...job.data, sendAttempted: true };
+        await job.update(data);
+        job.data = data;
       }
       dispatchAttempted = true;
       await this.notificationSender.sendToGroup(group, cache.message, type, dryRun);
@@ -533,27 +511,17 @@ export class GroupTaskProcessor implements OnModuleInit {
 
       this.logger.log(`[send] ✅ ${group.groupName}`);
     } catch (error) {
-      if (!eligible && error instanceof GroupTaskDeferredError && error.definitivelyUnsent) {
-        await this.writeGroupResult(execId, group.imRoomId, {
-          groupKey,
-          groupName: group.groupName,
-          status: GROUP_TASK_SEND_STATUS.SKIPPED,
-          summary: '群已不再匹配抢单群标签，确认尚未发送',
-          updatedAt: Date.now(),
-        });
-        return;
-      }
+      if (dispatchAttempted && !dryRun) job.discard();
       const errorMsg = toErrorMessage(error);
       this.logger.error(`[send] ❌ ${group.groupName}: ${errorMsg}`);
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
         groupName: group.groupName,
         status:
-          error instanceof GroupTaskDeferredError
+          dispatchAttempted && !dryRun
             ? GROUP_TASK_SEND_STATUS.PENDING
             : GROUP_TASK_SEND_STATUS.FAILED,
-        summary:
-          error instanceof GroupTaskDeferredError ? '发送结果待核对，不自动重发' : '发送失败',
+        summary: dispatchAttempted && !dryRun ? '发送未完整确认，待核对，不自动重发' : '发送失败',
         error: errorMsg,
         updatedAt: Date.now(),
       });
@@ -579,24 +547,6 @@ export class GroupTaskProcessor implements OnModuleInit {
         // 时间戳写入失败也必须释放锁，避免后续群只能等锁 TTL 自然过期。
         await this.releaseBotDispatchLock(lockKey, lockOwner);
       }
-    }
-  }
-
-  private async previewPreparedOnce(
-    job: Job<SendJobData>,
-    message: string,
-    type: GroupTaskType,
-  ): Promise<void> {
-    if (job.data.previewAttempted) return;
-    try {
-      // This is auxiliary monitoring: prefer a missing preview after a crash to
-      // repeated webhook sends while business segments await callbacks.
-      const data = { ...job.data, previewAttempted: true };
-      await job.update(data);
-      job.data = data;
-      await this.notificationSender.previewPrepared(data.group, message, type);
-    } catch (error) {
-      this.logger.warn(`群任务预览未确认，继续原发送计划: ${toErrorMessage(error)}`);
     }
   }
 

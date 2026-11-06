@@ -46,11 +46,16 @@
 
 ## IB-04 报名成功与失败的真实回执
 
-只凭真实预约结果确认成功。失败原因没有证据时不猜；候选人只要当前结果且拒绝后续动作时，答完即结束。
+只凭真实预约结果或本人同岗位已核实的在途工单确认成功。预检调用成功、资料收齐、可约时段和 ready_to_book 都不等于预约提交；纠参请求因限次未执行时，不能将旧校验结果当作纠参通过。失败原因没有证据时不猜；候选人只要当前结果且拒绝后续动作时，答完即结束。
 
 - 状态：现行基线
 - 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
 - 落点：`src/agent/generator/context/sections/procedural/rules/ib.md#IB-04`
+- 落点：`src/agent/generator/tool-call-analysis.ts#buildPrecheckProgressNotice`
+- 落点：`src/agent/reply-repair/repair-evidence.builder.ts#buildPrecheckEvidence`
+- 验证：`tests/agent/generator/tool-call-analysis.spec.ts`
+- 验证：`tests/llm/runtime-action-sdk.spec.ts`
+- 验证：`tests/agent/reply-repair/repair-evidence.builder.spec.ts`
 - 落点：`src/tools/duliday-interview-booking.tool.ts#buildInterviewBookingTool`
 - 落点：`src/agent/guardrail/output/output-rule-catalog.ts#booking_receipt_mismatch`
 - 落点：`src/agent/guardrail/output/rules/booking-receipt.rule.ts#detectBookingReceiptMismatch`
@@ -227,6 +232,8 @@
 - 换店是否自动取消旧单属于新业务行为；当前按取消工具契约执行，不由重构推导为自动取消。
 
 ## 变更记录
+
+- 2026-11-06：线上脱敏样本 `2afde530616f036f` 在姓名引用被退回、纠参未执行时宣称面试已约。修正步骤末尾和修复上下文的回执投影；预检预算允许 query→validate→纠参三步，同一原始输入跨重试仍共享预算。不扩大自然语言正则拦截，不将规则说明或单元测试当作已部署验证。
 
 - 2026-11-05：预检回放在 18:00 列出了当天 16:30 已结束的面试。结构化时段、候选人选项和预约入口共同排除已结束的场次，保留仍开放的场次及只标日期的人工确认路径。
 
