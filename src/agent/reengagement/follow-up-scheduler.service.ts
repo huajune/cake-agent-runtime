@@ -64,6 +64,8 @@ export interface FollowUpJob {
   escalateToGroupInvite?: boolean;
   /** 入职跟进触达后 +48h 的纯复核任务；只查工单并按需告警，不生成或投递消息。 */
   onboardingCheck?: boolean;
+  /** 触达已获成功回执；原 Bull job 重试时只补频控与 +48h 排程，禁止重新生成、投递。 */
+  onboardingTouchAcceptedAt?: number;
   /**
    * 等通知岗（工单无面试时间）报名满 3 天的纯复核任务：仍无面试时间且工单在途时给运营
    * 发协调面试时间的任务提醒，不生成或投递消息；面试时间已出现时静默结束（重排交对账）。

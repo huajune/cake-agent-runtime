@@ -214,6 +214,23 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
+    // 已发消息的本地收尾不再经过触达冷却/频控，也不依赖再次查到工单。
+    // 复核 job 到点仍会按最新工单裁决；总开关关闭仍按上面的急刹车规则停止。
+    if (
+      scenarioCode === 'post_interview_onboarding' &&
+      job.data.onboardingTouchAcceptedAt != null &&
+      job.data.workOrderId != null
+    ) {
+      await this.touchLedger.markSent(
+        ReengagementTrackingService.touchKey(identity),
+        sessionRef.sessionId,
+        job.data.onboardingTouchAcceptedAt,
+      );
+      this.tracking.trackSent(identity);
+      await this.scheduleAcceptedOnboardingCheck(job.data);
+      return;
+    }
+
     const now = Date.now();
     let bookingContext: ReengagementBookingContext | undefined;
     if (scenario.anchorEvent === 'interview.passed') {
@@ -697,6 +714,7 @@ export class FollowUpProcessor implements OnModuleInit {
       identity,
       batchId,
       effectiveJobData,
+      job,
     );
   }
 
@@ -1075,6 +1093,7 @@ export class FollowUpProcessor implements OnModuleInit {
     identity: ReengagementTouchIdentity,
     batchId: string,
     jobData: FollowUpJob,
+    job: Job<FollowUpJob>,
   ): Promise<void> {
     const { outcome } = execution;
     const sessionRef = { sessionId, userId: identity.userId ?? '', corpId: identity.corpId ?? '' };
@@ -1131,18 +1150,17 @@ export class FollowUpProcessor implements OnModuleInit {
       )
         throw new Error('proactive_delivery_incomplete');
       confirmedResult = deliveryResult;
-      await this.touchLedger.markSent(key, sessionId, now);
+      if (scenario?.code === 'post_interview_onboarding' && jobData.workOrderId != null) {
+        // 先把成功回执交给现有 Bull job 保存；后续入队/频控失败可重试本地工作。
+        // 保存本身失败仍按未知结局告警，不猜测发送失败，也不重新发送。
+        jobData = { ...jobData, onboardingTouchAcceptedAt: deliveryEndAt };
+        await job.update(jobData);
+      }
+      await this.touchLedger.markSent(key, sessionId, jobData.onboardingTouchAcceptedAt ?? now);
       touchRecorded = true;
       this.tracking.trackSent(identity, outcome.reply?.text, batchId);
       if (scenario?.code === 'post_interview_onboarding' && jobData.workOrderId != null) {
-        const scheduled = await this.scheduler.scheduleOnboardingCheck({
-          sessionRef: jobData.sessionRef,
-          workOrderId: jobData.workOrderId,
-          anchorAt: now,
-          channelIdentity: jobData.channelIdentity,
-        });
-        if (scheduled.reason === 'enqueue_error')
-          throw new Error('Onboarding follow-up scheduling not persisted');
+        await this.scheduleAcceptedOnboardingCheck(jobData);
       }
       if (jobData.escalateToGroupInvite === true) {
         await this.handleEscalatedGroupInvite(jobData, identity, batchId);
@@ -1206,6 +1224,17 @@ export class FollowUpProcessor implements OnModuleInit {
       throw error;
     }
     this.logger.log(`[reengagement] 已投递 key=${key}`);
+  }
+
+  private async scheduleAcceptedOnboardingCheck(jobData: FollowUpJob): Promise<void> {
+    const scheduled = await this.scheduler.scheduleOnboardingCheck({
+      sessionRef: jobData.sessionRef,
+      workOrderId: jobData.workOrderId!,
+      anchorAt: jobData.onboardingTouchAcceptedAt!,
+      channelIdentity: jobData.channelIdentity,
+    });
+    if (scheduled.reason === 'enqueue_error')
+      throw new Error('Onboarding follow-up scheduling not persisted');
   }
 
   private async handleEscalatedGroupInvite(

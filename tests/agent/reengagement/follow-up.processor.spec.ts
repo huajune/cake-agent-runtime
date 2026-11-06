@@ -1,5 +1,9 @@
 import { FollowUpProcessor } from '@agent/reengagement/follow-up.processor';
-import { REENGAGEMENT_JOB_NAME } from '@agent/reengagement/follow-up-scheduler.service';
+import {
+  REENGAGEMENT_JOB_NAME,
+  type FollowUpJob,
+} from '@agent/reengagement/follow-up-scheduler.service';
+import type { Job } from 'bull';
 import type { ReengagementSessionState } from '@memory/recall.types';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
@@ -13,8 +17,8 @@ const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSe
   ...over,
 });
 
-const makeJob = (over: Partial<Record<string, unknown>> = {}) =>
-  ({
+const makeJob = (over: Partial<Record<string, unknown>> = {}) => {
+  const job = {
     id: 'job-1',
     data: {
       sessionRef,
@@ -23,7 +27,12 @@ const makeJob = (over: Partial<Record<string, unknown>> = {}) =>
       anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
     },
     ...over,
-  }) as never;
+    update: jest.fn(async (data: FollowUpJob) => {
+      job.data = data;
+    }),
+  };
+  return job as never;
+};
 
 const asExecution = (outcome: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
   outcome,
@@ -2936,6 +2945,76 @@ describe('FollowUpProcessor', () => {
       expect(touchLedger.markSent.mock.invocationCallOrder[0]).toBeLessThan(
         scheduler.scheduleOnboardingCheck.mock.invocationCallOrder[0],
       );
+    });
+
+    it.each(['enqueue', 'markSent'])(
+      'retries only onboarding local work after %s fails',
+      async (failure) => {
+        const sentAt = Date.UTC(2026, 7, 20, 2, 0, 0);
+        jest.spyOn(Date, 'now').mockReturnValue(sentAt);
+        sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+        session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+        systemConfig.getAgentReplyConfig.mockResolvedValue({
+          reengagementEnabled: true,
+          reengagementShadow: false,
+          reengagementScenarioRollout: { post_interview_onboarding: true },
+        });
+        if (failure === 'enqueue') {
+          scheduler.scheduleOnboardingCheck.mockResolvedValueOnce({
+            scheduled: false,
+            reason: 'enqueue_error',
+          });
+        } else {
+          touchLedger.markSent.mockRejectedValueOnce(new Error('Redis unavailable'));
+        }
+        const job = onboardingJob() as Job<FollowUpJob>;
+        await expect(buildProcessor().process(job)).rejects.toThrow();
+
+        // 模拟进程重启：只继承 Bull 已保存的 payload，外部已确认成功的消息不能再发。
+        expect(job.update).toHaveBeenCalledWith(
+          expect.objectContaining({ onboardingTouchAcceptedAt: sentAt }),
+        );
+        const persisted = JSON.parse(JSON.stringify((job.update as jest.Mock).mock.calls[0][0]));
+        jest.spyOn(Date, 'now').mockReturnValue(sentAt + 60_000);
+        touchLedger.isInSessionTouchCooldown.mockResolvedValue(true);
+        touchLedger.isOverFrequencyLimit.mockResolvedValue(true);
+        touchLedger.reserve.mockResolvedValue('duplicate_sent');
+        sponge.getWorkOrderById.mockRejectedValue(
+          new Error('must not requery for local scheduling'),
+        );
+        await buildProcessor().process(makeJob({ data: persisted }));
+
+        expect(delivery.deliver).toHaveBeenCalledTimes(1);
+        expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
+        expect(touchLedger.reserve).toHaveBeenCalledTimes(1);
+        expect(scheduler.scheduleOnboardingCheck).toHaveBeenLastCalledWith({
+          sessionRef,
+          workOrderId: 901,
+          anchorAt: sentAt,
+          channelIdentity: expect.objectContaining({ botImId: 'bot-1' }),
+        });
+        expect(touchLedger.markSent).toHaveBeenLastCalledWith(
+          expect.any(String),
+          sessionRef.sessionId,
+          sentAt,
+        );
+      },
+    );
+
+    it('does not schedule onboarding checks when the delivery result is unknown', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+        reengagementScenarioRollout: { post_interview_onboarding: true },
+      });
+      delivery.deliver.mockRejectedValue(new Error('provider timeout'));
+      const job = onboardingJob() as Job<FollowUpJob>;
+      await expect(buildProcessor().process(job)).rejects.toThrow('provider timeout');
+      expect(job.update).not.toHaveBeenCalled();
+      expect(scheduler.scheduleOnboardingCheck).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(expect.any(String), 'unknown');
     });
 
     it('ends the +48h check silently after the work order reaches onboarding success', async () => {
