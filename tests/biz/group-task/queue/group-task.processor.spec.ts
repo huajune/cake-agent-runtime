@@ -373,11 +373,11 @@ describe('GroupTaskProcessor', () => {
       );
     });
 
-    it('keeps legacy runtime jobs pending without replaying any part', async () => {
+    it('keeps persisted send attempts pending without replaying any part', async () => {
       await expect(
         invokeHandler(GroupTaskJobName.SEND, {
           ...baseSend,
-          dispatchPlan: { mode: 'observe', parts: [{ id: 'main' }] },
+          sendAttempted: true,
         }),
       ).rejects.toThrow('群任务已有发送尝试');
       expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
@@ -402,33 +402,23 @@ describe('GroupTaskProcessor', () => {
       );
     });
 
-    it('preserves the original task success snapshot after callback-driven retry', async () => {
+    it('preserves the original success snapshot when an attempted job is retried', async () => {
       redisMock.exists.mockResolvedValue(1);
       redisMock.get.mockResolvedValue({ status: 'sent', summary: 'confirmed original task' });
       await invokeHandler(GroupTaskJobName.SEND, {
         ...baseSend,
-        dispatchPlan: {
-          corpId: 'corp',
-          logicalTurnId: 'original-task',
-          occurredAt: new Date().toISOString(),
-          parts: [],
-        },
+        sendAttempted: true,
       });
       expect(redisMock.setex).not.toHaveBeenCalled();
       expect(notificationSender.sendToGroup).not.toHaveBeenCalled();
     });
 
-    it('never dispatches a frozen live plan during a dry run', async () => {
+    it('keeps an attempted job in dry-run mode when previewed', async () => {
       redisMock.get.mockResolvedValue({ message: 'hi', summary: 's' });
       await invokeHandler(GroupTaskJobName.SEND, {
         ...baseSend,
         dryRun: true,
-        dispatchPlan: {
-          corpId: 'corp',
-          logicalTurnId: 'original-task',
-          occurredAt: new Date().toISOString(),
-          parts: [{ id: 'main', messageType: 7, payload: { text: 'hi' }, delayMs: 0 }],
-        },
+        sendAttempted: true,
       });
       expect(notificationSender.sendToGroup).toHaveBeenCalledWith(
         baseSend.group,

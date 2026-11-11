@@ -8,6 +8,7 @@ const record = {
   mode: 'execute',
   status: 'unknown',
   owner: 'owner',
+  dispatchAttemptId: 'original-attempt',
   fence: 1,
   attempts: 2,
   localSync: 'complete',
