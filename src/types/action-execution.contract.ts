@@ -42,7 +42,6 @@ export const ACTION_KIND = {
   MESSAGE_INTERVIEW_ADDRESS: 'message.interview_address',
   WECOM_GROUP_ADD_MEMBER: 'wecom.group_add_member',
   WECOM_REPLY_SEGMENT: 'wecom.reply_segment',
-  GROUP_TASK_MESSAGE: 'group_task.message',
   BOOKING_NOTIFICATION: 'booking_notification',
   CANCELLATION_NOTIFICATION: 'cancellation_notification',
 } as const;

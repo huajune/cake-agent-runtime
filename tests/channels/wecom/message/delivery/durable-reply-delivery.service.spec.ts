@@ -4,6 +4,7 @@ import type { ActionCallbacks, ActionIntent } from '@biz/action-execution/action
 import type { DeliveryContext } from '@channels/wecom/message/types';
 
 const turn: ReplyTurn = {
+  deliveryPolicy: 'frozen',
   corpId: 'corp',
   accountId: 'bot',
   chatId: 'chat',

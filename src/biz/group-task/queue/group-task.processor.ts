@@ -425,8 +425,8 @@ export class GroupTaskProcessor implements OnModuleInit {
       });
       return;
     }
-    // Retire only persisted runtime plans; new scheduled jobs never create one.
-    // Remove this branch after retained old jobs have been inspected/expired.
+    // dispatchPlan protects retained legacy jobs until they have been inspected/expired.
+    // sendAttempted also protects current jobs from duplicate sends and must remain.
     if (!dryRun && (job.data.dispatchPlan != null || job.data.sendAttempted)) {
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,

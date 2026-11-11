@@ -3,6 +3,7 @@ services:
     image: cake-agent-runtime:${IMAGE_TAG:-latest}
     container_name: cake-agent
     restart: always
+    stop_grace_period: 90s
     ports:
       - "${PORT:-8585}:${PORT:-8585}"
     env_file:

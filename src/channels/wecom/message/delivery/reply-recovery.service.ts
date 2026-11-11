@@ -18,7 +18,7 @@ import {
 import { CRON_JOB } from '@infra/queue/cron.constants';
 import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
-/** Durable scan repairs original plans/acks, including after the Redis input TTL expires. */
+/** Repairs input ACKs/local projections; only historical frozen turns resume a saved send plan. */
 @Injectable()
 export class ReplyRecoveryService {
   private readonly logger = new Logger(ReplyRecoveryService.name);
@@ -41,7 +41,7 @@ export class ReplyRecoveryService {
     try {
       for (const turn of await this.turns.repository.due()) {
         if (Date.now() >= deadline) break;
-        // Proactive tasks own their domain follow-up and reuse only delivery plans.
+        // Historical proactive turns have no primary input; their domain owns follow-up.
         if (!turn.recovery.primary) continue;
         await this.leases.run(turn.chatId, async (assertOwned) => {
           try {

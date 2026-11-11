@@ -139,6 +139,7 @@ export class ReplyWorkflowService {
     const { chatId, content, contactName, messageId } = parsed;
     const scenario = MessageParser.determineScenario();
     const traceId = messageId;
+    const pendingMessageIds = new Set<string>();
 
     try {
       // trace 通常已在入口 acceptInboundMessage.prepareForDispatch 创建。
@@ -162,6 +163,7 @@ export class ReplyWorkflowService {
         scenario,
         parsed,
         isSingleMessage: true,
+        pendingMessageIds,
       });
     } catch (error) {
       if (error instanceof ReplyDeferredError) {
@@ -177,15 +179,15 @@ export class ReplyWorkflowService {
         scenario,
         traceId,
         dispatchMode: 'direct',
-        processedMessageIds: [messageData.messageId],
+        processedMessageIds: [...new Set([messageData.messageId, ...pendingMessageIds])],
       });
+      await this.ackProcessedPending(chatId, pendingMessageIds);
     }
   }
 
   async processMergedMessages(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
-    initialSnapshotSize: number,
   ): Promise<void> {
     if (messages.length === 0) return;
 
@@ -195,6 +197,7 @@ export class ReplyWorkflowService {
     const { chatId, contactName } = parsed;
     const content = this.wecomObservability.buildMergedRequestContent(messages);
     const traceId = batchId;
+    const pendingMessageIds = new Set(messages.map((message) => message.messageId));
 
     this.logger.log(`[聚合处理][${chatId}] 处理 ${messages.length} 条消息`);
 
@@ -225,7 +228,7 @@ export class ReplyWorkflowService {
         parsed,
         isSingleMessage: false,
         batchContext: { batchId, allMessages: messages },
-        pendingAckSize: initialSnapshotSize,
+        pendingMessageIds,
       });
     } catch (error) {
       if (error instanceof ReplyDeferredError) {
@@ -242,13 +245,13 @@ export class ReplyWorkflowService {
         traceId,
         batchId,
         dispatchMode: 'merged',
-        processedMessageIds: messages.map((message) => message.messageId),
+        processedMessageIds: [...pendingMessageIds],
       });
 
       // handleProcessingError 会发送降级回复/告警并把本批 messageId 置为终态。
       // 此时若继续向 Bull 抛错，pending list 尚未 ack，会被 retry 重放，轻则重复告警，
       // 重则给候选人再发一条降级回复。单实例部署下这里按“失败已兜底”为终态处理。
-      await this.ackPendingIfMerged(chatId, initialSnapshotSize);
+      await this.ackProcessedPending(chatId, pendingMessageIds);
     }
   }
 
@@ -262,19 +265,14 @@ export class ReplyWorkflowService {
     parsed: ReturnType<typeof MessageParser.parse>;
     isSingleMessage: boolean;
     batchContext?: { batchId: string; allMessages: EnterpriseMessageCallbackDto[] };
-    /**
-     * 聚合路径上 worker 初次抓取到的 pending 条数。所有终态分支（投递成功 / 主动沉默）
-     * 在退出前会调用 ackPendingMessages 一次性裁掉 `pendingAckSize + replay 期间补抓的条数`；
-     * 任何异常往上抛都会跳过 ack，让 pending 保持原样以供 Bull stalled retry 重放。
-     * 单消息直发路径不走 pending 队列，传 undefined。
-     */
-    pendingAckSize?: number;
+    /** 本轮实际接纳的 pending 身份，包含 replay；由入口共享以覆盖失败收尾。 */
+    pendingMessageIds?: Set<string>;
     resumeTurn?: ReplyTurn;
     assertOwned?: () => Promise<void>;
   }): Promise<void> {
     const { traceId, chatId, contactName, scenario, parsed, isSingleMessage, batchContext } =
       params;
-    let consumedPending = params.pendingAckSize ?? 0;
+    const pendingMessageIds = params.pendingMessageIds ?? new Set<string>();
 
     const logPrefix = isSingleMessage ? '' : '[聚合处理]';
     // 重跑会扩展本轮消息集合，这几个字段需要是 let。
@@ -349,7 +347,6 @@ export class ReplyWorkflowService {
           await this.replyTurns!.assertInputActive(durableTurn);
         const { messages: newerMessages } = await this.fetchPendingSinceAgentStart(
           chatId,
-          consumedPending,
           allMessages,
         );
         return newerMessages.length > 0;
@@ -430,11 +427,10 @@ export class ReplyWorkflowService {
           break;
         }
 
-        // fromIndex 必须是 worker 持有的 consumedPending 偏移，否则会把已经在 allMessages
-        // 里的消息再读一遍。
-        const { messages: newMessages, snapshotSize: replaySnapshotSize } =
-          await this.fetchPendingSinceAgentStart(chatId, consumedPending, allMessages);
-        consumedPending += replaySnapshotSize;
+        // 每次读取当前列表，用原消息身份去重；过期重建后的列表不能沿用旧下标。
+        const { messages: newMessages, pendingMessageIds: replayIds } =
+          await this.fetchPendingSinceAgentStart(chatId, allMessages);
+        for (const id of replayIds) pendingMessageIds.add(id);
         if (newMessages.length === 0) {
           break;
         }
@@ -669,7 +665,7 @@ export class ReplyWorkflowService {
           await this.settleAndAckTurn(durableTurn, params.assertOwned);
         else {
           await this.markMessagesAsProcessed(processedMessageIds);
-          await this.ackPendingIfMerged(chatId, consumedPending);
+          await this.ackProcessedPending(chatId, pendingMessageIds);
         }
         return;
       }
@@ -770,7 +766,7 @@ export class ReplyWorkflowService {
         await this.settleAndAckTurn(durableTurn, params.assertOwned);
       else {
         await this.markMessagesAsProcessed(processedMessageIds);
-        await this.ackPendingIfMerged(chatId, consumedPending);
+        await this.ackProcessedPending(chatId, pendingMessageIds);
       }
 
       if (!batchContext) {
@@ -1138,31 +1134,26 @@ export class ReplyWorkflowService {
   }
 
   /**
-   * 聚合路径终态成功后裁掉已消费的 pending；单消息直发路径 consumedPending 永远是 0，
-   * ackPendingMessages 内部会短路。
-   *
-   * 任何上游异常未走到这里 → 不 ack → pending 保留 → Bull stalled retry 时新 worker 仍能
-   * 拿到完整数据继续处理（修复发版 SIGKILL 中断 agent 后候选人消息被吞的问题）。
-   *
-   * ack 本身失败（simple-merge 内已重试 3 次仍失败）不能让本轮整体失败——回复已发出，
-   * 抛错触发 Bull retry 会给候选人再发一遍。但也不能只打日志：滞留的 pending 会被下一个
-   * job 并进新批次造成重复回复，必须以飞书告警形式暴露给运维人工介入（清理该 chat 的
-   * pending list 或等 5 分钟 TTL 自然过期，期间关注该会话是否产生重复回复）。
+   * 非持久回合在投递、静默或失败兜底终态后，只确认实际接纳的 pending 身份。
+   * 确认耗尽重试后告警，不重放已发回复；人工处理也只能核对这些原消息，不能清空列表。
    */
-  private async ackPendingIfMerged(chatId: string, count: number): Promise<void> {
-    if (count <= 0) return;
+  private async ackProcessedPending(
+    chatId: string,
+    messageIds: ReadonlySet<string>,
+  ): Promise<void> {
+    if (!messageIds.size) return;
     try {
-      await this.simpleMergeService.ackPendingMessages(chatId, count);
+      await this.simpleMergeService.ackPendingMessageIds(chatId, [...messageIds]);
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.error(
-        `[${chatId}] ack pending 最终失败（${count} 条），已发告警: ${errorMessage}`,
+        `[${chatId}] ack pending 最终失败（${messageIds.size} 个消息身份）: ${errorMessage}`,
       );
       void this.alertNotifier
         .sendSimpleAlert(
           '消息 pending ack 失败，存在重复回复风险',
-          `chatId=${chatId} 的 ${count} 条已处理消息未能从 pending 队列裁掉（Redis LTRIM 重试 3 次仍失败）。` +
-            `这些消息会在 5 分钟 TTL 内被下一个任务并进新批次、可能触发重复回复。` +
+          `chatId=${chatId} 的 ${messageIds.size} 条已处理消息按原 ID 确认失败（Redis 重试 3 次仍失败）。` +
+            `原消息 ID=${[...messageIds].join(',')}。请按原消息核实，保留后来入队的输入。` +
             `错误: ${errorMessage}`,
           'error',
         )
@@ -1753,37 +1744,31 @@ export class ReplyWorkflowService {
   }
 
   /**
-   * Agent 执行期间的新消息：从 pending 列表 `fromIndex` 之后读取快照（不从队列移除）。
-   *
-   * 调用时机限定在 Bull Worker 持有 per-chat 处理锁期间，因此 LRANGE 不会读到跨 worker 的
-   * 已消费部分。返回的 `snapshotSize` 由调用方累加进 `consumedPending`，整体 ack 在投递
-   * 成功后由 `ackPendingIfMerged` 一次性裁掉。
+   * 每次读取完整 pending 快照，按 messageId 找出本轮尚未接纳的输入。
+   * 返回实际观察到的身份，只有 replay 接纳它们后才纳入终态确认；动作前探测不确认新输入。
    */
   private async fetchPendingSinceAgentStart(
     chatId: string,
-    fromIndex: number,
     currentMessages: EnterpriseMessageCallbackDto[],
-  ): Promise<{ messages: EnterpriseMessageCallbackDto[]; snapshotSize: number }> {
+  ): Promise<{ messages: EnterpriseMessageCallbackDto[]; pendingMessageIds: string[] }> {
     try {
-      const { messages, snapshotSize } = await this.simpleMergeService.claimPendingSnapshot(
-        chatId,
-        fromIndex,
-      );
-      // 重投的原消息仍计入 Redis ACK 长度，只有新身份才能触发重生成。
+      const { messages } = await this.simpleMergeService.claimPendingSnapshot(chatId);
       const knownIds = new Set(currentMessages.map((message) => message.messageId));
       const newMessages = messages.filter(({ messageId }) => {
-        if (!messageId) return true;
         if (knownIds.has(messageId)) return false;
         knownIds.add(messageId);
         return true;
       });
-      return { messages: newMessages, snapshotSize };
+      return {
+        messages: newMessages,
+        pendingMessageIds: messages.map((message) => message.messageId),
+      };
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.warn(
         `[Replay] 读取 Agent 执行期间的新消息失败，跳过重跑 chatId=${chatId}: ${errorMessage}`,
       );
-      return { messages: [], snapshotSize: 0 };
+      return { messages: [], pendingMessageIds: [] };
     }
   }
 

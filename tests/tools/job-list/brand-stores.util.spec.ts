@@ -88,6 +88,83 @@ describe('job-list brand-stores util', () => {
     const singleStoreGroup = groups!.find((group) => group.brandName === '麦当劳');
     expect(renderMultiStoreBrandWarning(singleStoreGroup ? [singleStoreGroup] : [])).toBeNull();
   });
+
+  it('counts distinct stores and keeps different nearby stores in the top three despite multiple jobs', () => {
+    const jobs = [
+      makeJob(1, '成都你六姐', 10200, '太仓万达店', 1, 22),
+      makeJob(2, '成都你六姐', 10200, '太仓万达店', 1, 24),
+      makeJob(3, '成都你六姐', 10200, '太仓万达店', 1, 26),
+      makeJob(4, '成都你六姐', 10200, '中骏世界店', 2, 22),
+      makeJob(5, '成都你六姐', 10200, '第三家店', 3, 22),
+    ].map((job, index) => ({
+      ...job,
+      basicInfo: {
+        ...job.basicInfo,
+        storeInfo: { ...job.basicInfo.storeInfo, storeId: index < 3 ? 100 : 101 + index },
+      },
+    }));
+    const group = buildBrandNearestStoreSummary(jobs)![0];
+    expect(group.totalStoreCount).toBe(3);
+    expect(group.nearestStores.map((store) => store.jobId)).toEqual([1, 4, 5]);
+    expect(renderMultiStoreBrandWarning([group])).toContain('共 3 家');
+    expect(jobs).toHaveLength(5);
+  });
+
+  it('uses store ID rather than display name and separates name fallbacks by city and address', () => {
+    const base = makeJob(1, '肯德基', 100, '万达店', 2, 22);
+    const jobs = [
+      {
+        ...base,
+        basicInfo: { ...base.basicInfo, storeInfo: { ...base.basicInfo.storeInfo, storeId: 11 } },
+      },
+      {
+        ...base,
+        basicInfo: {
+          ...base.basicInfo,
+          jobId: 2,
+          storeInfo: { ...base.basicInfo.storeInfo, storeId: 12 },
+        },
+      },
+      {
+        ...base,
+        basicInfo: {
+          ...base.basicInfo,
+          jobId: 3,
+          storeInfo: { storeName: '万达店', storeCityName: '南京' },
+        },
+      },
+      {
+        ...base,
+        basicInfo: {
+          ...base.basicInfo,
+          jobId: 4,
+          storeInfo: { storeName: '万达店', storeCityName: '苏州' },
+        },
+      },
+      {
+        ...base,
+        basicInfo: {
+          ...base.basicInfo,
+          jobId: 5,
+          storeInfo: { storeName: '万达店', storeCityName: '苏州', storeAddress: '另一地址' },
+        },
+      },
+    ];
+    expect(buildBrandNearestStoreSummary(jobs)![0].totalStoreCount).toBe(5);
+  });
+
+  it('does not label multiple jobs at one store as multiple stores or infer stores from missing identity', () => {
+    const first = makeJob(1, '成都你六姐', 10200, '太仓万达店', 1, 22);
+    const second = makeJob(2, '成都你六姐', 10200, '太仓万达店', 1, 24);
+    const groups = buildBrandNearestStoreSummary([first, second]);
+    expect(groups![0].totalStoreCount).toBe(1);
+    expect(renderMultiStoreBrandWarning(groups)).toBeNull();
+    expect(
+      buildBrandNearestStoreSummary([
+        { basicInfo: { brandName: '成都你六姐', brandId: 10200, jobId: 3 } },
+      ]),
+    ).toBeNull();
+  });
 });
 
 function makeJob(

@@ -1087,7 +1087,7 @@ function formatJobToOneLine(
  * 渐进式披露：单页内只对最近 N 个岗位渲染全文详情，其余降为摘要行。
  *
  * 岗位列表在有位置时已按距离升序，候选人当下只会考虑最近的一两家；
- * 把第 N+1 家之后的薪资阶梯/招聘要求/工作时间整段全文回灌纯属浪费
+ * 把第 N+1 个岗位之后的薪资阶梯/招聘要求/工作时间整段全文回灌纯属浪费
  * （生产 p90 markdown 4.3 万字符、最大 17 万，且多步工具调用每步重复计费）。
  * 摘要行保留店名/距离/薪资/年龄 + jobId，候选人后续问到更远的店，
  * Agent 用该 jobId 走 jobIdList 重查拿全文（既有路径）。
@@ -1096,7 +1096,7 @@ export const FULL_DETAIL_CAP = 6;
 
 /**
  * 摘要行：比 minimal 模式的 formatJobToOneLine 多带薪资 + 年龄 + jobId，
- * 让 Agent 能直接转述"还有 X 家更远的（店名/距离/薪资）"并按 jobId 取详情。
+ * 让 Agent 能直接转述"还有 X 个更远的岗位（店名/距离/薪资）"并按 jobId 取详情。
  * 班次文本常多行，摘要行不含，需详情时由 jobIdList 全文给出。
  */
 function formatJobToSummaryLine(
@@ -1250,7 +1250,7 @@ export function formatJobsToMarkdown(
 
   md += `当前显示第 ${start}-${end} 条\n\n---\n\n`;
 
-  // 渐进式披露：最近 FULL_DETAIL_CAP 家全文，其余降摘要行（详情走 jobIdList 重查）。
+  // 渐进式披露：最近 FULL_DETAIL_CAP 个岗位全文，其余降摘要行（详情走 jobIdList 重查）。
   const fullCount = Math.min(jobs.length, FULL_DETAIL_CAP);
   jobs.slice(0, fullCount).forEach((job, index) => {
     md += formatJobToMarkdown(job, index, flags, distanceAnchor);
@@ -1259,7 +1259,7 @@ export function formatJobsToMarkdown(
 
   const tail = jobs.slice(fullCount);
   if (tail.length > 0) {
-    md += `### 更远的 ${tail.length} 家（仅摘要，候选人问到具体某家详情时用其 jobId 走 jobIdList 重查）\n`;
+    md += `### 更远的 ${tail.length} 个岗位（仅摘要，候选人问到具体岗位详情时用其 jobId 走 jobIdList 重查）\n`;
     tail.forEach((job, i) => {
       md += formatJobToSummaryLine(job, fullCount + i, distanceAnchor) + '\n';
     });
