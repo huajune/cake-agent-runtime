@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.15.6] - 2026-11-11
 
-**预计版本**: `v11.15.6`
-**最近更新**: `2026-11-11`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 运营说明
 - 无。本批为运行时兼容代码清理。
@@ -58,7 +54,6 @@
 - PR #1507 未新增 prompt 示例、自然语言正则规则或业务窗口；SQL/Redis 运行协议值和当前身份向量保持不变。
 - PR #1507 云端 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/43000427415) 通过；原生 Codex 对当前提交 `f9c9a60029a56b6bda404de64d625446ea0ec577` 完成审查且无 findings，仓库验证 workflow 已据此记录 APPROVED。
 - PR #1507 用户已明确裁定门店计数问题另案处理并继续本批发布；保留 **2 passed / 1 failed** 的真实评审，不将例外放行写成业务通过。
-<!-- release:pending:end -->
 
 ## [11.15.5] - 2026-11-11
 
