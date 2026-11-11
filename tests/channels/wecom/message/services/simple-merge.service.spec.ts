@@ -168,127 +168,102 @@ describe('SimpleMergeService', () => {
   });
 
   describe('claimPendingSnapshot', () => {
-    it('should return parsed messages, snapshotSize and batchId without clearing pending', async () => {
-      const rawMessages = [
+    it('reads the entire current list without changing it', async () => {
+      mockRedisService.lrange.mockResolvedValue([
         JSON.stringify(validMessageData),
         JSON.stringify({ ...validMessageData, messageId: 'msg-456' }),
-      ];
-      mockRedisService.lrange.mockResolvedValue(rawMessages);
-
+      ]);
       const result = await service.claimPendingSnapshot('chat-123');
-
-      expect(result.messages).toHaveLength(2);
-      expect(result.snapshotSize).toBe(2);
+      expect(result.messages.map((message) => message.messageId)).toEqual(['msg-123', 'msg-456']);
       expect(result.batchId).toMatch(/^batch_chat-123_\d+$/);
       expect(mockRedisService.lrange).toHaveBeenCalledWith('wecom:message:pending:chat-123', 0, -1);
-      // 关键改动：claim 阶段不再 LTRIM，只有显式 ack 才裁掉
       expect(mockRedisService.ltrim).not.toHaveBeenCalled();
+      expect(mockRedisService.eval).not.toHaveBeenCalled();
     });
 
-    it('should support fromIndex for replay path and skip batchId generation', async () => {
-      mockRedisService.lrange.mockResolvedValue([JSON.stringify(validMessageData)]);
-
-      const result = await service.claimPendingSnapshot('chat-123', 2);
-
-      expect(result.messages).toHaveLength(1);
-      expect(result.snapshotSize).toBe(1);
-      expect(result.batchId).toBe('');
-      expect(mockRedisService.lrange).toHaveBeenCalledWith('wecom:message:pending:chat-123', 2, -1);
-    });
-
-    it('should return empty messages and snapshotSize=0 when queue is empty', async () => {
+    it('returns an empty snapshot when the queue is empty', async () => {
       mockRedisService.lrange.mockResolvedValue([]);
-
-      const result = await service.claimPendingSnapshot('chat-empty');
-
-      expect(result.messages).toHaveLength(0);
-      expect(result.snapshotSize).toBe(0);
-      expect(result.batchId).toBe('');
+      await expect(service.claimPendingSnapshot('chat-empty')).resolves.toEqual({
+        messages: [],
+        batchId: '',
+      });
     });
 
-    it('should skip malformed JSON messages but still count snapshotSize accurately', async () => {
+    it('leaves malformed or unidentified rows intact and deduplicates identified inputs', async () => {
       mockRedisService.lrange.mockResolvedValue([
         JSON.stringify(validMessageData),
         'invalid-json-{{{',
+        'null',
+        'true',
+        '42',
+        '{}',
+        '{"messageId":" "}',
+        JSON.stringify(validMessageData),
+        { ...validMessageData, messageId: 'msg-456' },
       ]);
-
       const result = await service.claimPendingSnapshot('chat-123');
-
-      expect(result.messages).toHaveLength(1);
-      // snapshotSize 反映原始条数，用于 ack 时正确 LTRIM 偏移
-      expect(result.snapshotSize).toBe(2);
-    });
-
-    it('should handle already-parsed objects in lrange result', async () => {
-      mockRedisService.lrange.mockResolvedValue([validMessageData]);
-
-      const result = await service.claimPendingSnapshot('chat-123');
-
-      expect(result.messages).toHaveLength(1);
-      expect(result.snapshotSize).toBe(1);
+      expect(result.messages.map((message) => message.messageId)).toEqual(['msg-123', 'msg-456']);
+      expect(mockRedisService.ltrim).not.toHaveBeenCalled();
+      expect(mockRedisService.eval).not.toHaveBeenCalled();
     });
   });
 
-  describe('ackPendingMessages', () => {
-    it('should LTRIM the first count items from pending', async () => {
-      await service.ackPendingMessages('chat-123', 3);
-
-      expect(mockRedisService.ltrim).toHaveBeenCalledWith('wecom:message:pending:chat-123', 3, -1);
+  describe('ackPendingMessageIds', () => {
+    it('confirms original IDs atomically and deduplicates retry input', async () => {
+      await service.ackPendingMessageIds('chat-123', ['msg-123', 'msg-456', 'msg-123']);
+      expect(mockRedisService.eval).toHaveBeenCalledWith(
+        expect.stringContaining("redis.call('LREM'"),
+        ['wecom:message:pending:chat-123'],
+        ['["msg-123","msg-456"]'],
+      );
+      expect(mockRedisService.ltrim).not.toHaveBeenCalled();
     });
 
-    it('should retry transient LTRIM failures and eventually succeed', async () => {
+    it('retries an uncertain response using exactly the same original IDs', async () => {
       const delaySpy = jest
         .spyOn(service as unknown as ServicePrivateAccess, 'delay')
         .mockResolvedValue(undefined);
-      mockRedisService.ltrim
-        .mockRejectedValueOnce(new Error('redis transient'))
-        .mockResolvedValueOnce(undefined);
-
-      await expect(service.ackPendingMessages('chat-123', 3)).resolves.toBeUndefined();
-
-      expect(mockRedisService.ltrim).toHaveBeenCalledTimes(2);
-      expect(mockRedisService.ltrim).toHaveBeenNthCalledWith(
-        1,
-        'wecom:message:pending:chat-123',
-        3,
-        -1,
-      );
-      expect(delaySpy).toHaveBeenCalledTimes(1);
+      mockRedisService.eval
+        .mockRejectedValueOnce(new Error('response lost'))
+        .mockResolvedValueOnce(1);
+      await expect(service.ackPendingMessageIds('chat-123', ['msg-123'])).resolves.toBeUndefined();
+      expect(mockRedisService.eval).toHaveBeenCalledTimes(2);
+      expect(mockRedisService.eval.mock.calls[1]).toEqual(mockRedisService.eval.mock.calls[0]);
       expect(delaySpy).toHaveBeenCalledWith(200);
     });
 
-    it('should retry LTRIM failures up to the limit and throw the last error', async () => {
+    it('throws the last error after bounded local retries', async () => {
       const delaySpy = jest
         .spyOn(service as unknown as ServicePrivateAccess, 'delay')
         .mockResolvedValue(undefined);
       const finalError = new Error('redis still down');
-      mockRedisService.ltrim
+      mockRedisService.eval
         .mockRejectedValueOnce(new Error('redis down 1'))
         .mockRejectedValueOnce(new Error('redis down 2'))
         .mockRejectedValueOnce(finalError);
-
-      await expect(service.ackPendingMessages('chat-123', 3)).rejects.toBe(finalError);
-
-      expect(mockRedisService.ltrim).toHaveBeenCalledTimes(3);
-      expect(delaySpy).toHaveBeenCalledTimes(2);
+      await expect(service.ackPendingMessageIds('chat-123', ['msg-123'])).rejects.toBe(finalError);
+      expect(mockRedisService.eval).toHaveBeenCalledTimes(3);
       expect(delaySpy).toHaveBeenNthCalledWith(1, 200);
       expect(delaySpy).toHaveBeenNthCalledWith(2, 400);
     });
 
-    it('should be a no-op when count <= 0', async () => {
-      await service.ackPendingMessages('chat-123', 0);
-      await service.ackPendingMessages('chat-123', -1);
+    it('rejects missing identities without touching Redis', async () => {
+      await expect(service.ackPendingMessageIds('chat-123', [''])).rejects.toThrow(
+        'reply_pending_identity_missing',
+      );
+      await service.ackPendingMessageIds('chat-123', []);
+      expect(mockRedisService.eval).not.toHaveBeenCalled();
+    });
 
+    it('does not report acknowledgement when Redis gives no confirmation', async () => {
+      jest.spyOn(service as unknown as ServicePrivateAccess, 'delay').mockResolvedValue(undefined);
+      mockRedisService.eval.mockResolvedValue(null);
+      await expect(service.ackPendingMessageIds('chat-123', ['msg-123'])).rejects.toThrow(
+        'reply_pending_ack_unconfirmed',
+      );
+      expect(mockRedisService.eval).toHaveBeenCalledTimes(3);
       expect(mockRedisService.ltrim).not.toHaveBeenCalled();
     });
-  });
-
-  it('does not report durable input acknowledgement when Redis gives no confirmation', async () => {
-    mockRedisService.eval.mockResolvedValue(null);
-    await expect(service.ackPendingMessageIds('chat-123', ['msg-123'])).rejects.toThrow(
-      'reply_pending_ack_unconfirmed',
-    );
-    expect(mockRedisService.ltrim).not.toHaveBeenCalled();
   });
 
   describe('processing lock heartbeat', () => {

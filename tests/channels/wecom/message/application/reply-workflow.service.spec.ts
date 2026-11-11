@@ -76,7 +76,6 @@ describe('ReplyWorkflowService', () => {
   const simpleMergeService = {
     addMessage: jest.fn().mockResolvedValue(undefined),
     claimPendingSnapshot: jest.fn(),
-    ackPendingMessages: jest.fn().mockResolvedValue(undefined),
     ackPendingMessageIds: jest.fn(),
   };
   const imageDescription = {
@@ -282,7 +281,7 @@ describe('ReplyWorkflowService', () => {
     );
     simpleMergeService.claimPendingSnapshot.mockResolvedValue({
       messages: [],
-      snapshotSize: 0,
+
       batchId: '',
     });
     runtimeConfig.resolveWecomChatModelSelection.mockResolvedValue({
@@ -356,6 +355,7 @@ describe('ReplyWorkflowService', () => {
 
   function persistedTurn(status: ReplyTurn['status'] = 'planned'): ReplyTurn {
     return {
+      deliveryPolicy: 'frozen',
       corpId: 'corp-1',
       accountId: 'im-bot-1',
       chatId: 'chat-1',
@@ -413,12 +413,12 @@ describe('ReplyWorkflowService', () => {
         token: 'moved-group-token',
       });
       if (path === 'direct') await service.processSingleMessage(replay);
-      else await service.processMergedMessages([replay], 'moved-group-batch', 1);
+      else await service.processMergedMessages([replay], 'moved-group-batch');
       expect(deliveryService.deliverReply).not.toHaveBeenCalled();
       expect(runner.runInboundTurn).not.toHaveBeenCalled();
       expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
       expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
-      expect(simpleMergeService.ackPendingMessages).not.toHaveBeenCalled();
+
       expect(groupCredentials.resolveForRecovery).not.toHaveBeenCalled();
       expect(turn.recovery.primary).toEqual(expect.objectContaining({ groupId: 'group-original' }));
       if (path === 'direct') expect(simpleMergeService.addMessage).toHaveBeenCalledWith(replay);
@@ -587,12 +587,10 @@ describe('ReplyWorkflowService', () => {
     await service.processMergedMessages(
       [createMessage(), createMessage({ messageId: 'msg-2' })],
       'attempt1',
-      2,
     );
     await service.processMergedMessages(
       [createMessage({ messageId: 'msg-2' }), createMessage({ messageId: 'new-input' })],
       'attempt2',
-      2,
     );
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
@@ -601,7 +599,6 @@ describe('ReplyWorkflowService', () => {
       'msg-1',
       'msg-2',
     ]);
-    expect(simpleMergeService.ackPendingMessages).not.toHaveBeenCalled();
   });
 
   it('recovers the original reply without model generation and does not ack unknown delivery', async () => {
@@ -612,7 +609,6 @@ describe('ReplyWorkflowService', () => {
     await service.processMergedMessages(
       [createMessage({ messageId: 'msg-2' }), createMessage({ messageId: 'new-input' })],
       'new-batch',
-      2,
     );
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).toHaveBeenCalledWith(
@@ -622,7 +618,6 @@ describe('ReplyWorkflowService', () => {
     );
     expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
     expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
-    expect(simpleMergeService.ackPendingMessages).not.toHaveBeenCalled();
   });
 
   it('keeps a settled turn pending until failed local dedup acknowledgement is repaired', async () => {
@@ -1599,13 +1594,13 @@ describe('ReplyWorkflowService', () => {
       runTurnEnd,
     });
 
-    await service.processMergedMessages([createMessage()], 'batch-silence', 1);
+    await service.processMergedMessages([createMessage()], 'batch-silence');
 
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
     expect(interventionService.dispatch).not.toHaveBeenCalled();
     expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
     expect(simpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
-    expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', 1);
+    expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', ['msg-1']);
     expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
     expect(wecomObservability.recordAgentResult).toHaveBeenCalledWith(
       'batch-silence',
@@ -1708,7 +1703,7 @@ describe('ReplyWorkflowService', () => {
             payload: { text: '后补一句', pureText: '后补一句' },
           }),
         ],
-        snapshotSize: 1,
+
         batchId: 'batch-late',
       });
       runner.runInboundTurn.mockResolvedValueOnce({
@@ -1739,7 +1734,7 @@ describe('ReplyWorkflowService', () => {
         ],
       });
 
-      await service.processMergedMessages([createMessage()], 'batch-risk', 1);
+      await service.processMergedMessages([createMessage()], 'batch-risk');
 
       expect(runner.invoke).not.toHaveBeenCalled();
       expect(runner.precheckInboundOutcome).not.toHaveBeenCalled();
@@ -1789,7 +1784,7 @@ describe('ReplyWorkflowService', () => {
       );
       expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('batch-risk');
       expect(monitoringService.recordSuccess).toHaveBeenCalledWith('batch-risk', { ok: true });
-      expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', 1);
+      expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', ['msg-1']);
       expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
       expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalledWith(
         'msg-late-risk',
@@ -1906,6 +1901,115 @@ describe('ReplyWorkflowService', () => {
   });
 
   describe('投递前重跑（replay）', () => {
+    it('absorbs a new input after the original pending list expires instead of skipping its new index', async () => {
+      const original = createMessage();
+      const newer = createMessage({ messageId: 'after-expiry', payload: { text: '改找杭州' } });
+      // 模拟旧列表已过期：当前列表下标从 0 重新开始。
+      let pending = [newer];
+      simpleMergeService.claimPendingSnapshot.mockImplementation(
+        async (_chatId: string, fromIndex = 0) => ({
+          messages: pending.slice(fromIndex),
+          batchId: 'recreated-list',
+        }),
+      );
+      simpleMergeService.ackPendingMessageIds.mockImplementation(
+        async (_chatId: string, ids: string[]) => {
+          pending = pending.filter((message) => !ids.includes(message.messageId));
+        },
+      );
+      runner.invoke
+        .mockResolvedValueOnce({ text: '旧回复' })
+        .mockResolvedValueOnce({ text: '杭州的新回复' });
+      await service.processMergedMessages([original], 'before-expiry');
+      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '杭州的新回复' }),
+        expect.anything(),
+        true,
+      );
+      expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', [
+        'msg-1',
+        'after-expiry',
+      ]);
+      expect(pending).toEqual([]);
+    });
+
+    it('does not acknowledge a new input arriving while the previous reply is being sent', async () => {
+      const original = createMessage();
+      let pending = [original];
+      simpleMergeService.claimPendingSnapshot.mockImplementation(async () => ({
+        messages: [...pending],
+        batchId: '',
+      }));
+      deliveryService.deliverReply.mockImplementationOnce(async () => {
+        // 生成期间旧列表过期，发送期间新输入重建列表。
+        pending = [createMessage({ messageId: 'during-send' })];
+        return { success: true, segmentCount: 1, failedSegments: 0, totalTime: 120 };
+      });
+      simpleMergeService.ackPendingMessageIds.mockImplementation(
+        async (_chatId: string, ids: string[]) => {
+          pending = pending.filter((message) => !ids.includes(message.messageId));
+        },
+      );
+      await service.processMergedMessages([original], 'old-batch');
+      expect(pending.map((message) => message.messageId)).toEqual(['during-send']);
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('includes replay inputs in terminal failure handling while leaving unread later inputs pending', async () => {
+      const original = createMessage();
+      const absorbed = createMessage({ messageId: 'absorbed' });
+      simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+        messages: [absorbed],
+        batchId: '',
+      });
+      runner.invoke
+        .mockResolvedValueOnce({ text: '旧回复' })
+        .mockRejectedValueOnce(new Error('replay generation failed'));
+      await service.processMergedMessages([original], 'failed-replay');
+      expect(processingFailureService.handleProcessingError).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.anything(),
+        expect.objectContaining({ processedMessageIds: ['msg-1', 'absorbed'] }),
+      );
+      expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', [
+        'msg-1',
+        'absorbed',
+      ]);
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    it('detects rebuilt pending inputs before a side effect without acknowledging inputs that were only probed', async () => {
+      const newer = createMessage({ messageId: 'newer-than-snapshot' });
+      simpleMergeService.claimPendingSnapshot.mockResolvedValue({ messages: [newer], batchId: '' });
+      runner.invoke.mockImplementationOnce(async ({ hasNewerUserInput }: GeneratorInvokeParams) => {
+        expect(await hasNewerUserInput!()).toBe(true);
+        return {
+          text: '旧动作已完成',
+          toolCalls: [
+            {
+              toolName: 'duliday_interview_booking',
+              args: {},
+              result: { success: true, workOrderId: 123 },
+            },
+          ],
+        };
+      });
+      await service.processMergedMessages([createMessage()], 'probe-only');
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', ['msg-1']);
+    });
+
+    it('reports exhausted terminal ACK recovery without issuing a second external reply', async () => {
+      simpleMergeService.ackPendingMessageIds.mockRejectedValueOnce(
+        new Error('Redis unavailable after bounded retries'),
+      );
+      await service.processMergedMessages([createMessage()], 'ack-failure');
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+      expect(alertNotifier.sendSimpleAlert).toHaveBeenCalled();
+    });
+
     it('Case A: pending list 为空时不触发重跑，直接投递首次回复并触发 turn-end 生命周期', async () => {
       const message = createMessage();
       const firstRunTurnEnd = jest.fn().mockResolvedValue(undefined);
@@ -1920,8 +2024,8 @@ describe('ReplyWorkflowService', () => {
       await service.processSingleMessage(message);
 
       expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledTimes(1);
-      // singleMessage 路径上 consumedPending 起点是 0，replay 抓取时 fromIndex 也是 0
-      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledWith('chat-1', 0);
+      // 每次读取完整当前队列，再按已经处理的消息身份去重。
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenCalledWith('chat-1');
       expect(runner.invoke).toHaveBeenCalledTimes(1);
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
       // 无 replay：首次结果被采纳，调用方必须触发 runTurnEnd
@@ -1935,7 +2039,6 @@ describe('ReplyWorkflowService', () => {
       });
       simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
         messages: [corrected],
-        snapshotSize: 1,
       });
       runner.invoke
         .mockImplementationOnce(async ({ toolCallCounts }: GeneratorInvokeParams) => {
@@ -1961,11 +2064,12 @@ describe('ReplyWorkflowService', () => {
       const original = createMessage();
       simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
         messages: [original],
-        snapshotSize: 1,
       });
-      await service.processMergedMessages([original], 'batch-duplicate', 1);
+      await service.processMergedMessages([original], 'batch-duplicate');
       expect(runner.invoke).toHaveBeenCalledTimes(1);
-      expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', 2);
+      expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', [
+        original.messageId,
+      ]);
     });
 
     it('Case B: 首次 Agent 完成后发现新消息，合并后重跑一次并投递第二次回复', async () => {
@@ -1982,7 +2086,7 @@ describe('ReplyWorkflowService', () => {
       });
       simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
         messages: [late1, late2],
-        snapshotSize: 2,
+
         batchId: 'batch-late',
       });
       const firstRunTurnEnd = jest.fn().mockResolvedValue(undefined);
@@ -2062,15 +2166,15 @@ describe('ReplyWorkflowService', () => {
       simpleMergeService.claimPendingSnapshot
         .mockResolvedValueOnce({
           messages: [late1],
-          snapshotSize: 1,
+
           batchId: 'batch-late-1',
         })
         .mockResolvedValueOnce({
           messages: [late2],
-          snapshotSize: 1,
+
           batchId: 'batch-late-2',
         })
-        .mockResolvedValueOnce({ messages: [], snapshotSize: 0, batchId: '' });
+        .mockResolvedValueOnce({ messages: [], batchId: '' });
 
       runner.invoke
         .mockResolvedValueOnce({
@@ -2088,9 +2192,9 @@ describe('ReplyWorkflowService', () => {
 
       await service.processSingleMessage(primary);
 
-      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(1, 'chat-1', 0);
-      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(2, 'chat-1', 1);
-      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(3, 'chat-1', 2);
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(1, 'chat-1');
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(2, 'chat-1');
+      expect(simpleMergeService.claimPendingSnapshot).toHaveBeenNthCalledWith(3, 'chat-1');
       expect(runner.invoke).toHaveBeenCalledTimes(3);
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
       expect(deliveryService.deliverReply).toHaveBeenCalledWith(
@@ -2128,7 +2232,7 @@ describe('ReplyWorkflowService', () => {
               payload: { text: '后补一句', pureText: '后补一句' },
             }),
           ],
-          snapshotSize: 1,
+
           batchId: 'batch-late',
         });
 
@@ -2195,8 +2299,8 @@ describe('ReplyWorkflowService', () => {
         },
       });
       simpleMergeService.claimPendingSnapshot
-        .mockResolvedValueOnce({ messages: [cityMessage], snapshotSize: 1, batchId: '' })
-        .mockResolvedValueOnce({ messages: [], snapshotSize: 0, batchId: '' });
+        .mockResolvedValueOnce({ messages: [cityMessage], batchId: '' })
+        .mockResolvedValueOnce({ messages: [], batchId: '' });
 
       runner.invoke
         .mockResolvedValueOnce({
@@ -2252,8 +2356,8 @@ describe('ReplyWorkflowService', () => {
         },
       });
       simpleMergeService.claimPendingSnapshot
-        .mockResolvedValueOnce({ messages: [newer], snapshotSize: 1, batchId: '' })
-        .mockResolvedValueOnce({ messages: [], snapshotSize: 0, batchId: '' });
+        .mockResolvedValueOnce({ messages: [newer], batchId: '' })
+        .mockResolvedValueOnce({ messages: [], batchId: '' });
 
       runner.invoke
         .mockResolvedValueOnce({
@@ -2307,7 +2411,7 @@ describe('ReplyWorkflowService', () => {
       });
       simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
         messages: [late1],
-        snapshotSize: 1,
+
         batchId: 'batch-late',
       });
       const firstRunTurnEnd = jest.fn().mockResolvedValue(undefined);
@@ -2407,7 +2511,7 @@ describe('ReplyWorkflowService', () => {
       });
       simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
         messages: [late1],
-        snapshotSize: 1,
+
         batchId: 'batch-late',
       });
       runner.invoke.mockResolvedValueOnce({
@@ -2453,9 +2557,7 @@ describe('ReplyWorkflowService', () => {
       }),
     ];
 
-    await expect(service.processMergedMessages(messages, 'batch-1', messages.length)).resolves.toBe(
-      undefined,
-    );
+    await expect(service.processMergedMessages(messages, 'batch-1')).resolves.toBe(undefined);
 
     expect(processingFailureService.inferErrorType).toHaveBeenCalledWith(error, 'merge');
     expect(processingFailureService.handleProcessingError).toHaveBeenCalledWith(
@@ -2470,7 +2572,10 @@ describe('ReplyWorkflowService', () => {
         processedMessageIds: ['msg-1', 'msg-2'],
       }),
     );
-    expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', messages.length);
+    expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', [
+      'msg-1',
+      'msg-2',
+    ]);
   });
 
   describe('图片记忆确定性兜底（backfillMissingImageDescriptions）', () => {

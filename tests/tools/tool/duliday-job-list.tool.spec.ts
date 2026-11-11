@@ -2707,6 +2707,29 @@ describe('buildJobListTool', () => {
       ]);
     });
 
+    it('counts two stores for three jobs while retaining all job cards', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeKfcJob(1, '绿地缤纷城店', 2.3, 17),
+          makeKfcJob(2, '日月光店', 5.1, 18),
+          makeKfcJob(3, '日月光店', 5.1, 24),
+        ],
+        total: 3,
+      });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        location: { latitude: 31.21, longitude: 121.29 },
+      });
+
+      expect(result.queryMeta.brandNearestStores[0].totalStoreCount).toBe(2);
+      expect(result.queryMeta.multiStoreSameBrandGroups[0].totalStoreCount).toBe(2);
+      expect(result.markdown).toContain('共 2 家');
+      expect(result.markdown).toContain('17-22元/时');
+      expect(result.markdown).toContain('18-23元/时');
+      expect(result.markdown).toContain('24-29元/时');
+    });
+
     it('does not emit warning section when each brand has only 1 store', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [

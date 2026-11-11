@@ -583,7 +583,7 @@ describe('job-list render util', () => {
       // 第 7 家不再有全文详情标题
       expect(markdown).not.toContain('## 7. 服务员');
       // 摘要尾出现，带数量与 jobId 重查引导
-      expect(markdown).toContain('### 更远的 2 家');
+      expect(markdown).toContain('### 更远的 2 个岗位');
       expect(markdown).toContain('jobId:7');
       expect(markdown).toContain('jobId:8');
       // 摘要行带薪资（来自 formatSalarySummary）

@@ -16,6 +16,7 @@ function groupTurn(
   primaryOverrides: Record<string, unknown> = {},
 ): ReplyTurn {
   return {
+    deliveryPolicy: 'frozen',
     corpId: 'corp-original',
     accountId: 'bot-original',
     chatId: 'chat-original',

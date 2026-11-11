@@ -1,0 +1,29 @@
+{
+  "batchName": "成都你六姐按求职城市查岗",
+  "cases": [
+    {
+      "caseName": "南京 · 完整品牌名",
+      "userId": "r8-nanjing",
+      "message": "我在南京，想找成都你六姐的工作，现在有在招的店吗？",
+      "expectedOutput": "按南京和成都你六姐查岗，根据本次查询结果回答。",
+      "toolMode": "readonly",
+      "allowedToolNames": ["duliday_job_list", "geocode"]
+    },
+    {
+      "caseName": "苏州 · 数字简称",
+      "userId": "r8-suzhou",
+      "message": "我在苏州，6姐有岗位吗？",
+      "expectedOutput": "识别6姐为成都你六姐，按苏州查询该品牌，按实际结果回答。",
+      "toolMode": "readonly",
+      "allowedToolNames": ["duliday_job_list", "geocode"]
+    },
+    {
+      "caseName": "只报品牌 · 求职城市未知",
+      "userId": "r8-unknown-city",
+      "message": "我想找成都你六姐的工作，能帮我看看吗？",
+      "expectedOutput": "向候选人确认求职城市或位置，不从品牌名推断成都，也不默认上海。",
+      "toolMode": "readonly",
+      "allowedToolNames": ["duliday_job_list", "geocode"]
+    }
+  ]
+}

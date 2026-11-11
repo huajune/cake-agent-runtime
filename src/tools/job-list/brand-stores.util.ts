@@ -114,7 +114,12 @@ type BrandSummaryJobInput = {
     jobCategoryName?: unknown;
     jobName?: unknown;
     storeName?: unknown;
-    storeInfo?: { storeName?: unknown; storeCityName?: unknown } | null;
+    storeInfo?: {
+      storeId?: unknown;
+      storeName?: unknown;
+      storeCityName?: unknown;
+      storeAddress?: unknown;
+    } | null;
   } | null;
   _distanceKm?: unknown;
   jobSalary?: unknown;
@@ -125,6 +130,21 @@ type BrandSummaryJobInput = {
 function formatShiftSummary(job: BrandSummaryJobInput): string | null {
   const shift = formatJobShiftTime(job);
   return shift || null;
+}
+
+/** 门店身份不能使用 jobId：同一门店可同时招聘多个岗位。 */
+function getStoreIdentity(job: BrandSummaryJobInput): string | null {
+  const store = job.basicInfo?.storeInfo;
+  const id = store?.storeId;
+  if (typeof id === 'number' && Number.isFinite(id) && id > 0) return `id:${id}`;
+  if (typeof id === 'string' && id.trim()) return `id:${id.trim()}`;
+  const name = store?.storeName ?? job.basicInfo?.storeName;
+  if (typeof name !== 'string' || !name.trim()) return null;
+  return JSON.stringify([
+    typeof store?.storeCityName === 'string' ? store.storeCityName.trim() : '',
+    name.trim(),
+    typeof store?.storeAddress === 'string' ? store.storeAddress.trim() : '',
+  ]);
 }
 
 function formatRequirementSummary(job: BrandSummaryJobInput): string | null {
@@ -144,7 +164,7 @@ function formatRequirementSummary(job: BrandSummaryJobInput): string | null {
 
 /**
  * 同品牌"最近门店"汇总：候选人在某区域有 brand intent 时，
- * 如果同品牌返回多家门店，必须按品牌分组挑距离最近的 1-2 家展示，
+ * 如果同品牌返回多家门店，必须按品牌分组挑距离最近的至多 3 家展示，
  * 否则容易跳过更近的同品牌门店推荐更远的。
  *
  * 每个 store 同时附带 `displayLine` 固定结构话术，LLM 必须按此转述同品牌多门店，
@@ -161,15 +181,7 @@ export function buildBrandNearestStoreSummary(
     {
       brandName: string;
       brandId: number | null;
-      stores: Array<{
-        storeName: string | null;
-        jobId: number;
-        jobName: string | null;
-        distanceKm: number | null;
-        wageRange: string | null;
-        shiftSummary: string | null;
-        requirementSummary: string | null;
-      }>;
+      stores: Map<string, Omit<BrandStoreEntry, 'displayLine'>>;
     }
   >();
 
@@ -179,8 +191,15 @@ export function buildBrandNearestStoreSummary(
     const brandId = typeof job.basicInfo?.brandId === 'number' ? job.basicInfo.brandId : null;
     const jobId = typeof job.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null;
     if (jobId == null) continue;
+    const storeIdentity = getStoreIdentity(job);
+    // 身份未知的岗位仍在主岗位列表展示，不据此猜测门店数量。
+    if (storeIdentity === null) continue;
     const key = `${brandName}__${brandId ?? 'null'}`;
-    const bucket = buckets.get(key) ?? { brandName, brandId, stores: [] };
+    const bucket = buckets.get(key) ?? {
+      brandName,
+      brandId,
+      stores: new Map<string, Omit<BrandStoreEntry, 'displayLine'>>(),
+    };
     const rawStoreName =
       typeof job.basicInfo?.storeInfo?.storeName === 'string'
         ? job.basicInfo.storeInfo.storeName
@@ -198,12 +217,21 @@ export function buildBrandNearestStoreSummary(
         : typeof job.basicInfo?.jobName === 'string'
           ? job.basicInfo.jobName
           : null;
-    bucket.stores.push({
+    const distanceKm =
+      typeof job._distanceKm === 'number' && Number.isFinite(job._distanceKm)
+        ? Math.round(job._distanceKm * 10) / 10
+        : null;
+    const existing = bucket.stores.get(storeIdentity);
+    if (
+      existing &&
+      (distanceKm === null || (existing.distanceKm !== null && existing.distanceKm <= distanceKm))
+    )
+      continue;
+    bucket.stores.set(storeIdentity, {
       storeName,
       jobId,
       jobName,
-      distanceKm:
-        typeof job._distanceKm === 'number' ? Math.round(job._distanceKm * 10) / 10 : null,
+      distanceKm,
       wageRange: formatSalarySummary(job),
       shiftSummary: formatShiftSummary(job),
       requirementSummary: formatRequirementSummary(job),
@@ -212,10 +240,9 @@ export function buildBrandNearestStoreSummary(
   }
 
   const summary: BrandNearestStoresGroup[] = Array.from(buckets.values())
-    .filter((bucket) => bucket.stores.length >= 1)
+    .filter((bucket) => bucket.stores.size >= 1)
     .map((bucket) => {
-      const sorted = bucket.stores
-        .slice()
+      const sorted = Array.from(bucket.stores.values())
         .sort((a, b) => {
           if (a.distanceKm == null && b.distanceKm == null) return 0;
           if (a.distanceKm == null) return 1;
@@ -239,7 +266,7 @@ export function buildBrandNearestStoreSummary(
       return {
         brandName: bucket.brandName,
         brandId: bucket.brandId,
-        totalStoreCount: bucket.stores.length,
+        totalStoreCount: bucket.stores.size,
         nearestStores: sorted,
       };
     });

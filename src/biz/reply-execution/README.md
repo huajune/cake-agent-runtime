@@ -28,6 +28,8 @@
 
 历史 `frozen` 普通回复仍按原正文及请求号恢复；既有 execute 义务在回退 observe/off 后继续受保护，必须保留 cutover。新 `single_pass` 已结束输入不会因回退重跑；中断旧 worker 不可继续派发。observe 且 cutover 为空时不创建持久输入回合，保留现有输入/队列路径，同时采用普通发送的未知不重试及真实结果记录。
 
+所有模式的 pending 确认都按本轮实际接纳的原消息 ID 执行，包含 replay 吸收的输入及失败兜底终态；不按列表条数裁剪。Redis 确认响应丢失时以相同 ID 有界重试。replay 读取完整当前列表并按已知 ID 去重，不沿用旧列表下标。无法解析或缺少身份的项记录错误并保留，不能用计数确认顺带移除。observe/off 的这项保护不代替 execute 持久输入归属。
+
 旧普通回复冻结恢复分支的删除前提：数据库确认不存在未完成的 `frozen` 主业务回合，且回滚保留期结束。冻结服务只保留旧主聊义务的恢复调用方；任务接入和扫描已移除，历史 SQL 协议未删除。新版本回滚到旧程序前，应先处理未完成的 `single_pass` 本地业务补账；仅修改模式可由本版本继续收尾。
 
 ## 验证
@@ -35,5 +37,6 @@
 - `tests/biz/reply-execution/ordinary-reply.integration.sql`：真实 PostgreSQL 输入归属、owner/fence、无正文计划约束、未知结局、新输入、补账与 SQL 权限。
 - `tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts`：真实 Nest/SQL 与模拟供应商，验证企业/小组普通回复、服务重建、不重发、ack-only、业务排程补账和旧冻结计划兼容。
 - `tests/channels/wecom/message/services/delivery.service.spec.ts`：明确受理、连接前有限重试、未知停止、权限变更和已发送正文。
+- `tests/channels/wecom/message/pending-inputs.redis.cjs`：真实 Redis 验证队列过期重建、确认响应丢失、部分/重复确认及异常项隔离；只允许 `cake-pending-ack-` 前缀的无网络、无映射端口容器。
 
 PostgreSQL 测试需要显式设置 `CAKE_REPLY_TEST_CONTAINER` / `CAKE_REPLY_TEST_DATABASE`，仅允许无网络、无端口的隔离容器。测试不创建真实报名或发送候选人消息。实现与隔离验证不表示已部署或已切 execute。

@@ -126,8 +126,8 @@ export class MessageService implements OnModuleInit {
   }
 
   private async appendManagedCallback(message: EnterpriseMessageCallbackDto, corpIds: string[]) {
-    // Group inbound turns retain their legacy namespace; scheduled group actions use the
-    // directory's real corp. Only these server-verified scopes may match the frozen request.
+    // Historical group turns may use the legacy namespace or the directory's real corp.
+    // Only these server-verified scopes may match an existing frozen request.
     for (const corpId of new Set(corpIds)) {
       const matched = await this.replyRecords!.appendCallback({
         corpId,
@@ -267,22 +267,6 @@ export class MessageService implements OnModuleInit {
       .finally(() => {
         this.processingCount--;
       });
-  }
-
-  /**
-   * 处理聚合后的消息。当前无生产调用方（MessageProcessor 直接走 MessagePipelineService），待删。
-   */
-  async processMergedMessages(
-    messages: EnterpriseMessageCallbackDto[],
-    batchId: string,
-    initialSnapshotSize: number,
-  ): Promise<void> {
-    this.processingCount++;
-    try {
-      await this.pipelineService.processMergedMessages(messages, batchId, initialSnapshotSize);
-    } finally {
-      this.processingCount--;
-    }
   }
 
   /**

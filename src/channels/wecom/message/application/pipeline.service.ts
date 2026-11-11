@@ -45,8 +45,7 @@ export class MessagePipelineService {
   async processMergedMessages(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
-    initialSnapshotSize: number,
   ): Promise<void> {
-    return this.replyWorkflow.processMergedMessages(messages, batchId, initialSnapshotSize);
+    return this.replyWorkflow.processMergedMessages(messages, batchId);
   }
 }
