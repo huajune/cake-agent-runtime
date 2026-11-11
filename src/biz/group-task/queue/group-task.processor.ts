@@ -425,14 +425,13 @@ export class GroupTaskProcessor implements OnModuleInit {
       });
       return;
     }
-    // dispatchPlan protects retained legacy jobs until they have been inspected/expired.
-    // sendAttempted also protects current jobs from duplicate sends and must remain.
-    if (!dryRun && (job.data.dispatchPlan != null || job.data.sendAttempted)) {
+    // A persisted attempt protects partial/unknown sends across Bull retries and restarts.
+    if (!dryRun && job.data.sendAttempted) {
       await this.writeGroupResult(execId, group.imRoomId, {
         groupKey,
         groupName: group.groupName,
         status: GROUP_TASK_SEND_STATUS.PENDING,
-        summary: '已有发送尝试或历史计划，保留原结果待核对，不自动重发',
+        summary: '已有发送尝试，保留原结果待核对，不自动重发',
         updatedAt: Date.now(),
       });
       job.discard();

@@ -1,10 +1,60 @@
 {
   "baseVersion": "11.15.5",
-  "nextVersion": "11.15.5",
-  "lastAnalyzedSha": null,
+  "nextVersion": "11.15.6",
   "updatedAt": "2026-11-11",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1507",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1507",
+      "title": "退役旧任务与动作身份兼容",
+      "author": "huajune",
+      "mergedAt": "2026-11-11",
+      "opsNotes": [
+        "- 无。本批为运行时兼容代码清理。"
+      ],
+      "businessUpdates": [
+        "证据读取、发送前归属校验和结果结算缺少原派发身份时直接拒绝，不再把核实任务的新 owner 当成原尝试。校验同时比对原 attempt、owner 和 fence。"
+      ],
+      "summary": [
+        "退役旧任务与动作身份兼容"
+      ],
+      "features": [],
+      "fixes": [
+        "证据读取、发送前归属校验和结果结算缺少原派发身份时直接拒绝，不再把核实任务的新 owner 当成原尝试。校验同时比对原 attempt、owner 和 fence。"
+      ],
+      "optimizations": [
+        "移除 recoveryWindowStartedAt 的类型、校验、指纹和截止时间分支。主聊恢复截止仍固定为原输入发生时间加 24 小时；不改 90 天输入边界或 cutover。",
+        "移除群任务 dispatchPlan 退役判断，保留 sendAttempted、当日成功去重、部分/未知结果不重发、权限检查和原队列重试边界。",
+        "用 v11.15.5 独立捕获的固定身份向量验证 actionId、requestId、payloadHash 不变；更新当前架构和群任务文档。"
+      ],
+      "ops": [
+        "已核对当前生产和回退版本的调用方、保留记录及补账队列；旧群任务按用户授权完成处置。详细运维证据保留在用户私有环境，不上传切换边界、运行统计或备份位置。",
+        "主聊 execute 切换已作为独立操作完成；本 PR 承载后续兼容代码清理，发布状态以实际部署验证为准。",
+        "历史 frozen 主聊恢复和旧 SQL 字段/分支继续保留，后续由独立迁移收缩。不得把历史备份直接恢复到当前群发送队列。",
+        "回退仍须保留已有 execute 输入边界、动作账本与恢复能力，不清空执行义务。",
+        "退役旧任务与动作身份兼容"
+      ],
+      "config": [
+        "数据库迁移、权限、回填：N/A，本批不改 SQL 或共享库结构。",
+        "环境变量、密钥、CI/部署配置：N/A，本批不新增或修改。",
+        "发版通知：N/A，未授权发送。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "最终提交的 pre-push `pnpm run ci:check` 完整通过：567 套件、9,307 项、3 快照；2 套件/23 项按既有 opt-in 配置跳过。",
+        "定向动作/恢复/群任务单测：65 项通过；2 个真实 PostgreSQL 用例在单独验收中执行。",
+        "最终代码的隔离 Nest/PostgreSQL 验收：23 项通过，包含完整主聊 16 项、原派发证据隔离、未派发取消和原输入恢复截止。",
+        "真实 PostgreSQL 冷升级、RPC 权限及并发故障验证通过；无生产故障注入。",
+        "`test:di-smoke` 通过，重复代码 0.57%，`git diff --check` 通过；原工作区及其他 stash/worktree 保留。",
+        "既有 3 条匿名城市用例运行真实 Agent，仅允许只读岗位/地理工具，无报名或候选人发送。逐条评审、飞书状态和生产测试 Dashboard 已完成同步和生产 API 全量对账；结果 **2 passed / 1 failed**，全部已评审。",
+        "未新增 prompt 示例、自然语言正则规则或业务窗口；SQL/Redis 运行协议值和当前身份向量保持不变。",
+        "云端 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/43000427415) 通过；原生 Codex 对当前提交 `f9c9a60029a56b6bda404de64d625446ea0ec577` 完成审查且无 findings，仓库验证 workflow 已据此记录 APPROVED。",
+        "用户已明确裁定门店计数问题另案处理并继续本批发布；保留 **2 passed / 1 failed** 的真实评审，不将例外放行写成业务通过。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.15.5",
     "date": "2026-11-11",
@@ -90,5 +140,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "443e192d53e7aefb1325dfebaecd0356153b7afb"
 }
