@@ -1,145 +1,65 @@
 {
-  "baseVersion": "11.15.5",
+  "baseVersion": "11.15.6",
   "nextVersion": "11.15.6",
   "updatedAt": "2026-11-11",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1507",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1507",
-      "title": "退役旧任务与动作身份兼容",
-      "author": "huajune",
-      "mergedAt": "2026-11-11",
-      "opsNotes": [
-        "- 无。本批为运行时兼容代码清理。"
-      ],
-      "businessUpdates": [
-        "证据读取、发送前归属校验和结果结算缺少原派发身份时直接拒绝，不再把核实任务的新 owner 当成原尝试。校验同时比对原 attempt、owner 和 fence。"
-      ],
-      "summary": [
-        "退役旧任务与动作身份兼容"
-      ],
-      "features": [],
-      "fixes": [
-        "证据读取、发送前归属校验和结果结算缺少原派发身份时直接拒绝，不再把核实任务的新 owner 当成原尝试。校验同时比对原 attempt、owner 和 fence。"
-      ],
-      "optimizations": [
-        "移除 recoveryWindowStartedAt 的类型、校验、指纹和截止时间分支。主聊恢复截止仍固定为原输入发生时间加 24 小时；不改 90 天输入边界或 cutover。",
-        "移除群任务 dispatchPlan 退役判断，保留 sendAttempted、当日成功去重、部分/未知结果不重发、权限检查和原队列重试边界。",
-        "用 v11.15.5 独立捕获的固定身份向量验证 actionId、requestId、payloadHash 不变；更新当前架构和群任务文档。"
-      ],
-      "ops": [
-        "已核对当前生产和回退版本的调用方、保留记录及补账队列；旧群任务按用户授权完成处置。详细运维证据保留在用户私有环境，不上传切换边界、运行统计或备份位置。",
-        "主聊 execute 切换已作为独立操作完成；本 PR 承载后续兼容代码清理，发布状态以实际部署验证为准。",
-        "历史 frozen 主聊恢复和旧 SQL 字段/分支继续保留，后续由独立迁移收缩。不得把历史备份直接恢复到当前群发送队列。",
-        "回退仍须保留已有 execute 输入边界、动作账本与恢复能力，不清空执行义务。",
-        "退役旧任务与动作身份兼容"
-      ],
-      "config": [
-        "数据库迁移、权限、回填：N/A，本批不改 SQL 或共享库结构。",
-        "环境变量、密钥、CI/部署配置：N/A，本批不新增或修改。",
-        "发版通知：N/A，未授权发送。"
-      ],
-      "envFiles": [],
-      "verification": [
-        "最终提交的 pre-push `pnpm run ci:check` 完整通过：567 套件、9,307 项、3 快照；2 套件/23 项按既有 opt-in 配置跳过。",
-        "定向动作/恢复/群任务单测：65 项通过；2 个真实 PostgreSQL 用例在单独验收中执行。",
-        "最终代码的隔离 Nest/PostgreSQL 验收：23 项通过，包含完整主聊 16 项、原派发证据隔离、未派发取消和原输入恢复截止。",
-        "真实 PostgreSQL 冷升级、RPC 权限及并发故障验证通过；无生产故障注入。",
-        "`test:di-smoke` 通过，重复代码 0.57%，`git diff --check` 通过；原工作区及其他 stash/worktree 保留。",
-        "既有 3 条匿名城市用例运行真实 Agent，仅允许只读岗位/地理工具，无报名或候选人发送。逐条评审、飞书状态和生产测试 Dashboard 已完成同步和生产 API 全量对账；结果 **2 passed / 1 failed**，全部已评审。",
-        "未新增 prompt 示例、自然语言正则规则或业务窗口；SQL/Redis 运行协议值和当前身份向量保持不变。",
-        "云端 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/43000427415) 通过；原生 Codex 对当前提交 `f9c9a60029a56b6bda404de64d625446ea0ec577` 完成审查且无 findings，仓库验证 workflow 已据此记录 APPROVED。",
-        "用户已明确裁定门店计数问题另案处理并继续本批发布；保留 **2 passed / 1 failed** 的真实评审，不将例外放行写成业务通过。"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.15.5",
+    "version": "11.15.6",
     "date": "2026-11-11",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1502",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1502",
-        "title": "修复输入误删与门店重复计数",
+        "number": "1507",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1507",
+        "title": "退役旧任务与动作身份兼容",
         "author": "huajune",
         "mergedAt": "2026-11-11",
         "opsNotes": [
-          "**连续消息处理** ✅ 本版修复",
-          "- 候选人在上一轮等待或发送期间补充消息时，保留补充内容继续处理，避免被旧一轮的收尾误删。",
-          "- 处理完成后的确认即使遇到短暂异常，也只处理原消息，保留后来到达的新消息。",
-          "**成都你六姐查岗** ✅ 城市配置已生效，本版修复门店计数并纳入代码管理",
-          "- 按候选人的求职城市查询，不再默认上海或直接告知其他城市未开店。",
-          "- 城市不明确时先询问，品牌名中的“成都”不作为求职地点。",
-          "- 同一家店招聘多个岗位时，准确说明门店数，分别保留岗位信息。"
+          "- 无。本批为运行时兼容代码清理。"
         ],
         "businessUpdates": [
-          "无。",
-          "成功投递、静默、失败兜底和暂停托管均确认实际接纳的消息身份；replay 吸收的输入纳入失败收尾，动作前探测的新输入不提前确认。",
-          "Redis Lua 按 ID 原子移除，确认响应丢失后以相同 ID 最多尝试 3 次。重复、部分确认与队列重建不删除新输入；异常 JSON 或缺少身份的项保留并记录错误。",
-          "replay 读取当前完整列表并按 ID 去重，删除 `initialSnapshotSize` / 列表下标的透传。",
-          "城市真实回归发现查岗摘要把同店多个岗位计成多家门店。按门店 ID（缺失时用城市、原门店名、地址）去重，最近三家不再被同店岗位占满；完整岗位卡片保留，尾部摘要按岗位计数。",
-          "随车归档 R8 城市限制定向迁移：只替换已知旧原文，保留其他运营编辑和变更审计。",
-          "修复输入误删与门店重复计数"
+          "证据读取、发送前归属校验和结果结算缺少原派发身份时直接拒绝，不再把核实任务的新 owner 当成原尝试。校验同时比对原 attempt、owner 和 fence。"
         ],
         "summary": [
-          "修复输入误删与门店重复计数"
+          "退役旧任务与动作身份兼容"
         ],
-        "features": [
-          "无。"
-        ],
+        "features": [],
         "fixes": [
-          "成功投递、静默、失败兜底和暂停托管均确认实际接纳的消息身份；replay 吸收的输入纳入失败收尾，动作前探测的新输入不提前确认。",
-          "Redis Lua 按 ID 原子移除，确认响应丢失后以相同 ID 最多尝试 3 次。重复、部分确认与队列重建不删除新输入；异常 JSON 或缺少身份的项保留并记录错误。",
-          "replay 读取当前完整列表并按 ID 去重，删除 `initialSnapshotSize` / 列表下标的透传。",
-          "城市真实回归发现查岗摘要把同店多个岗位计成多家门店。按门店 ID（缺失时用城市、原门店名、地址）去重，最近三家不再被同店岗位占满；完整岗位卡片保留，尾部摘要按岗位计数。",
-          "随车归档 R8 城市限制定向迁移：只替换已知旧原文，保留其他运营编辑和变更审计。",
-          "修复输入误删与门店重复计数"
+          "证据读取、发送前归属校验和结果结算缺少原派发身份时直接拒绝，不再把核实任务的新 owner 当成原尝试。校验同时比对原 attempt、owner 和 fence。"
         ],
         "optimizations": [
-          "删除无生产调用的 `MessageService.processMergedMessages` 包装与无调用的 `GROUP_TASK_MESSAGE` 常量；保留实际 worker → pipeline → reply workflow 链路。",
-          "`ReplyTurn.deliveryPolicy` 与数据库约束对齐为必填，历史测试夹具明确使用 frozen。",
-          "修正普通回复 single_pass、群任务/复聊独立链路及 precheck 预算文档。保留历史 frozen 恢复、旧 job 的 dispatchPlan 与当前 sendAttempted 保护，历史 SQL 协议不删。",
-          "纳入原工作区数据模型计划，并按 v11.15.4 基线修正过时说明；本批不实施该计划中的数据模型收缩。"
+          "移除 recoveryWindowStartedAt 的类型、校验、指纹和截止时间分支。主聊恢复截止仍固定为原输入发生时间加 24 小时；不改 90 天输入边界或 cutover。",
+          "移除群任务 dispatchPlan 退役判断，保留 sendAttempted、当日成功去重、部分/未知结果不重发、权限检查和原队列重试边界。",
+          "用 v11.15.5 独立捕获的固定身份向量验证 actionId、requestId、payloadHash 不变；更新当前架构和群任务文档。"
         ],
         "ops": [
-          "Compose 停止宽限期改为 90 秒，覆盖默认 60 秒应用排空预算，已核验解析结果。",
-          "本次保持 observe，cutover 为空；后续 execute 切换及兼容删除按各自退出条件推进。旧 frozen 未结义务、保留的历史 job 和回滚消费者未完成核对前，不删除兼容分支。",
-          "迁移 `20261110080000` 已在测试与生产应用，相关 active testing/released 配置均为新规则，本次无需再次推库。迁移对新旧应用均兼容，不涉及表结构、权限、回填或数据删除。",
-          "回滚基线 v11.15.4；回滚应用不会还原已经确认的城市政策。观察模式不提供跨进程恰好一次保证。"
+          "已核对当前生产和回退版本的调用方、保留记录及补账队列；旧群任务按用户授权完成处置。详细运维证据保留在用户私有环境，不上传切换边界、运行统计或备份位置。",
+          "主聊 execute 切换已作为独立操作完成；本 PR 承载后续兼容代码清理，发布状态以实际部署验证为准。",
+          "历史 frozen 主聊恢复和旧 SQL 字段/分支继续保留，后续由独立迁移收缩。不得把历史备份直接恢复到当前群发送队列。",
+          "回退仍须保留已有 execute 输入边界、动作账本与恢复能力，不清空执行义务。",
+          "退役旧任务与动作身份兼容"
         ],
         "config": [
-          "无新增、修改或废弃环境变量。仅补充已有 `SHUTDOWN_DRAIN_TIMEOUT_MS` 与 Compose 停止预算的说明。",
-          "secrets/variables：N/A，无密钥变更。"
+          "数据库迁移、权限、回填：N/A，本批不改 SQL 或共享库结构。",
+          "环境变量、密钥、CI/部署配置：N/A，本批不新增或修改。",
+          "发版通知：N/A，未授权发送。"
         ],
-        "envFiles": [
-          ".env.example"
-        ],
+        "envFiles": [],
         "verification": [
-          "`pnpm run ci:check`：566 个套件、9,302 项通过（推送钩子在允许 HTTP 监听的环境全量重跑）；2 个套件/21 项按既有配置跳过。",
-          "`pnpm run duplication:check`：0.57%，低于 2.06% 门槛。",
-          "`pnpm run test:di-smoke`：完整 AppModule 装配通过。",
-          "输入确认与 pipeline 定向 218 项；门店摘要、岗位渲染及查岗工具 251 项通过。",
-          "真实隔离 Redis：过期重建、确认响应丢失、重复/部分/乱序确认、异常项与后来输入保留。",
-          "真实隔离 PostgreSQL：精确匹配、规则顺序/其他字段保留、inactive/历史/运营新编辑不变、审计原值与幂等性。",
-          "`git diff --check`；原工作区改动及 stash 保留，仅暂存本批路径。",
-          "三条真实 Agent 链路均 runtime success，已逐条核对完整工具结果、初始记忆、守卫和回复；业务评审：南京与城市未知 2 条 passed，苏州 1 条 skipped（源薪资口径冲突，非业务通过）。",
-          "飞书正式测试集 3 条均回写（通过/跳过/通过，无待测）；生产 Dashboard 同步 1 批/3 条、`warnings=[]`；生产 API 对全部 3 条实际回复、工具调用、评审备注及批次统计逐项一致。批次 `f72abbd9-5e3b-4dc7-9fcd-5bcb6333be44`，见 [测试 Dashboard](https://cake.duliday.com/web/test-suite) 中“2026-11-11 成都你六姐按求职城市查岗”。",
-          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支。",
-          "未新增运行时 prompt 示例；测试为匿名查岗问题，仅允许只读工具。",
-          "仓库约定、全部改动、测试/异常路径与向后兼容已审阅。",
-          "数据库迁移状态、部署顺序与锁/回滚风险已核对；破坏性 SQL、生产回填：N/A。",
-          "配置和文档同步；独立发版底账：N/A，用户未要求，证据保留于本 PR。",
-          "最新提交 `46089155` 的 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/42986806568) 全绿；原生 Codex 审查无发现，正式 review 已 APPROVED。",
-          "版本元数据、release PR、tag 与实际部署一致；沿仓库正常链路发布。",
-          "部署后核验版本、健康状态、停止宽限期和 observe 配置；回同步 PR 收口。",
-          "发版广播：N/A，本次未授权发送通知，不批准 notify job。"
+          "最终提交的 pre-push `pnpm run ci:check` 完整通过：567 套件、9,307 项、3 快照；2 套件/23 项按既有 opt-in 配置跳过。",
+          "定向动作/恢复/群任务单测：65 项通过；2 个真实 PostgreSQL 用例在单独验收中执行。",
+          "最终代码的隔离 Nest/PostgreSQL 验收：23 项通过，包含完整主聊 16 项、原派发证据隔离、未派发取消和原输入恢复截止。",
+          "真实 PostgreSQL 冷升级、RPC 权限及并发故障验证通过；无生产故障注入。",
+          "`test:di-smoke` 通过，重复代码 0.57%，`git diff --check` 通过；原工作区及其他 stash/worktree 保留。",
+          "既有 3 条匿名城市用例运行真实 Agent，仅允许只读岗位/地理工具，无报名或候选人发送。逐条评审、飞书状态和生产测试 Dashboard 已完成同步和生产 API 全量对账；结果 **2 passed / 1 failed**，全部已评审。",
+          "未新增 prompt 示例、自然语言正则规则或业务窗口；SQL/Redis 运行协议值和当前身份向量保持不变。",
+          "云端 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/43000427415) 通过；原生 Codex 对当前提交 `f9c9a60029a56b6bda404de64d625446ea0ec577` 完成审查且无 findings，仓库验证 workflow 已据此记录 APPROVED。",
+          "用户已明确裁定门店计数问题另案处理并继续本批发布；保留 **2 passed / 1 failed** 的真实评审，不将例外放行写成业务通过。"
         ],
         "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "443e192d53e7aefb1325dfebaecd0356153b7afb"
+  "lastAnalyzedSha": "206e89d1b73feba0e0bec8d488ed8d0ec76d686e"
 }
