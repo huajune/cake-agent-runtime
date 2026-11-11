@@ -37,9 +37,7 @@ export class ActionRecordsRepository extends BaseRepository {
       intent,
       mode,
       resourceHash: actionDigest([intent.corpId, intent.target]),
-      recoveryDeadline: new Date(
-        Date.parse(intent.recoveryWindowStartedAt ?? intent.occurredAt) + 24 * 60 * 60 * 1000,
-      ).toISOString(),
+      recoveryDeadline: new Date(Date.parse(intent.occurredAt) + 24 * 60 * 60 * 1000).toISOString(),
     });
   }
 
@@ -57,6 +55,7 @@ export class ActionRecordsRepository extends BaseRepository {
   }
 
   async settle<T>(record: ActionRecord, completion: ActionCompletion<T>): Promise<ActionRecord> {
+    this.requireDispatchAttemptId(record);
     const result = await this.transition(ACTION_RECORD_OPERATION.SETTLE, {
       ...this.ownership(record),
       completion,
@@ -67,12 +66,14 @@ export class ActionRecordsRepository extends BaseRepository {
   }
 
   async validateClaim(record: ActionRecord): Promise<boolean> {
+    const dispatchAttemptId = this.requireDispatchAttemptId(record);
     const result = await this.transition(
       ACTION_RECORD_OPERATION.VALIDATE_CLAIM,
       this.ownership(record),
     );
     return (
       result.record?.owner === record.owner &&
+      result.record.dispatchAttemptId === dispatchAttemptId &&
       result.record.fence === record.fence &&
       result.record.status === ACTION_STATE.EXECUTING &&
       Boolean(result.record.nextCheckAt) &&
@@ -142,12 +143,13 @@ export class ActionRecordsRepository extends BaseRepository {
   async terminalEvidence(
     record: ActionRecord,
   ): Promise<{ completion?: ActionCompletion<unknown>; conflicting: boolean }> {
+    const dispatchAttemptId = this.requireDispatchAttemptId(record);
     const { data, error } = await this.getClient()
       .from('agent_action_evidence')
       .select('completion')
       .eq('corp_id', record.intent.corpId)
       .eq('action_id', record.actionId)
-      .eq('attempt_id', record.dispatchAttemptId ?? record.owner ?? '')
+      .eq('attempt_id', dispatchAttemptId)
       .order('created_at', { ascending: false })
       .limit(20)
       .abortSignal(AbortSignal.timeout(5000));
@@ -194,8 +196,14 @@ export class ActionRecordsRepository extends BaseRepository {
       actionId: record.actionId,
       owner: record.owner,
       fence: record.fence,
-      dispatchAttemptId: record.dispatchAttemptId ?? record.owner,
+      dispatchAttemptId: record.dispatchAttemptId,
     };
+  }
+
+  private requireDispatchAttemptId(record: ActionRecord): string {
+    if (typeof record.dispatchAttemptId !== 'string' || !record.dispatchAttemptId.trim())
+      throw new Error('Original action dispatch attempt is required');
+    return record.dispatchAttemptId;
   }
 
   private async transition(

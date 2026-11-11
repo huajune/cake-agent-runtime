@@ -118,8 +118,6 @@ export interface PrepareJobData {
 
 export interface SendJobData {
   startedAt?: number;
-  /** Retirement guard only: old runtime plans may contain already-sent/unknown parts. */
-  dispatchPlan?: unknown;
   /** Original job attempted external sending; retries must not replay a partial/unknown batch. */
   sendAttempted?: boolean;
   execId: string;

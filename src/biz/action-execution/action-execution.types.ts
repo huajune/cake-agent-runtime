@@ -26,8 +26,6 @@ export interface ActionIntent {
   parameters: Record<string, unknown>;
   /** Original input/task time. Never replace with retry time. */
   occurredAt: string;
-  /** Frozen scheduled dispatch window; retries must reuse it, never move it to now. */
-  recoveryWindowStartedAt?: string;
   /** Only true after the input membership / task identity has been durably established. */
   identityReliable?: boolean;
   /** Minimal local repair input; credentials must be resolved at recovery time. */
@@ -84,7 +82,8 @@ export interface ActionRecord {
   status: ActionState;
   localSync: LocalSyncState;
   owner: string | null;
-  dispatchAttemptId?: string | null;
+  /** Original dispatch identity; null before dispatch, unchanged by reconciliation leases. */
+  dispatchAttemptId: string | null;
   fence: number;
   attempts: number;
   result: unknown;
