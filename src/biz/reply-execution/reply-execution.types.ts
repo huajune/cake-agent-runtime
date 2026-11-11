@@ -35,8 +35,8 @@ export interface ReplyDeliverySummary {
 }
 
 export interface ReplyTurn extends ReplyTurnScope {
-  /** Absent only on pre-migration fixtures/obligations; treated as frozen. */
-  deliveryPolicy?: ReplyDeliveryPolicy;
+  /** Persisted explicitly; the migration backfills historical turns as frozen. */
+  deliveryPolicy: ReplyDeliveryPolicy;
   deliveryResult?: ReplyDeliverySummary;
 
   logicalTurnId: string;

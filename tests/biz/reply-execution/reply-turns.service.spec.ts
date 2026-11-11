@@ -5,6 +5,7 @@ import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-e
 const now = '2026-10-21T04:00:00Z';
 const scope = { corpId: 'corp', accountId: 'account', chatId: 'chat' };
 const turn: ReplyTurn = {
+  deliveryPolicy: 'frozen',
   ...scope,
   logicalTurnId: 'turn',
   inputIds: ['a', 'b'],

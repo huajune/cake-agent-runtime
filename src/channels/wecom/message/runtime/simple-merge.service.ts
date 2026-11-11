@@ -47,7 +47,7 @@ export class SimpleMergeService implements OnModuleInit {
   // 静默窗口检查任务创建失败时的本地重试（兜 Redis/队列瞬时抖动），耗尽后上抛交由上游记录失败。
   private readonly QUEUE_ADD_MAX_ATTEMPTS = 3;
   private readonly QUEUE_ADD_RETRY_DELAY_MS = 200;
-  // ack（LTRIM 裁 pending）失败重试：ack 丢失会让已回复的消息滞留 pending、并进下一批造成重复回复。
+  // 按原消息身份重试确认；即使首次执行成功但响应丢失，也不能确认后来入队的消息。
   private readonly ACK_MAX_ATTEMPTS = 3;
 
   constructor(
@@ -142,78 +142,78 @@ export class SimpleMergeService implements OnModuleInit {
   /**
    * 抓取 pending 列表当前快照（不从队列中移除）。
    *
-   * 与旧的 `getAndClearPendingMessages` 区别：本方法只 LRANGE，不 LTRIM。处理成功后由
-   * 调用方显式调用 `ackPendingMessages` 将已消费的部分裁掉。这样进程被发版 SIGKILL
-   * 中断时，pending 中的消息保持原样，Bull stalled retry 拉起的新 worker 仍能拿到
-   * 完整数据继续处理，避免候选人消息因部署被吞。
-   *
-   * @param fromIndex 起始索引。Worker 初次抓取传 0；agent 执行期间补抓新消息（replay
-   *                  路径）传上一次的 snapshotSize，避免与初次快照重叠。
-   * @returns messages 解析后的消息；snapshotSize 本次抓取到的原始条数（含解析失败项，
-   *          用于 ack 时的 LTRIM 偏移）；batchId 仅在 fromIndex===0 时生成。
+   * 每次从队首读取：列表可能在长回合期间过期、被确认或重建，旧下标没有身份含义。
+   * 调用方按 messageId 排除本轮已读消息，终态后只确认实际处理的身份。
+   * 无法解析或缺少身份的项保留原样并报错，不将它们算作已处理输入。
    */
   async claimPendingSnapshot(
     chatId: string,
-    fromIndex = 0,
-  ): Promise<{ messages: EnterpriseMessageCallbackDto[]; snapshotSize: number; batchId: string }> {
+  ): Promise<{ messages: EnterpriseMessageCallbackDto[]; batchId: string }> {
     const pendingKey = RedisKeyBuilder.pending(chatId);
 
-    const rawMessages = await this.redisService.lrange<string>(pendingKey, fromIndex, -1);
+    const rawMessages = await this.redisService.lrange<unknown>(pendingKey, 0, -1);
 
     if (!rawMessages || rawMessages.length === 0) {
-      if (fromIndex === 0) {
-        this.logger.debug(`[${chatId}] 待处理队列为空（可能已被其他 Worker 处理）`);
-      }
-      return { messages: [], snapshotSize: 0, batchId: '' };
+      this.logger.debug(`[${chatId}] 待处理队列为空（可能已被其他 Worker 处理）`);
+      return { messages: [], batchId: '' };
     }
 
     const messages: EnterpriseMessageCallbackDto[] = [];
+    const seenIds = new Set<string>();
     for (const raw of rawMessages) {
       try {
-        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+          throw new Error('invalid_pending_message');
+        const messageId = (parsed as Record<string, unknown>).messageId;
+        if (typeof messageId !== 'string' || !messageId.trim())
+          throw new Error('missing_pending_message_identity');
+        if (seenIds.has(messageId)) continue;
+        seenIds.add(messageId);
         messages.push(parsed as EnterpriseMessageCallbackDto);
-      } catch (error) {
-        const errorMessage = toErrorMessage(error);
-        this.logger.error(`[${chatId}] 解析消息失败: ${errorMessage}`);
+      } catch {
+        this.logger.error(`[${chatId}] pending 消息无法解析或缺少身份，保留原项待核查`);
       }
     }
 
-    const batchId = fromIndex === 0 ? `batch_${chatId}_${Date.now()}` : '';
+    const batchId = messages.length ? `batch_${chatId}_${Date.now()}` : '';
+    this.logger.debug(`[${chatId}] 读取 ${messages.length} 条待处理消息, batchId=${batchId}`);
 
-    if (batchId) {
-      this.logger.log(`[${chatId}] 读取 ${messages.length} 条待处理消息, batchId=${batchId}`);
-    } else {
-      this.logger.log(`[${chatId}] 补抓 ${messages.length} 条 pending（fromIndex=${fromIndex}）`);
-    }
-
-    return { messages, snapshotSize: rawMessages.length, batchId };
+    return { messages, batchId };
   }
 
-  /**
-   * 确认已处理的 pending 消息，从队首裁掉 `count` 条。
-   *
-   * 必须在 agent 调用 + 投递全部成功后调用一次（聚合传 snap1Size + replay snap2Size）。
-   * 投递前进程被 kill 时调用方应跳过 ack，让 pending 保持原样以供 Bull stalled retry
-   * 拉起的新 worker 重放。
-   */
-  async ackPendingMessages(chatId: string, count: number): Promise<void> {
-    if (count <= 0) return;
-    const pendingKey = RedisKeyBuilder.pending(chatId);
-
-    // ack 失败的后果不是"少删一条日志"而是业务性重复：已投递的消息滞留 pending，
-    // 会被下一个 job 并进新批次再次触发 Agent 回复。这里先本地重试兜 Redis 瞬时抖动，
-    // 耗尽后上抛，由调用方决定告警/终态语义。
+  /** 按原消息身份原子确认；重复确认、部分确认和队列重建均不会裁掉新输入。 */
+  async ackPendingMessageIds(chatId: string, messageIds: readonly string[]): Promise<void> {
+    if (!messageIds.length) return;
+    if (messageIds.some((id) => typeof id !== 'string' || !id.trim()))
+      throw new Error('reply_pending_identity_missing');
+    const ids = [...new Set(messageIds)];
     let lastError: unknown;
     for (let attempt = 1; attempt <= this.ACK_MAX_ATTEMPTS; attempt++) {
       try {
-        await this.redisService.ltrim(pendingKey, count, -1);
-        this.logger.debug(`[${chatId}] ack 已处理 ${count} 条 pending`);
+        const acknowledged = await this.redisService.eval(
+          `
+          local wanted = {}
+          for _, id in ipairs(cjson.decode(ARGV[1])) do wanted[id] = true end
+          local rows = redis.call('LRANGE', KEYS[1], 0, -1)
+          for _, row in ipairs(rows) do
+            local ok, item = pcall(cjson.decode, row)
+            if ok and type(item) == 'table' and type(item.messageId) == 'string'
+              and wanted[item.messageId] then redis.call('LREM', KEYS[1], 0, row) end
+          end
+          return 1
+        `,
+          [RedisKeyBuilder.pending(chatId)],
+          [JSON.stringify(ids)],
+        );
+        if (acknowledged !== 1) throw new Error('reply_pending_ack_unconfirmed');
+        this.logger.debug(`[${chatId}] ack 已处理 ${ids.length} 个 pending 消息身份`);
         return;
       } catch (error) {
         lastError = error;
         const errorMessage = toErrorMessage(error);
         this.logger.warn(
-          `[${chatId}] ack pending 失败（第 ${attempt}/${this.ACK_MAX_ATTEMPTS} 次，count=${count}）: ${errorMessage}`,
+          `[${chatId}] ack pending 失败（第 ${attempt}/${this.ACK_MAX_ATTEMPTS} 次，ids=${ids.length}）: ${errorMessage}`,
         );
         if (attempt < this.ACK_MAX_ATTEMPTS) {
           await this.delay(this.QUEUE_ADD_RETRY_DELAY_MS * attempt);
@@ -224,26 +224,6 @@ export class SimpleMergeService implements OnModuleInit {
       throw lastError;
     }
     throw new Error(String(lastError));
-  }
-
-  /** Atomic acknowledgement by durable membership; repeated/partial acks cannot trim new input. */
-  async ackPendingMessageIds(chatId: string, messageIds: readonly string[]): Promise<void> {
-    if (!messageIds.length) return;
-    const acknowledged = await this.redisService.eval(
-      `
-      local wanted = {}
-      for _, id in ipairs(cjson.decode(ARGV[1])) do wanted[id] = true end
-      local rows = redis.call('LRANGE', KEYS[1], 0, -1)
-      for _, row in ipairs(rows) do
-        local ok, item = pcall(cjson.decode, row)
-        if ok and wanted[item.messageId] then redis.call('LREM', KEYS[1], 0, row) end
-      end
-      return 1
-    `,
-      [RedisKeyBuilder.pending(chatId)],
-      [JSON.stringify(messageIds)],
-    );
-    if (acknowledged !== 1) throw new Error('reply_pending_ack_unconfirmed');
   }
 
   async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {

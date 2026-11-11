@@ -39,7 +39,7 @@ describe('MessageProcessor', () => {
     startLockHeartbeat: jest.fn().mockReturnValue(jest.fn()),
     isQuietWindowElapsed: jest.fn().mockResolvedValue(true),
     claimPendingSnapshot: jest.fn(),
-    ackPendingMessages: jest.fn().mockResolvedValue(undefined),
+    ackPendingMessageIds: jest.fn().mockResolvedValue(undefined),
     checkAndProcessNewMessages: jest.fn().mockResolvedValue(false),
     scheduleLockRetryCheck: jest.fn().mockResolvedValue(undefined),
     scheduleQuietWindowRetryCheck: jest.fn().mockResolvedValue(true),
@@ -100,13 +100,13 @@ describe('MessageProcessor', () => {
 
   function processorInternals() {
     return processor as unknown as {
-      processMessages(messages: unknown[], batchId: string, snapshotSize: number): Promise<void>;
+      processMessages(messages: unknown[], batchId: string): Promise<void>;
       dropIfHostingPaused(chatId: string, messages: unknown[], jobId: string): Promise<boolean>;
       handleProcessJob(job: { id: string; data: { chatId: string } }): Promise<void>;
     };
   }
 
-  it('should delegate merged batches to MessagePipelineService with initial snapshot size', async () => {
+  it('should delegate merged batches to MessagePipelineService without positional acknowledgement state', async () => {
     const messages = [
       {
         chatId: 'chat-123',
@@ -114,12 +114,39 @@ describe('MessageProcessor', () => {
       },
     ];
 
-    await processorInternals().processMessages(messages, 'batch-001', 1);
+    await processorInternals().processMessages(messages, 'batch-001');
 
-    expect(mockPipeline.processMergedMessages).toHaveBeenCalledWith(messages, 'batch-001', 1);
+    expect(mockPipeline.processMergedMessages).toHaveBeenCalledWith(messages, 'batch-001');
   });
 
   describe('dropIfHostingPaused', () => {
+    it('acknowledges only the paused snapshot when newer inputs arrive during the permit check', async () => {
+      const original = { chatId: 'chat-123', messageId: 'old-input', imContactId: 'c-1' };
+      let pending = [original];
+      mockSimpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+        messages: [original],
+        batchId: 'old-batch',
+      });
+      mockActionPermitService.evaluate.mockImplementationOnce(async () => {
+        pending = [{ ...original, messageId: 'new-input' }];
+        return { allowed: false, reason: 'hosting_paused', matchedId: 'chat-123' };
+      });
+      mockSimpleMergeService.ackPendingMessageIds.mockImplementationOnce(
+        async (_chatId: string, ids: string[]) => {
+          pending = pending.filter((message) => !ids.includes(message.messageId));
+        },
+      );
+      await processorInternals().handleProcessJob({
+        id: 'paused-job',
+        data: { chatId: 'chat-123' },
+      });
+      expect(mockSimpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-123', [
+        'old-input',
+      ]);
+      expect(pending.map((message) => message.messageId)).toEqual(['new-input']);
+      expect(mockPipeline.processMergedMessages).not.toHaveBeenCalled();
+    });
+
     it('drops batch and dedup-marks every messageId when paused (badcase 1tsdimfg)', async () => {
       mockActionPermitService.evaluate.mockResolvedValueOnce({
         allowed: false,

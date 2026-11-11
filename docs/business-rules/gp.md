@@ -4,10 +4,10 @@
 
 ## GP-01 在招结论先查询
 
-询问某品牌、城市或用工形式是否有岗时，条件足够就查询，条件不足先补齐；查询前不保证有岗。
+询问某品牌、城市或用工形式是否有岗时，条件足够就查询，条件不足先补齐；查询前不保证有岗。“成都你六姐”按候选人的求职城市查询，品牌名里的“成都”不能用来确定求职城市。
 
-- 状态：现行基线
-- 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
+- 状态：已裁定
+- 来源：2026-11-10 用户确认南京、苏州也在招，要求取消“成都你六姐”的城市限制。品牌消歧由策略库 R8 提供，查岗沿用 GP-01。
 - 落点：`src/agent/generator/context/sections/procedural/rules/gp.md#GP-01`
 - 落点：`src/tools/duliday-job-list.tool.ts#buildJobListTool`
 - 落点：`src/agent/guardrail/output/output-rule-catalog.ts#job_query_claim_without_query`
@@ -15,6 +15,8 @@
 - 验证：`tests/agent/generator/context/manual-loader.spec.ts`
 - 验证：`tests/tools/job-list/candidate-card.util.spec.ts`
 - 验证：`tests/agent/guardrail/output/rules/job-fact-reconciliation.rule.spec.ts`
+
+R8 的配置变更见[定向迁移](../../supabase/migrations/20261110080000_remove_liujie_city_limit.sql)。[真实对话回归用例](../../tests/fixtures/liujie-city/batch.json)覆盖南京、苏州和仅提供品牌名的询问，在招结论以当次工具结果为准。
 
 ## GP-02 推荐展示遵循岗位卡片
 
@@ -28,6 +30,8 @@
 - 验证：`tests/tools/job-list/candidate-card.util.spec.ts`
 - 落点：`src/agent/generator/context/sections/procedural/final-check.section.ts#salary_told_before_collection`
 - 验证：`tests/agent/generator/context/context.service.spec.ts`
+
+同品牌门店摘要按门店身份去重，不能把同店不同岗位数写成门店数；完整岗位卡片继续保留各岗位条件。实现见 `src/tools/job-list/brand-stores.util.ts#buildBrandNearestStoreSummary`，验证见 `tests/tools/job-list/brand-stores.util.spec.ts`。
 
 ## GP-03 品牌与品类意向
 
@@ -152,6 +156,7 @@
 
 ## 变更记录
 
+- 2026-11-11：城市规则真实回归发现同店多岗位被误计为多家门店；修正摘要门店计数和最近三家展示，保留完整岗位列表，沿用 GP-02。
+- 2026-11-10：取消 R8 的品牌开城限制，移除默认查上海及外地未开店话术。R8 仅保留品牌名消歧。
 - 2026-11-06：线上脱敏样本 `b11c19663c81648f` 把邀请卡片成功说成已入群。统一工具描述和步骤末尾成功提示，覆盖普通邀群、报名后的复合回执、直接入群及未知结果；保持现有渠道契约，不等待普通回复的自发回调。
-
 - 2026-10-23：首次按主题建立口径、执行落点与验证关联；机械拆分手册，保持文案与顺序；不新增业务裁定。
