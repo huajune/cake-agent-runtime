@@ -35,19 +35,19 @@ begin
   assert r->>'conflict'='a';
   -- Goal satisfaction is not proof that the old request terminated.
   c:='{"status":"succeeded","result":{"time":"B"},"evidence":{"kind":"already_satisfied","goalSatisfied":true,"requestTerminated":false}}';
-  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','reconciler','fence',2,'evidenceHash','goal','completion',c));
+  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','reconciler','dispatchAttemptId','one','fence',2,'evidenceHash','goal','completion',c));
   assert r->'record'->>'status'='unknown';
   c:='{"status":"succeeded","result":{"time":"B"},"evidence":{"kind":"completed","requestTerminated":true}}';
   -- Late writer cannot overwrite the row, but its evidence is retained for recovery.
-  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','one','fence',1,'evidenceHash','late-success','completion',c));
+  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','one','dispatchAttemptId','one','fence',1,'evidenceHash','late-success','completion',c));
   assert r->'record'->>'status'='unknown';
   select count(*) into n from public.agent_action_evidence where action_id='a' and evidence_hash='late-success'; assert n=1;
-  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','reconciler','fence',2,'evidenceHash','confirmed','completion',c));
+  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','reconciler','dispatchAttemptId','one','fence',2,'evidenceHash','confirmed','completion',c));
   assert r->'record'->>'status'='succeeded';
   assert r->'record'->>'local_sync'='pending';
   -- Late failure cannot turn a completed external action into failure.
   c:='{"status":"failed","retryable":true,"evidence":{"kind":"definitive_no_effect","requestTerminated":true}}';
-  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','one','fence',1,'evidenceHash','late-failure','completion',c));
+  r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','one','dispatchAttemptId','one','fence',1,'evidenceHash','late-failure','completion',c));
   assert r->'record'->>'status'='succeeded';
   r:=public.transition_agent_action('synced','{"corpId":"test-corp","actionId":"a","owner":"one","fence":1}');
   assert r->'record'->>'local_sync'='pending';
@@ -84,7 +84,7 @@ begin
     assert r->'record'->>'previous_action_id' is not distinct from case when i=1 then null else 'lineage-'||(i-1) end;
     if i=2 then replay:=p; end if;
     perform public.transition_agent_action('claim',jsonb_build_object('corpId','lineage-corp','actionId','lineage-'||i,'owner','attempt-'||i));
-    perform public.transition_agent_action('settle',jsonb_build_object('corpId','lineage-corp','actionId','lineage-'||i,'owner','attempt-'||i,'fence',1,'evidenceHash','done',
+    perform public.transition_agent_action('settle',jsonb_build_object('corpId','lineage-corp','actionId','lineage-'||i,'owner','attempt-'||i,'dispatchAttemptId','attempt-'||i,'fence',1,'evidenceHash','done',
       'completion',jsonb_build_object('status','succeeded','result',jsonb_build_object('workOrderId',42),
         'evidence',jsonb_build_object('kind','completed','requestTerminated',true))));
     perform public.transition_agent_action('synced',jsonb_build_object('corpId','lineage-corp','actionId','lineage-'||i,'owner','attempt-'||i,'fence',1));

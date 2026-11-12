@@ -1,5 +1,4 @@
 import {
-  REPLY_DELIVERY_POLICY,
   REPLY_DELIVERY_OUTCOME,
   REPLY_TURN_STATUS,
 } from '@biz/reply-execution/reply-execution.constants';
@@ -67,19 +66,9 @@ export class MessageDeliveryService implements OnModuleInit {
     context: DeliveryContext,
     recordMonitoring: boolean = true,
   ): Promise<DeliveryResult> {
-    // Resolve/freeze before any provider call. A stored plan is always authoritative.
-    // Proactive tasks own their lifecycle; share only the stateless channel sender.
+    // Proactive tasks own their lifecycle; ordinary replies first persist delivery ownership.
     const turn =
-      context.action === PERMITTED_ACTION.PROACTIVE
-        ? undefined
-        : await this.prepareReplyPlan(reply, context);
-    if (turn && this.durable && turn.deliveryPolicy !== REPLY_DELIVERY_POLICY.SINGLE_PASS) {
-      if (recordMonitoring) await this.wecomObservability.markDeliveryStart(context.messageId);
-      const result = await this.durable.deliver(turn, context);
-      if (recordMonitoring)
-        await this.wecomObservability.markDeliveryEnd(context.messageId, result);
-      return result;
-    }
+      context.action === PERMITTED_ACTION.PROACTIVE ? undefined : await this.beginDelivery(context);
     context = { ...context, replyTurn: turn ?? context.replyTurn };
     const startTime = Date.now();
     const { messageId, contactName } = context;
@@ -167,24 +156,12 @@ export class MessageDeliveryService implements OnModuleInit {
     }
   }
 
-  async prepareReplyPlan(
-    reply: AgentReply,
-    context: DeliveryContext,
-    resume?: Record<string, unknown>,
-  ): Promise<ReplyTurn | undefined> {
+  private async beginDelivery(context: DeliveryContext): Promise<ReplyTurn | undefined> {
     const turn = await this.durable?.resolveTurn(context);
     if (!turn || !this.durable) return undefined;
-    if (turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
-      return turn.status === REPLY_TURN_STATUS.PREPARING
-        ? this.durable.turns.startDelivery(turn)
-        : turn;
-    }
-    const segments = !reply.content.trim()
-      ? []
-      : this.typingPolicy.shouldSplit(reply.content)
-        ? MessageSplitter.split(reply.content, MESSAGE_SPLIT_MAX_SEGMENTS)
-        : [MessageSplitter.stripTrailingPunctuation(reply.content) || reply.content.trim()];
-    return this.durable.prepare(turn, reply.content, segments, resume);
+    return turn.status === REPLY_TURN_STATUS.PREPARING
+      ? this.durable.turns.startDelivery(turn)
+      : turn;
   }
 
   private async deliverSingle(content: string, context: DeliveryContext): Promise<DeliveryResult> {
@@ -362,7 +339,7 @@ export class MessageDeliveryService implements OnModuleInit {
   ): Promise<void> {
     if (context.action === PERMITTED_ACTION.PROACTIVE)
       return this.sendLegacySegment(context, text, externalRequestId);
-    if (context.replyTurn?.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS && this.durable)
+    if (context.replyTurn && this.durable)
       return this.durable.sendOrdinarySegment(context.replyTurn, context, text, segmentIndex);
     if (this.durable)
       return this.durable.observeLegacy(context, text, segmentIndex, () =>
@@ -413,7 +390,7 @@ export class MessageDeliveryService implements OnModuleInit {
   }
 
   private async finishOrdinary(turn: ReplyTurn | undefined, result: DeliveryResult): Promise<void> {
-    if (turn?.deliveryPolicy !== REPLY_DELIVERY_POLICY.SINGLE_PASS || !this.durable) return;
+    if (!turn || !this.durable) return;
     await this.durable.turns.settle(turn, {
       outcome: result.unknownSegments
         ? REPLY_DELIVERY_OUTCOME.UNKNOWN

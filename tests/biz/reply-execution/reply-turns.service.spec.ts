@@ -5,7 +5,7 @@ import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-e
 const now = '2026-10-21T04:00:00Z';
 const scope = { corpId: 'corp', accountId: 'account', chatId: 'chat' };
 const turn: ReplyTurn = {
-  deliveryPolicy: 'frozen',
+  deliveryPolicy: 'single_pass',
   ...scope,
   logicalTurnId: 'turn',
   inputIds: ['a', 'b'],
@@ -14,8 +14,7 @@ const turn: ReplyTurn = {
   status: 'planned',
   owner: 'owner',
   fence: 1,
-  plan: { version: 1, text: 'original', segments: [] },
-  recovery: {},
+  recovery: { primary: { orgId: 'corp', imBotId: 'account', chatId: 'chat' } },
 };
 function setup(mode = 'execute', cutover: string | null = '2026-10-20T00:00:00Z') {
   const repository = { transition: jest.fn().mockResolvedValue(turn) };
@@ -30,7 +29,7 @@ describe('durable reply input boundaries', () => {
   afterEach(() => jest.useRealTimers());
   it('returns the original complete membership when only the second input is retried with new input', async () => {
     const { service } = setup();
-    expect(await service.open(scope, ['b', 'new'], now)).toMatchObject({
+    expect(await service.open(scope, ['b', 'new'], now, turn.recovery)).toMatchObject({
       logicalTurnId: 'turn',
       inputIds: ['a', 'b'],
     });
@@ -40,29 +39,33 @@ describe('durable reply input boundaries', () => {
     async (mode) => {
       const { service, repository } = setup(mode);
       repository.transition.mockRejectedValue(new Error('ambiguous read'));
-      await expect(service.open(scope, ['a'], now)).rejects.toBeInstanceOf(ReplyDeferredError);
+      await expect(service.open(scope, ['a'], now, turn.recovery)).rejects.toBeInstanceOf(
+        ReplyDeferredError,
+      );
     },
   );
   it('only samples observe failure before a cutover exists', async () => {
     const { service, repository } = setup('observe', null);
     repository.transition.mockRejectedValue(new Error('unavailable'));
-    expect(await service.open(scope, ['a'], now)).toBeUndefined();
+    expect(await service.open(scope, ['a'], now, turn.recovery)).toBeUndefined();
     expect(repository.transition).not.toHaveBeenCalled();
   });
   it('does not promote an observation record into an executable identity', async () => {
     const { service, repository } = setup();
     repository.transition.mockResolvedValue({ ...turn, mode: 'observe' });
-    await expect(service.open(scope, ['a'], now)).rejects.toThrow('cutover_review');
+    await expect(service.open(scope, ['a'], now, turn.recovery)).rejects.toThrow('cutover_review');
   });
   it('rejects inputs before cutover and expired recovery identities', async () => {
     const { service, repository } = setup();
-    await expect(service.open(scope, ['a'], '2026-01-01T00:00:00Z')).rejects.toThrow('boundary');
+    await expect(service.open(scope, ['a'], '2026-01-01T00:00:00Z', turn.recovery)).rejects.toThrow(
+      'boundary',
+    );
     expect(repository.transition).not.toHaveBeenCalled();
   });
-  it('requires confirmed plan and terminal writes before acknowledging input', async () => {
+  it('requires confirmed effects and terminal writes before acknowledging input', async () => {
     const { service, repository } = setup();
     repository.transition.mockRejectedValue(new Error('write may have committed'));
-    await expect(service.savePlan(turn, turn.plan!)).rejects.toThrow('plan_not_confirmed');
+    await expect(service.saveEffects(turn, {})).rejects.toThrow('save_effects_not_confirmed');
     await expect(service.settle(turn)).rejects.toThrow('settle_not_confirmed');
   });
 });

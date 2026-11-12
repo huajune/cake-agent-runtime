@@ -18,7 +18,6 @@ describe('ReplyWorkflowService', () => {
   };
   const deliveryService = {
     deliverReply: jest.fn(),
-    prepareReplyPlan: jest.fn(),
   };
   const runner = {
     invoke: jest.fn(),
@@ -122,7 +121,15 @@ describe('ReplyWorkflowService', () => {
   };
   const oobReconcile = { reconcileAfterTurn: jest.fn() };
 
-  const replyTurns = { open: jest.fn(), settle: jest.fn(), acked: jest.fn() };
+  const replyTurns = {
+    open: jest.fn(),
+    settle: jest.fn(),
+    acked: jest.fn(),
+    saveEffects: jest.fn(),
+    completeProjection: jest.fn(),
+    interrupt: jest.fn(),
+    assertInputActive: jest.fn(),
+  };
   const groupCredentials = { resolveForRecovery: jest.fn() };
   const config = { get: jest.fn() };
   let service: ReplyWorkflowService;
@@ -131,7 +138,21 @@ describe('ReplyWorkflowService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     replyTurns.open.mockReset().mockResolvedValue(undefined);
-    replyTurns.settle.mockReset();
+    replyTurns.settle
+      .mockReset()
+      .mockImplementation(async (turn: ReplyTurn) => ({ ...turn, status: 'settled' }));
+    replyTurns.interrupt
+      .mockReset()
+      .mockImplementation(async (turn: ReplyTurn) => ({ ...turn, status: 'settled' }));
+    replyTurns.saveEffects
+      .mockReset()
+      .mockImplementation(async (turn: ReplyTurn, effects: object) => ({
+        ...turn,
+        projectionStatus: 'pending',
+        recovery: { ...turn.recovery, effects },
+      }));
+    replyTurns.completeProjection.mockReset().mockResolvedValue(undefined);
+    replyTurns.assertInputActive.mockReset().mockResolvedValue(undefined);
     replyTurns.acked.mockReset().mockResolvedValue(undefined);
     groupCredentials.resolveForRecovery.mockReset().mockResolvedValue({
       token: 'current-group-token',
@@ -139,7 +160,6 @@ describe('ReplyWorkflowService', () => {
     });
     config.get.mockReset().mockReturnValue('current-enterprise-token');
     simpleMergeService.ackPendingMessageIds.mockReset().mockResolvedValue(undefined);
-    deliveryService.prepareReplyPlan.mockReset();
     oobReconcile.reconcileAfterTurn.mockReset().mockResolvedValue(undefined);
     // invokeReviewedTurn 委托给 invoke（保留既有 runner.invoke 断言），并叠加统一 outcome/finalizer。
     currentOutputDecision = passOutputDecision;
@@ -353,44 +373,28 @@ describe('ReplyWorkflowService', () => {
     );
   });
 
-  function persistedTurn(status: ReplyTurn['status'] = 'planned'): ReplyTurn {
+  function persistedTurn(status: ReplyTurn['status'] = 'preparing'): ReplyTurn {
     return {
-      deliveryPolicy: 'frozen',
+      deliveryPolicy: 'single_pass',
       corpId: 'corp-1',
       accountId: 'im-bot-1',
       chatId: 'chat-1',
       logicalTurnId: 'stable-turn',
-      inputIds: ['msg-1', 'msg-2'],
+      inputIds: ['msg-1'],
       inputOccurredAt: new Date().toISOString(),
       mode: 'execute',
       status,
       owner: 'owner',
       fence: 1,
-      recovery: { userMessage: 'old input', primary: createMessage() },
-      plan: {
-        version: 1,
-        text: 'frozen reply',
-        segments: [],
-        resume: {
-          agentResult: {
-            reply: { content: 'frozen reply' },
-            isFallback: false,
-            processingTime: 0,
-            outcome: { kind: 'reply', toolCalls: [], reply: { text: 'frozen reply' } },
-            toolCalls: [],
-          },
-        },
-      },
+      projectionStatus: 'complete',
+      recovery: { primary: createMessage({ token: undefined }) },
     };
   }
-
-  function persistedGroupTurn(status: ReplyTurn['status'] = 'planned'): ReplyTurn {
-    const turn = persistedTurn(status);
+  function persistedGroupTurn(status: ReplyTurn['status'] = 'preparing'): ReplyTurn {
     return {
-      ...turn,
+      ...persistedTurn(status),
       corpId: 'group_callback_org',
       recovery: {
-        userMessage: 'old input',
         primary: createMessage({
           orgId: 'group_callback_org',
           _apiType: 'group',
@@ -400,67 +404,24 @@ describe('ReplyWorkflowService', () => {
       },
     };
   }
-
-  it.each(['direct', 'merged'])(
-    'blocks a moved group from replaying an existing plan through %s ingress',
-    async (path) => {
-      const turn = persistedGroupTurn();
-      replyTurns.open.mockResolvedValue(turn);
-      const replay = createMessage({
-        orgId: turn.corpId,
-        _apiType: 'group',
-        groupId: 'group-moved',
-        token: 'moved-group-token',
-      });
-      if (path === 'direct') await service.processSingleMessage(replay);
-      else await service.processMergedMessages([replay], 'moved-group-batch');
-      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
-      expect(runner.runInboundTurn).not.toHaveBeenCalled();
-      expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
-      expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
-
-      expect(groupCredentials.resolveForRecovery).not.toHaveBeenCalled();
-      expect(turn.recovery.primary).toEqual(expect.objectContaining({ groupId: 'group-original' }));
-      if (path === 'direct') expect(simpleMergeService.addMessage).toHaveBeenCalledWith(replay);
-    },
-  );
-
-  it.each(['group', 'enterprise'] as const)(
-    'resumes a frozen %s route using current server credentials, never replay credentials',
-    async (route) => {
-      const turn = route === 'group' ? persistedGroupTurn() : persistedTurn();
-      replyTurns.open.mockResolvedValue(turn);
-      deliveryService.prepareReplyPlan.mockResolvedValue(turn);
-      deliveryService.deliverReply.mockRejectedValueOnce(new ReplyDeferredError('await_callback'));
-      const replay = {
-        ...(turn.recovery.primary as EnterpriseMessageCallbackDto),
-        token: 'unverified-replay-token',
-      };
-      await service.processSingleMessage(replay);
-      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
-        { content: 'frozen reply' },
-        expect.objectContaining({
-          token: route === 'group' ? 'current-group-token' : 'current-enterprise-token',
-          groupId: route === 'group' ? 'group-original' : undefined,
-          _apiType: route,
-          logicalTurnId: turn.logicalTurnId,
-        }),
-        true,
-      );
-      expect(replay.token).toBe('unverified-replay-token');
-      expect(runner.runInboundTurn).not.toHaveBeenCalled();
-      expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
-      if (route === 'group')
-        expect(groupCredentials.resolveForRecovery).toHaveBeenCalledWith({
-          corpId: turn.corpId,
-          accountId: turn.accountId,
-          groupId: 'group-original',
-        });
-    },
-  );
-
+  it.each(['direct', 'merged'])('blocks a moved group through %s ingress', async (path) => {
+    const turn = persistedGroupTurn();
+    replyTurns.open.mockResolvedValue(turn);
+    const replay = createMessage({
+      orgId: turn.corpId,
+      _apiType: 'group',
+      groupId: 'group-moved',
+      token: 'moved-token',
+    });
+    if (path === 'direct') await service.processSingleMessage(replay);
+    else await service.processMergedMessages([replay], 'moved-group-batch');
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(groupCredentials.resolveForRecovery).not.toHaveBeenCalled();
+  });
   it.each(['missing-group', 'moved-directory', 'directory-failure'])(
-    'defers group replay without a fallback send when %s prevents route verification',
+    'defers input when %s prevents group route verification',
     async (failure) => {
       const turn = persistedGroupTurn();
       const primary = turn.recovery.primary as EnterpriseMessageCallbackDto;
@@ -477,58 +438,16 @@ describe('ReplyWorkflowService', () => {
       });
       expect(deliveryService.deliverReply).not.toHaveBeenCalled();
       expect(runner.runInboundTurn).not.toHaveBeenCalled();
-      expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
       expect(replyTurns.acked).not.toHaveBeenCalled();
     },
   );
-
-  it('restores the frozen group after an observe callback omits group identity', async () => {
+  it('uses the bound group and current directory token for a live input', async () => {
     const turn = persistedGroupTurn();
     replyTurns.open.mockResolvedValue(turn);
-    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
-    deliveryService.deliverReply.mockRejectedValueOnce(new ReplyDeferredError('await_callback'));
     await service.processSingleMessage({
       ...(turn.recovery.primary as EnterpriseMessageCallbackDto),
       groupId: undefined,
-      token: 'unverified-observe-callback-token',
-    });
-    expect(groupCredentials.resolveForRecovery).toHaveBeenCalledWith({
-      corpId: turn.corpId,
-      accountId: turn.accountId,
-      groupId: 'group-original',
-    });
-    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
-      { content: 'frozen reply' },
-      expect.objectContaining({ groupId: 'group-original', token: 'current-group-token' }),
-      true,
-    );
-    expect(runner.runInboundTurn).not.toHaveBeenCalled();
-    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
-  });
-
-  it('does not borrow callback credentials when the configured enterprise token is missing', async () => {
-    replyTurns.open.mockResolvedValue(persistedTurn());
-    config.get.mockReturnValue(undefined);
-    await service.processSingleMessage(createMessage());
-    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
-    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
-    expect(replyTurns.acked).not.toHaveBeenCalled();
-  });
-
-  it('uses the frozen group for model and tool context when an observe replay resumes preparing', async () => {
-    const turn = { ...persistedGroupTurn('preparing'), plan: null };
-    replyTurns.open.mockResolvedValue(turn);
-    deliveryService.prepareReplyPlan.mockResolvedValue(persistedGroupTurn());
-    deliveryService.deliverReply.mockRejectedValueOnce(new ReplyDeferredError('await_callback'));
-    await service.processSingleMessage({
-      ...(turn.recovery.primary as EnterpriseMessageCallbackDto),
-      groupId: undefined,
-      token: 'unverified-observe-callback-token',
-    });
-    expect(groupCredentials.resolveForRecovery).toHaveBeenCalledWith({
-      corpId: turn.corpId,
-      accountId: turn.accountId,
-      groupId: 'group-original',
+      token: 'unverified-callback-token',
     });
     expect(runner.runInboundTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -538,33 +457,27 @@ describe('ReplyWorkflowService', () => {
         }),
       }),
     );
-    expect(runner.invoke).toHaveBeenCalledWith(
-      expect.objectContaining({ groupId: 'group-original', token: 'current-group-token' }),
-    );
     expect(deliveryService.deliverReply).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ groupId: 'group-original', token: 'current-group-token' }),
       true,
     );
-    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(replyTurns.acked).toHaveBeenCalledTimes(1);
   });
-
-  it('does not upgrade a forged new enterprise input to a server-authenticated send', async () => {
-    const turn = { ...persistedTurn('preparing'), plan: null };
-    replyTurns.open.mockResolvedValue(turn);
-    await service.processSingleMessage(createMessage({ token: 'forged-callback-token' }));
-    expect(runner.runInboundTurn).not.toHaveBeenCalled();
-    expect(deliveryService.prepareReplyPlan).not.toHaveBeenCalled();
-    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
-    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
-    expect(replyTurns.acked).not.toHaveBeenCalled();
-    expect(simpleMergeService.addMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ token: 'forged-callback-token' }),
-    );
-  });
-
+  it.each([undefined, 'wrong-token'])(
+    'does not authenticate enterprise input with missing/forged credentials %s',
+    async (token) => {
+      replyTurns.open.mockResolvedValue(persistedTurn());
+      if (!token) config.get.mockReturnValue(undefined);
+      await service.processSingleMessage(createMessage({ token }));
+      expect(runner.runInboundTurn).not.toHaveBeenCalled();
+      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+      expect(replyTurns.acked).not.toHaveBeenCalled();
+    },
+  );
   it.each(['settled', 'acked'] as const)(
-    'repairs %s group acknowledgement without requiring a current route or credential',
+    'repairs %s ACK without a credential or directory lookup',
     async (status) => {
       replyTurns.open.mockResolvedValue(persistedGroupTurn(status));
       groupCredentials.resolveForRecovery.mockRejectedValue(new Error('directory unavailable'));
@@ -577,50 +490,35 @@ describe('ReplyWorkflowService', () => {
       expect(runner.runInboundTurn).not.toHaveBeenCalled();
     },
   );
-
-  it('repairs ack only after a completed reply, even if the retried batch has new input', async () => {
-    const turn = persistedTurn();
-    replyTurns.open.mockResolvedValueOnce(turn).mockResolvedValue({ ...turn, status: 'settled' });
-    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
-    replyTurns.settle.mockResolvedValue({ ...turn, status: 'settled' });
-    simpleMergeService.ackPendingMessageIds.mockRejectedValueOnce(new Error('redis response lost'));
-    await service.processMergedMessages(
-      [createMessage(), createMessage({ messageId: 'msg-2' })],
-      'attempt1',
-    );
+  it('repairs only original membership when a retry contains an old and a new input', async () => {
+    const turn = { ...persistedTurn('settled'), inputIds: ['msg-1', 'msg-2'] };
+    replyTurns.open.mockResolvedValue(turn);
     await service.processMergedMessages(
       [createMessage({ messageId: 'msg-2' }), createMessage({ messageId: 'new-input' })],
-      'attempt2',
+      'retry',
     );
-    expect(runner.runInboundTurn).not.toHaveBeenCalled();
-    expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
-    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
-    expect(simpleMergeService.ackPendingMessageIds).toHaveBeenLastCalledWith('chat-1', [
+    expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', [
       'msg-1',
       'msg-2',
     ]);
-  });
-
-  it('recovers the original reply without model generation and does not ack unknown delivery', async () => {
-    const turn = persistedTurn();
-    replyTurns.open.mockResolvedValue(turn);
-    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
-    deliveryService.deliverReply.mockRejectedValueOnce(new ReplyDeferredError('segment_1_unknown'));
-    await service.processMergedMessages(
-      [createMessage({ messageId: 'msg-2' }), createMessage({ messageId: 'new-input' })],
-      'new-batch',
-    );
+    expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalledWith('new-input');
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
-    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
-      { content: 'frozen reply' },
-      expect.objectContaining({ logicalTurnId: 'stable-turn' }),
-      true,
-    );
-    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
-    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
   });
-
-  it('keeps a settled turn pending until failed local dedup acknowledgement is repaired', async () => {
+  it.each([['msg-2'], ['msg-2', 'new-input'], ['unrelated']])(
+    'never synthesizes missing live input from recovery identity: %j',
+    async (...ids) => {
+      replyTurns.open.mockResolvedValue({ ...persistedTurn(), inputIds: ['msg-1', 'msg-2'] });
+      await service.processMergedMessages(
+        ids.map((messageId) => createMessage({ messageId })),
+        'mismatch',
+      );
+      expect(runner.runInboundTurn).not.toHaveBeenCalled();
+      expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    },
+  );
+  it('retains the settled input until local dedup acknowledgement succeeds', async () => {
     replyTurns.open.mockResolvedValue(persistedTurn('settled'));
     deduplicationService.markMessageAsProcessedAsync.mockRejectedValueOnce(new Error('redis down'));
     await service.processSingleMessage(createMessage());
@@ -629,123 +527,39 @@ describe('ReplyWorkflowService', () => {
     expect(replyTurns.acked).toHaveBeenCalledTimes(1);
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
-    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
   });
-
-  it('creates a fresh trace for every background recovery while retaining the original logical turn', async () => {
-    const turn = persistedTurn();
-    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
-    deliveryService.deliverReply.mockRejectedValue(new ReplyDeferredError('segment_0_unknown'));
-    await expect(service.resumePersistedReply(turn, 'fresh-token')).rejects.toThrow(
-      'segment_0_unknown',
-    );
-    await expect(service.resumePersistedReply(turn, 'fresh-token')).rejects.toThrow(
-      'segment_0_unknown',
-    );
-    const traceIds = wecomObservability.startRequestTrace.mock.calls.map(
-      ([value]) => value.traceId,
-    );
-    expect(new Set(traceIds).size).toBe(2);
-    expect(traceIds).toEqual([
-      expect.stringMatching(/^reply-recovery_/),
-      expect.stringMatching(/^reply-recovery_/),
-    ]);
-    expect(traceIds).not.toContain(turn.logicalTurnId);
-    expect(
-      deliveryService.deliverReply.mock.calls.map(([, context]) => context.logicalTurnId),
-    ).toEqual([turn.logicalTurnId, turn.logicalTurnId]);
-    expect(deliveryService.deliverReply.mock.calls.map(([, context]) => context.messageId)).toEqual(
-      traceIds,
-    );
+  it('background completion never calls the model or sender', async () => {
+    const turn = persistedTurn('settled');
+    await service.resumeInputCompletion(turn);
+    await service.resumeInputCompletion(turn);
+    expect(replyTurns.acked).toHaveBeenCalledTimes(2);
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
-    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
   });
-
-  it.each(['handleToolAnchors', 'handleDeliveredReplyAnchors'] as const)(
-    'keeps a durable plan pending after %s persistence fails and repairs the same plan',
-    async (method) => {
-      const turn = persistedTurn();
-      replyTurns.open.mockResolvedValue(turn);
-      replyTurns.settle.mockResolvedValue({ ...turn, status: 'settled' });
-      deliveryService.prepareReplyPlan.mockResolvedValue(turn);
-      deliveryService.deliverReply.mockResolvedValue({
-        success: true,
-        segmentCount: 1,
-        deliveredSegments: 1,
-      });
-      const anchors = jest
-        .spyOn(reengagementAnchors, method)
-        .mockRejectedValueOnce(new Error('queue unavailable'));
-      await service.processSingleMessage(createMessage());
-      expect(replyTurns.settle).not.toHaveBeenCalled();
-      expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
-      expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
-      anchors.mockResolvedValue(undefined);
-      await service.resumePersistedReply(turn, 'fresh-token');
-      expect(replyTurns.settle).toHaveBeenCalledTimes(1);
-      expect(replyTurns.acked).toHaveBeenCalledTimes(1);
-      expect(runner.runInboundTurn).not.toHaveBeenCalled();
-      expect(deliveryService.deliverReply).toHaveBeenLastCalledWith(
-        { content: 'frozen reply' },
-        expect.objectContaining({
-          logicalTurnId: turn.logicalTurnId,
-          inputOccurredAt: turn.inputOccurredAt,
-        }),
-        true,
-      );
-    },
-  );
-
-  it('awaits opening queue admission before acknowledgement and retries its original stable anchor', async () => {
-    const turn = persistedTurn();
-    replyTurns.open.mockResolvedValue(turn);
-    replyTurns.settle.mockResolvedValue({ ...turn, status: 'settled' });
-    deliveryService.prepareReplyPlan.mockResolvedValue(turn);
-    deliveryService.deliverReply.mockResolvedValue({
-      success: true,
-      segmentCount: 1,
-      deliveredSegments: 1,
-    });
-    followUpScheduler.scheduleFollowUp.mockResolvedValueOnce({
-      reason: 'enqueue_error',
-      scheduled: false,
-    });
-    await service.processSingleMessage(createMessage());
-    expect(replyTurns.settle).not.toHaveBeenCalled();
+  it('keeps unconfirmed business effects pending without ACK', async () => {
+    await expect(
+      service.resumeInputCompletion({ ...persistedTurn('settled'), projectionStatus: 'none' }),
+    ).rejects.toThrow('ack_repair_pending');
     expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
-    followUpScheduler.scheduleFollowUp.mockResolvedValue({ scheduled: true });
-    await service.resumePersistedReply(turn, 'fresh-token');
-    expect(replyTurns.acked).toHaveBeenCalledTimes(1);
-    expect(opsEventsRecorder.recordOpeningDurably).toHaveBeenCalledTimes(2);
-    expect(followUpScheduler.scheduleFollowUp.mock.calls.map(([input]) => input.anchorAt)).toEqual([
-      Date.parse(turn.inputOccurredAt),
-      Date.parse(turn.inputOccurredAt),
-    ]);
-    expect(opsEventsRecorder.recordEventDurably).not.toHaveBeenCalled();
-    expect(runner.runInboundTurn).not.toHaveBeenCalled();
+    expect(replyTurns.acked).not.toHaveBeenCalled();
   });
-
-  it('blocks generation and fallback when input membership cannot be confirmed', async () => {
+  it('blocks generation and fallback when membership cannot be confirmed', async () => {
     replyTurns.open.mockRejectedValue(new ReplyDeferredError('membership_unconfirmed'));
     await service.processSingleMessage(createMessage());
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
     expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
   });
-
-  it('stops ack repair immediately when the recovery lease is lost after pending removal', async () => {
+  it('stops ACK repair when its lease is lost after pending removal', async () => {
     const turn = persistedTurn('settled');
     const owned = jest.fn().mockResolvedValue(undefined);
     simpleMergeService.ackPendingMessageIds.mockImplementationOnce(async () => {
       owned.mockRejectedValue(new ReplyDeferredError('lease_lost'));
     });
-    await expect(service.resumePersistedReply(turn, 'fresh-token', owned)).rejects.toThrow(
-      'ack_repair_pending',
-    );
+    await expect(service.resumeInputCompletion(turn, owned)).rejects.toThrow('ack_repair_pending');
     expect(simpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-1', turn.inputIds);
     expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
     expect(replyTurns.acked).not.toHaveBeenCalled();
-    expect(runner.runInboundTurn).not.toHaveBeenCalled();
   });
 
   it('should execute the direct reply workflow and mark the message as processed', async () => {

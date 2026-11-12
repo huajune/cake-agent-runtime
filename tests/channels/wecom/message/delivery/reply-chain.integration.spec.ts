@@ -83,7 +83,6 @@ type SendCall = { url: string; body: Record<string, unknown> };
 isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   let client: RuntimePostgresClientFixture;
   let module: TestingModule | undefined;
-  let legacyFrozen: boolean;
   let groupToken: string;
   let directoryGroupId: string;
   let sendCalls: SendCall[];
@@ -104,7 +103,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   beforeEach(() => {
     // This database is explicitly disposable and separate from the SQL drill database.
     client.query('TRUNCATE public.agent_action_records, public.agent_reply_turns CASCADE;');
-    legacyFrozen = false;
     groupToken = 'fixture-group-credential-v1';
     directoryGroupId = groupId;
     sendCalls = [];
@@ -342,36 +340,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       ],
     }).compile();
     const workflow = module.get(ReplyWorkflowService);
-    if (legacyFrozen) {
-      // Simulate the old writer, so compatibility tests retain a real frozen SQL obligation.
-      const repository = module.get(ReplyTurnsRepository);
-      const transition = repository.transition.bind(repository);
-      jest.spyOn(repository, 'transition').mockImplementation((operation, input) =>
-        transition(
-          operation,
-          operation === 'open'
-            ? {
-                ...input,
-                deliveryPolicy: 'frozen',
-                recovery: {
-                  ...(input.recovery as object),
-                  userMessage: '开始验收',
-                  primary: {
-                    ...(input.recovery as { primary: object }).primary,
-                    messageId: inboundId,
-                    messageType: MessageType.TEXT,
-                    source: MessageSource.MOBILE_PUSH,
-                    isSelf: false,
-                    timestamp: Date.now(),
-                    payload: { text: '开始验收' },
-                    contactName: '隔离测试',
-                  },
-                },
-              }
-            : input,
-        ),
-      );
-    }
     await module.init();
     jest.spyOn(module.get(ActionRecoveryService), 'recoverDue');
     jest.spyOn(module.get(ReplyRecoveryService), 'recoverDue');
@@ -419,7 +387,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         projection_status: string;
         delivery_result: { outcome: string; accepted: number; total: number };
         recovery: Record<string, unknown>;
-        plan: { segments: Array<{ requestId: string }> };
       };
       actions: Array<{
         status: string;
@@ -431,7 +398,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       }>;
       callbackEvidenceCount: number;
     }>(`SELECT json_build_object(
-      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,plan,delivery_policy,delivery_result,projection_status FROM agent_reply_turns LIMIT 1) t),
+      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,delivery_policy,delivery_result,projection_status FROM agent_reply_turns LIMIT 1) t),
       'actions',(SELECT coalesce(json_agg(a ORDER BY a.created_at),'[]'::json) FROM (SELECT status,local_sync,dispatch_attempt_id,request_id,result,evidence,created_at FROM agent_action_records) a),
       'callbackEvidenceCount',(SELECT count(*) FROM agent_action_evidence WHERE completion->'result'->>'stage'='delivery_callback'));`);
   }
@@ -478,9 +445,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     }
     expect(state.callbackEvidenceCount).toBe(0);
     expect(sendCalls.map((call) => call.body.externalRequestId)).toEqual(
-      state.turn.delivery_policy === 'single_pass'
-        ? state.actions.map((action) => action.request_id)
-        : state.turn.plan.segments.map((segment) => segment.requestId),
+      state.actions.map((action) => action.request_id),
     );
     expect(ackPendingMessageIds).toHaveBeenCalledWith(chatId, [inboundId]);
     expect(markMessageAsProcessedAsync).toHaveBeenCalledWith(inboundId);
@@ -510,7 +475,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       assertAcceptedTurn();
       expect(databaseState().turn).toMatchObject({
         delivery_policy: 'single_pass',
-        plan: null,
         delivery_result: { outcome: 'complete', accepted: 2, total: 2 },
       });
       expect(module!.get(ActionRecoveryService).recoverDue).not.toHaveBeenCalled();
@@ -526,38 +490,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     30000,
   );
 
-  it('legacy frozen: retains an unknown send and its original plan after restart without blindly retrying', async () => {
-    legacyFrozen = true;
-    await start();
-    onSend = async () => {
-      throw new Error('simulated transport timeout');
-    };
-    await submitInput('enterprise');
-    expect(sendCalls).toHaveLength(1);
-    expect(databaseState().actions[0].status).toBe('unknown');
-    expect(databaseState().turn.status).toBe('planned');
-    expect(ackPendingMessageIds).not.toHaveBeenCalled();
-    const attempt = databaseState().actions[0].dispatch_attempt_id;
-    const plan = databaseState().turn.plan;
-
-    onSend = undefined;
-    await restart('observe');
-    await recoverStoredTurn();
-    await recoverStoredTurn();
-    expect(sendCalls).toHaveLength(1);
-    expect(databaseState().actions[0]).toMatchObject({
-      status: 'unknown',
-      dispatch_attempt_id: attempt,
-    });
-    expect(databaseState().turn.plan).toEqual(plan);
-    expect(databaseState().callbackEvidenceCount).toBe(0);
-    expect(ackPendingMessageIds).not.toHaveBeenCalled();
-    expect(runInboundTurn).toHaveBeenCalledTimes(1);
-    expect(pending).toEqual(new Set([inboundId, newerInputId]));
-  }, 30000);
-
-  it('legacy frozen: retries an unconfirmed manual notification after restart without redispatching an unknown send', async () => {
-    legacyFrozen = true;
+  it('retries an unconfirmed manual notification after restart without redispatching an unknown send', async () => {
     await start();
     onSend = async () => {
       throw new Error('simulated transport timeout');
@@ -584,36 +517,10 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     ).toBe(true);
     expect(module!.get(IncidentReporterService).notify).toHaveBeenCalledTimes(1);
     expect(sendCalls).toHaveLength(1);
-    expect(ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(ackPendingMessageIds).toHaveBeenCalledWith(chatId, [inboundId]);
   }, 30000);
 
-  it('legacy frozen: resumes only the unsent group segment after a database interruption and observe restart', async () => {
-    legacyFrozen = true;
-    await start();
-    const failure = interruptBeforeSecondAction();
-    await submitInput('group');
-    failure.mockRestore();
-    expect(sendCalls).toHaveLength(1);
-    expect(databaseState().actions[0].status).toBe('succeeded');
-    expect(databaseState().turn.status).toBe('planned');
-    expect(ackPendingMessageIds).not.toHaveBeenCalled();
-    const attempt = databaseState().actions[0].dispatch_attempt_id;
-    const plan = databaseState().turn.plan;
-
-    groupToken = 'fixture-group-credential-v2';
-    await restart('observe');
-    await recoverStoredTurn();
-    expect(sendCalls).toHaveLength(2);
-    expect(sendCalls[1].url).toBe(fixtureOrigin + '/group-send');
-    expect(sendCalls[1].body.token).toBe(groupToken);
-    expect(sendCalls[1].body.chatId).toBe(chatId);
-    expect(databaseState().turn.plan).toEqual(plan);
-    expect(databaseState().actions[0].dispatch_attempt_id).toBe(attempt);
-    assertAcceptedTurn();
-  }, 30000);
-
-  it('legacy frozen: repairs an accepted API result after database write failures without sending either segment again', async () => {
-    legacyFrozen = true;
+  it('repairs an accepted API result after database write failures without sending either segment again', async () => {
     await start();
     jest
       .spyOn(module!.get(ActionRecordsRepository), 'settle')
@@ -627,14 +534,14 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       result: { stage: 'accepted' },
       evidence: { kind: 'accepted', requestTerminated: true },
     });
-    expect(databaseState().turn.status).toBe('planned');
-    expect(ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(databaseState().turn.status).toBe('acked');
+    expect(ackPendingMessageIds).toHaveBeenCalledWith(chatId, [inboundId]);
     const attempt = databaseState().actions[0].dispatch_attempt_id;
 
     await restart('observe');
     await recoverStoredTurn();
     expect(sendCalls).toHaveLength(2);
-    expect(ackPendingMessageIds).not.toHaveBeenCalled();
+    expect(ackPendingMessageIds).toHaveBeenCalledWith(chatId, [inboundId]);
     // Existing local-repair queue transport is simulated; its real processor writes
     // the accepted result even after the action's original ownership fence changed.
     await module!.get(ActionRepairProcessor).settle({ data: repairJobs[0] } as never);
@@ -644,25 +551,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     assertAcceptedTurn();
   }, 30000);
 
-  it('legacy frozen: does not move the unsent segment to another group when the original input is replayed', async () => {
-    legacyFrozen = true;
-    await start();
-    const failure = interruptBeforeSecondAction();
-    await submitInput('group');
-    failure.mockRestore();
-    expect(sendCalls).toHaveLength(1);
-
-    directoryGroupId = 'fixture-other-group';
-    groupToken = 'fixture-other-group-credential';
-    await submitInput('group');
-    await recoverStoredTurn();
-    expect(sendCalls).toHaveLength(1);
-    expect(databaseState().turn.status).toBe('planned');
-    expect(JSON.stringify(databaseState().turn.recovery)).toContain(groupId);
-    expect(JSON.stringify(databaseState().turn.recovery)).not.toContain(directoryGroupId);
-    expect(ackPendingMessageIds).not.toHaveBeenCalled();
-    expect(runInboundTurn).toHaveBeenCalledTimes(1);
-  }, 30000);
   it('closes an unknown ordinary send, preserves evidence and admits the next user input', async () => {
     await start();
     onSend = async () => {
@@ -672,7 +560,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(sendCalls).toHaveLength(1);
     expect(databaseState().turn).toMatchObject({
       status: 'acked',
-      plan: null,
       delivery_result: { outcome: 'unknown' },
     });
     expect(databaseState().actions[0].status).toBe('unknown');
@@ -695,6 +582,48 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(next?.logicalTurnId).not.toBeUndefined();
   }, 30000);
 
+  it('settles a manually parked unknown through an authenticated late callback without resending', async () => {
+    await start();
+    onSend = async () => {
+      throw new Error('simulated timeout');
+    };
+    await submitInput('enterprise');
+    const original = databaseState().actions[0];
+    expect(original.status).toBe('unknown');
+    expect(databaseState().turn.status).toBe('acked');
+    client.query('UPDATE agent_action_records SET review_required=true,next_check_at=null;');
+    await restart('observe');
+    const callback = {
+      isSelf: true,
+      source: MessageSource.API_SEND,
+      messageId: 'fixture-late-callback',
+      externalRequestId: original.request_id,
+      payload: { text: parts[0] },
+    };
+    await module!
+      .get(MessageIngressController)
+      .receiveMessage(incoming('enterprise', { ...callback, token: 'forged' }));
+    expect(databaseState().callbackEvidenceCount).toBe(0);
+    await module!.get(MessageIngressController).receiveMessage(incoming('enterprise', callback));
+    await module!.get(MessageIngressController).receiveMessage(incoming('enterprise', callback));
+    expect(databaseState().callbackEvidenceCount).toBe(1);
+    expect(
+      client.query(
+        "SELECT to_json(attempt_id) FROM agent_action_evidence WHERE completion->'result'->>'stage'='delivery_callback' LIMIT 1;",
+      ),
+    ).toBe(original.dispatch_attempt_id);
+    await module!.get(ActionRecoveryService).recoverDue();
+    expect(databaseState().actions[0]).toMatchObject({
+      status: 'succeeded',
+      local_sync: 'complete',
+      dispatch_attempt_id: original.dispatch_attempt_id,
+    });
+    expect(databaseState().turn.status).toBe('acked');
+    expect(sendCalls).toHaveLength(1);
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    expect(pending).toEqual(new Set([newerInputId]));
+  }, 30000);
+
   it('keeps an accepted first segment and stops on a second-segment error without a saved plan', async () => {
     await start();
     const failure = interruptBeforeSecondAction();
@@ -703,7 +632,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(sendCalls).toHaveLength(1);
     expect(databaseState().turn).toMatchObject({
       status: 'acked',
-      plan: null,
       delivery_result: { outcome: 'incomplete', accepted: 1, total: 2 },
     });
     await restart('observe');
@@ -717,7 +645,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     await start();
     ackPendingMessageIds.mockRejectedValue(new Error('Redis ACK unavailable'));
     await submitInput('enterprise');
-    expect(databaseState().turn).toMatchObject({ status: 'settled', plan: null });
+    expect(databaseState().turn).toMatchObject({ status: 'settled' });
     expect(sendCalls).toHaveLength(2);
     ackPendingMessageIds.mockImplementation(async (_chat: string, ids: string[]) => {
       ids.forEach((id) => pending.delete(id));
@@ -775,7 +703,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       parts[0],
       0,
     );
-    expect(databaseState().turn.plan).toBeNull();
+    expect(databaseState().turn).not.toHaveProperty('plan');
     // Stop after one accepted API call, before any finish/ACK, as a killed worker would.
     await restart('observe');
     client.query("UPDATE agent_reply_turns SET generation_until=now()-interval '1 second';");
@@ -784,7 +712,6 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(runInboundTurn).not.toHaveBeenCalled();
     expect(databaseState().turn).toMatchObject({
       status: 'acked',
-      plan: null,
       delivery_result: { outcome: 'interrupted' },
     });
     expect(pending).toEqual(new Set([newerInputId]));
@@ -823,7 +750,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     anchors.mockRejectedValue(new Error('Redis admission unavailable'));
     await submitInput('enterprise');
     expect(sendCalls).toHaveLength(0);
-    expect(databaseState().turn).toMatchObject({ status: 'settled', plan: null });
+    expect(databaseState().turn).toMatchObject({ status: 'settled' });
     expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('not-retained');
     expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('报名已提交');
     await restart('observe');
