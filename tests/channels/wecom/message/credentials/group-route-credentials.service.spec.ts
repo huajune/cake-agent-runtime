@@ -109,12 +109,12 @@ describe('GroupRouteCredentialsService', () => {
     expect(await service.resolveForRecovery({ ...scope, groupId: 'group-b' })).toBeNull();
   });
 
-  it("keeps old plans without a frozen group manual, without guessing today's group", async () => {
+  it("rejects input without an original group, without guessing today's group", async () => {
     expect(await service.resolveForRecovery({ ...scope, groupId: undefined })).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('does not recover a frozen plan after the account has moved groups', async () => {
+  it('does not authorize the original route after the account has moved groups', async () => {
     const moved = directory();
     moved.groups[1].bots.push(moved.groups[0].bots[0]);
     moved.groups[0].bots = [];

@@ -52,7 +52,7 @@ export class GroupRouteCredentialsService {
   async resolveForRecovery(
     input: GroupRouteScope,
   ): Promise<{ token: string; groupId: string } | null> {
-    // A missing frozen group cannot be reconstructed from today's membership after a move.
+    // A missing original group cannot be reconstructed from today's membership after a move.
     if (!this.hasScope(input) || !input.groupId?.trim()) return null;
     const route = this.findRoute(await this.readDirectory(), input);
     return route ? { token: route.token, groupId: route.groupId } : null;

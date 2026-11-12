@@ -12,21 +12,6 @@ export interface ReplyTurnScope {
   chatId: string;
 }
 
-export interface ReplySegment {
-  index: number;
-  text: string;
-  actionId: string;
-  requestId: string;
-}
-
-/** Only recovery data. Never put credentials or the entire conversation here. */
-export interface ReplyPlan {
-  version: 1;
-  text: string;
-  segments: ReplySegment[];
-  resume?: Record<string, unknown>;
-}
-
 /** Summary only: no generated reply body, model result or resumable send plan. */
 export interface ReplyDeliverySummary {
   outcome: ReplyDeliveryOutcome;
@@ -35,7 +20,7 @@ export interface ReplyDeliverySummary {
 }
 
 export interface ReplyTurn extends ReplyTurnScope {
-  /** Persisted explicitly; the migration backfills historical turns as frozen. */
+  /** Explicitly persisted; unsupported historical policies fail at the read boundary. */
   deliveryPolicy: ReplyDeliveryPolicy;
   deliveryResult?: ReplyDeliverySummary;
 
@@ -46,7 +31,6 @@ export interface ReplyTurn extends ReplyTurnScope {
   status: ReplyTurnStatus;
   owner: string | null;
   fence: number;
-  plan: ReplyPlan | null;
   recovery: Record<string, unknown>;
   projectionStatus?: ReplyProjectionStatus;
 }

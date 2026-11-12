@@ -4,7 +4,7 @@
 
 ## 普通回复
 
-新 execute 输入使用 `single_pass` 策略，复用 `agent_reply_inputs` / `agent_reply_turns` 保存原消息集合、稳定逻辑回合、owner/fence 和最小结局。**不保存完整回复正文、所有分段或模型结果，不在重启后重生成或续发原话。** `plan` 必须为空。原始输入时间不因重试改变；报名、取消、改约继续使用独立动作账本防重复和修复本地状态。
+新 execute 输入使用 `single_pass` 策略，复用 `agent_reply_inputs` / `agent_reply_turns` 保存原消息集合、稳定逻辑回合、owner/fence 和最小结局。**不保存完整回复正文、所有分段或模型结果，不在重启后重生成或续发原话。** 数据库不再保留 `plan` 列。原始输入时间不因重试改变；报名、取消、改约继续使用独立动作账本防重复和修复本地状态。
 
 当前进程生成回复后，取得一次发送权，按原分段/打字配置发送，每段重查托管权限和执行权。只有实际尝试的段进入动作记录，保留原请求身份、正文和受理证据。只在连接建立前的明确失败（DNS 失败、连接拒绝）进行有限退避重试；网络超时、断连、未知业务响应不重试。明确成功的发送不需要回调。
 
@@ -24,18 +24,18 @@
 
 ## 旧记录、切换与回滚
 
-迁移 `20261106160000_ordinary_reply_single_pass.sql` 不新增表、不删除旧记录，只增加投递策略/结局字段并更新原 RPC。旧记录默认 `frozen`；旧版本调用没有策略字段时也维持原语义。新版本要求读回明确策略，迁移缺失时拒绝创建不确定的执行链。
+迁移 `20261112020000_retire_main_reply_compat.sql` 收缩旧冻结回复与独立排程协议。迁移前须确认全部 `frozen` 回合、非空计划、旧复聊待补账和旧群任务未决/待补账义务为零，并验证所有在线消费者及回退镜像不再写这些协议。事务内再次检查；任何残留都会拒绝迁移，不自动转换或删除旧义务。
 
-历史 `frozen` 普通回复仍按原正文及请求号恢复；既有 execute 义务在回退 observe/off 后继续受保护，必须保留 cutover。新 `single_pass` 已结束输入不会因回退重跑；中断旧 worker 不可继续派发。observe 且 cutover 为空时不创建持久输入回合，保留现有输入/队列路径，同时采用普通发送的未知不重试及真实结果记录。
+最低支持回退版本为 **v11.15.6**。部署顺序为测试库迁移及应用验证 → 获得生产迁移专项确认 → 生产迁移 → 应用部署；迁移先兼容正在运行的 v11.15.6。正常发布脚本在切换前把当前 v11.15.6 镜像固化为 rollback，必须核对真实镜像，不能把尚指向更早版本的旧别名当作回退依据。回退仅切应用镜像，保留数据库新契约、原 execute 模式和 cutover，不恢复旧列、不清空账本。更早冻结协议客户端及历史备份只能在匹配的隔离环境使用。
+
+既有 execute 义务在配置回退 observe/off 后继续受保护。已结束输入不重新生成回复；中断 worker 不可继续派发。恢复工作仅修复最小业务结果与原消息 ID 的 ACK。结果未知的普通发送保留原派发身份、人工核实和精确晚到回调路径，不要求其全部结案才退役冻结发送。observe 且 cutover 为空时不创建持久输入回合。
 
 所有模式的 pending 确认都按本轮实际接纳的原消息 ID 执行，包含 replay 吸收的输入及失败兜底终态；不按列表条数裁剪。Redis 确认响应丢失时以相同 ID 有界重试。replay 读取完整当前列表并按已知 ID 去重，不沿用旧列表下标。无法解析或缺少身份的项记录错误并保留，不能用计数确认顺带移除。observe/off 的这项保护不代替 execute 持久输入归属。
-
-旧普通回复冻结恢复分支的删除前提：数据库确认不存在未完成的 `frozen` 主业务回合，且回滚保留期结束。冻结服务只保留旧主聊义务的恢复调用方；任务接入和扫描已移除，历史 SQL 协议未删除。新版本回滚到旧程序前，应先处理未完成的 `single_pass` 本地业务补账；仅修改模式可由本版本继续收尾。
 
 ## 验证
 
 - `tests/biz/reply-execution/ordinary-reply.integration.sql`：真实 PostgreSQL 输入归属、owner/fence、无正文计划约束、未知结局、新输入、补账与 SQL 权限。
-- `tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts`：真实 Nest/SQL 与模拟供应商，验证企业/小组普通回复、服务重建、不重发、ack-only、业务排程补账和旧冻结计划兼容。
+- `tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts`：真实 Nest/SQL 与模拟供应商，验证企业/小组普通回复、服务重建、不重发、ack-only、业务排程补账、人工待核实后的可信晚到回调及 v11.15.6 回退兼容。
 - `tests/channels/wecom/message/services/delivery.service.spec.ts`：明确受理、连接前有限重试、未知停止、权限变更和已发送正文。
 - `tests/channels/wecom/message/pending-inputs.redis.cjs`：真实 Redis 验证队列过期重建、确认响应丢失、部分/重复确认及异常项隔离；只允许 `cake-pending-ack-` 前缀的无网络、无映射端口容器。
 

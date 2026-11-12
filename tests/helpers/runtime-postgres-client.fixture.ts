@@ -57,7 +57,6 @@ export class RuntimePostgresClientFixture {
       transition_agent_action: ['p_operation', 'p_input'],
       transition_agent_reply_turn: ['p_operation', 'p_input'],
       append_agent_reply_callback: ['p_input'],
-      agent_reply_plan_confirmed: ['p_corp_id', 'p_turn_id'],
     };
     const names = parameters[name];
     if (!names || Object.keys(input).some((key) => !names.includes(key)))

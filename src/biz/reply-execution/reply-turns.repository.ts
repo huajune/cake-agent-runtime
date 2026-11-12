@@ -96,7 +96,6 @@ export class ReplyTurnsRepository extends BaseRepository {
       status: row.status as ReplyTurn['status'],
       owner: row.owner as string | null,
       fence: row.fence as number,
-      plan: row.plan as ReplyTurn['plan'],
       deliveryPolicy: row.delivery_policy as ReplyTurn['deliveryPolicy'],
       deliveryResult: row.delivery_result as ReplyTurn['deliveryResult'],
       recovery: row.recovery as Record<string, unknown>,

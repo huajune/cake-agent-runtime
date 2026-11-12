@@ -1,10 +1,10 @@
 import { DurableReplyDeliveryService } from '@channels/wecom/message/delivery/durable-reply-delivery.service';
-import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import type { ActionCallbacks, ActionIntent } from '@biz/action-execution/action-execution.types';
 import type { DeliveryContext } from '@channels/wecom/message/types';
 
 const turn: ReplyTurn = {
-  deliveryPolicy: 'frozen',
+  deliveryPolicy: 'single_pass',
   corpId: 'corp',
   accountId: 'bot',
   chatId: 'chat',
@@ -15,16 +15,6 @@ const turn: ReplyTurn = {
   status: 'planned',
   owner: 'owner',
   fence: 1,
-  plan: {
-    version: 1,
-    text: 'first\nsecond\nthird',
-    segments: [0, 1, 2].map((index) => ({
-      index,
-      text: ['first', 'second', 'third'][index],
-      actionId: `a${index}`,
-      requestId: `r${index}`,
-    })),
-  },
   recovery: { primary: { orgId: 'corp', imBotId: 'bot', chatId: 'chat' } },
 };
 const context = {
@@ -36,16 +26,12 @@ const context = {
   replyTurn: turn,
 } as DeliveryContext;
 
-describe('reply segment external-result boundaries', () => {
-  const turns = { mode: 'execute', savePlan: jest.fn(), open: jest.fn() };
+describe('ordinary reply segment external-result boundaries', () => {
+  const turns = { mode: 'execute', assertDeliveryActive: jest.fn(), open: jest.fn() };
   const executor = { execute: jest.fn() };
   const registry = { register: jest.fn() };
   const permit = { evaluate: jest.fn() };
   const sender = { sendMessage: jest.fn() };
-  const primaryTurn = {
-    ...turn,
-    recovery: { primary: { orgId: 'corp', imBotId: 'bot', chatId: 'chat' } },
-  };
   const service = new DurableReplyDeliveryService(
     turns as never,
     executor as never,
@@ -57,184 +43,110 @@ describe('reply segment external-result boundaries', () => {
     jest.resetAllMocks();
     permit.evaluate.mockResolvedValue({ allowed: true });
     sender.sendMessage.mockResolvedValue({ errcode: 0 });
+    turns.assertDeliveryActive.mockResolvedValue(undefined);
     turns.mode = 'execute';
+    executor.execute.mockImplementation(
+      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) =>
+        handlers.dispatch('stable-request', 'execute'),
+    );
   });
 
-  it('does not create a synthetic reply input for a scheduled task', async () => {
+  it('does not synthesize primary input for a scheduled task', async () => {
     await expect(
-      service.resolveTurn({
-        ...context,
-        replyTurn: undefined,
-        corpId: 'corp',
-        logicalTurnId: 'task-key',
-        inputOccurredAt: turn.inputOccurredAt,
-      }),
+      service.resolveTurn({ ...context, replyTurn: undefined, logicalTurnId: 'task-key' }),
     ).rejects.toThrow('delivery_identity_not_persisted');
     expect(turns.open).not.toHaveBeenCalled();
   });
-
-  it('retains a successful first segment and stops at unknown second without reaching third', async () => {
-    executor.execute
-      .mockResolvedValueOnce({ status: 'succeeded' })
-      .mockResolvedValueOnce({ status: 'unknown' });
-    await expect(service.deliver(turn, context)).rejects.toBeInstanceOf(ReplyDeferredError);
-    expect(executor.execute).toHaveBeenCalledTimes(2);
-    expect(sender.sendMessage).not.toHaveBeenCalled();
-  });
-  it.each(['observe', 'off'] as const)('never upgrades a %s plan to execute', async (mode) => {
-    await expect(service.deliver({ ...turn, mode }, context)).rejects.toThrow(
-      'reply_plan_not_executable',
-    );
-    expect(executor.execute).not.toHaveBeenCalled();
-    expect(sender.sendMessage).not.toHaveBeenCalled();
-  });
-  it('does not resume a historical proactive plan through the inbound runtime', async () => {
+  it.each(['observe', 'off'] as const)('never upgrades a %s identity to execute', async (mode) => {
     await expect(
-      service.deliver({ ...turn, recovery: { task: { kind: 'reengagement' } } }, context),
-    ).rejects.toThrow('non_inbound_reply_runtime_retired');
+      service.sendOrdinarySegment({ ...turn, mode }, context, 'first', 0),
+    ).rejects.toThrow('ordinary_reply_not_executable');
     expect(executor.execute).not.toHaveBeenCalled();
-    expect(sender.sendMessage).not.toHaveBeenCalled();
   });
-
   it.each(['enterprise', 'group'] as const)(
-    'sends every ordinary %s segment on API success without any callback',
+    'completes %s text on API acceptance without callbacks',
     async (_apiType) => {
-      const completions: unknown[] = [];
-      executor.execute.mockImplementation(
-        async (intent: ActionIntent, handlers: ActionCallbacks<unknown>) => {
-          const result = await handlers.dispatch(`request-${intent.parameters.index}`, 'execute');
-          completions.push(result);
-          return { ...result, dispatched: true };
-        },
+      await service.sendOrdinarySegment(turn, { ...context, _apiType }, 'first', 0);
+      expect(sender.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: { text: 'first' },
+          externalRequestId: 'stable-request',
+          _apiType,
+        }),
       );
-
-      await expect(service.deliver(primaryTurn, { ...context, _apiType })).resolves.toMatchObject({
-        success: true,
-        deliveredSegments: 3,
-      });
-
-      expect(sender.sendMessage.mock.calls.map(([request]) => request.payload.text)).toEqual([
-        'first',
-        'second',
-        'third',
-      ]);
-      expect(sender.sendMessage.mock.calls.map(([request]) => request.externalRequestId)).toEqual([
-        'request-0',
-        'request-1',
-        'request-2',
-      ]);
-      expect(completions).toEqual(
-        Array.from({ length: 3 }, () => ({
-          status: 'succeeded',
-          result: { stage: 'accepted' },
-          evidence: {
-            kind: 'accepted',
-            requestTerminated: true,
-            detail: 'send_api_accepted; not_delivery_or_read_receipt',
-          },
-        })),
+      expect(executor.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          logicalTurnId: turn.logicalTurnId,
+          intentId: 'turn:reply:v1:0',
+          parameters: { text: 'first', index: 0, version: 1 },
+        }),
+        expect.anything(),
+        { persistedMode: 'execute' },
       );
     },
   );
-
   it.each([undefined, {}, { errcode: 500 }])(
-    'does not claim API acceptance from an unconfirmed response %j',
+    'does not claim acceptance for an unconfirmed response %j',
     async (response) => {
       sender.sendMessage.mockResolvedValue(response);
-      executor.execute.mockImplementation(
-        async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) =>
-          handlers.dispatch('stable-request', 'execute'),
-      );
-      await expect(service.deliver(primaryTurn, context)).rejects.toThrow(
+      await expect(service.sendOrdinarySegment(turn, context, 'first', 0)).rejects.toThrow(
         'reply_send_result_unconfirmed',
       );
       expect(sender.sendMessage).toHaveBeenCalledTimes(1);
     },
   );
-
-  it('stops at an actual send timeout while retaining the earlier accepted segment', async () => {
-    sender.sendMessage
-      .mockResolvedValueOnce({ errcode: 0 })
-      .mockRejectedValueOnce(new Error('timeout'));
-    executor.execute.mockImplementation(
-      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => {
-        try {
-          return await handlers.dispatch('stable-request', 'execute');
-        } catch {
-          return { status: 'unknown' };
-        }
-      },
+  it('does not resend a transport timeout', async () => {
+    sender.sendMessage.mockRejectedValue(new Error('timeout'));
+    await expect(service.sendOrdinarySegment(turn, context, 'first', 0)).rejects.toThrow(
+      'external_call_did_not_return_terminal_evidence',
     );
-    await expect(service.deliver(primaryTurn, context)).rejects.toThrow('segment_1_unknown');
-    expect(sender.sendMessage.mock.calls.map(([request]) => request.payload.text)).toEqual([
-      'first',
-      'second',
-    ]);
+    expect(sender.sendMessage).toHaveBeenCalledTimes(1);
   });
-
-  it('checks the chat lease at dispatch without a callback-wait checkpoint', async () => {
+  it.each(['unknown', 'executing'])('does not redispatch an existing %s action', async (status) => {
+    executor.execute.mockResolvedValue({ status });
+    await expect(service.sendOrdinarySegment(turn, context, 'first', 0)).rejects.toThrow(status);
+    expect(sender.sendMessage).not.toHaveBeenCalled();
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+  });
+  it('checks both input and chat ownership before sending', async () => {
     const assertOwned = jest.fn().mockRejectedValue(new Error('chat lease lost'));
-    executor.execute.mockImplementation(
-      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) =>
-        handlers.dispatch('stable-request', 'execute'),
-    );
-    await expect(service.deliver(primaryTurn, { ...context, assertOwned })).rejects.toThrow(
-      'chat lease lost',
+    await expect(
+      service.sendOrdinarySegment(turn, { ...context, assertOwned }, 'first', 0),
+    ).rejects.toThrow('chat lease lost');
+    expect(sender.sendMessage).not.toHaveBeenCalled();
+    turns.assertDeliveryActive.mockRejectedValue(new Error('input expired'));
+    await expect(service.sendOrdinarySegment(turn, context, 'first', 0)).rejects.toThrow(
+      'input expired',
     );
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
-
-  it('keeps persisted execute request identities after runtime rollback to observe', async () => {
+  it('keeps persisted execute identities after runtime rollback to observe', async () => {
     turns.mode = 'observe';
-    executor.execute.mockImplementation(
-      async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>, options) => {
-        expect(options).toEqual({ persistedMode: 'execute' });
-        return handlers.dispatch('stable-request', 'execute');
-      },
-    );
-    await expect(service.deliver(primaryTurn, context)).resolves.toMatchObject({
-      deliveredSegments: 3,
+    await service.sendOrdinarySegment(turn, context, 'first', 0);
+    expect(executor.execute).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      persistedMode: 'execute',
     });
-    expect(sender.sendMessage).toHaveBeenCalledTimes(3);
-    expect(sender.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ externalRequestId: 'stable-request' }),
-    );
+    expect(sender.sendMessage).toHaveBeenCalledTimes(1);
   });
-
-  it('recovery uses the frozen version even when the caller supplies newly generated text', async () => {
-    expect(await service.prepare(turn, 'changed', ['changed'])).toBe(turn);
-    expect(turns.savePlan).not.toHaveBeenCalled();
-  });
-  it('does not dispatch when the plan write is unconfirmed', async () => {
-    turns.savePlan.mockRejectedValue(new ReplyDeferredError('plan_not_confirmed'));
-    await expect(service.prepare({ ...turn, plan: null }, 'first', ['first'])).rejects.toThrow(
-      'plan_not_confirmed',
-    );
-    expect(executor.execute).not.toHaveBeenCalled();
-  });
-  it('returns completed when every segment is recorded successful', async () => {
+  it('does not resend an already successful action', async () => {
     executor.execute.mockResolvedValue({ status: 'succeeded' });
-    expect(await service.deliver(turn, context)).toMatchObject({
-      deliveredSegments: 3,
-      success: true,
-    });
+    await service.sendOrdinarySegment(turn, context, 'first', 0);
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
-  it('rechecks the shared permit at the dispatch boundary', async () => {
+  it('rechecks permission before dispatch and stops on cancellation', async () => {
     permit.evaluate.mockResolvedValue({ allowed: false });
     executor.execute.mockImplementation(
       async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => ({
         status: (await handlers.authorize!()) ? 'succeeded' : 'cancelled',
       }),
     );
-    expect(await service.deliver(turn, context)).toMatchObject({
-      skipped: true,
-      deliveredSegments: 0,
-    });
+    await expect(service.sendOrdinarySegment(turn, context, 'first', 0)).rejects.toThrow(
+      'cancelled',
+    );
     expect(permit.evaluate).toHaveBeenCalledTimes(1);
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
-  it('observation calls the old sender without adding a new provider request ID', async () => {
+  it('observation calls the legacy sender without adding an external request ID', async () => {
     executor.execute.mockImplementation(
       async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => ({
         ...(await handlers.dispatch('must-not-be-added', 'observe')),
@@ -246,36 +158,13 @@ describe('reply segment external-result boundaries', () => {
     expect(legacy).toHaveBeenCalledWith();
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
-
-  it('repairs a confirmed permission cancellation after an interrupted claim and cancels later segments', async () => {
-    executor.execute
-      .mockResolvedValueOnce({
-        status: 'failed',
-        evidence: {
-          kind: 'definitive_no_effect',
-          requestTerminated: true,
-          detail: 'permission_changed_before_dispatch',
-        },
-      })
-      .mockImplementation(async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) => ({
-        status: (await handlers.authorize!()) ? 'succeeded' : 'cancelled',
-      }));
-    expect(await service.deliver(turn, context)).toMatchObject({
-      skipped: true,
-      deliveredSegments: 0,
+  it('registers reconciliation that preserves uncertainty without sending', async () => {
+    service.onModuleInit();
+    const handlers = registry.register.mock.calls[0][1];
+    await expect(handlers.reconcile()).resolves.toMatchObject({
+      status: 'unknown',
+      evidence: { kind: 'indeterminate', requestTerminated: false },
     });
-    expect(executor.execute).toHaveBeenCalledTimes(3);
-    expect(permit.evaluate).not.toHaveBeenCalled();
-    expect(sender.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    { kind: 'indeterminate', requestTerminated: false },
-    { kind: 'definitive_no_effect', requestTerminated: true, detail: 'provider_rejected' },
-  ])('does not treat other failed evidence as a local cancellation: %j', async (evidence) => {
-    executor.execute.mockResolvedValue({ status: 'failed', evidence });
-    await expect(service.deliver(turn, context)).rejects.toThrow('segment_0_failed');
-    expect(executor.execute).toHaveBeenCalledTimes(1);
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
 });

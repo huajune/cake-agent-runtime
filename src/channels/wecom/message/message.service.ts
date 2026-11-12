@@ -111,7 +111,7 @@ export class MessageService implements OnModuleInit {
       botId: message.botId,
     });
     if (!verified) {
-      // Untrusted self callbacks never settle an action. New execute inputs need a frozen route.
+      // Untrusted self callbacks never settle an action. New execute inputs need a bound route.
       if (
         !message.isSelf &&
         this.config?.get<string>('ACTION_EXECUTION_MODE') === ACTION_MODE.EXECUTE
@@ -127,7 +127,7 @@ export class MessageService implements OnModuleInit {
 
   private async appendManagedCallback(message: EnterpriseMessageCallbackDto, corpIds: string[]) {
     // Historical group turns may use the legacy namespace or the directory's real corp.
-    // Only these server-verified scopes may match an existing frozen request.
+    // Only these server-verified scopes may match an existing persisted request.
     for (const corpId of new Set(corpIds)) {
       const matched = await this.replyRecords!.appendCallback({
         corpId,

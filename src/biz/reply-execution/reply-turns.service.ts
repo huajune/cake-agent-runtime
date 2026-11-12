@@ -2,11 +2,9 @@ import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { ActionMode } from '../action-execution/action-execution.types';
-import { actionDigest } from '../action-execution/action-identity';
 import { ReplyTurnsRepository } from './reply-turns.repository';
 import {
   ReplyDeferredError,
-  type ReplyPlan,
   type ReplyTurn,
   type ReplyTurnScope,
   type ReplyDeliverySummary,
@@ -45,7 +43,7 @@ export class ReplyTurnsService {
     scope: ReplyTurnScope,
     inputIds: string[],
     inputOccurredAt: string,
-    recovery: Record<string, unknown> = {},
+    recovery: Record<string, unknown>,
   ): Promise<ReplyTurn | undefined> {
     if (this.mode !== ACTION_MODE.EXECUTE && this.cutover === null) return undefined;
     const occurred = Date.parse(inputOccurredAt);
@@ -60,15 +58,20 @@ export class ReplyTurnsService {
     }
     if (!inputIds.length || inputIds.some((id) => !id?.trim()))
       throw new ReplyDeferredError('missing_input_membership');
+    if (
+      !recovery.primary ||
+      typeof recovery.primary !== 'object' ||
+      Array.isArray(recovery.primary) ||
+      recovery.task !== undefined
+    )
+      throw new ReplyDeferredError('primary_reply_input_required');
     try {
       const turn = await this.repository.transition(REPLY_TURN_OPERATION.OPEN, {
         ...scope,
         inputIds: [...new Set(inputIds)],
         inputOccurredAt,
-        recovery: recovery.primary ? this.inputContext(recovery) : recovery,
-        deliveryPolicy: recovery.primary
-          ? REPLY_DELIVERY_POLICY.SINGLE_PASS
-          : REPLY_DELIVERY_POLICY.FROZEN,
+        recovery: this.inputContext(recovery),
+        deliveryPolicy: REPLY_DELIVERY_POLICY.SINGLE_PASS,
         logicalTurnId: randomUUID(),
         owner: randomUUID(),
         mode: this.mode,
@@ -92,14 +95,6 @@ export class ReplyTurnsService {
     }
   }
 
-  async savePlan(turn: ReplyTurn, plan: ReplyPlan): Promise<ReplyTurn> {
-    try {
-      actionDigest(plan);
-    } catch {
-      throw new ReplyDeferredError('invalid_reply_plan');
-    }
-    return this.update(turn, REPLY_TURN_OPERATION.PLAN, { plan });
-  }
   async saveEffects(turn: ReplyTurn, effects: Record<string, unknown>): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.SAVE_EFFECTS, { effects });
   }

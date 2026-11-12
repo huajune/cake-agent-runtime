@@ -57,7 +57,7 @@ export class ActionExecutorService {
   async execute<T>(
     intent: ActionIntent,
     callbacks: ActionCallbacks<T>,
-    /** Only inherit execute from an already persisted parent plan; never from input. */
+    /** Only inherit execute from an already persisted parent input; never from input. */
     options?: { persistedMode: typeof ACTION_MODE.EXECUTE },
   ): Promise<ActionExecution<T>> {
     const mode = options?.persistedMode ?? this.mode;
