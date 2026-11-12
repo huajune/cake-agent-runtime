@@ -39,9 +39,9 @@ BEGIN
   ASSERT (SELECT count(*)=4 FROM public.agent_action_records WHERE corp_id='retention-test-20261023' AND NOT retention_redacted AND intent ? 'parameters');
   ASSERT public.redact_completed_agent_actions(100)=0, 'repeated cleanup is not idempotent';
   ASSERT NOT has_function_privilege('authenticated','public.redact_completed_agent_actions(integer)','execute');
-  INSERT INTO public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,status,plan,recovery,updated_at)
+  INSERT INTO public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,status,recovery,updated_at)
     SELECT 'retention-test-20261023','bot','chat','reply-'||i,ARRAY['input-'||i],now()-interval '92 days','execute','acked',
-      '{"text":"synthetic reply"}'::jsonb,'{"private":"synthetic recovery"}'::jsonb,now()-interval '91 days'
+      '{"private":"synthetic recovery"}'::jsonb,now()-interval '91 days'
     FROM generate_series(1,205) i;
   total:=0; loops:=0;
   LOOP
@@ -52,7 +52,7 @@ BEGIN
     ASSERT loops<100, 'reply retention did not converge';
   END LOOP;
   ASSERT total>=205;
-  ASSERT (SELECT count(*)=205 FROM public.agent_reply_turns WHERE corp_id='retention-test-20261023' AND plan IS NULL AND recovery='{}'::jsonb AND status='acked');
+  ASSERT (SELECT count(*)=205 FROM public.agent_reply_turns WHERE corp_id='retention-test-20261023' AND recovery='{}'::jsonb AND status='acked');
   ASSERT public.redact_completed_agent_reply_turns(100)=0;
 END $$;
 ROLLBACK;

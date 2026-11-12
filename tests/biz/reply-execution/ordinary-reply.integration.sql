@@ -12,8 +12,12 @@ begin
   assert r->'turn'->>'plan' is null;
   r:=public.transition_agent_reply_turn('open',base||'{"owner":"other","logicalTurnId":"other"}');
   assert r->>'conflict'='ordinary_reply_owned_elsewhere','concurrent input cannot get a second generator';
-  r:=public.transition_agent_reply_turn('plan',base||'{"plan":{"text":"must not freeze"}}');
-  assert r->>'conflict'='ordinary_reply_plan_forbidden';
+  begin
+    perform public.transition_agent_reply_turn('plan',base||'{"plan":{"text":"must not freeze"}}');
+    raise exception 'retired plan operation accepted';
+  exception when raise_exception then
+    if sqlerrm<>'unknown reply transition' then raise; end if;
+  end;
   r:=public.transition_agent_reply_turn('check_input',base-'fence');
   assert r->>'conflict'='ordinary_reply_fence_lost','missing fence cannot authorize a tool';
   r:=public.transition_agent_reply_turn('check_input',base);

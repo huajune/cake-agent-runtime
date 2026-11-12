@@ -20,7 +20,6 @@ export const REPLY_REVIEW_REASON = {
 
 export const REPLY_TURN_OPERATION = {
   OPEN: 'open',
-  PLAN: 'plan',
   START_DELIVERY: 'start_delivery',
   SAVE_EFFECTS: 'save_effects',
   CHECK_DELIVERY: 'check_delivery',
@@ -33,9 +32,8 @@ export const REPLY_TURN_OPERATION = {
 } as const;
 export type ReplyTurnOperation = (typeof REPLY_TURN_OPERATION)[keyof typeof REPLY_TURN_OPERATION];
 
-/** Frozen is retained only for inbound obligations created by older versions. */
+/** Persisted wire value shared with the supported rollback application. */
 export const REPLY_DELIVERY_POLICY = {
-  FROZEN: 'frozen',
   SINGLE_PASS: 'single_pass',
 } as const;
 export type ReplyDeliveryPolicy =

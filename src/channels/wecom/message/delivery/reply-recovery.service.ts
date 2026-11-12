@@ -1,8 +1,6 @@
 import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
-import { ConfigService } from '@nestjs/config';
-import { GroupRouteCredentialsService } from '../credentials/group-route-credentials.service';
 import { Cron } from '@nestjs/schedule';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyWorkflowService } from '../application/reply-workflow.service';
@@ -10,15 +8,13 @@ import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-l
 import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import {
   REPLY_TURN_STATUS,
-  REPLY_DELIVERY_POLICY,
   REPLY_DELIVERY_OUTCOME,
   REPLY_PROJECTION_STATUS,
   REPLY_REVIEW_REASON,
 } from '@biz/reply-execution/reply-execution.constants';
 import { CRON_JOB } from '@infra/queue/cron.constants';
-import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
 
-/** Repairs input ACKs/local projections; only historical frozen turns resume a saved send plan. */
+/** Repairs input ACKs and local business effects without generating or resending replies. */
 @Injectable()
 export class ReplyRecoveryService {
   private readonly logger = new Logger(ReplyRecoveryService.name);
@@ -27,10 +23,8 @@ export class ReplyRecoveryService {
     private readonly turns: ReplyTurnsService,
     private readonly workflow: ReplyWorkflowService,
     private readonly leases: ReplyRecoveryLeaseService,
-    private readonly config: ConfigService,
     private readonly crons: CronRunnerService,
     @Optional() private readonly incidents?: IncidentReporterService,
-    @Optional() private readonly groupCredentials?: GroupRouteCredentialsService,
   ) {}
 
   @Cron('*/1 * * * *')
@@ -68,59 +62,15 @@ export class ReplyRecoveryService {
   }
 
   private async resumeTurn(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<void> {
-    if (turn.deliveryPolicy === REPLY_DELIVERY_POLICY.SINGLE_PASS) {
-      if (turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
-        // 生成或业务结果保存中断：无法证明是否有已成功的报名/改约，不能吞掉原输入。
-        this.manualReview(turn.logicalTurnId, REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
-        return;
-      }
-      const terminal = await this.turns.interrupt(turn);
-      if (terminal.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.INTERRUPTED)
-        this.manualReview(turn.logicalTurnId, 'ordinary_reply_interrupted_no_resend');
-      await this.workflow.resumePersistedReply(terminal, '', assertOwned);
+    if (turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
+      // An interrupted generation cannot prove that no booking or modification succeeded.
+      this.manualReview(turn.logicalTurnId, REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
       return;
     }
-    if (!turn.plan && turn.status === REPLY_TURN_STATUS.PREPARING) {
-      this.logger.error(
-        `reply.manual_review_required generation_interrupted ${turn.logicalTurnId}`,
-      );
-      this.manualReview(turn.logicalTurnId, 'generation_interrupted');
-      return;
-    }
-    const primary = turn.recovery.primary as {
-      _apiType?: string;
-      orgId?: string;
-      imBotId?: string;
-      chatId?: string;
-      groupId?: string;
-    };
-    let token = '';
-    if (turn.status === REPLY_TURN_STATUS.PLANNED) {
-      if (
-        primary.orgId !== turn.corpId ||
-        primary.imBotId !== turn.accountId ||
-        primary.chatId !== turn.chatId
-      ) {
-        this.manualReview(turn.logicalTurnId, 'recovery_identity_mismatch');
-        return;
-      }
-      if (primary._apiType === WECOM_API_TYPE.GROUP) {
-        const route = await this.groupCredentials?.resolveForRecovery({
-          corpId: turn.corpId,
-          accountId: turn.accountId,
-          groupId: primary.groupId,
-        });
-        if (!route) {
-          this.manualReview(turn.logicalTurnId, 'group_credential_resolution');
-          return;
-        }
-        token = route.token;
-      } else {
-        token = this.config.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() ?? '';
-        if (!token) return;
-      }
-    }
-    await this.workflow.resumePersistedReply(turn, token, assertOwned);
+    const terminal = await this.turns.interrupt(turn);
+    if (terminal.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.INTERRUPTED)
+      this.manualReview(turn.logicalTurnId, 'ordinary_reply_interrupted_no_resend');
+    await this.workflow.resumeInputCompletion(terminal, assertOwned);
   }
 
   @Cron('47 */10 * * * *', { timeZone: 'Asia/Shanghai' })
@@ -141,7 +91,7 @@ export class ReplyRecoveryService {
         trigger: 'cron',
       },
       code: 'reply.manual_review_required',
-      summary: '回复计划需要人工核实，未重新发送',
+      summary: '原输入需要人工核实，未重新发送',
       error: new Error(`${logicalTurnId}: ${reason}`),
       dedupe: { key: `reply.manual_review_required:${logicalTurnId}` },
     });

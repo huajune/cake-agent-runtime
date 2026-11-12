@@ -112,8 +112,68 @@ new = [
 for name in new:
     apply(name, source('supabase/migrations/' + name, delivery='reply_turns' in name))
 
+contract = source('supabase/migrations/20261112020000_retire_main_reply_compat.sql')
+
+def blocked_contract(label, expected):
+    try:
+        command(base, contract)
+    except RuntimeError as error:
+        if expected not in str(error):
+            raise
+        (args.output / (label + '.log')).write_text(str(error))
+    else:
+        raise AssertionError('Unsafe compatibility contraction was accepted: ' + label)
+    # The whole migration must roll back, including any replaced RPC definitions.
+    apply(label + '-unchanged.sql', """
+DO $$ BEGIN
+ ASSERT EXISTS(SELECT FROM information_schema.columns WHERE table_schema='public'
+   AND table_name='agent_reply_turns' AND column_name='projection_next_check_at');
+ ASSERT to_regclass('public.agent_reply_task_projection_due') IS NOT NULL;
+ ASSERT position('defer_projection' IN pg_get_functiondef('public.transition_agent_reply_turn(text,jsonb)'::regprocedure))>0;
+END $$;
+""")
+    print('PASS', label, flush=True)
+
+apply('contract-frozen.sql', """
+INSERT INTO public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,status)
+ VALUES('contract-test','bot','chat','old-frozen',ARRAY['old-input'],now(),'execute','acked');
+""")
+blocked_contract('contract-blocks-frozen', 'legacy_frozen_reply_present')
+apply('contract-nonnull-plan.sql', """
+ALTER TABLE public.agent_reply_turns DROP CONSTRAINT agent_reply_turns_single_pass_plan_check;
+UPDATE public.agent_reply_turns SET delivery_policy='single_pass',plan='{}'::jsonb WHERE corp_id='contract-test';
+""")
+blocked_contract('contract-blocks-plan', 'legacy_reply_plan_present')
+apply('contract-remove-frozen.sql', "DELETE FROM public.agent_reply_turns WHERE corp_id='contract-test';")
+apply('contract-old-task.sql' , """
+INSERT INTO public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,status,recovery,projection_status,delivery_policy)
+ VALUES('contract-test','bot','chat','old-task',ARRAY['old-input'],now(),'execute','acked',
+ '{"task":{"kind":"reengagement"}}','pending','single_pass');
+""")
+blocked_contract('contract-blocks-pending-task', 'legacy_reply_projection_pending')
+apply('contract-remove-task-fixture.sql', "DELETE FROM public.agent_reply_turns WHERE corp_id='contract-test';")
+apply('contract-old-group.sql', """
+INSERT INTO public.agent_action_records(corp_id,action_id,account_id,chat_id,logical_turn_id,kind,resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,status,dispatch_attempt_id,recovery_deadline)
+ VALUES('contract-test','old-group','bot','group','turn','group_task.message','resource','hash','request','{}',now(),'execute','unknown','original-attempt',now());
+""")
+blocked_contract('contract-blocks-pending-group', 'legacy_group_obligation_pending')
+apply('contract-group-unscheduled-sync.sql', "UPDATE public.agent_action_records SET status='succeeded',local_sync='pending',next_check_at=null WHERE corp_id='contract-test';")
+blocked_contract('contract-blocks-unscheduled-group-sync', 'legacy_group_obligation_pending')
+apply('contract-missing-dispatch.sql', "UPDATE public.agent_action_records SET kind='wecom.reply_segment',status='unknown',dispatch_attempt_id=null WHERE corp_id='contract-test';")
+blocked_contract('contract-blocks-missing-attempt', 'active_dispatch_identity_missing')
+apply('contract-remove-group-fixture.sql' , "DELETE FROM public.agent_action_records WHERE corp_id='contract-test';")
+apply('contract-hidden-dependency.sql', """
+CREATE FUNCTION public.contract_dependency_test() RETURNS timestamptz LANGUAGE plpgsql AS $$
+BEGIN RETURN (SELECT projection_next_check_at FROM public.agent_reply_turns LIMIT 1); END $$;
+""")
+blocked_contract('contract-blocks-hidden-dependency', 'legacy_reply_column_still_referenced')
+apply('contract-remove-dependency-fixture.sql', 'DROP FUNCTION public.contract_dependency_test();')
+apply('20261112020000_retire_main_reply_compat.sql', contract)
+apply('contract-idempotence.sql', contract)
+
 for path in [
  'tests/biz/action-execution/action-records.postgres.sql',
+ 'tests/biz/action-execution/action-attempt-contract.postgres.sql',
  'tests/biz/action-execution/action-review.postgres.sql',
  'tests/biz/action-execution/action-retention.postgres.sql',
  'tests/biz/action-execution/booking-projection.postgres.sql',

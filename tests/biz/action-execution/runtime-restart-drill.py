@@ -1,4 +1,4 @@
-"""Restart an isolated runtime PostgreSQL and verify frozen obligations survive.
+"""Restart an isolated runtime PostgreSQL and verify input and action obligations survive.
 
 Run after verify-runtime-postgres.py, passing its container and database.
 No provider calls; synthetic fixture only. This is storage recovery, not channel acceptance.
@@ -31,10 +31,12 @@ SET statement_timeout='5s';
 DO $$ DECLARE base jsonb; p jsonb; BEGIN
   base:=jsonb_build_object('corpId','restart-drill','accountId','bot','chatId','chat',
     'logicalTurnId','original-turn','inputIds','["original-input"]'::jsonb,
-    'inputOccurredAt',now(),'mode','execute','owner','original-owner');
+    'inputOccurredAt',now(),'mode','execute','owner','original-owner','fence',1,
+    'deliveryPolicy','single_pass','recovery','{"primary":{"chatId":"chat"}}'::jsonb);
   PERFORM transition_agent_reply_turn('open',base);
-  PERFORM transition_agent_reply_turn('plan',base||jsonb_build_object('fence',1,'plan',
-    '{"version":1,"text":"original reply","segments":[{"index":0,"text":"original reply","actionId":"reply","requestId":"request"}]}'::jsonb));
+  PERFORM transition_agent_reply_turn('save_effects',base||'{"effects":{"toolCalls":[]}}');
+  PERFORM transition_agent_reply_turn('project',base);
+  PERFORM transition_agent_reply_turn('start_delivery',base);
   p:=jsonb_build_object('corpId','restart-drill','actionId','reply','requestId','request',
     'resourceHash','resource','payloadHash','hash','mode','execute',
     'recoveryDeadline',now()+interval '1 day','intent',jsonb_build_object(
@@ -42,6 +44,7 @@ DO $$ DECLARE base jsonb; p jsonb; BEGIN
       'kind','wecom.reply_segment','parameters','{"text":"original reply"}'::jsonb,'occurredAt',now()));
   PERFORM transition_agent_action('prepare',p);
   PERFORM transition_agent_action('claim','{"corpId":"restart-drill","actionId":"reply","owner":"dispatch-before-crash"}');
+  UPDATE agent_reply_turns SET generation_until=now()-interval '1 second' WHERE corp_id='restart-drill';
   UPDATE agent_action_records SET next_check_at=now()-interval '1 second' WHERE corp_id='restart-drill';
 END $$;
 """)
@@ -60,11 +63,11 @@ DO $$ DECLARE r jsonb; BEGIN
     'inputOccurredAt',now(),'mode','observe','owner','after-restart'));
   ASSERT r->'turn'->>'logical_turn_id'='original-turn','rollback retains original turn';
   ASSERT r->'turn'->'input_ids'='["original-input"]'::jsonb,'new input not absorbed';
-  ASSERT r->'turn'->'plan'->>'text'='original reply','original plan survives restart';
-  ASSERT NOT agent_reply_plan_confirmed('restart-drill','original-turn');
+  ASSERT r->'turn'->>'status'='settled','expired input is closed without resending';
+  ASSERT r->'turn'->'delivery_result'->>'outcome'='interrupted';
   ASSERT NOT append_agent_reply_callback('{"corpId":"restart-drill","accountId":"wrong-bot","chatId":"chat","requestId":"request","messageId":"callback","text":"original reply","messageType":7}');
   ASSERT append_agent_reply_callback('{"corpId":"restart-drill","accountId":"bot","chatId":"chat","requestId":"request","messageId":"callback","text":"original reply","messageType":7}');
   ASSERT EXISTS(SELECT 1 FROM agent_action_evidence WHERE corp_id='restart-drill'), 'late callback persisted';
 END $$;
 """))
-print('PASS: actual database restart, no redispatch, rollback isolation, original input/plan, exact late callback evidence')
+print('PASS: actual database restart, no redispatch, rollback isolation, original input and dispatch attempt, exact late callback evidence')
