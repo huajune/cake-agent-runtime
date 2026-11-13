@@ -6,7 +6,7 @@
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
-**项目环境**：prod `uvmbxcilpteaiizplcyp` / test `gaovfitvetoojkvtalxy`
+**项目环境**：prod `resexopnhpthuoxfwydx` / test `gaovfitvetoojkvtalxy`
 
 ---
 

@@ -1,5 +1,5 @@
 -- 最近 N 个候选人完整对话 + 每 turn 工具调用/记忆/异常信号
--- 使用方式：通过 mcp__supabase__execute_sql（project_id=uvmbxcilpteaiizplcyp）运行
+-- 使用方式：通过 mcp__supabase__execute_sql（project_id=resexopnhpthuoxfwydx）运行
 -- 参数：:sample_size — 抽样的候选人数量（默认 15）
 -- 注意：刻意不 SELECT mpr.agent_invocation，其 90% 是重复的 system prompt / tools schema
 

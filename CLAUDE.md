@@ -34,7 +34,7 @@ Bull 队列需配置 `UPSTASH_REDIS_TCP_URL`（或使用 `REDIS_URL` / `REDIS_HO
 ```bash
 pnpm run db:new <name>       # 新建迁移（supabase/migrations/YYYYMMDDHHMMSS_*.sql）
 pnpm run db:push:test        # 应用到 TEST（gaovfitvetoojkvtalxy）
-pnpm run db:push:prod        # 应用到 PROD（uvmbxcilpteaiizplcyp）
+pnpm run db:push:prod        # 应用到 PROD（resexopnhpthuoxfwydx）
 pnpm run db:status:test      # / db:status:prod 查看迁移状态
 ```
 

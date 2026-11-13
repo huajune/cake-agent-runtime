@@ -1,3 +1,4 @@
+// business-rules: IB-13
 import { Injectable, Optional } from '@nestjs/common';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { isUserProfileFactValue, type ActiveBookingEntry } from '@memory/long-term/long-term.types';
@@ -11,6 +12,10 @@ import {
   type BookingSnapshotLoadInput,
 } from '@tools/booking/booking-snapshot.service';
 import type { BookingSnapshotLoadResult } from '@tools/booking/booking-snapshot.types';
+import {
+  isWorkOrderOwnedByCandidate,
+  normalizeCandidateName,
+} from '@tools/booking/booking-snapshot.util';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import {
   evaluateOutOfBandWorkOrders,
@@ -113,12 +118,15 @@ export class CandidateProgressService {
     scope: CandidateProgressScope,
     mode: ProgressReadMode,
   ): Promise<CandidateProgressView> {
-    const [state, stage, pointers] = await Promise.all([
+    const [state, stage, pointers, profile] = await Promise.all([
       this.session.getSessionState(scope.corpId, scope.userId, scope.chatId).catch(() => null),
       this.workbench.getStage(scope.corpId, scope.userId, scope.chatId).catch(() => null),
       this.longTerm.tryGetActiveBookings(scope.corpId, scope.userId, {
         bypassCache: mode === PROGRESS_READ_MODE.FRESH,
       }),
+      scope.botUserId
+        ? this.longTerm.getProfile(scope.corpId, scope.userId, scope.botUserId)
+        : Promise.resolve(null),
     ]);
     const rawPhone = state?.facts?.interview_info?.phone?.value;
     const sessionPhone = typeof rawPhone === 'string' ? rawPhone.trim() : '';
@@ -128,8 +136,7 @@ export class CandidateProgressService {
     const names: string[] = [];
     const sessionName = state?.facts?.interview_info?.name?.value;
     if (typeof sessionName === 'string') names.push(sessionName);
-    if (!phone.value && scope.botUserId) {
-      const profile = await this.longTerm.getProfile(scope.corpId, scope.userId, scope.botUserId);
+    if (!phone.value) {
       const profilePhone = profile?.phone;
       if (
         isUserProfileFactValue<string>(profilePhone) &&
@@ -138,9 +145,10 @@ export class CandidateProgressService {
         phone.value = profilePhone.value.trim();
         phone.source = PROGRESS_PHONE_SOURCE.PROFILE;
       }
-      if (isUserProfileFactValue<string>(profile?.name)) names.push(profile.name.value);
     }
+    if (isUserProfileFactValue<string>(profile?.name)) names.push(profile.name.value);
     let workOrders: SignupWorkOrderItem[] = [];
+    let topCandidateName: string | null = null;
     let known = false;
     if (phone.value && scope.botImId) {
       try {
@@ -151,6 +159,7 @@ export class CandidateProgressService {
             { timeoutMs: 3_000, allowDefaultToken: false },
           );
           workOrders = result.workOrders ?? [];
+          topCandidateName = result.candidateName ?? null;
           known = true;
         } else {
           const result = await this.loadBookingSnapshot({
@@ -161,6 +170,7 @@ export class CandidateProgressService {
           });
           if (result.status === 'ok' && result.allWorkOrders) {
             workOrders = result.allWorkOrders;
+            topCandidateName = result.candidateName;
             known = true;
           }
         }
@@ -169,7 +179,22 @@ export class CandidateProgressService {
       }
     }
     const now = Date.now();
-    const outOfBandVerdict = known ? evaluateOutOfBandWorkOrders(workOrders, now) : null;
+    // 同号代报不能把同行人的工单当成本人在途；与预约快照共用行姓名优先的本人校验。
+    const ownedOrders = workOrders.filter((order) =>
+      isWorkOrderOwnedByCandidate(
+        { rowCandidateName: order.candidateName, topCandidateName },
+        names,
+      ),
+    );
+    const hasKnownName = names.some((name) => Boolean(normalizeCandidateName(name)));
+    const unverifiedOrders = workOrders.filter(
+      (order) =>
+        !hasKnownName ||
+        !(normalizeCandidateName(order.candidateName) || normalizeCandidateName(topCandidateName)),
+    );
+    const outOfBandVerdict = known ? evaluateOutOfBandWorkOrders(ownedOrders, now) : null;
+    // 缺姓名的潜在在途单只能说未知，不能冒充“本人有单”或“本人无单”。
+    const identityUnknown = Boolean(evaluateOutOfBandWorkOrders(unverifiedOrders, now));
     if (known) this.compare(scope, workOrders, now, PROGRESS_READER.PRE_BOOKING);
     return {
       scope,
@@ -177,7 +202,7 @@ export class CandidateProgressService {
       policy: PROGRESS_POLICY.LEGACY,
       active: outOfBandVerdict
         ? PROGRESS_TRUTH.YES
-        : known && pointers !== null
+        : known && pointers !== null && !identityUnknown
           ? PROGRESS_TRUTH.NO
           : PROGRESS_TRUTH.UNKNOWN,
       phone,
