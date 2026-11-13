@@ -17,7 +17,7 @@ description: 抽样分析 Agent 生产对话或 BadCase / GoodCase 反馈样本�
 **生产 Supabase 直连**（只读）：
 
 - MCP 工具：`mcp__supabase__execute_sql`
-- `project_id`: `uvmbxcilpteaiizplcyp`
+- `project_id`: `resexopnhpthuoxfwydx`
 
 先用两张主表按 `message_id` 关联：`chat_messages`（完整对话）+ `message_processing_records`（每 turn 主账本）。确认问题 turn 后，再按 `trace_id/message_id` 下钻 `agent_execution_events`、`guardrail_review_records` 等观测附属表；不要把主表当成全部证据。
 
