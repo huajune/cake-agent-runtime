@@ -1,9 +1,51 @@
 {
   "baseVersion": "11.15.7",
-  "nextVersion": "11.15.7",
-  "updatedAt": "2026-11-12",
+  "nextVersion": "11.15.8",
+  "updatedAt": "2026-11-16",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1522",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1522",
+      "title": "固定可约窗口测试时钟",
+      "author": "huajune",
+      "mergedAt": "2026-11-16",
+      "opsNotes": [
+        "- 无。仅修复自动测试的时间依赖，不改变业务行为。"
+      ],
+      "businessUpdates": [
+        "固定可约窗口单元测试时钟，消除每周一下午的固定失败。"
+      ],
+      "summary": [
+        "固定可约窗口测试时钟",
+        "可约窗口测试原先使用现实时间：每周一 16:30 之后，当天窗口已结束，而 7 天范围不包含下周一，断言因此失败。",
+        "两个窗口用例显式传入固定的周一上午时刻，日期窗口用例补充结果条数断言，避免空数组使断言误通过。"
+      ],
+      "features": [],
+      "fixes": [
+        "固定可约窗口单元测试时钟，消除每周一下午的固定失败。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "仅修改一个测试文件，3 行新增；摘出已有 #1521 中的测试修复作为独立发布前置，不包含复聊实现。",
+        "可约窗口测试原先使用现实时间：每周一 16:30 之后，当天窗口已结束，而 7 天范围不包含下周一，断言因此失败。",
+        "两个窗口用例显式传入固定的周一上午时刻，日期窗口用例补充结果条数断言，避免空数组使断言误通过。",
+        "固定可约窗口测试时钟"
+      ],
+      "config": [
+        "N/A：无运行时逻辑、数据库、环境变量、密钥、基础设施、prompt 或模型选择变更。",
+        "真实 Agent / 飞书 / 生产测试集回归 N/A：只修复单测输入时间；发版底账 N/A：未要求；发布通知 N/A：未授权广播。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "修复前完整检查复现：此用例失败，其余 566 suites、9290 tests 通过（另有既有 21 项 skipped）。",
+        "修复后定向测试 83/83 通过，Prettier 与 `git diff --check` 通过。",
+        "未新增开放自然语言正则和虚构 prompt 示例。",
+        "`pnpm run ci:check` 完整通过：567 suites、9291 tests、3 snapshots；既有 2 suites / 21 tests skipped。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.15.7",
     "date": "2026-11-12",
@@ -65,5 +107,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "4e495f6a2c452e34182d93667c53f07fa3b6e33a"
+  "lastAnalyzedSha": "3f5a25da8f4ad75c84717381e898d287764d9b8a"
 }
