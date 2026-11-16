@@ -5,6 +5,7 @@ export const TOUCH_SLOT_STATE = {
   SENT: 'sent',
   FAILED: 'failed',
   UNKNOWN: 'unknown',
+  WAITING_HOSTING: 'waiting_hosting',
 } as const;
 export type TouchSlotState = (typeof TOUCH_SLOT_STATE)[keyof typeof TOUCH_SLOT_STATE];
 

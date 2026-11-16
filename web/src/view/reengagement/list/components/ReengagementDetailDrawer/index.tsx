@@ -85,15 +85,19 @@ const EVENT_LABELS: Record<string, string> = {
   delivery_attempted: '开始投递',
   sent: '投递成功',
   delivery_unknown: '投递状态不明',
+  hosting_deferred: '等待托管账号恢复',
   superseded: '已被新任务替代',
 };
 
 const DETAIL_REASON_LABELS: Record<string, string> = {
+  sent: '复聊消息已成功发出',
   no_delivery_port: '没有实际投递通道',
   shadow_mode: 'Shadow 模式只生成不发送',
   rollout_disabled: '灰度未开启',
   scenario_rollout_disabled: '该场景灰度未开启，只生成不发送',
   reengagement_disabled: '复聊总开关关闭',
+  hosting_unavailable: '托管账号暂不可用，恢复后自动续发',
+  hosting_recovery_expired: '续发等待超过 24 小时，已停止补发',
   over_frequency_limit_24h: '24 小时频控已达上限',
   candidate_replied_after_anchor: '候选人已经回复，所以不再追问',
   scenario_no_longer_holds: '当前会话状态已不满足这个复聊场景',
@@ -351,6 +355,13 @@ function getEventSummary(event: ReengagementEvent): string {
 
   if (event.event === 'scheduled') {
     return fireAt ? `系统创建了一次复聊任务，计划在 ${fireAt} 触发。` : '系统创建了一次复聊任务。';
+  }
+
+  if (event.event === 'hosting_deferred') {
+    const retryAt = formatMaybeEpoch(readNumber(event.detail, 'retryAt'));
+    return retryAt
+      ? `托管账号暂不可用，消息尚未发出，系统将在 ${retryAt} 再检查是否可以续发。`
+      : '托管账号暂不可用，消息尚未发出，恢复后系统会重新检查并续发。';
   }
 
   if (event.event === 'schedule_precheck_stopped') {

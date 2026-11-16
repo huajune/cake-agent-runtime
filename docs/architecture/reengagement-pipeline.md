@@ -166,6 +166,8 @@ await reengagementQueue.add(
 
 ```
 reserved → delivery_attempted → sent / failed / unknown
+                 ↓（明确零发送、托管暂不可用）
+          waiting_hosting → reserved（同一恢复轮次仅一次）
 ```
 
 | 状态                 | 语义与处置                                                                                                  |
@@ -178,6 +180,33 @@ reserved → delivery_attempted → sent / failed / unknown
 这样同时杜绝「写了底账却没发出」和「发出了但落库失败导致重复发」。
 
 **频控 24h ≤ 2** 按 `sessionId` 统计近 24h 底账中 **`sent` 状态**的条数——`reserved`/`failed`/`unknown` 不计，否则投递失败重投会被误算成多次触达。
+
+### 托管账号掉线恢复
+
+`ReengagementHostingRecoveryService` 在生成前读取托管账号目录：明确离线或错误退出时延后；
+发送时若渠道返回 `400101`，只有全部片段确认未受理（`deliveredSegments=0`、
+`unknownSegments=0`）才进入同一恢复路径。超时、部分受理、结果未知及成功后的本地补账失败均不得据此重发。
+
+恢复义务先写回原 Bull job，再以 `:hosting-recovery:{attempt}` 排 delayed job；
+`sessionRef/scenarioCode/anchorEventId/anchorAt`、工单与档位保持不变，触达表仍是一行。
+触达槽另存恢复轮次，Lua 原子接管 `waiting_hosting`；旧 job 补入队不能覆盖新轮次的在途、未知或已发送状态。
+仅本次投递的明确拒收证据可将 `delivery_attempted` 转为等待态；离线预检不能覆盖另一 worker 已占用的发送槽。
+取消恢复任务时同步关闭同轮次的等待槽，防止旧 job 的补入队重试重新排入已取消的触达。
+原 job 的 `hostingRecovery.retryAt` 表示尚需补入队，重启后只补同一个恢复 job，不重做发送。
+新场景替代或业务停发时，恢复 job 与普通待发 job 一起取消。
+
+退避基准为 1、2、4、5 分钟，之后保持 5 分钟上限；每个新轮次采用 Equal Jitter，
+实际等待为基准的一半加上 `[0, 基准的一半)` 内的随机时长（毫秒取整），即依次约 30～60 秒、1～2 分钟、2～4 分钟，之后 2.5～5 分钟。
+随机得到的 `retryAt` 随原 job 持久化，重启或入队失败后的补排复用原时间，不重新抽样或延长总预算。
+仅恢复任务会在目录缺失/查询异常时继续等待，
+首次延后起最多 24 小时。恢复时重新核验最新工单、对话、候选人回复、暂停、黑名单、频控与场景时效，
+且必须读到原账号 `status=2`（在线）才允许重新生成文案并发送；已过时的面试提醒按原规则停止。
+离线等待不调用模型、不计触达频控。追溯页用 `hosting_deferred` 记录下一次检查时间，
+`hosting_recovery_expired` 表示等待预算耗尽。账号状态以
+[平台账号目录契约](https://s.apifox.cn/7d5bf7ae-ff7c-4e09-b4d6-530a597f03b8/api-147790350)
+为准（1 离线、2 在线、3 错误账号、4 错误退出、5 未托管）；不将未知枚举值视为在线。
+
+本机制接管新记录的明确掉线任务，不自动将旧版 `unknown` 触达升级为可发送；旧失败任务须另行核实零发送证据与当前业务时效。
 
 ### 5.3 shadow 模式
 

@@ -24,6 +24,7 @@ describe('FollowUpSchedulerService', () => {
   let queue: { add: jest.Mock; getJob: jest.Mock; getJobs: jest.Mock };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
+  let ledger: { cancelWaitingForHosting: jest.Mock };
   let service: FollowUpSchedulerService;
 
   beforeEach(() => {
@@ -42,10 +43,12 @@ describe('FollowUpSchedulerService', () => {
       trackSuperseded: jest.fn(),
       trackStoppedBeforeFire: jest.fn(),
     };
+    ledger = { cancelWaitingForHosting: jest.fn().mockResolvedValue(undefined) };
     service = new FollowUpSchedulerService(
       queue as never,
       systemConfig as never,
       tracking as never,
+      ledger as never,
     );
   });
 
@@ -80,6 +83,34 @@ describe('FollowUpSchedulerService', () => {
 
     expect(result).toEqual({ scheduled: false, reason: 'disabled' });
     expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('原锚点任务已完成后，仍取消被新场景替代的离线恢复任务', async () => {
+    const remove = jest.fn().mockResolvedValue(undefined);
+    queue.getJobs.mockResolvedValue([
+      {
+        id: 'sess-1:opening_no_reply:opening:hosting-recovery:2',
+        data: {
+          sessionRef,
+          scenarioCode: 'opening_no_reply',
+          anchorEventId: 'opening',
+          anchorAt: 1000,
+          hostingRecovery: { firstDeferredAt: 1000, attempt: 2 },
+        },
+        remove,
+      },
+    ]);
+    const removed = await service.removeSupersededPendingJobs({
+      sessionRef,
+      scenarioCode: 'address_missing',
+    });
+    expect(removed).toBe(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(ledger.cancelWaitingForHosting).toHaveBeenCalledWith(
+      'sess-1:opening_no_reply:opening',
+      2,
+    );
+    expect(tracking.trackSuperseded).toHaveBeenCalled();
   });
 
   it('does not schedule unknown scenarios', async () => {

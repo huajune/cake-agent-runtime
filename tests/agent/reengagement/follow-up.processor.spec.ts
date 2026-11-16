@@ -5,6 +5,8 @@ import {
 } from '@agent/reengagement/follow-up-scheduler.service';
 import type { Job } from 'bull';
 import type { ReengagementSessionState } from '@memory/recall.types';
+import { DeliveryFailureError } from '@wecom/message/types';
+import { ReengagementHostingRecoveryService } from '@agent/reengagement/hosting-recovery.service';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
@@ -51,6 +53,7 @@ describe('FollowUpProcessor', () => {
     isInSessionTouchCooldown: jest.Mock;
     reserve: jest.Mock;
     markDeliveryAttempted: jest.Mock;
+    markWaitingForHosting: jest.Mock;
     markSent: jest.Mock;
     markFailedOrUnknown: jest.Mock;
     acquireOnce: jest.Mock;
@@ -77,6 +80,11 @@ describe('FollowUpProcessor', () => {
   let configService: { get: jest.Mock };
   let actionPermit: { evaluate: jest.Mock };
   let candidateProgress: { read: jest.Mock };
+  let hostingRecovery: {
+    continuePending: jest.Mock;
+    deferIfUnavailable: jest.Mock;
+    defer: jest.Mock;
+  };
   let delivery: {
     deliver: jest.Mock;
   };
@@ -86,6 +94,11 @@ describe('FollowUpProcessor', () => {
     jest.useRealTimers();
     actionPermit = { evaluate: jest.fn().mockResolvedValue({ allowed: true }) };
     candidateProgress = { read: jest.fn().mockResolvedValue({ active: 'unknown' }) };
+    hostingRecovery = {
+      continuePending: jest.fn().mockResolvedValue(false),
+      deferIfUnavailable: jest.fn().mockResolvedValue(false),
+      defer: jest.fn().mockResolvedValue(undefined),
+    };
     requestContext = {
       get: jest.fn().mockReturnValue({}),
       run: jest.fn((_ctx: unknown, fn: () => unknown) => fn()),
@@ -113,6 +126,7 @@ describe('FollowUpProcessor', () => {
       isInSessionTouchCooldown: jest.fn().mockResolvedValue(false),
       reserve: jest.fn().mockResolvedValue('reserved'),
       markDeliveryAttempted: jest.fn().mockResolvedValue(undefined),
+      markWaitingForHosting: jest.fn().mockResolvedValue(true),
       markSent: jest.fn().mockResolvedValue(undefined),
       markFailedOrUnknown: jest.fn().mockResolvedValue(undefined),
       acquireOnce: jest.fn().mockResolvedValue(true),
@@ -199,7 +213,7 @@ describe('FollowUpProcessor', () => {
     };
   });
 
-  const buildProcessor = (withDelivery = true) =>
+  const buildProcessor = (withDelivery = true, recovery: unknown = hostingRecovery) =>
     new FollowUpProcessor(
       queue as never,
       session as never,
@@ -219,6 +233,7 @@ describe('FollowUpProcessor', () => {
       configService as never,
       actionPermit as never,
       candidateProgress as never,
+      recovery as never,
       withDelivery ? (delivery as never) : undefined,
       requestContext as never,
     );
@@ -232,6 +247,137 @@ describe('FollowUpProcessor', () => {
       expect.anything(),
       'action_permit:hosting_paused',
     );
+  });
+
+  describe('托管掉线恢复', () => {
+    beforeEach(() => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+      });
+    });
+
+    it('离线时延后任务，不占用发送槽也不调用模型', async () => {
+      hostingRecovery.deferIfUnavailable.mockResolvedValue(true);
+      await buildProcessor().process(makeJob());
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+      expect(touchLedger.reserve).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
+    });
+
+    it('离线排程 → 账号在线 → 按原身份续发，重复执行不再发送', async () => {
+      const now = Date.UTC(2026, 10, 16, 3, 30);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      const bots = {
+        getConfiguredBotList: jest.fn().mockResolvedValue([{ wxid: 'bot-1', status: 1 }]),
+      };
+      const recovery = new ReengagementHostingRecoveryService(
+        queue as never,
+        bots as never,
+        touchLedger as never,
+        { ...tracking, trackHostingDeferred: jest.fn() } as never,
+      );
+      const processor = buildProcessor(true, recovery);
+      const original = makeJob() as Job<FollowUpJob>;
+      original.data.channelIdentity = { botImId: 'bot-1', imContactId: 'contact-1' };
+      await processor.process(original);
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
+      const retry = makeJob({ data: queue.add.mock.calls[0][1] }) as Job<FollowUpJob>;
+      jest.spyOn(Date, 'now').mockReturnValue(now + 60_000);
+      bots.getConfiguredBotList.mockResolvedValue([{ wxid: 'bot-1', status: 2 }]);
+      await processor.process(retry);
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+      expect(delivery.deliver).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          idempotencyKey: 'sess-1:opening_no_reply:evt-1',
+        }),
+      );
+      touchLedger.reserve.mockResolvedValue('duplicate_sent');
+      await processor.process(retry);
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+    });
+
+    it('候选人在离线期间已回话，恢复时按当前状态停发', async () => {
+      const job = makeJob() as Job<FollowUpJob>;
+      job.data.hostingRecovery = { firstDeferredAt: Date.now(), attempt: 1 };
+      session.getReengagementState.mockResolvedValue(
+        baseState({
+          lastCandidateMessageAt: job.data.anchorAt + 1000,
+        }),
+      );
+      await buildProcessor().process(job);
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'candidate_replied_after_anchor',
+      );
+      expect(delivery.deliver).not.toHaveBeenCalled();
+    });
+
+    it('上次保存排程义务后中断，只补入队，不重复生成或投递', async () => {
+      hostingRecovery.continuePending.mockResolvedValue(true);
+      await buildProcessor().process(makeJob());
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
+    });
+
+    it('400101 明确零发送进入恢复，而非 unknown 终态', async () => {
+      const job = makeJob();
+      delivery.deliver.mockRejectedValue(
+        new DeliveryFailureError('provider_business_error:400101', {
+          success: false,
+          segmentCount: 1,
+          deliveredSegments: 0,
+          failedSegments: 1,
+          unknownSegments: 0,
+          totalTime: 0,
+          failureReason: 'hosting_unavailable',
+        }),
+      );
+      await buildProcessor().process(job);
+      expect(hostingRecovery.defer).toHaveBeenCalledWith(job, expect.anything(), true);
+      expect(tracking.trackDeliveryUnknown).not.toHaveBeenCalled();
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'failure',
+          error: 'provider_business_error:400101',
+        }),
+      );
+    });
+
+    it.each([
+      { deliveredSegments: 1, unknownSegments: 0 },
+      { deliveredSegments: 0, unknownSegments: 1 },
+      { deliveredSegments: 0, unknownSegments: undefined },
+    ])('部分发送或未知片段不能恢复：%o', async (counts) => {
+      delivery.deliver.mockRejectedValue(
+        new DeliveryFailureError('uncertain', {
+          success: false,
+          segmentCount: 2,
+          failedSegments: 1,
+          totalTime: 0,
+          failureReason: 'hosting_unavailable',
+          ...counts,
+        }),
+      );
+      await expect(buildProcessor().process(makeJob())).rejects.toThrow('uncertain');
+      expect(hostingRecovery.defer).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+        'sess-1:opening_no_reply:evt-1',
+        'unknown',
+      );
+    });
+
+    it('恢复后的任务使用原触达身份及轮次，成功后正常计频控', async () => {
+      const job = makeJob() as Job<FollowUpJob>;
+      job.data.hostingRecovery = { firstDeferredAt: Date.now() - 60_000, attempt: 1 };
+      await buildProcessor().process(job);
+      expect(touchLedger.reserve).toHaveBeenCalledWith('sess-1:opening_no_reply:evt-1', 1);
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+      expect(touchLedger.markSent).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('derived progress stops pre-booking reminders even after session booked marker expires', async () => {
@@ -2722,20 +2868,29 @@ describe('FollowUpProcessor', () => {
       expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
-    it('does not schedule a reminder replacement when the new time is already past', async () => {
+    it.each([false, true])('面试时间已过不补发（hostingRecovery=%s）', async (recovering) => {
       sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面成功',
         interviewTime: '2026-06-20 10:00',
       });
 
-      await buildProcessor().process(bookingJob());
+      await buildProcessor().process(
+        bookingJob(
+          recovering
+            ? {
+                hostingRecovery: { firstDeferredAt: Date.now() - 60_000, attempt: 1 },
+              }
+            : {},
+        ),
+      );
 
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
         'interview_time_passed',
       );
       expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
     });
 
     it('does not use a matching active_booking time when Sponge is unavailable', async () => {
@@ -3000,6 +3155,25 @@ describe('FollowUpProcessor', () => {
         );
       },
     );
+
+    it('成功续发后的本地收尾不受托管恢复等待期限影响', async () => {
+      const acceptedAt = Date.now() - 60_000;
+      hostingRecovery.continuePending.mockResolvedValue(true);
+      await buildProcessor().process(
+        onboardingJob({
+          onboardingTouchAcceptedAt: acceptedAt,
+          hostingRecovery: { firstDeferredAt: Date.now() - 25 * 3600_000, attempt: 1 },
+        }),
+      );
+      expect(hostingRecovery.continuePending).not.toHaveBeenCalled();
+      expect(touchLedger.markSent).toHaveBeenCalledWith(
+        expect.any(String),
+        sessionRef.sessionId,
+        acceptedAt,
+      );
+      expect(scheduler.scheduleOnboardingCheck).toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
+    });
 
     it('does not schedule onboarding checks when the delivery result is unknown', async () => {
       sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
