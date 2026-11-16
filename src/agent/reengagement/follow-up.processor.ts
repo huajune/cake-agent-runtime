@@ -418,7 +418,8 @@ export class FollowUpProcessor implements OnModuleInit {
     if (!permit.allowed) {
       if (
         job.data.hostingRecovery &&
-        permit.reason === ACTION_DENIAL_REASON.RECEIVING_BOT_NOT_HOSTED
+        (permit.reason === ACTION_DENIAL_REASON.RECEIVING_BOT_NOT_HOSTED ||
+          permit.reason === ACTION_DENIAL_REASON.PERMIT_UNAVAILABLE)
       ) {
         await this.hostingRecovery.defer(job, identity);
         return;

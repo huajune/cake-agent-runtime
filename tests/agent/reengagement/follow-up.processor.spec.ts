@@ -7,6 +7,7 @@ import type { Job } from 'bull';
 import type { ReengagementSessionState } from '@memory/recall.types';
 import { DeliveryFailureError } from '@wecom/message/types';
 import { ReengagementHostingRecoveryService } from '@agent/reengagement/hosting-recovery.service';
+import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
@@ -297,6 +298,91 @@ describe('FollowUpProcessor', () => {
       touchLedger.reserve.mockResolvedValue('duplicate_sent');
       await processor.process(retry);
       expect(delivery.deliver).toHaveBeenCalledTimes(1);
+    });
+
+    it('恢复任务遇到权限账号目录异常时继续延后，查询恢复后重新核验并发送', async () => {
+      const now = Date.UTC(2026, 10, 16, 3, 30);
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+      try {
+        const bots = {
+          getConfiguredBotList: jest
+            .fn()
+            .mockRejectedValueOnce(new Error('directory unavailable'))
+            .mockResolvedValue([{ wxid: 'bot-1', status: 2 }]),
+        };
+        const permit = new ActionPermitService(
+          { getChatPause: jest.fn().mockResolvedValue({ paused: false }) } as never,
+          systemConfig as never,
+          {} as never,
+          { matchBlacklisted: jest.fn().mockResolvedValue(null) } as never,
+          bots as never,
+        );
+        actionPermit.evaluate.mockImplementation((input) => permit.evaluate(input));
+        const recovery = new ReengagementHostingRecoveryService(
+          queue as never,
+          bots as never,
+          touchLedger as never,
+          { ...tracking, trackHostingDeferred: jest.fn() } as never,
+        );
+        const processor = buildProcessor(true, recovery);
+        const job = makeJob() as Job<FollowUpJob>;
+        job.data.channelIdentity = { botImId: 'bot-1', imContactId: 'contact-1' };
+        job.data.hostingRecovery = { firstDeferredAt: now - 60_000, attempt: 1 };
+
+        await processor.process(job);
+
+        expect(queue.add).toHaveBeenCalledWith(
+          REENGAGEMENT_JOB_NAME,
+          expect.objectContaining({
+            hostingRecovery: { firstDeferredAt: now - 60_000, attempt: 2 },
+          }),
+          expect.objectContaining({ jobId: 'sess-1:opening_no_reply:evt-1:hosting-recovery:2' }),
+        );
+        expect(tracking.trackStopped).not.toHaveBeenCalled();
+        expect(touchLedger.reserve).not.toHaveBeenCalled();
+        expect(reengagementAgent.compose).not.toHaveBeenCalled();
+        expect(delivery.deliver).not.toHaveBeenCalled();
+
+        clock.mockReturnValue(now + 120_000);
+        await processor.process(makeJob({ data: queue.add.mock.calls[0][1] }));
+
+        expect(actionPermit.evaluate).toHaveBeenCalledTimes(2);
+        expect(touchLedger.reserve).toHaveBeenCalledWith('sess-1:opening_no_reply:evt-1', 2);
+        expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
+        expect(delivery.deliver).toHaveBeenCalledTimes(1);
+        expect(queue.add).toHaveBeenCalledTimes(1);
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it.each(['hosting_paused', 'candidate_blacklisted', 'global_disabled'])(
+      '恢复任务收到明确权限拒绝仍然停止：%s',
+      async (reason) => {
+        const job = makeJob() as Job<FollowUpJob>;
+        job.data.hostingRecovery = { firstDeferredAt: Date.now(), attempt: 1 };
+        actionPermit.evaluate.mockResolvedValue({ allowed: false, reason });
+        await buildProcessor().process(job);
+        expect(tracking.trackStopped).toHaveBeenCalledWith(
+          expect.anything(),
+          `action_permit:${reason}`,
+        );
+        expect(hostingRecovery.defer).not.toHaveBeenCalled();
+        expect(reengagementAgent.compose).not.toHaveBeenCalled();
+        expect(delivery.deliver).not.toHaveBeenCalled();
+      },
+    );
+
+    it('普通任务的权限查询异常不会凭空建立托管恢复义务', async () => {
+      actionPermit.evaluate.mockResolvedValue({ allowed: false, reason: 'permit_unavailable' });
+      await buildProcessor().process(makeJob());
+      expect(hostingRecovery.defer).not.toHaveBeenCalled();
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'action_permit:permit_unavailable',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
     });
 
     it('候选人在离线期间已回话，恢复时按当前状态停发', async () => {
