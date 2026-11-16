@@ -1,5 +1,5 @@
 /**
- * 模型数据字典 — 所有已知模型的静态目录 (2026.08 更新版)
+ * 模型数据字典 — 已登记模型的静态目录
  *
  * RegistryService 根据已注册 Provider 过滤出当前可用模型。
  * 新增模型只需在对应 Provider 下加一行。
@@ -18,8 +18,8 @@ export interface ModelEntry {
 }
 
 export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
-  // 收录原则：每家厂商只保留各档位的**最新**在售模型，
-  // 上一代模型即使官方仍 Active 也不收录；新一代发布后应同步替换对应档位。
+  // 收录原则：每家厂商优先收录各档位的最新在售模型。
+  // 切换验证期保留仍被配置引用的旧模型，迁移完成后移除，避免影响能力判断与回退。
   // ⚠️ 本字典是 supportsVision 的单一事实源、Dashboard 模型覆盖保存校验的白名单；
   // 运行时 resolve() 不查本字典，历史配置里的旧 ID 仍可执行（但图片轮会走 fallback）。
   // ==================== Anthropic ====================
@@ -116,6 +116,13 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     name: 'Qwen3.7 Plus',
     description: 'Qwen3.7 Plus (增强推理 / 工具调用 / 图文多模态 / 长上下文)',
     releasedAt: '2026-06-02',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
+  },
+  'qwen/qwen4-max': {
+    provider: 'qwen',
+    name: 'Qwen4 Max',
+    description: 'Qwen4 Max (旗舰推理 / 1M 上下文 / 结构化输出 / 原生多模态 / 工具调用)',
+    releasedAt: '2026-11-16',
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   'qwen/qwen3.8-max': {
