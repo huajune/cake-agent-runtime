@@ -1998,6 +1998,7 @@ describe('窗口制岗位可约时刻口径（badcase 8x91d33j / kx7173ak）', (
     const slots = buildBookableSlots({
       windows: [{ weekday: '每周一', startTime: '13:30', endTime: '16:30' } as never],
       horizonDays: 7,
+      now: new Date('2026-11-16T09:00:00+08:00'),
     });
     const bookable = slots.find((s) => s.bookingAllowed);
     expect(bookable?.interviewTimeFlexible).toBe(true);
@@ -2011,7 +2012,9 @@ describe('窗口制岗位可约时刻口径（badcase 8x91d33j / kx7173ak）', (
     const slots = buildBookableSlots({
       windows: [{ weekday: '每周二' } as never],
       horizonDays: 7,
+      now: new Date('2026-11-16T09:00:00+08:00'),
     });
+    expect(slots).toHaveLength(1);
     expect(slots.every((s) => s.interviewTimeFlexible === undefined)).toBe(true);
   });
 });
