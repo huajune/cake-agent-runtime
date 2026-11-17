@@ -1,9 +1,78 @@
 {
   "baseVersion": "11.16.1",
-  "nextVersion": "11.16.1",
+  "nextVersion": "11.16.2",
   "updatedAt": "2026-11-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1520",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1520",
+      "title": "修复同行人工单导致本人复聊误停",
+      "author": "huajune",
+      "mergedAt": "2026-11-17",
+      "opsNotes": [
+        "**报名前复聊提醒** ⏳ 待上线",
+        "- 多人共用手机号报名时，同行人的报名记录不再导致本人提醒被误停。",
+        "- 本人的有效报名记录仍会停止报名前提醒；姓名无法确认时沿用现有兜底，提醒时间范围保持不变。"
+      ],
+      "businessUpdates": [
+        "无。",
+        "工单行姓名优先于顶层姓名，仅本人名下工单能形成确定的停发结论。",
+        "即使会话已有手机号，仍读取当前托管账号的长期档案姓名，补齐身份判断依据。",
+        "可能导致停发的工单缺少身份依据时返回 unknown；明确不同名、已终止或窗口外工单不误记为本人在途。",
+        "修复同行人工单误停复聊"
+      ],
+      "summary": [
+        "修复同行人工单误停复聊",
+        "同步生产数据库标识文档",
+        "修复同行人工单导致本人复聊误停"
+      ],
+      "features": [
+        "无。"
+      ],
+      "fixes": [
+        "工单行姓名优先于顶层姓名，仅本人名下工单能形成确定的停发结论。",
+        "即使会话已有手机号，仍读取当前托管账号的长期档案姓名，补齐身份判断依据。",
+        "可能导致停发的工单缺少身份依据时返回 unknown；明确不同名、已终止或窗口外工单不误记为本人在途。",
+        "修复同行人工单误停复聊"
+      ],
+      "optimizations": [
+        "补齐 fresh/cached、同行人/本人/混合工单、姓名缺失、长期档案回退和旧时间窗口测试。",
+        "Processor 测试接入真实 CandidateProgressService，覆盖进入生成与提前停发两条分支；外部存储、工单及模型依赖为 mock，投递保持 shadow。",
+        "同步 IB-13 业务规则及候选人进度模块说明。窗口差异观测继续使用原始工单，不改各读者时间窗口、旧 booked 终态或线协议。"
+      ],
+      "ops": [
+        "本次包含当前工作区的 10 个文件，按业务修复和文档校正分开提交，正式 PR 目标 develop。",
+        "发版底账：N/A，用户未要求创建。",
+        "用户已授权合并及生产发布，完成下方联合验收收口后按仓库链路推进；发布广播尚未授权。",
+        "版本、部署与健康验证将在实际发布后补齐，不提前声明已上线。",
+        "同步生产数据库标识文档"
+      ],
+      "config": [
+        "现有 SUPABASE_DB_URL_PROD 示例及相关文档的项目标识校正为 resexopnhpthuoxfwydx；已只读核对本地迁移配置对应项目，未输出或修改任何密钥。",
+        "新增/删除环境变量、运行时默认值、CI/容器/托管配置和 secrets/variables 同步：N/A，仅修正文档示例，不修改实际环境配置。",
+        "数据库 schema、migration、RPC、权限、回填、迁移顺序及兼容窗口：N/A，均无变更。数据库环境说明文件的修改仅为项目标识。",
+        "应用代码可随常规部署落地，无前置迁移或配置步骤；生产配置生效、回滚版本及发布窗口验证留待实际发布任务。"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "已读取开发、PR、CI 与发布约定，逐文件确认 staged/unstaged/untracked 范围并审阅业务逻辑、异常降级、归属边界和测试覆盖；无密钥、生成物或调试残留。",
+        "两个定向测试套件通过：151 项测试。",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则；仅复用既有姓名完全匹配逻辑。",
+        "prompt 规则、虚构 prompt 示例、模型或工具契约变更：N/A。",
+        "推送钩子完整执行 `pnpm run ci:check` 通过：lint、format、typecheck、地理/词表/质量台账/业务规则校验、前后端构建、全量覆盖率测试全部通过。567 套件、9,313 项测试、3 个快照通过；2 套件/21 项按仓库既有配置跳过。",
+        "`pnpm run duplication:check` 通过（0.57%）；`pnpm run test:di-smoke` 单独执行通过（1 项）。",
+        "最终 `git diff --check` 通过，工作区干净；分支、两个 Conventional Commits 及 PR 目标符合约定。",
+        "Processor 真实链路受控验收及业务评审已完成，生产 Dashboard 收口状态见下方。",
+        "云端 [CI Checks](https://github.com/huajune/cake-agent-runtime/actions/runs/43406936098) 全部通过，包含构建、全量覆盖率测试与 DI 冒烟。",
+        "本次 HEAD `7203a48997f25e529f9166fc5fe4d86982fda44b` 的官方 Codex 评审通过，仓库自动化已核验[评审证据](https://github.com/huajune/cake-agent-runtime/pull/1520#issuecomment-6849953133)并提交 APPROVED；联合验收状态见下方。",
+        "代码审阅来源：Codex；不推断生产影响人数，不提前声明部署完成。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.16.1",
     "date": "2026-11-17",
@@ -63,5 +132,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "e5cf3ce44d1bb5696218133797c1c15be1cc60b0"
+  "lastAnalyzedSha": "eedbee14e5ee301e4e438a070d975a3bb3f3ff5b"
 }
