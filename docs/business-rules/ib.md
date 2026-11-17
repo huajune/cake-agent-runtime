@@ -215,12 +215,19 @@
 
 复聊使用独立链路：按实际工单、真人来源和候选人诉求判断是否提醒或停止。仅到店面试适用聊天约定时间不一致闸；AI完成截止不当成改约时间。
 
+报名前复聊的带外工单停发仅依据本人名下工单。同手机号下明确不同名的同行人工单不能让本人停发；姓名缺失时保留未知，沿用既有降级与 booked 终态保护，不改变各读者时间窗口。
+
 - 状态：现行基线
 - 来源：`docs/prompt-rule-ledger.md`；下列当前实现及其原始裁定/BadCase 注释（未补造裁定人或日期）。
 - 落点：`src/agent/reengagement/reengagement.agent.ts#buildSystemPrompt`
 - 落点：`src/agent/reengagement/scenario-registry.ts#generationPolicy`
+- 落点：`src/biz/candidate-progress/services/candidate-progress.service.ts#read`
+- 落点：`src/tools/booking/booking-snapshot.util.ts#isWorkOrderOwnedByCandidate`
+- 落点：`src/agent/reengagement/follow-up.processor.ts#process`
 - 验证：`tests/agent/reengagement/reengagement.agent.spec.ts`
 - 验证：`tests/agent/reengagement/scenario-registry.spec.ts`
+- 验证：`tests/biz/candidate-progress/candidate-progress.service.spec.ts`
+- 验证：`tests/agent/reengagement/follow-up.processor.spec.ts`
 
 ## 验证边界
 
@@ -232,6 +239,8 @@
 - 换店是否自动取消旧单属于新业务行为；当前按取消工具契约执行，不由重构推导为自动取消。
 
 ## 变更记录
+
+- 2026-11-12：六阶段改造对账的虚构数据复现显示，同手机号下同行人工单会让本人报名前复聊误停。fresh / cached 进度读取复用现有姓名归属校验，并补齐已有会话手机号时的档案姓名读取；只修复身份边界，保留七套窗口。生产影响仍须按停发当时的证据核定，不以复现结果冒充影响人数或已部署结论。
 
 - 2026-11-06：线上脱敏样本 `2afde530616f036f` 在姓名引用被退回、纠参未执行时宣称面试已约。修正步骤末尾和修复上下文的回执投影；预检预算允许 query→validate→纠参三步，同一原始输入跨重试仍共享预算。不扩大自然语言正则拦截，不将规则说明或单元测试当作已部署验证。
 

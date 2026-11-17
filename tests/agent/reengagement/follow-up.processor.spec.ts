@@ -5,6 +5,7 @@ import {
 } from '@agent/reengagement/follow-up-scheduler.service';
 import type { Job } from 'bull';
 import type { ReengagementSessionState } from '@memory/recall.types';
+import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
@@ -246,6 +247,59 @@ describe('FollowUpProcessor', () => {
       'oob_work_order_active:约面成功',
     );
   });
+
+  it.each([
+    { candidateName: '虚构同行人乙', stopped: false },
+    { candidateName: '虚构本人甲', stopped: true },
+  ])(
+    'checks real progress ownership before generation: $candidateName',
+    async ({ candidateName, stopped }) => {
+      session.getSessionState.mockResolvedValue({
+        facts: {
+          interview_info: { phone: { value: '13812345678' }, name: { value: '虚构本人甲' } },
+        },
+      });
+      const realProgress = new CandidateProgressService(
+        {
+          tryGetActiveBookings: jest.fn().mockResolvedValue([]),
+          getProfile: jest.fn().mockResolvedValue(null),
+        } as never,
+        session as never,
+        { getStage: jest.fn().mockResolvedValue(null) } as never,
+        {
+          fetchSignupWorkOrders: jest.fn().mockResolvedValue({
+            candidateName: '虚构本人甲',
+            workOrders: [{ workOrderId: 1, currentStatus: '约面成功', candidateName }],
+          }),
+        } as never,
+        {} as never,
+      );
+      candidateProgress.read.mockImplementation(realProgress.read.bind(realProgress));
+      await buildProcessor().process(
+        makeJob({
+          data: {
+            sessionRef,
+            scenarioCode: 'opening_no_reply',
+            anchorEventId: 'evt-ownership',
+            anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+            channelIdentity: { botImId: 'bot-1', managerName: 'manager-1' },
+          },
+        }),
+      );
+      if (stopped) {
+        expect(reengagementAgent.compose).not.toHaveBeenCalled();
+        expect(tracking.trackStopped).toHaveBeenCalledWith(
+          expect.anything(),
+          'oob_work_order_active:约面成功',
+        );
+      } else {
+        expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
+        expect(tracking.trackStopped).not.toHaveBeenCalled();
+      }
+      // Shadow mode: neither branch contacts a candidate.
+      expect(delivery.deliver).not.toHaveBeenCalled();
+    },
+  );
 
   it('registers the configured follow-up job name', () => {
     buildProcessor().onModuleInit();
