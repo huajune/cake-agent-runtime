@@ -197,6 +197,7 @@ export class MessageDeliveryService implements OnModuleInit {
         failedSegments: 1,
         unknownSegments: error instanceof ReplySendError && error.unknownResult ? 1 : 0,
         acceptedText: '',
+        failureReason: error instanceof ReplySendError ? error.failureReason : undefined,
         totalTime: 0,
       });
     }
@@ -219,6 +220,7 @@ export class MessageDeliveryService implements OnModuleInit {
     let failedCount = 0;
     let firstSegmentSent = false;
     let pauseInterrupted: ActionDenialReason | undefined;
+    let failureReason: DeliveryResult['failureReason'];
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
@@ -265,6 +267,7 @@ export class MessageDeliveryService implements OnModuleInit {
       } catch (error) {
         failedCount++;
         unknownSegments += error instanceof ReplySendError && error.unknownResult ? 1 : 0;
+        failureReason = error instanceof ReplySendError ? error.failureReason : undefined;
         const errorMessage = toErrorMessage(error);
         this.logger.error(
           `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败（含重试）: ${errorMessage}`,
@@ -289,6 +292,7 @@ export class MessageDeliveryService implements OnModuleInit {
       deliveredSegments: successCount,
       acceptedText: accepted.join('\n\n'),
       unknownSegments,
+      failureReason,
       totalTime: 0,
       skipped: Boolean(pauseInterrupted) || undefined,
       skipReason: pauseInterrupted,

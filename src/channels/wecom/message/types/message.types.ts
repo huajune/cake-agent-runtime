@@ -11,7 +11,7 @@ import type {
 import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import type { TurnOutcome } from '@agent/runner/agent-runner.types';
 import type { TurnFinalizer } from '@agent/runner/turn-finalizer';
-import type { WecomApiType } from '@shared-types/wecom-api.types';
+import type { WecomApiType, WecomSendFailureReason } from '@shared-types/wecom-api.types';
 
 export { AlertErrorType } from '@shared-types/tracking.types';
 
@@ -103,6 +103,8 @@ export interface DeliveryContext {
 }
 
 export interface DeliveryResult {
+  /** 仅携带已确认的渠道失败分类；续发还必须检查已发送/未知片段数。 */
+  failureReason?: WecomSendFailureReason;
   /** Exact text accepted by the send API. Never includes unsent/unknown segments. */
   acceptedText?: string;
   unknownSegments?: number;

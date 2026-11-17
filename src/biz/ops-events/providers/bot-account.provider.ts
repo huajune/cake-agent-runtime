@@ -18,6 +18,8 @@ export interface BotAccountInfo {
   name?: string;
   groupName?: string;
   groupId?: string;
+  /** Stride 托管账号状态，参见 WECOM_BOT_STATUS。 */
+  status?: number;
 }
 
 export interface BotAccountProvider {

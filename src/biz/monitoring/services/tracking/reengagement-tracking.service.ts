@@ -5,6 +5,7 @@ import {
   ReengagementStopContext,
   ReengagementTouchEventName,
   ReengagementTouchStatus,
+  REENGAGEMENT_HOSTING_RECOVERY_REASON,
 } from '../../entities/reengagement-touch.entity';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
 import type { WecomApiType } from '@shared-types/wecom-api.types';
@@ -90,6 +91,25 @@ export class ReengagementTrackingService {
       fireAt,
       scheduledAt: Date.now(),
       event: { event: ReengagementTouchEventName.Scheduled, detail: { jobId, fireAt } },
+    });
+  }
+
+  /** 因托管掉线延后，沿用原触达身份与原计划时间，事件记录下次恢复检查时间。 */
+  trackHostingDeferred(
+    identity: ReengagementTouchIdentity,
+    jobId: string,
+    retryAt: number,
+    attempt: number,
+  ): void {
+    this.persist({
+      ...this.base(identity),
+      jobId,
+      status: ReengagementTouchStatus.Scheduled,
+      decisionReason: REENGAGEMENT_HOSTING_RECOVERY_REASON.WAITING,
+      event: {
+        event: ReengagementTouchEventName.HostingDeferred,
+        detail: { jobId, retryAt, attempt },
+      },
     });
   }
 
@@ -293,6 +313,7 @@ export class ReengagementTrackingService {
     this.persist({
       ...this.base(identity),
       status: ReengagementTouchStatus.Sent,
+      decisionReason: ReengagementTouchEventName.Sent,
       shadow: false,
       outcomeKind: 'reply',
       generatedText,
