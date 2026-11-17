@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.17.0] - 2026-11-17
 
-**预计版本**: `v11.17.0`
-**最近更新**: `2026-11-17`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 运营说明
 **报名前复聊提醒** ⏳ 待上线
@@ -114,7 +110,6 @@
 - PR #1521 虚构 prompt 示例：N/A，未修改 prompt 或业务规则。
 - PR #1521 GitHub CI Checks：最新提交 `5f7082c5df6dfa048a3a57a4d06985a88b619cc7` 已通过，[查看运行记录](https://github.com/huajune/cake-agent-runtime/actions/runs/44006842494)。完整推送钩子通过，官方 Codex 对同一提交审查完成并获 APPROVED。
 - PR #1521 Processor → 离线故障注入 → 真实在线恢复 → 重新生成 → 真实投递的受控验收及逐条业务评审完成；生产 Dashboard 收口状态见下方。
-<!-- release:pending:end -->
 
 ## [11.16.1] - 2026-11-17
 
