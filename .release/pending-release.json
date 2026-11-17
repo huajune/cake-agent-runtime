@@ -1,9 +1,62 @@
 {
   "baseVersion": "11.16.0",
-  "nextVersion": "11.16.0",
-  "updatedAt": "2026-11-16",
+  "nextVersion": "11.16.1",
+  "updatedAt": "2026-11-17",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1513",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1513",
+      "title": "精简最终提示词展示内容",
+      "author": "huajune",
+      "mergedAt": "2026-11-17",
+      "opsNotes": [
+        "**消息流水详情阅读优化** ⏳ 待上线",
+        "- “最终提示词”仅展示系统指令全文和对话消息，方便直接阅读本轮上下文。",
+        "- 工具说明和参数定义可在“LLM 请求”中查看。"
+      ],
+      "businessUpdates": [
+        "无。",
+        "移除最终提示词面板的 Tools 展示段，保留旧记录的 system 兼容读取。"
+      ],
+      "summary": [
+        "精简最终提示词展示内容"
+      ],
+      "features": [
+        "无。"
+      ],
+      "fixes": [
+        "移除最终提示词面板的 Tools 展示段，保留旧记录的 system 兼容读取。"
+      ],
+      "optimizations": [
+        "删除已无调用方的工具定义展示函数及对应旧测试。",
+        "同步面板描述与可观测性文档；工具定义仍保存在原请求快照中。"
+      ],
+      "ops": [
+        "本 PR 从 develop 独立分支提交，仅包含本次展示调整的 4 个文件。",
+        "合并、生产发布、通知及发布后检查：N/A，本次范围为独立提交与创建正式 PR。",
+        "发版底账：N/A，未要求创建。",
+        "精简最终提示词展示内容"
+      ],
+      "config": [
+        "数据库迁移、RPC、权限、回填、环境变量、密钥、运行时配置、CI/部署配置及其同步：N/A，均无变更。",
+        "部署顺序与兼容窗口：N/A，本次仅调整前端展示，无数据结构变更。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "已读取仓库开发、PR、CI 与发布约定，逐文件审阅最终差异、范围、错误处理与测试影响；无密钥或无关改动。",
+        "定向前端测试：4 套件、14 项通过。",
+        "前端 TypeScript 检查及 Vite 构建通过；修改文件格式检查、git diff --check 通过。",
+        "di-smoke 通过；重复代码检查通过（0.57%）。",
+        "推送前完整 pnpm run ci:check 通过：566 套件、9,304 项测试、3 个快照通过；2 套件/23 项按既有配置跳过。",
+        "分支、提交与 PR 目标符合约定；PR 为 ready for review，目标 develop。",
+        "关键链路人工验证、真实 Agent 回归及其业务评审/同步：N/A，本次不改 Agent、模型调用、工具执行或业务规则；验证范围为静态检查、构建和自动化测试。",
+        "自然语言正则、prompt 示例与运行协议改造：N/A，均无新增或修改。",
+        "云端 required checks / review：创建 PR 后由仓库自动执行；合并前门禁不在本次授权范围内。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.16.0",
     "date": "2026-11-16",
@@ -108,5 +161,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "110d2d645f374da8bcc584803034e50274e0eb05"
+  "lastAnalyzedSha": "87cc59fbe2646ae476b406ea7a1c9250df03f92a"
 }
