@@ -7,7 +7,8 @@ import type { ReserveResult, TouchSlotState } from './touch-ledger.types';
 /**
  * 触达底账（频控 + outbox 幂等状态机）。
  *
- * 状态机：reserved → delivery_attempted → sent | failed | unknown。
+ * 状态机：reserved → delivery_attempted → sent | failed | unknown；
+ * 确认零发送的掉线任务 → waiting_hosting → 同轮次恢复原子占位 reserved。
  * - `reserve()` 用 Redis SET NX 原子占位；命中 `sent` → duplicate_sent（真已发，跳过）；
  *   命中其它（reserved/attempted）→ duplicate_inflight（上次未确认，可恢复）。
  * - 频控 24h ≤ 2 **只数 sent**（reserved/failed/unknown 不计——否则投递失败重投会被误算成多次触达）。
@@ -18,7 +19,7 @@ import type { ReserveResult, TouchSlotState } from './touch-ledger.types';
 export class TouchLedgerService {
   private readonly logger = new Logger(TouchLedgerService.name);
 
-  /** 触达槽 TTL：覆盖单次复聊生命周期，远小于频控窗口。 */
+  /** 触达槽 TTL：覆盖单次复聊生命周期，长于 24h 掉线恢复预算。 */
   private readonly SLOT_TTL_S = 3 * 24 * 60 * 60;
   /** 频控窗口。 */
   private readonly FREQ_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -59,7 +60,26 @@ export class TouchLedgerService {
   }
 
   /** 原子占位。已存在则按当前状态区分 duplicate_sent / duplicate_inflight。 */
-  async reserve(key: string): Promise<ReserveResult> {
+  async reserve(key: string, hostingRecoveryAttempt?: number): Promise<ReserveResult> {
+    if (hostingRecoveryAttempt != null) {
+      const resumed = await this.redis.eval(
+        `
+if redis.call('GET', KEYS[1]) == '${TOUCH_SLOT_STATE.WAITING_HOSTING}'
+  and tonumber(redis.call('GET', KEYS[2]) or '0') == tonumber(ARGV[1]) then
+  redis.call('SETEX', KEYS[1], ARGV[2], '${TOUCH_SLOT_STATE.RESERVED}')
+  return 1
+end
+return 0
+`,
+        [this.slotKey(key), `${this.slotKey(key)}:hosting-attempt`],
+        [hostingRecoveryAttempt, this.SLOT_TTL_S],
+      );
+      if (resumed === 1) return TOUCH_RESERVE_RESULT.RESERVED;
+      // 恢复任务不能在槽丢失后重新占位，也不能接管较新的恢复轮次。
+      return (await this.getState(key)) === TOUCH_SLOT_STATE.SENT
+        ? TOUCH_RESERVE_RESULT.DUPLICATE_SENT
+        : TOUCH_RESERVE_RESULT.DUPLICATE_INFLIGHT;
+    }
     const ok = await this.redis.setNx(
       this.slotKey(key),
       TOUCH_SLOT_STATE.RESERVED,
@@ -78,6 +98,51 @@ export class TouchLedgerService {
 
   async markDeliveryAttempted(key: string): Promise<void> {
     await this.redis.setex(this.slotKey(key), this.SLOT_TTL_S, TOUCH_SLOT_STATE.DELIVERY_ATTEMPTED);
+  }
+
+  /** 只有确定未发送的任务可进入等待态；轮次水位防止旧 job 补账覆盖新轮次的发送。 */
+  async markWaitingForHosting(
+    key: string,
+    attempt: number,
+    deliveryRejected = false,
+  ): Promise<boolean> {
+    return (
+      (await this.redis.eval(
+        `
+local state = redis.call('GET', KEYS[1])
+if state and state ~= '${TOUCH_SLOT_STATE.RESERVED}'
+  and state ~= '${TOUCH_SLOT_STATE.DELIVERY_ATTEMPTED}'
+  and state ~= '${TOUCH_SLOT_STATE.WAITING_HOSTING}' then return 0 end
+local previous = tonumber(redis.call('GET', KEYS[2]) or '0')
+if previous >= tonumber(ARGV[1]) then
+  if previous == tonumber(ARGV[1]) and state == '${TOUCH_SLOT_STATE.WAITING_HOSTING}' then return 1 end
+  return 0
+end
+if state and state ~= '${TOUCH_SLOT_STATE.WAITING_HOSTING}' and ARGV[3] ~= '1' then return 0 end
+redis.call('SETEX', KEYS[1], ARGV[2], '${TOUCH_SLOT_STATE.WAITING_HOSTING}')
+redis.call('SETEX', KEYS[2], ARGV[2], ARGV[1])
+return 1
+`,
+        [this.slotKey(key), `${this.slotKey(key)}:hosting-attempt`],
+        [attempt, this.SLOT_TTL_S, deliveryRejected ? 1 : 0],
+      )) === 1
+    );
+  }
+
+  /** 取消仍在等待的同轮次任务，防止原 job 的补入队重试让已取消任务复活。 */
+  async cancelWaitingForHosting(key: string, attempt: number): Promise<void> {
+    await this.redis.eval(
+      `
+if redis.call('GET', KEYS[1]) == '${TOUCH_SLOT_STATE.WAITING_HOSTING}'
+  and tonumber(redis.call('GET', KEYS[2]) or '0') == tonumber(ARGV[1]) then
+  redis.call('SETEX', KEYS[1], ARGV[2], '${TOUCH_SLOT_STATE.FAILED}')
+  return 1
+end
+return 0
+`,
+      [this.slotKey(key), `${this.slotKey(key)}:hosting-attempt`],
+      [attempt, this.SLOT_TTL_S],
+    );
   }
 
   async markSent(key: string, sessionId: string, now: number): Promise<void> {

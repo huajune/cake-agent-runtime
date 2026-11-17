@@ -10,6 +10,7 @@ import {
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import type { ReengagementSessionState } from '@memory/recall.types';
 import type { SessionRef } from '../runner/agent-runner.types';
+import { TouchLedgerService } from './touch-ledger.service';
 import {
   computeFireAt,
   getScenario,
@@ -39,6 +40,14 @@ export interface ReengagementChannelIdentity {
 
 /** Bull job payload。 */
 export interface FollowUpJob {
+  /** 掉线恢复只保留任务身份；不冻结已过时的文案。retryAt 存在时只补入队。 */
+  hostingRecovery?: {
+    firstDeferredAt: number;
+    attempt: number;
+    retryAt?: number;
+    /** 原 job 保存的明确拒收证据，仅用于把已尝试投递的槽转为等待态。 */
+    deliveryRejected?: boolean;
+  };
   sessionRef: SessionRef;
   scenarioCode: FollowUpScenarioCode;
   anchorEventId: string;
@@ -176,6 +185,7 @@ export class FollowUpSchedulerService {
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
     private readonly systemConfig: SystemConfigService,
     private readonly tracking: ReengagementTrackingService,
+    private readonly ledger: TouchLedgerService,
   ) {}
 
   /**
@@ -464,7 +474,7 @@ export class FollowUpSchedulerService {
         );
         return false;
       }
-      await job.remove();
+      await this.removeQueuedJob(job);
       this.trackRemovedPendingJob(job, jobId, undefined, reason ?? 'superseded');
       this.logger.log(
         `[reengagement] 已移除未触发任务 jobId=${jobId}${reason ? ` reason=${reason}` : ''}`,
@@ -496,6 +506,31 @@ export class FollowUpSchedulerService {
         input.beforeAnchorAt,
       );
       if (ok) removed += 1;
+    }
+    // 原锚点 job 在掉线后已完成，真正待发的是同锚点的恢复 job；同样必须被新场景取消。
+    const pending = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
+    for (const job of pending) {
+      if (
+        !job?.data?.hostingRecovery ||
+        !job.data.sessionRef ||
+        job.data.sessionRef.sessionId !== input.sessionRef.sessionId
+      )
+        continue;
+      const target = getScenario(job.data.scenarioCode);
+      if (
+        !scenario.supersedes.includes(job.data.scenarioCode) ||
+        target?.canonicalAnchorEventId !== job.data.anchorEventId ||
+        (input.beforeAnchorAt != null && job.data.anchorAt > input.beforeAnchorAt)
+      )
+        continue;
+      await this.removeQueuedJob(job);
+      this.trackRemovedPendingJob(
+        job,
+        String(job.id),
+        undefined,
+        input.reason ?? `${input.scenarioCode}_supersedes_${job.data.scenarioCode}`,
+      );
+      removed += 1;
     }
     return removed;
   }
@@ -534,7 +569,7 @@ export class FollowUpSchedulerService {
       }
       const jobId = String(job.id);
       try {
-        await job.remove();
+        await this.removeQueuedJob(job);
         const identity = this.buildIdentityFromJobData(job.data);
         if (identity) {
           this.tracking.trackStoppedBeforeFire(identity, { jobId, reason: input.reason });
@@ -588,7 +623,7 @@ export class FollowUpSchedulerService {
       if (jobId === currentJobId) continue;
       if (!this.shouldRemovePendingJob(input, scenario, job.data)) continue;
       try {
-        await job.remove();
+        await this.removeQueuedJob(job);
         this.trackRemovedPendingJob(
           job,
           jobId,
@@ -604,6 +639,19 @@ export class FollowUpSchedulerService {
       }
     }
     return { removed, blockedByBookingIncomplete: false };
+  }
+
+  private async removeQueuedJob(job: Job<FollowUpJob>): Promise<void> {
+    const recovery = job.data?.hostingRecovery;
+    if (recovery) {
+      const key = this.buildJobId(
+        job.data.sessionRef.sessionId,
+        job.data.scenarioCode,
+        job.data.anchorEventId,
+      );
+      await this.ledger.cancelWaitingForHosting(key, recovery.attempt);
+    }
+    await job.remove();
   }
 
   private trackRemovedPendingJob(

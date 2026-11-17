@@ -1,4 +1,5 @@
 import { HttpRequestError } from '@infra/client-http/http-request-error';
+import { ProviderBusinessError } from '@infra/client-http/provider-business-error';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import { MessageSenderService } from '@wecom/message-sender/message-sender.service';
@@ -84,6 +85,45 @@ describe('MessageDeliveryService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it.each(['提醒面试', '提醒面试\n\n请准时到场'])(
+    '掉线明确拒收保留零发送证据：%s',
+    async (content) => {
+      mockMessageSenderService.sendMessage.mockRejectedValue(
+        new ProviderBusinessError(400101, '托管账号离线'),
+      );
+      await expect(
+        service.deliverReply({ content }, { ...deliveryContext, action: 'proactive' }, false),
+      ).rejects.toMatchObject({
+        result: {
+          deliveredSegments: 0,
+          unknownSegments: 0,
+          failureReason: 'hosting_unavailable',
+        },
+      });
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('部分段已受理后掉线仍保留已发段，不伪装成整条未发送', async () => {
+    mockMessageSenderService.sendMessage
+      .mockResolvedValueOnce({ errcode: 0 })
+      .mockRejectedValue(new ProviderBusinessError(400101, '托管账号离线'));
+    await expect(
+      service.deliverReply(
+        { content: '第一段\n\n第二段' },
+        { ...deliveryContext, action: 'proactive' },
+        false,
+      ),
+    ).rejects.toMatchObject({
+      result: {
+        deliveredSegments: 1,
+        unknownSegments: 0,
+        acceptedText: '第一段',
+        failureReason: 'hosting_unavailable',
+      },
+    });
   });
 
   describe('deliverReply', () => {

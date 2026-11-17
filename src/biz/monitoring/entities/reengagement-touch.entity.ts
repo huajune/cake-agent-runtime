@@ -48,7 +48,13 @@ export enum ReengagementTouchEventName {
   Sent = 'sent',
   GroupInviteResult = 'group_invite_result',
   DeliveryUnknown = 'delivery_unknown',
+  HostingDeferred = 'hosting_deferred',
 }
+
+export const REENGAGEMENT_HOSTING_RECOVERY_REASON = {
+  WAITING: 'hosting_unavailable',
+  EXPIRED: 'hosting_recovery_expired',
+} as const;
 
 /** 状态流转轨迹项（events jsonb 数组元素） */
 export interface ReengagementTouchEvent {

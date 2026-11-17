@@ -49,6 +49,17 @@ describe('ReengagementTrackingService', () => {
     expect(input.firedAt).toEqual(expect.any(Number));
   });
 
+  it('掉线延后沿用原触达身份，保留原计划时间并记录下次检查', () => {
+    service.trackHostingDeferred(identity, 'retry-job', 1750000900000, 2);
+    expect(lastInput()).toMatchObject({
+      touchKey: 'sess-1:opening_no_reply:trace-1:opening_sent',
+      status: 'scheduled',
+      decisionReason: 'hosting_unavailable',
+      event: { event: 'hosting_deferred', detail: { retryAt: 1750000900000, attempt: 2 } },
+    });
+    expect(lastInput().fireAt).toBeUndefined();
+  });
+
   it('carries the stop context (the message that triggered the stop) into the record', () => {
     service.trackStopped(identity, 'pending_candidate_message', {
       kind: 'pending_candidate_message',

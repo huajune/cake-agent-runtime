@@ -45,6 +45,7 @@ import { REENGAGEMENT_QUEUE } from './reengagement/follow-up-scheduler.service';
 import { FollowUpSchedulerService } from './reengagement/follow-up-scheduler.service';
 import { FollowUpProcessor } from './reengagement/follow-up.processor';
 import { TouchLedgerService } from './reengagement/touch-ledger.service';
+import { ReengagementHostingRecoveryService } from './reengagement/hosting-recovery.service';
 import { ReengagementAnchorService } from './reengagement/anchor.service';
 import { ReengagementAgent } from './reengagement/reengagement.agent';
 import { OnboardingSweepCronService } from './reengagement/onboarding-sweep.cron';
@@ -103,6 +104,7 @@ import {
     FollowUpSchedulerService,
     FollowUpProcessor,
     TouchLedgerService,
+    ReengagementHostingRecoveryService,
     ReengagementAnchorService,
     ReengagementCommandService,
     ReengagementAgent,

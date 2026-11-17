@@ -33,7 +33,11 @@ import { SpongeService } from '@sponge/sponge.service';
 import { isLegacyPostBookingActive } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import type { ReengagementSessionState } from '@memory/recall.types';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
-import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
+import {
+  DeliveryFailureError,
+  type DeliveryContext,
+  type DeliveryResult,
+} from '@wecom/message/types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import {
   FollowUpSchedulerService,
@@ -52,6 +56,7 @@ import {
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
+import { ReengagementHostingRecoveryService } from './hosting-recovery.service';
 import { ReengagementAgent } from './reengagement.agent';
 import type { ChatInterviewTimeMismatch, ReengagementAgentExecution } from './reengagement.agent';
 import {
@@ -64,9 +69,9 @@ import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.u
 
 import { TOUCH_RESERVE_RESULT, TOUCH_SLOT_STATE } from './touch-ledger.types';
 import { OPS_EVENT_WRITE_RESULT } from '@biz/ops-events/types/ops-events.types';
-import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
+import { ACTION_DENIAL_REASON, PERMITTED_ACTION } from '@shared-types/action-permit.types';
 import { PROGRESS_READ_MODE, PROGRESS_TRUTH } from '@shared-types/candidate-progress.types';
-import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
+import { WECOM_API_TYPE, WECOM_SEND_FAILURE_REASON } from '@shared-types/wecom-api.types';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
@@ -172,6 +177,7 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly actionPermit: ActionPermitService,
     private readonly candidateProgress: CandidateProgressService,
+    private readonly hostingRecovery: ReengagementHostingRecoveryService,
     @Optional()
     @Inject(REENGAGEMENT_DELIVERY_PORT)
     private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
@@ -230,6 +236,8 @@ export class FollowUpProcessor implements OnModuleInit {
       await this.scheduleAcceptedOnboardingCheck(job.data);
       return;
     }
+
+    if (await this.hostingRecovery.continuePending(job, identity)) return;
 
     const now = Date.now();
     let bookingContext: ReengagementBookingContext | undefined;
@@ -408,6 +416,14 @@ export class FollowUpProcessor implements OnModuleInit {
       ],
     });
     if (!permit.allowed) {
+      if (
+        job.data.hostingRecovery &&
+        (permit.reason === ACTION_DENIAL_REASON.RECEIVING_BOT_NOT_HOSTED ||
+          permit.reason === ACTION_DENIAL_REASON.PERMIT_UNAVAILABLE)
+      ) {
+        await this.hostingRecovery.defer(job, identity);
+        return;
+      }
       this.tracking.trackStopped(identity, `action_permit:${permit.reason}`);
       return;
     }
@@ -635,8 +651,11 @@ export class FollowUpProcessor implements OnModuleInit {
 
     // 与 Bull job / 追踪底账共用稳定锚点。anchorAt 可能在两个并发工单解析时落在同一
     // 毫秒，不能作为多面试场景的幂等身份，否则第二场提醒会被误判成重复触达。
+    if (await this.hostingRecovery.deferIfUnavailable(job, identity)) return;
     const key = ReengagementTrackingService.touchKey(identity);
-    const slot = await this.touchLedger.reserve(key);
+    const slot = job.data.hostingRecovery
+      ? await this.touchLedger.reserve(key, job.data.hostingRecovery.attempt)
+      : await this.touchLedger.reserve(key);
     if (slot === TOUCH_RESERVE_RESULT.DUPLICATE_SENT) {
       // 之前那次触达已送达，但**本次生成的文本**没发出去——不投影本次文本。
       this.logger.log(`[reengagement] 已发过，跳过 key=${key}`);
@@ -1187,6 +1206,35 @@ export class FollowUpProcessor implements OnModuleInit {
       }
     } catch (error) {
       const deliveryEndAt = Date.now();
+      if (
+        !confirmedResult &&
+        error instanceof DeliveryFailureError &&
+        error.result.failureReason === WECOM_SEND_FAILURE_REASON.HOSTING_UNAVAILABLE &&
+        error.result.deliveredSegments === 0 &&
+        error.result.unknownSegments === 0
+      ) {
+        // 明确拒收整条消息才可恢复；部分受理、超时与本地补账错误仍走 unknown。
+        if (scenario) {
+          this.messageTracking.recordProactiveTurn(
+            this.buildProactiveTurnRecord({
+              batchId,
+              sessionRef,
+              scenario,
+              outcome,
+              receivedAt: now,
+              status: 'failure',
+              replyPreview: outcome.reply?.text,
+              error: this.errorMessage(error),
+              channelIdentity,
+              execution,
+              completedAt: deliveryEndAt,
+              deliveryResult: error.result,
+            }),
+          );
+        }
+        await this.hostingRecovery.defer(job, identity, true);
+        return;
+      }
       // deliver 后状态不明 → unknown，交补偿，不盲重投。送达与否未知时按未送达处理：
       // 宁可下一轮重复跟进语气，也不能让记忆引用候选人可能没收到的文本（HC-4）。
       this.tracking.trackDeliveryUnknown(
@@ -1208,14 +1256,19 @@ export class FollowUpProcessor implements OnModuleInit {
             channelIdentity,
             execution,
             completedAt: deliveryEndAt,
-            deliveryResult: confirmedResult ?? {
-              success: false,
-              segmentCount: 1,
-              failedSegments: 1,
-              deliveredSegments: 0,
-              totalTime: deliveryStartAt > 0 ? Math.max(deliveryEndAt - deliveryStartAt, 0) : 0,
-              error: this.errorMessage(error),
-            },
+            deliveryResult:
+              confirmedResult ??
+              (error instanceof DeliveryFailureError
+                ? error.result
+                : {
+                    success: false,
+                    segmentCount: 1,
+                    failedSegments: 1,
+                    deliveredSegments: 0,
+                    totalTime:
+                      deliveryStartAt > 0 ? Math.max(deliveryEndAt - deliveryStartAt, 0) : 0,
+                    error: this.errorMessage(error),
+                  }),
           }),
         );
       }
