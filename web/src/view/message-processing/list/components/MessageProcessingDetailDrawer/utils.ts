@@ -6,7 +6,6 @@ import type {
 } from '@/api/types/chat.types';
 import { asRecord } from '@/utils/object';
 import { buildAgentResponseTimeline, type AgentTimelinePart } from './agent-response-timeline';
-import { renderToolDefinitionPrompt } from './tool-definition-prompt';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -535,7 +534,7 @@ export function getResponseText(message: MessageRecord): string {
 }
 
 /**
- * 把 agentRequest 还原成可读的最终提示词全文。
+ * 将执行快照中的 Instructions 全文和 Messages 展示为可读文本。
  *
  * agent_invocation.request.agentRequest 里存了完整的 instructions（旧记录为 system，
  * 含注入的
@@ -547,11 +546,6 @@ function buildFinalPromptText(agentRequest?: AnyRecord): string | undefined {
   if (!agentRequest) return undefined;
 
   const sections: string[] = [];
-
-  const modelId = asString(agentRequest.modelId);
-  if (modelId) {
-    sections.push(`模型: ${modelId}`);
-  }
 
   const instructions = asString(agentRequest.instructions) ?? asString(agentRequest.system);
   if (instructions) {
@@ -571,9 +565,6 @@ function buildFinalPromptText(agentRequest?: AnyRecord): string | undefined {
       .join('\n\n');
     sections.push(`━━━━━━━━━━ Messages（${messages.length} 条） ━━━━━━━━━━\n\n${rendered}`);
   }
-
-  const toolDefinitions = renderToolDefinitionPrompt(agentRequest);
-  if (toolDefinitions) sections.push(toolDefinitions);
 
   return sections.length > 0 ? sections.join('\n\n') : undefined;
 }
@@ -605,7 +596,7 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
       key: 'final-prompt',
       label: '最终提示词',
       description:
-        '执行时的 instructions（兼容旧记录的 system）、消息序列及工具定义（description 与输入 JSON schema），纯文本可读视图；旧记录可能缺少工具定义',
+        '执行时的 Instructions 全文（兼容旧记录的 system）与 Messages 消息序列，纯文本可读视图',
       data: finalPromptText,
     });
   }
