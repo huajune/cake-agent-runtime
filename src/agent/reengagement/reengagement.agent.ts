@@ -1,4 +1,5 @@
 // business-rules: HO-01, IB-13
+import { supportedModelId } from '@providers/models';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -180,7 +181,8 @@ export class ReengagementAgent {
     @Inject(ROLE_MODEL_OVERRIDES)
     private readonly roleModelOverrides?: RoleModelOverridesProvider,
   ) {
-    this.reengagementModelId = config.get<string>('AGENT_REENGAGEMENT_MODEL')?.trim() || undefined;
+    this.reengagementModelId =
+      supportedModelId(config.get<string>('AGENT_REENGAGEMENT_MODEL')) || undefined;
   }
 
   /** 复聊模型解析：Dashboard 运行时覆盖 > 环境变量 > Chat 角色路由；覆盖读取失败回退，不阻塞触达。 */

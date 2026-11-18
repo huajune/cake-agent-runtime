@@ -1,3 +1,4 @@
+import { configuredFallbackModels, supportedModelId } from '@providers/models';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
@@ -67,38 +68,20 @@ export class SystemConfigService {
     config: Partial<AgentReplyConfig> | null | undefined,
   ): AgentReplyConfig {
     return {
-      wecomCallbackModelId:
-        typeof config?.wecomCallbackModelId === 'string'
-          ? config.wecomCallbackModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.wecomCallbackModelId,
+      wecomCallbackModelId: supportedModelId(config?.wecomCallbackModelId),
       wecomCallbackThinkingMode: config?.wecomCallbackThinkingMode === 'deep' ? 'deep' : 'fast',
       wecomCallbackThinkingEffort:
         config?.wecomCallbackThinkingEffort === 'low' ||
         config?.wecomCallbackThinkingEffort === 'medium'
           ? config.wecomCallbackThinkingEffort
           : DEFAULT_AGENT_REPLY_CONFIG.wecomCallbackThinkingEffort,
-      defaultFallbackModelIds: this.normalizeModelIdList(config?.defaultFallbackModelIds),
-      visionFallbackModelIds: this.normalizeModelIdList(config?.visionFallbackModelIds),
-      extractModelId:
-        typeof config?.extractModelId === 'string'
-          ? config.extractModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.extractModelId,
-      visionModelId:
-        typeof config?.visionModelId === 'string'
-          ? config.visionModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.visionModelId,
-      evaluateModelId:
-        typeof config?.evaluateModelId === 'string'
-          ? config.evaluateModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.evaluateModelId,
-      repairModelId:
-        typeof config?.repairModelId === 'string'
-          ? config.repairModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.repairModelId,
-      reengagementModelId:
-        typeof config?.reengagementModelId === 'string'
-          ? config.reengagementModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.reengagementModelId,
+      defaultFallbackModelIds: configuredFallbackModels(config?.defaultFallbackModelIds),
+      visionFallbackModelIds: configuredFallbackModels(config?.visionFallbackModelIds),
+      extractModelId: supportedModelId(config?.extractModelId),
+      visionModelId: supportedModelId(config?.visionModelId),
+      evaluateModelId: supportedModelId(config?.evaluateModelId),
+      repairModelId: supportedModelId(config?.repairModelId),
+      reengagementModelId: supportedModelId(config?.reengagementModelId),
       initialMergeWindowMs:
         typeof config?.initialMergeWindowMs === 'number'
           ? config.initialMergeWindowMs
@@ -172,19 +155,6 @@ export class SystemConfigService {
         config?.reengagementScenarioDelayMinutes,
       ),
     };
-  }
-
-  /** 降级链数组只保留非空字符串项并去重；非数组一律按未配置处理。 */
-  private normalizeModelIdList(value: unknown): string[] {
-    if (!Array.isArray(value)) return [];
-    return Array.from(
-      new Set(
-        value
-          .filter((item): item is string => typeof item === 'string')
-          .map((item) => item.trim())
-          .filter(Boolean),
-      ),
-    );
   }
 
   /** 场景级灰度 map 只保留 boolean 值项，其余丢弃（防脏数据把开关搞成 truthy 字符串）。 */

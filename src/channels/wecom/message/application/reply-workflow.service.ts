@@ -12,7 +12,7 @@ import { GroupRouteCredentialsService } from '../credentials/group-route-credent
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
-import { ModelRole } from '@/llm/llm.types';
+import { ModelRole, ReplyModelRoute } from '@/llm/llm.types';
 import { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
@@ -76,6 +76,7 @@ const MAX_REPLAY_ATTEMPTS = RUNTIME_RETRY_LIMITS.pendingInputReplays;
 type VisualMessageTypes = Record<string, MessageType.IMAGE | MessageType.EMOTION>;
 
 interface AgentCallParams {
+  replyModelRoute?: ReplyModelRoute;
   logicalTurnId?: string;
   inputOccurredAt?: string;
   sessionId: string;
@@ -102,6 +103,22 @@ interface AgentCallParams {
   shortTermEndTimeInclusive?: number;
   /** 报名等不可逆工具提交前检查 pending，避免用运行中已过期的候选人资料下单。 */
   hasNewerUserInput?: () => Promise<boolean>;
+}
+
+interface ReplyWork {
+  primaryMessage: EnterpriseMessageCallbackDto;
+  traceId: string;
+  chatId: string;
+  content: string;
+  contactName: string;
+  scenario: ScenarioType;
+  parsed: ReturnType<typeof MessageParser.parse>;
+  isSingleMessage: boolean;
+  batchContext?: { batchId: string; allMessages: EnterpriseMessageCallbackDto[] };
+  /** 本轮实际接纳的 pending 身份，包含 replay；由入口共享以覆盖失败收尾。 */
+  pendingMessageIds?: Set<string>;
+  assertOwned?: () => Promise<void>;
+  startTrace: () => Promise<void>;
 }
 
 @Injectable()
@@ -141,20 +158,22 @@ export class ReplyWorkflowService {
     const pendingMessageIds = new Set<string>();
 
     try {
-      // trace 通常已在入口 acceptInboundMessage.prepareForDispatch 创建。
-      // 若仍不存在（异常兜底），此处补建。
-      if (!(await this.wecomObservability.hasTrace(traceId))) {
-        await this.wecomObservability.startRequestTrace({
-          traceId,
-          primaryMessage: messageData,
-          scenario,
-          content,
-        });
-      }
-      await this.wecomObservability.updateDispatch(traceId, 'direct');
-      await this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
         primaryMessage: messageData,
+        startTrace: async () => {
+          // trace 通常已在入口 acceptInboundMessage.prepareForDispatch 创建。
+          // 若仍不存在（异常兜底），此处补建。
+          if (!(await this.wecomObservability.hasTrace(traceId))) {
+            await this.wecomObservability.startRequestTrace({
+              traceId,
+              primaryMessage: messageData,
+              scenario,
+              content,
+            });
+          }
+          await this.wecomObservability.updateDispatch(traceId, 'direct');
+          await this.wecomObservability.markWorkerStart(traceId);
+        },
         traceId,
         chatId,
         content,
@@ -187,7 +206,8 @@ export class ReplyWorkflowService {
   async processMergedMessages(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
-  ): Promise<void> {
+    assertOwned?: () => Promise<void>,
+  ): Promise<'deferred' | void> {
     if (messages.length === 0) return;
 
     const scenario = MessageParser.determineScenario();
@@ -201,24 +221,26 @@ export class ReplyWorkflowService {
     this.logger.log(`[聚合处理][${chatId}] 处理 ${messages.length} 条消息`);
 
     try {
-      await this.wecomObservability.startRequestTrace({
-        traceId,
-        primaryMessage: lastMessage,
-        scenario,
-        content,
-        batchId,
-        allMessages: messages,
-        mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
-      });
-      // 把各条源消息 trace 里的前置埋点合并到 batch trace，避免 Queue 把前置耗时吞掉
-      await this.wecomObservability.mergePrepTimingsFromSources(
-        traceId,
-        messages.map((message) => message.messageId),
-      );
-      await this.wecomObservability.updateDispatch(traceId, 'merged', batchId);
-      await this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
         primaryMessage: lastMessage,
+        startTrace: async () => {
+          await this.wecomObservability.startRequestTrace({
+            traceId,
+            primaryMessage: lastMessage,
+            scenario,
+            content,
+            batchId,
+            allMessages: messages,
+            mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
+          });
+          // 把各条源消息 trace 里的前置埋点合并到 batch trace，避免 Queue 把前置耗时吞掉
+          await this.wecomObservability.mergePrepTimingsFromSources(
+            traceId,
+            messages.map((message) => message.messageId),
+          );
+          await this.wecomObservability.updateDispatch(traceId, 'merged', batchId);
+          await this.wecomObservability.markWorkerStart(traceId);
+        },
         traceId,
         chatId,
         content,
@@ -226,13 +248,14 @@ export class ReplyWorkflowService {
         scenario,
         parsed,
         isSingleMessage: false,
+        assertOwned,
         batchContext: { batchId, allMessages: messages },
         pendingMessageIds,
       });
     } catch (error) {
       if (error instanceof ReplyDeferredError) {
         this.logger.warn(error.message);
-        return;
+        return 'deferred';
       }
       const errorMessage = toErrorMessage(error);
       this.logger.error(`聚合消息处理失败:`, errorMessage);
@@ -254,35 +277,30 @@ export class ReplyWorkflowService {
     }
   }
 
-  private async processMessageCore(params: {
-    primaryMessage: EnterpriseMessageCallbackDto;
-    traceId: string;
-    chatId: string;
-    content: string;
-    contactName: string;
-    scenario: ScenarioType;
-    parsed: ReturnType<typeof MessageParser.parse>;
-    isSingleMessage: boolean;
-    batchContext?: { batchId: string; allMessages: EnterpriseMessageCallbackDto[] };
-    /** 本轮实际接纳的 pending 身份，包含 replay；由入口共享以覆盖失败收尾。 */
-    pendingMessageIds?: Set<string>;
-    assertOwned?: () => Promise<void>;
-  }): Promise<void> {
-    const { traceId, chatId, contactName, scenario, parsed, isSingleMessage, batchContext } =
-      params;
-    const pendingMessageIds = params.pendingMessageIds ?? new Set<string>();
-
-    const logPrefix = isSingleMessage ? '' : '[聚合处理]';
-    // 重跑会扩展本轮消息集合，这几个字段需要是 let。
-    let allMessages: EnterpriseMessageCallbackDto[] = batchContext?.allMessages ?? [
-      params.primaryMessage,
-    ];
-    let durableTurn = await this.replyTurns?.open(
+  private async processMessageCore(params: ReplyWork): Promise<void> {
+    const { traceId, chatId, parsed } = params;
+    const messages = params.batchContext?.allMessages ?? [params.primaryMessage];
+    await params.assertOwned?.();
+    const durableTurn = await this.replyTurns?.open(
       { corpId: this.resolveCorpId(params.primaryMessage), accountId: parsed.imBotId, chatId },
-      allMessages.map((message) => message.messageId),
-      this.inputOccurredAt(allMessages),
-      { primary: params.primaryMessage },
+      messages.map((message) => message.messageId),
+      this.inputOccurredAt(messages),
+      { primary: params.primaryMessage, traceId },
     );
+    if (
+      durableTurn?.reviewReason === REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED &&
+      durableTurn.status === REPLY_TURN_STATUS.SETTLED &&
+      durableTurn.projectionStatus === REPLY_PROJECTION_STATUS.NONE
+    ) {
+      // Postgres retains the unresolved input and its membership. Release only its Redis copies.
+      await params.assertOwned?.();
+      try {
+        await this.simpleMergeService.ackPendingMessageIds(chatId, durableTurn.inputIds);
+      } catch {
+        throw new ReplyDeferredError('parked_input_cleanup_pending');
+      }
+      return;
+    }
     if (
       durableTurn?.status === REPLY_TURN_STATUS.SETTLED ||
       durableTurn?.status === REPLY_TURN_STATUS.ACKED
@@ -292,7 +310,7 @@ export class ReplyWorkflowService {
     }
     if (durableTurn) {
       const members = new Set(durableTurn.inputIds);
-      const received = new Set(allMessages.map((message) => message.messageId));
+      const received = new Set(messages.map((message) => message.messageId));
       if (
         durableTurn.status !== REPLY_TURN_STATUS.PREPARING ||
         members.size !== received.size ||
@@ -305,6 +323,46 @@ export class ReplyWorkflowService {
       parsed.token = route.token;
       parsed.groupId = route.groupId;
     }
+    const work = async () => {
+      await params.startTrace();
+      try {
+        await this.generateAndDeliver(params, durableTurn);
+      } catch (error) {
+        if (
+          durableTurn &&
+          error instanceof ReplyDeferredError &&
+          (error.reason === REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED ||
+            ['save_effects_not_confirmed', 'save_late_effects_not_confirmed'].includes(
+              error.reason,
+            ))
+        ) {
+          if (error.reason === 'save_effects_not_confirmed')
+            await this.replyTurns!.recordFailure(
+              durableTurn,
+              'save_effects',
+              error.cause instanceof Error && error.cause.message === 'ordinary_reply_fence_lost'
+                ? 'ordinary_reply_fence_lost'
+                : 'checkpoint_write_unconfirmed',
+            );
+          this.monitoringService.recordFailure(
+            traceId,
+            `待核实：业务结果未确认（${error.reason}），回合 ${durableTurn.logicalTurnId}`,
+          );
+        }
+        throw error;
+      }
+    };
+    if (durableTurn)
+      await this.replyTurns!.withGenerationLease(durableTurn, params.assertOwned, work);
+    else await work();
+  }
+
+  private async generateAndDeliver(params: ReplyWork, durableTurn?: ReplyTurn): Promise<void> {
+    const { traceId, chatId, contactName, scenario, parsed, isSingleMessage, batchContext } =
+      params;
+    const pendingMessageIds = params.pendingMessageIds ?? new Set<string>();
+    const logPrefix = isSingleMessage ? '' : '[聚合处理]';
+    let allMessages = batchContext?.allMessages ?? [params.primaryMessage];
     let content = params.content;
     let imageUrls = this.collectImageUrls(allMessages);
     let imageMessageIds = this.collectImageMessageIds(allMessages);
@@ -317,6 +375,7 @@ export class ReplyWorkflowService {
       params.primaryMessage.botUserId?.trim();
 
     const agentCallParams = {
+      replyModelRoute: new ReplyModelRoute(),
       sessionId: chatId,
       logicalTurnId: durableTurn?.logicalTurnId,
       inputOccurredAt: durableTurn?.inputOccurredAt,
@@ -337,6 +396,7 @@ export class ReplyWorkflowService {
       modelId: overrideModelId,
       thinking,
       hasNewerUserInput: async () => {
+        await params.assertOwned?.();
         if (durableTurn) await this.replyTurns!.assertInputActive(durableTurn);
         const { messages: newerMessages } = await this.fetchPendingSinceAgentStart(
           chatId,
@@ -355,18 +415,41 @@ export class ReplyWorkflowService {
     let agentResult: AgentInvokeResult;
     let deliveryResult: DeliveryResult | undefined;
     let businessEffects: Record<string, unknown> | undefined;
+    const toolCallCounts = new Map<string, number>();
     try {
-      agentResult = await this.callAgentWithVisualCompatibilityFallback({
-        ...agentCallParams,
-        userMessage: content,
-        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-        imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
-        visualMessageTypes:
-          Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
-        shortTermEndTimeInclusive,
-      });
+      agentResult = await this.callAgentWithVisualCompatibilityFallback(
+        {
+          ...agentCallParams,
+          userMessage: content,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+          visualMessageTypes:
+            Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+          shortTermEndTimeInclusive,
+        },
+        toolCallCounts,
+      );
     } catch (error) {
       if (!durableTurn || error instanceof ReplyDeferredError) throw error;
+      const failure = (error as AgentError | null)?.agentMeta;
+      // Every executable tool reserves its turn counter before dispatch, including visual retries and replan.
+      if (failure?.providerOutage && toolCallCounts.size === 0 && !hasReplayEvidence(error)) {
+        const terminal = await this.replyTurns!.closeModelOutage(
+          durableTurn,
+          failure.modelsAttempted ?? [],
+        );
+        this.monitoringService.recordFailure(
+          traceId,
+          `模型服务不可用，未执行工具，待人工回复，回合 ${durableTurn.logicalTurnId}`,
+        );
+        await this.ackDurableTurn(terminal, params.assertOwned);
+        return;
+      }
+      await this.replyTurns!.recordFailure(
+        durableTurn,
+        'generation_failed',
+        (error as AgentError | null)?.agentMeta?.lastCategory,
+      );
       // A failed generation may have submitted a business action; keep its input for review.
       throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
     }
@@ -515,6 +598,7 @@ export class ReplyWorkflowService {
       };
       if (durableTurn) {
         businessEffects = ordinaryReplyEffects(agentResult.toolCalls, toolAnchorContext);
+        await params.assertOwned?.();
         durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
       }
       if (agentResult.outcome?.kind !== 'reply') {
@@ -734,7 +818,24 @@ export class ReplyWorkflowService {
         if (durableTurn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
           if (!businessEffects)
             throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
-          durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
+          try {
+            durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
+          } catch (saveError) {
+            if (
+              !(
+                saveError instanceof ReplyDeferredError &&
+                saveError.cause instanceof Error &&
+                saveError.cause.message === 'ordinary_reply_fence_lost'
+              )
+            )
+              throw saveError;
+            await this.replyTurns!.saveLateEffects(durableTurn, businessEffects);
+            this.monitoringService.recordFailure(
+              traceId,
+              `回复发送前写入权已过期，业务结果已保存待补账，回合 ${durableTurn.logicalTurnId}`,
+            );
+            throw new ReplyDeferredError('late_business_effects_saved');
+          }
         }
         // Finish the original input even when text is incomplete. Never re-run its model/tools.
         // A failed terminal write is ack-only work after the lease expires, not a new send.
@@ -1075,9 +1176,8 @@ export class ReplyWorkflowService {
 
   private async callAgentWithVisualCompatibilityFallback(
     params: AgentCallParams,
+    toolCallCounts = new Map<string, number>(),
   ): Promise<AgentInvokeResult> {
-    // One allowance per input snapshot; a visual retry processes the same messages.
-    const toolCallCounts = new Map<string, number>();
     try {
       return await this.callAgent(params, toolCallCounts);
     } catch (error) {
@@ -1087,6 +1187,12 @@ export class ReplyWorkflowService {
         );
         throw error;
       }
+      const route = params.replyModelRoute;
+      if (
+        route?.fallbackModelId &&
+        route.unavailableProviders.has(route.fallbackModelId.split('/')[0])
+      )
+        throw error;
       const imageUrls = params.imageUrls ?? [];
       const imageMessageIds = params.imageMessageIds ?? [];
       if (imageUrls.length === 0 || imageMessageIds.length === 0) {
@@ -1229,6 +1335,7 @@ export class ReplyWorkflowService {
         context: {
           callerKind: CallerKind.WECOM,
           logicalTurnId: params.logicalTurnId,
+          replyModelRoute: params.replyModelRoute,
           toolCallCounts,
           inputOccurredAt: params.inputOccurredAt,
           messageId,

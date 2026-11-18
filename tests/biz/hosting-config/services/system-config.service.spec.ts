@@ -201,6 +201,21 @@ describe('SystemConfigService', () => {
       await expect(service.getExtractModelOverride()).resolves.toBeUndefined();
     });
 
+    it('reads retired roles and fallback chains from an old stored configuration', async () => {
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        wecomCallbackModelId: 'moonshotai/kimi-k3',
+        repairModelId: 'deepseek/deepseek-v4-flash',
+        defaultFallbackModelIds: ['qwen/qwen3.7-plus', 'anthropic/claude-sonnet-5'],
+        visionFallbackModelIds: ['anthropic/claude-sonnet-5'],
+      });
+      expect(await service.getAgentReplyConfig()).toMatchObject({
+        wecomCallbackModelId: '',
+        repairModelId: 'deepseek/deepseek-flash',
+        defaultFallbackModelIds: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
+        visionFallbackModelIds: ['deepseek/deepseek-flash'],
+      });
+    });
+
     it('normalizes non-string extractModelId from legacy DB rows to default', async () => {
       (service as any).agentReplyConfig = null;
       (service as any).agentReplyConfigExpiry = 0;
@@ -260,25 +275,25 @@ describe('SystemConfigService', () => {
 
     it('returns the default chain for any role when configured', async () => {
       withConfig({
-        defaultFallbackModelIds: ['qwen/qwen3.7-plus', 'anthropic/claude-sonnet-5'],
+        defaultFallbackModelIds: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
       });
       await expect(service.getFallbackChainOverride('chat')).resolves.toEqual([
         'qwen/qwen3.7-plus',
-        'anthropic/claude-sonnet-5',
+        'deepseek/deepseek-flash',
       ]);
       await expect(service.getFallbackChainOverride('repair')).resolves.toEqual([
         'qwen/qwen3.7-plus',
-        'anthropic/claude-sonnet-5',
+        'deepseek/deepseek-flash',
       ]);
     });
 
     it('prefers the vision-specific chain for the vision role', async () => {
       withConfig({
         defaultFallbackModelIds: ['qwen/qwen3.7-plus'],
-        visionFallbackModelIds: ['anthropic/claude-sonnet-5'],
+        visionFallbackModelIds: ['deepseek/deepseek-flash'],
       });
       await expect(service.getFallbackChainOverride('vision')).resolves.toEqual([
-        'anthropic/claude-sonnet-5',
+        'deepseek/deepseek-flash',
       ]);
       await expect(service.getFallbackChainOverride('chat')).resolves.toEqual([
         'qwen/qwen3.7-plus',

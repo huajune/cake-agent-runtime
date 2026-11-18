@@ -2,10 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { ReplyTurn } from './reply-execution.types';
-import {
-  isReplyDeliveryPolicy,
-  REPLY_TURN_STATUS,
-} from '@biz/reply-execution/reply-execution.constants';
+import { isReplyDeliveryPolicy } from '@biz/reply-execution/reply-execution.constants';
 import { ACTION_MODE } from '@shared-types/action-execution.contract';
 import type { ReplyTurnOperation } from './reply-execution.constants';
 
@@ -42,11 +39,6 @@ export class ReplyTurnsRepository extends BaseRepository {
       .select('*')
       .eq('mode', ACTION_MODE.EXECUTE)
       .not('recovery->primary', 'is', null)
-      .in('status', [
-        REPLY_TURN_STATUS.PREPARING,
-        REPLY_TURN_STATUS.PLANNED,
-        REPLY_TURN_STATUS.SETTLED,
-      ])
       .lte('next_check_at', new Date().toISOString())
       .order('next_check_at')
       .limit(25)
@@ -99,6 +91,9 @@ export class ReplyTurnsRepository extends BaseRepository {
       deliveryPolicy: row.delivery_policy as ReplyTurn['deliveryPolicy'],
       deliveryResult: row.delivery_result as ReplyTurn['deliveryResult'],
       recovery: row.recovery as Record<string, unknown>,
+      reviewRequired: row.review_required === true,
+      reviewReason: (row.review_reason ?? undefined) as ReplyTurn['reviewReason'],
+      reviewNotifiedAt: (row.review_notified_at ?? undefined) as ReplyTurn['reviewNotifiedAt'],
       projectionStatus: row.projection_status as ReplyTurn['projectionStatus'],
     };
   }

@@ -86,8 +86,13 @@ describe('MessagePipelineService', () => {
   it('should forward merged-message processing to ReplyWorkflowService', async () => {
     const messages = [createEnterpriseMessage(), createEnterpriseMessage({ messageId: 'msg_2' })];
 
-    await service.processMergedMessages(messages, 'batch_1');
+    const owned = jest.fn().mockResolvedValue(undefined);
+    await service.processMergedMessages(messages, 'batch_1', owned);
 
-    expect(mockReplyWorkflow.processMergedMessages).toHaveBeenCalledWith(messages, 'batch_1');
+    expect(mockReplyWorkflow.processMergedMessages).toHaveBeenCalledWith(
+      messages,
+      'batch_1',
+      owned,
+    );
   });
 });

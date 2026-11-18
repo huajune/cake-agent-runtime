@@ -524,7 +524,7 @@ PENDING ──► RUNNING ──► COMPLETED
 | 服务 | 用途 | API 类型 |
 |------|------|---------|
 | **飞书多维表格** | 测试用例 / 验证集 / 结果双向同步 | Bitable REST |
-| **多 Provider（Anthropic / OpenAI / DeepSeek）** | Agent 对话能力 | 通过 `@providers` 三层架构 |
+| **模型供应商（Qwen / DeepSeek）** | Agent 对话能力 | 通过 `@providers` 三层架构 |
 
 ### 前端技术栈
 

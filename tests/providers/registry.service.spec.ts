@@ -1,289 +1,227 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { stepCountIs, tool } from 'ai';
+import { z } from 'zod';
 import { RegistryService } from '@providers/registry.service';
+import { RouterService } from '@providers/router.service';
+import { ReliableService } from '@providers/reliable.service';
+import { ModelRole, ReplyModelRoute } from '@/llm/llm.types';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 
-// Mock AI SDK modules
-jest.mock('@ai-sdk/openai', () => ({
-  createOpenAI: jest.fn(() => ({
-    type: 'openai-provider',
-    chat: jest.fn(() => ({ type: 'openai-chat-model' })),
-  })),
-}));
-jest.mock('@ai-sdk/anthropic', () => ({
-  createAnthropic: jest.fn(() => ({ type: 'anthropic-provider' })),
-}));
-jest.mock('@ai-sdk/google', () => ({
-  createGoogleGenerativeAI: jest.fn(() => ({ type: 'google-provider' })),
-}));
-jest.mock('@ai-sdk/deepseek', () => ({
-  createDeepSeek: jest.fn(() => ({ type: 'deepseek-provider' })),
-}));
-jest.mock('@ai-sdk/openai-compatible', () => ({
-  createOpenAICompatible: jest.fn(({ name }) => ({ type: `${name}-compatible` })),
-}));
-jest.mock('@openrouter/ai-sdk-provider', () => ({
-  createOpenRouter: jest.fn(() => ({ type: 'openrouter-provider' })),
-}));
+function setup(env: Record<string, string>) {
+  const config = new ConfigService(env);
+  jest.spyOn(config, 'get').mockImplementation((key: string) => env[key]);
+  const registry = new RegistryService(config);
+  registry.onModuleInit();
+  return {
+    registry,
+    executor: new LlmExecutorService(
+      new RouterService(config),
+      registry,
+      new ReliableService(registry),
+    ),
+  };
+}
 
-// Mock custom providers
-jest.mock('@providers/custom-openai.provider', () => ({
-  createCustomOpenAI: jest.fn(() => ({ type: 'custom-openai-provider' })),
-}));
-jest.mock('@providers/custom-openrouter.provider', () => ({
-  createCustomOpenRouter: jest.fn(() => ({ type: 'custom-openrouter-provider' })),
-}));
+describe('company model providers', () => {
+  afterEach(() => jest.restoreAllMocks());
 
-const mockLanguageModel = { modelId: 'test-model', specificationVersion: 'v1' };
-const mockRegistry = {
-  languageModel: jest.fn().mockReturnValue(mockLanguageModel),
-};
-jest.mock('ai', () => ({
-  createProviderRegistry: jest.fn(() => mockRegistry),
-  wrapProvider: jest.fn(({ provider }) => ({ type: 'wrapped', provider })),
-}));
-
-describe('RegistryService', () => {
-  let service: RegistryService;
-  let mockConfigService: { get: jest.Mock };
-
-  function createService(envOverrides: Record<string, string | undefined> = {}) {
-    const env: Record<string, string | undefined> = {
-      ANTHROPIC_API_KEY: 'sk-ant-test',
-      GEMINI_API_KEY: 'gemini-test',
-      DEEPSEEK_API_KEY: 'deepseek-test',
-      OPENROUTER_API_KEY: 'openrouter-test',
-      ...envOverrides,
-    };
-
-    mockConfigService = {
-      get: jest.fn((key: string) => env[key]),
-    };
-
-    return Test.createTestingModule({
-      providers: [RegistryService, { provide: ConfigService, useValue: mockConfigService }],
-    }).compile();
-  }
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    const module: TestingModule = await createService();
-    service = module.get<RegistryService>(RegistryService);
-    service.onModuleInit();
+  it('exposes only Qwen and DeepSeek even with all retired credentials present', () => {
+    const { registry } = setup({
+      ANTHROPIC_API_KEY: 'old',
+      GEMINI_API_KEY: 'old',
+      OPENROUTER_API_KEY: 'old',
+      GATEWAY_API_KEY: 'old',
+      GATEWAY_BASE_URL: 'https://gateway.invalid',
+      MOONSHOT_API_KEY: 'old',
+      DASHSCOPE_API_KEY: 'q',
+      DEEPSEEK_API_KEY: 'd',
+    });
+    expect(registry.listProviders().sort()).toEqual(['deepseek', 'qwen']);
+    expect(new Set(registry.listModels().map((m) => m.provider))).toEqual(
+      new Set(['qwen', 'deepseek']),
+    );
+    expect(registry.listModels().map((m) => m.id)).toContain('deepseek/deepseek-flash');
+    expect(registry.listModels().map((m) => m.id)).not.toContain('deepseek/deepseek-v4-flash');
+    for (const id of [
+      'openai/gpt-5',
+      'anthropic/claude-sonnet-5',
+      'google/gemini',
+      'moonshotai/kimi-k3',
+      'gateway/qwen/qwen4-max',
+      'openrouter/deepseek/deepseek-flash',
+      'ohmygpt/model',
+      'qwen/openrouter/model',
+    ]) {
+      expect(() => registry.resolve(id)).toThrow();
+    }
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  it('requires the supported provider’s own key and resolves saved Flash aliases', () => {
+    const { registry } = setup({ DEEPSEEK_API_KEY: 'd', ANTHROPIC_API_KEY: 'old' });
+    expect(registry.listProviders()).toEqual(['deepseek']);
+    expect(registry.hasProvider('qwen')).toBe(false);
+    expect(() => registry.resolve('qwen/qwen4-max')).toThrow('未注册');
+    expect(registry.resolve('deepseek/deepseek-v4-flash')).toMatchObject({
+      modelId: 'deepseek-flash',
+    });
+    expect(setup({ MOONSHOT_API_KEY: 'old' }).registry.listModels()).toEqual([]);
   });
 
-  describe('onModuleInit', () => {
-    it('should register native providers with API keys', () => {
-      const { createAnthropic } = require('@ai-sdk/anthropic');
-      const { createGoogleGenerativeAI } = require('@ai-sdk/google');
-      const { createDeepSeek } = require('@ai-sdk/deepseek');
-
-      expect(createAnthropic).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-test' }),
-      );
-      expect(createGoogleGenerativeAI).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'gemini-test' }),
-      );
-      expect(createDeepSeek).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'deepseek-test' }),
-      );
+  it('gives Flash a new two-minute request after Qwen times out and isolates caller cancellation', async () => {
+    const { executor } = setup({
+      DASHSCOPE_API_KEY: 'q',
+      DEEPSEEK_API_KEY: 'd',
+      AGENT_CHAT_MODEL: 'qwen/qwen4-max',
     });
-
-    it('should register openai proxy provider when ANTHROPIC_API_KEY exists', () => {
-      const { createCustomOpenAI } = require('@providers/custom-openai.provider');
-      expect(createCustomOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-test' }),
-      );
-      expect(service.hasProvider('openai')).toBe(true);
-    });
-
-    it('should register openrouter with custom provider', () => {
-      const { createCustomOpenRouter } = require('@providers/custom-openrouter.provider');
-      expect(createCustomOpenRouter).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'openrouter-test' }),
-      );
-      expect(service.hasProvider('openrouter')).toBe(true);
-    });
-
-    it('should skip native providers without API keys', async () => {
-      jest.clearAllMocks();
-      const module = await createService({
-        ANTHROPIC_API_KEY: undefined,
-        GEMINI_API_KEY: undefined,
-        DEEPSEEK_API_KEY: undefined,
-        OPENROUTER_API_KEY: undefined,
+    const timeout = jest.spyOn(AbortSignal, 'timeout');
+    const clock = jest.spyOn(Date, 'now');
+    let now = Date.now();
+    clock.mockImplementation(() => now);
+    const models: string[] = [];
+    const fetch = jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      const model = JSON.parse(String(init?.body)).model;
+      models.push(model);
+      if (model === 'qwen4-max') {
+        now += 120_000;
+        throw new DOMException('headers timed out', 'TimeoutError');
+      }
+      now += 119_000;
+      expect(init.signal.aborted).toBe(false);
+      return Response.json({
+        id: 'fixture',
+        created: 1,
+        model,
+        choices: [
+          { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+        ],
       });
-      const svc = module.get<RegistryService>(RegistryService);
-      svc.onModuleInit();
-
-      const { createAnthropic } = require('@ai-sdk/anthropic');
-      const { createGoogleGenerativeAI } = require('@ai-sdk/google');
-      expect(createAnthropic).not.toHaveBeenCalled();
-      expect(createGoogleGenerativeAI).not.toHaveBeenCalled();
-      expect(svc.hasProvider('openai')).toBe(false);
-      expect(svc.hasProvider('openrouter')).toBe(false);
     });
+    const result = await executor.generate({
+      replyModelRoute: new ReplyModelRoute(),
+      prompt: 'hello',
+    });
+    expect(result.modelId).toBe('deepseek/deepseek-flash');
+    expect(models).toEqual(['qwen4-max', 'deepseek-flash']);
+    expect(timeout.mock.calls.filter(([duration]) => duration === 120_000)).toHaveLength(2);
+    const signal = new AbortController();
+    fetch.mockImplementationOnce(async () => {
+      signal.abort(new Error('caller stopped'));
+      throw signal.signal.reason;
+    });
+    await expect(
+      executor.generate({
+        replyModelRoute: new ReplyModelRoute(),
+        prompt: 'cancel',
+        abortSignal: signal.signal,
+      }),
+    ).rejects.toThrow('caller stopped');
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
 
-    it('should register OpenAI-compatible providers with API keys', async () => {
-      jest.clearAllMocks();
-      const module = await createService({
-        DASHSCOPE_API_KEY: 'qwen-test',
-        MOONSHOT_API_KEY: 'moonshot-test',
+  it('uses the actual SDKs to carry an image and completed tool output from Qwen to Flash on the first 503', async () => {
+    const { executor } = setup({
+      DASHSCOPE_API_KEY: 'q',
+      DEEPSEEK_API_KEY: 'd',
+      AGENT_CHAT_MODEL: 'qwen/qwen4-max',
+      AGENT_DEFAULT_FALLBACKS: 'qwen/qwen3.7-plus,anthropic/claude-sonnet-5',
+    });
+    const execute = jest.fn(async () => 'fixture-42');
+    const requests: Array<{
+      model: string;
+      messages: Array<Record<string, unknown>>;
+      thinking?: unknown;
+    }> = [];
+    const signals: AbortSignal[] = [];
+    jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      requests.push(body);
+      signals.push(init.signal);
+      if (requests.length === 2)
+        return Response.json(
+          { error: { message: 'unavailable', type: 'server_error' } },
+          { status: 503 },
+        );
+      const first = requests.length === 1;
+      const message = first
+        ? {
+            role: 'assistant',
+            content: null,
+            reasoning_content: 'private-qwen-reasoning',
+            tool_calls: [
+              { id: 'call-1', type: 'function', function: { name: 'lookup', arguments: '{}' } },
+            ],
+          }
+        : { role: 'assistant', content: 'Fixture confirmed.' };
+      return Response.json({
+        id: 'fixture',
+        object: 'chat.completion',
+        created: 1,
+        model: body.model,
+        choices: [{ index: 0, message, finish_reason: first ? 'tool_calls' : 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       });
-      const svc = module.get<RegistryService>(RegistryService);
-      svc.onModuleInit();
-
-      const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
-      expect(createOpenAICompatible).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'qwen', apiKey: 'qwen-test' }),
-      );
-      expect(createOpenAICompatible).toHaveBeenCalledWith(
+    });
+    const png =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aU/0AAAAASUVORK5CYII=';
+    const replyModelRoute = new ReplyModelRoute();
+    const result = await executor.generate({
+      replyModelRoute,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Check the picture and the fixture.' },
+            { type: 'image', image: Buffer.from(png, 'base64'), mediaType: 'image/png' },
+          ],
+        },
+      ],
+      tools: { lookup: tool({ inputSchema: z.object({}), execute }) },
+      stopWhen: stepCountIs(4),
+      thinking: { type: 'enabled', budgetTokens: 1024, effort: 'high' },
+    });
+    expect(requests.map((r) => r.model)).toEqual(['qwen4-max', 'qwen4-max', 'deepseek-flash']);
+    expect(new Set(signals).size).toBe(3);
+    expect(requests[2].messages).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
-          name: 'moonshotai',
-          apiKey: 'moonshot-test',
-          supportsStructuredOutputs: undefined,
+          role: 'user',
+          content: expect.arrayContaining([
+            {
+              type: 'image_url',
+              image_url: expect.objectContaining({ url: 'data:image/png;base64,' + png }),
+            },
+          ]),
         }),
-      );
-    });
-
-    it('wraps only providers that put the JSON schema into the prompt', async () => {
-      jest.clearAllMocks();
-      const module = await createService({
-        DASHSCOPE_API_KEY: 'qwen-test',
-        MOONSHOT_API_KEY: 'moonshot-test',
-      });
-      module.get<RegistryService>(RegistryService).onModuleInit();
-
-      const { wrapProvider, createProviderRegistry } = require('ai');
-      const { jsonSchemaInPromptMiddleware } = require('@providers/json-schema-prompt.middleware');
-      expect(wrapProvider).toHaveBeenCalledTimes(1);
-      expect(wrapProvider).toHaveBeenCalledWith({
-        provider: { type: 'qwen-compatible' },
-        languageModelMiddleware: jsonSchemaInPromptMiddleware,
-      });
-      const providers = createProviderRegistry.mock.calls[0][0];
-      expect(providers.qwen).toEqual({ type: 'wrapped', provider: { type: 'qwen-compatible' } });
-      expect(providers.moonshotai).toEqual({ type: 'moonshotai-compatible' });
-    });
-
-    it('should register ohmygpt when ANTHROPIC_API_KEY exists', async () => {
-      jest.clearAllMocks();
-      const module = await createService({ ANTHROPIC_API_KEY: 'sk-ant-test' });
-      const svc = module.get<RegistryService>(RegistryService);
-      svc.onModuleInit();
-
-      const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
-      expect(createOpenAICompatible).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'ohmygpt', apiKey: 'sk-ant-test' }),
-      );
-      expect(svc.hasProvider('ohmygpt')).toBe(true);
-    });
-
-    it('should register gateway when both key and URL are present', async () => {
-      jest.clearAllMocks();
-      const module = await createService({
-        GATEWAY_API_KEY: 'gw-key',
-        GATEWAY_BASE_URL: 'https://gw.example.com/v1',
-      });
-      const svc = module.get<RegistryService>(RegistryService);
-      svc.onModuleInit();
-
-      const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
-      expect(createOpenAICompatible).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'gateway',
-          apiKey: 'gw-key',
-          baseURL: 'https://gw.example.com/v1',
+          role: 'assistant',
+          tool_calls: expect.arrayContaining([expect.objectContaining({ id: 'call-1' })]),
         }),
-      );
-      expect(svc.hasProvider('gateway')).toBe(true);
+        expect.objectContaining({
+          role: 'tool',
+          tool_call_id: 'call-1',
+          content: expect.stringContaining('fixture-42'),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(requests[2].messages)).not.toContain('private-qwen-reasoning');
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('Fixture confirmed.');
+    await executor.generate({
+      replyModelRoute,
+      role: ModelRole.Chat,
+      prompt: 'Follow up',
+      purpose: 'empty_text_recovery',
     });
-
-    it('should not register gateway when key is missing', async () => {
-      jest.clearAllMocks();
-      const module = await createService({
-        GATEWAY_BASE_URL: 'https://gw.example.com/v1',
-      });
-      const svc = module.get<RegistryService>(RegistryService);
-      svc.onModuleInit();
-
-      expect(svc.hasProvider('gateway')).toBe(false);
+    await executor.generate({ replyModelRoute, role: ModelRole.Repair, prompt: 'Repair' });
+    await executor.generate({
+      replyModelRoute: new ReplyModelRoute(),
+      role: ModelRole.Chat,
+      prompt: 'Another turn',
     });
-
-    it('should call createProviderRegistry with separator /', () => {
-      const { createProviderRegistry } = require('ai');
-      expect(createProviderRegistry).toHaveBeenCalledWith(expect.any(Object), { separator: '/' });
-    });
-
-    it('should skip deepseek in compatible loop (already registered natively)', async () => {
-      jest.clearAllMocks();
-      const module = await createService({ DEEPSEEK_API_KEY: 'ds-test' });
-      const svc = module.get<RegistryService>(RegistryService);
-      svc.onModuleInit();
-
-      const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
-      const calls = createOpenAICompatible.mock.calls;
-      const deepseekCompatCalls = calls.filter(
-        (c: unknown[]) => (c[0] as { name: string }).name === 'deepseek',
-      );
-      expect(deepseekCompatCalls).toHaveLength(0);
-    });
-  });
-
-  describe('resolve', () => {
-    it('should delegate to registry.languageModel', () => {
-      const result = service.resolve('anthropic/claude-sonnet-4-6');
-      expect(mockRegistry.languageModel).toHaveBeenCalledWith('anthropic/claude-sonnet-4-6');
-      expect(result).toBe(mockLanguageModel);
-    });
-
-    it('should propagate registry errors', () => {
-      mockRegistry.languageModel.mockImplementationOnce(() => {
-        throw new Error('Provider not found');
-      });
-      expect(() => service.resolve('unknown/model')).toThrow('Provider not found');
-    });
-  });
-
-  describe('listProviders', () => {
-    it('should list all registered providers', () => {
-      const providers = service.listProviders();
-      expect(providers).toContain('anthropic');
-      expect(providers).toContain('openai');
-      expect(providers).toContain('openrouter');
-      expect(providers).toContain('google');
-      expect(providers).toContain('deepseek');
-    });
-
-    it('should return a copy of the array', () => {
-      const list1 = service.listProviders();
-      const list2 = service.listProviders();
-      expect(list1).not.toBe(list2);
-      expect(list1).toEqual(list2);
-    });
-  });
-
-  describe('listModels', () => {
-    it('should expose current DeepSeek V4 models', () => {
-      const modelIds = service.listModels().map((model) => model.id);
-
-      expect(modelIds).toEqual(
-        expect.arrayContaining(['deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-pro']),
-      );
-      expect(modelIds).not.toContain('deepseek/deepseek-chat');
-    });
-  });
-
-  describe('hasProvider', () => {
-    it('should return true for registered provider', () => {
-      expect(service.hasProvider('anthropic')).toBe(true);
-    });
-
-    it('should return false for unregistered provider', () => {
-      expect(service.hasProvider('nonexistent')).toBe(false);
-    });
+    expect(requests.slice(3).map((r) => r.model)).toEqual([
+      'deepseek-flash',
+      'deepseek-flash',
+      'qwen4-max',
+    ]);
   });
 });

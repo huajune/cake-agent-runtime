@@ -122,6 +122,8 @@ describe('ReplyWorkflowService', () => {
   const oobReconcile = { reconcileAfterTurn: jest.fn() };
 
   const replyTurns = {
+    withGenerationLease: jest.fn((_turn, _owned, work: () => Promise<void>) => work()),
+    recordFailure: jest.fn().mockResolvedValue(undefined),
     open: jest.fn(),
     settle: jest.fn(),
     acked: jest.fn(),
@@ -549,6 +551,10 @@ describe('ReplyWorkflowService', () => {
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
     expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+    await expect(service.processMergedMessages([createMessage()], 'blocked-batch')).resolves.toBe(
+      'deferred',
+    );
+    expect(wecomObservability.startRequestTrace).not.toHaveBeenCalled();
   });
   it('stops ACK repair when its lease is lost after pending removal', async () => {
     const turn = persistedTurn('settled');

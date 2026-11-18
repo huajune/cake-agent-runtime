@@ -8,12 +8,12 @@ const config: JestConfigWithTsJest = {
   // AppModule 装配冒烟测试实例化真实 Bull/ioredis 客户端，遗留重连句柄会让
   // 默认全量跑挂住；它由专用配置 jest.di-smoke.config.ts（--forceExit）单独执行。
   testPathIgnorePatterns: ['<rootDir>/tests/app-module.smoke.spec.ts'],
-  // ai@7 / @ai-sdk/* / @openrouter 自 v7 线起为纯 ESM 包；jest 29 的 CJS 运行时
+  // ai@7 / @ai-sdk/* 自 v7 线起为纯 ESM 包；jest 29 的 CJS 运行时
   // 无法直接 require，必须让 ts-jest 把它们转译成 CJS（pnpm 布局下真实路径在
   // node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/，两段都要豁免）。
   transformIgnorePatterns: [
-    '/node_modules/(?!\\.pnpm|ai/|@ai-sdk/|@openrouter/|@workflow/|eventsource-parser)',
-    '/node_modules/\\.pnpm/(?!(ai@|@ai-sdk\\+|@openrouter\\+|@workflow\\+|eventsource-parser@))',
+    '/node_modules/(?!\\.pnpm|ai/|@ai-sdk/|@workflow/|eventsource-parser)',
+    '/node_modules/\\.pnpm/(?!(ai@|@ai-sdk\\+|@workflow\\+|eventsource-parser@))',
   ],
   transform: {
     // node_modules 里被豁免的 ESM 包走带 allowJs 的 ts-jest 转译成 CJS；
@@ -61,6 +61,7 @@ const config: JestConfigWithTsJest = {
   testEnvironment: 'node',
   preset: 'ts-jest',
   moduleNameMapper: {
+    '^zod/v4/locales/(.+)\\.js$': 'zod/v4/locales/$1.cjs',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@infra/(.*)$': '<rootDir>/src/infra/$1',
     '^@agent/(.*)$': '<rootDir>/src/agent/$1',
@@ -74,8 +75,7 @@ const config: JestConfigWithTsJest = {
     '^@biz/(.*)$': '<rootDir>/src/biz/$1',
     '^@providers/(.*)$': '<rootDir>/src/providers/$1',
     '^@tools/(.*)$': '<rootDir>/src/tools/$1',
-    '^@memory/session/session-facts\.types$':
-      '<rootDir>/src/memory/short-term/short-term.types',
+    '^@memory/session/session-facts\.types$': '<rootDir>/src/memory/short-term/short-term.types',
     '^@memory/session-state/session-facts\.types$':
       '<rootDir>/src/memory/short-term/short-term.types',
     '^@memory/(.*)$': '<rootDir>/src/memory/$1',

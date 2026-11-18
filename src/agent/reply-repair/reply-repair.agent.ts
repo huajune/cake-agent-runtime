@@ -1,3 +1,4 @@
+import type { ReplyModelRoute } from '@/llm/llm.types';
 import { Injectable } from '@nestjs/common';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -21,6 +22,7 @@ import type {
 import type { ReplyRepairContext } from './reply-repair-context.provider';
 
 export interface ReplyRepairInput {
+  replyModelRoute?: ReplyModelRoute;
   userMessage?: string;
   originalReply: string;
   violations: GuardViolation[];
@@ -131,7 +133,12 @@ export class ReplyRepairAgent {
             },
           ];
 
-    const result = await this.llm.generate({ role: ModelRole.Repair, system, messages });
+    const result = await this.llm.generate({
+      role: ModelRole.Repair,
+      replyModelRoute: input.replyModelRoute,
+      system,
+      messages,
+    });
 
     return this.cleanOutput(result.text);
   }

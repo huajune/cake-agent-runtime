@@ -47,12 +47,14 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     repository: { due: jest.fn(), redact: jest.fn() },
     defer: jest.fn(),
     interrupt: jest.fn(),
+    requestReview: jest.fn(),
+    reviewNotified: jest.fn(),
   };
   const workflow = { resumeInputCompletion: jest.fn() };
   const assertOwned = jest.fn<Promise<void>, []>();
   const leases = { run: jest.fn() };
   const crons = { runBatches: jest.fn() };
-  const incidents = { notifyAsync: jest.fn() };
+  const incidents = { notify: jest.fn() };
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -64,6 +66,12 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     );
     turns.repository.due.mockResolvedValue([]);
     turns.defer.mockResolvedValue(undefined);
+    turns.requestReview.mockImplementation(async (turn, reviewReason) => ({
+      ...turn,
+      reviewRequired: true,
+      reviewReason,
+    }));
+    incidents.notify.mockResolvedValue(true);
     workflow.resumeInputCompletion.mockResolvedValue(undefined);
     turns.interrupt.mockImplementation(async (turn: ReplyTurn) => ({ ...turn, status: 'settled' }));
     module = await Test.createTestingModule({
@@ -85,10 +93,10 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
   });
 
   function expectManual(reason: string, turnId = 'turn-original'): void {
-    expect(incidents.notifyAsync).toHaveBeenCalledWith(
+    expect(incidents.notify).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'reply.manual_review_required',
-        error: expect.objectContaining({ message: `${turnId}: ${reason}` }),
+        error: `${turnId}: ${reason}`,
         dedupe: { key: `reply.manual_review_required:${turnId}` },
       }),
     );
@@ -101,9 +109,11 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
       turns.repository.due.mockResolvedValue([turn]);
       turns.interrupt.mockResolvedValue(turn);
       await service.recoverDue();
-      expect(workflow.resumeInputCompletion).toHaveBeenCalledWith(turn, assertOwned);
-      expect(incidents.notifyAsync).not.toHaveBeenCalled();
-      expect(turns.defer).toHaveBeenCalledWith(turn);
+      if (status === 'settled')
+        expect(workflow.resumeInputCompletion).toHaveBeenCalledWith(turn, assertOwned);
+      else expect(workflow.resumeInputCompletion).not.toHaveBeenCalled();
+      expect(incidents.notify).not.toHaveBeenCalled();
+      expect(turns.defer).not.toHaveBeenCalled();
     },
   );
   it('keeps unconfirmed business effects for manual review without acknowledging', async () => {
@@ -112,8 +122,34 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     await service.recoverDue();
     expectManual('business_effects_unconfirmed');
     expect(workflow.resumeInputCompletion).not.toHaveBeenCalled();
-    expect(turns.interrupt).not.toHaveBeenCalled();
+    expect(turns.interrupt).toHaveBeenCalledWith(turn);
+    expect(turns.reviewNotified).toHaveBeenCalledTimes(1);
+    expect(turns.defer).not.toHaveBeenCalled();
+    turns.interrupt.mockResolvedValue({
+      ...turn,
+      status: 'settled',
+      reviewRequired: true,
+      reviewReason: 'business_effects_unconfirmed',
+      reviewNotifiedAt: new Date(NOW).toISOString(),
+    });
+    await service.recoverDue();
+    expect(incidents.notify).toHaveBeenCalledTimes(1);
+  });
+  it('keeps notification pending after a failed send and marks it only after confirmation', async () => {
+    const turn = groupTurn({
+      status: 'settled',
+      projectionStatus: 'none',
+      reviewRequired: true,
+      reviewReason: 'business_effects_unconfirmed',
+    });
+    turns.repository.due.mockResolvedValue([turn]);
+    incidents.notify.mockResolvedValueOnce(false);
+    await service.recoverDue();
     expect(turns.defer).toHaveBeenCalledWith(turn);
+    expect(turns.reviewNotified).not.toHaveBeenCalled();
+    await service.recoverDue();
+    expect(turns.reviewNotified).toHaveBeenCalledWith(turn);
+    expect(workflow.resumeInputCompletion).not.toHaveBeenCalled();
   });
   it('reports an interrupted delivery and repairs only the input', async () => {
     const turn = groupTurn();
@@ -122,7 +158,10 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     turns.interrupt.mockResolvedValue(terminal);
     await service.recoverDue();
     expectManual('ordinary_reply_interrupted_no_resend');
-    expect(workflow.resumeInputCompletion).toHaveBeenCalledWith(terminal, assertOwned);
+    expect(workflow.resumeInputCompletion).toHaveBeenCalledWith(
+      expect.objectContaining(terminal),
+      assertOwned,
+    );
   });
   it('defers one failed repair and continues to the next input', async () => {
     const first = groupTurn();
@@ -131,7 +170,7 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     workflow.resumeInputCompletion.mockRejectedValueOnce(new Error('Redis unavailable'));
     await service.recoverDue();
     expect(workflow.resumeInputCompletion).toHaveBeenCalledTimes(2);
-    expect(turns.defer.mock.calls).toEqual([[first], [next]]);
+    expect(turns.defer.mock.calls).toEqual([[first]]);
   });
   it('does no input repair or defer when the conversation lease is not acquired', async () => {
     turns.repository.due.mockResolvedValue([groupTurn()]);
@@ -153,8 +192,8 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     expect(turns.defer).not.toHaveBeenCalled();
     await service.recoverDue();
     expect(turns.repository.due).toHaveBeenCalledTimes(2);
-    expect(turns.defer).toHaveBeenCalledTimes(1);
-    expect(turns.defer).toHaveBeenCalledWith(turn);
+    expect(turns.defer).not.toHaveBeenCalled();
+    expect(workflow.resumeInputCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('defers the original input after a workflow error without calling it again within the scan', async () => {
@@ -165,7 +204,7 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     await service.recoverDue();
 
     expect(workflow.resumeInputCompletion).toHaveBeenCalledTimes(1);
-    expect(assertOwned).toHaveBeenCalledTimes(1);
+    expect(assertOwned).toHaveBeenCalledTimes(2);
     expect(turns.defer).toHaveBeenCalledWith(turn);
   });
 });

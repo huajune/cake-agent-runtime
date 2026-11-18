@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MODEL_DICTIONARY } from '@providers/models';
+import { MODEL_DICTIONARY, configuredFallbackModels, supportedModelId } from '@providers/models';
 import { supportsVision } from '@providers/types';
 import {
   AgentFallbackChainEntry,
@@ -81,17 +81,13 @@ export class HostingConfigFacadeService {
    * 与运行时 getFallbackChainOverride 的优先级语义一致。
    */
   private resolveFallbackChains(config: AgentReplyConfig): AgentFallbackChains {
-    const parseEnv = (raw: string | undefined): string[] =>
-      raw
-        ?.split(',')
-        .map((modelId) => modelId.trim())
-        .filter(Boolean) ?? [];
-
     const defaultEntry: AgentFallbackChainEntry =
       config.defaultFallbackModelIds.length > 0
         ? { chain: config.defaultFallbackModelIds, source: 'db_override' }
         : {
-            chain: parseEnv(this.configService.get<string>('AGENT_DEFAULT_FALLBACKS')),
+            chain: configuredFallbackModels(
+              this.configService.get<string>('AGENT_DEFAULT_FALLBACKS')?.split(','),
+            ),
             source: 'environment',
           };
 
@@ -103,8 +99,11 @@ export class HostingConfigFacadeService {
         continue;
       }
       const raw = this.configService.get<string>(`AGENT_${role.toUpperCase()}_FALLBACKS`);
-      if (raw?.trim()) {
-        roleOverrides[role] = { chain: parseEnv(raw), source: 'environment' };
+      if (!config.defaultFallbackModelIds.length && raw?.trim()) {
+        roleOverrides[role] = {
+          chain: configuredFallbackModels(raw.split(',')),
+          source: 'environment',
+        };
       }
     }
     return { default: defaultEntry, roleOverrides };
@@ -148,7 +147,9 @@ export class HostingConfigFacadeService {
           ];
         }
 
-        const environmentModel = this.configService.get<string>(definition.envVar)?.trim();
+        const environmentModel = supportedModelId(
+          this.configService.get<string>(definition.envVar),
+        );
         if (environmentModel) {
           return [
             definition.key,
@@ -161,7 +162,7 @@ export class HostingConfigFacadeService {
         }
 
         const chatModel = definition.fallbackToChat
-          ? this.configService.get<string>('AGENT_CHAT_MODEL')?.trim()
+          ? supportedModelId(this.configService.get<string>('AGENT_CHAT_MODEL'))
           : '';
         if (chatModel) {
           return [
@@ -177,10 +178,10 @@ export class HostingConfigFacadeService {
         const roleFallbacks =
           this.configService.get<string>(`AGENT_${definition.role.toUpperCase()}_FALLBACKS`) ||
           this.configService.get<string>('AGENT_DEFAULT_FALLBACKS');
-        const fallbackModel = roleFallbacks
-          ?.split(',')
-          .map((modelId) => modelId.trim())
-          .find(Boolean);
+        const fallbackModel =
+          (definition.role === 'vision' && config.visionFallbackModelIds[0]) ||
+          config.defaultFallbackModelIds[0] ||
+          configuredFallbackModels(roleFallbacks?.split(','))[0];
         if (fallbackModel) {
           return [
             definition.key,
@@ -232,7 +233,7 @@ export class HostingConfigFacadeService {
       if (typeof raw !== 'string') continue;
       const modelId = raw.trim();
       if (!modelId) continue;
-      if (!MODEL_DICTIONARY[modelId]) {
+      if (!MODEL_DICTIONARY[supportedModelId(modelId)]) {
         throw new BadRequestException(
           `${field} 不是已登记的模型 ID: ${modelId}（可用清单见 GET /agent/models）`,
         );
@@ -251,10 +252,13 @@ export class HostingConfigFacadeService {
       }
       for (const item of raw) {
         const modelId = typeof item === 'string' ? item.trim() : '';
-        if (!modelId || !MODEL_DICTIONARY[modelId]) {
+        if (!modelId || !MODEL_DICTIONARY[supportedModelId(modelId)]) {
           throw new BadRequestException(
             `${field} 含未登记的模型 ID: ${String(item)}（可用清单见 GET /agent/models）`,
           );
+        }
+        if (field === 'visionFallbackModelIds' && !supportsVision(modelId)) {
+          throw new BadRequestException(`${field} 必须是多模态模型: ${modelId} 不支持图片输入`);
         }
       }
     }

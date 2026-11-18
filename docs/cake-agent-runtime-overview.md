@@ -191,7 +191,7 @@ identity → base-manual → channel → stage-overview → red-lines → thresh
 └────────────────────────────────────────┘
 ```
 
-**已接入的 Provider**：Anthropic / OpenAI / Google / DeepSeek / Qwen / Moonshot / OpenRouter / Gateway。
+**已接入的 Provider**：Qwen（DashScope）和 DeepSeek（官方 API）。
 启动时按 `*_API_KEY` 是否存在按需注册，缺 Key 不报错。
 
 **容错策略**：
@@ -199,8 +199,9 @@ identity → base-manual → channel → stage-overview → red-lines → thresh
 | 错误类别        | 触发条件               | 行为                       |
 | --------------- | ---------------------- | -------------------------- |
 | `non_retryable` | 401/403/404 / 余额不足 | 跳过重试，直接降级         |
-| `rate_limited`  | 429                    | 指数退避，尊重 Retry-After |
-| `retryable`     | 5xx / timeout / 网络   | 标准指数退避               |
+| `rate_limited`  | 429                    | 切换供应商 |
+| `provider_unavailable` | 5xx / 模型请求超时 / 连接失败 | 切换供应商 |
+| `retryable` | 可恢复的输出校验错误 | 有限次数重试 |
 
 > **延伸阅读**：[agent-runtime-architecture.md §8](./architecture/agent-runtime-architecture.md#8-llm-与-provider)
 
@@ -635,7 +636,7 @@ FollowUpTaskProcessor
 
 | 变量                                                     | 说明                                |
 | -------------------------------------------------------- | ----------------------------------- |
-| `ANTHROPIC_API_KEY`                                      | Anthropic API 密钥                  |
+| `DASHSCOPE_API_KEY` / `DEEPSEEK_API_KEY`                  | 对应主备供应商的访问密钥          |
 | `AGENT_CHAT_MODEL`                                       | 主对话模型（`provider/model` 格式） |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`    | Redis 接入                          |
 | `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 接入                       |

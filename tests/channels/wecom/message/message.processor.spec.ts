@@ -34,6 +34,7 @@ describe('MessageProcessor', () => {
   };
 
   const mockSimpleMergeService = {
+    renewProcessingLock: jest.fn().mockResolvedValue(true),
     acquireProcessingLock: jest.fn().mockResolvedValue(true),
     releaseProcessingLock: jest.fn().mockResolvedValue(undefined),
     startLockHeartbeat: jest.fn().mockReturnValue(jest.fn()),
@@ -100,7 +101,6 @@ describe('MessageProcessor', () => {
 
   function processorInternals() {
     return processor as unknown as {
-      processMessages(messages: unknown[], batchId: string): Promise<void>;
       dropIfHostingPaused(chatId: string, messages: unknown[], jobId: string): Promise<boolean>;
       handleProcessJob(job: { id: string; data: { chatId: string } }): Promise<void>;
     };
@@ -114,9 +114,22 @@ describe('MessageProcessor', () => {
       },
     ];
 
-    await processorInternals().processMessages(messages, 'batch-001');
-
-    expect(mockPipeline.processMergedMessages).toHaveBeenCalledWith(messages, 'batch-001');
+    mockSimpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+      messages,
+      batchId: 'batch-001',
+    });
+    mockPipeline.processMergedMessages.mockResolvedValueOnce('deferred');
+    await processorInternals().handleProcessJob({
+      id: 'deferred-job',
+      data: { chatId: 'chat-1' },
+    } as never);
+    expect(mockPipeline.processMergedMessages).toHaveBeenCalledWith(
+      messages,
+      'batch-001',
+      expect.any(Function),
+    );
+    expect(mockSimpleMergeService.scheduleLockRetryCheck).toHaveBeenCalledWith('chat-1');
+    expect(mockSimpleMergeService.checkAndProcessNewMessages).not.toHaveBeenCalled();
   });
 
   describe('dropIfHostingPaused', () => {

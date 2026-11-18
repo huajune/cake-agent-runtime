@@ -28,6 +28,7 @@ export interface TurnContext
     GeneratorInvokeParams,
     | 'logicalTurnId'
     | 'toolCallCounts'
+    | 'replyModelRoute'
     | 'inputOccurredAt'
     | 'scenario'
     | 'imageMessageIds'
