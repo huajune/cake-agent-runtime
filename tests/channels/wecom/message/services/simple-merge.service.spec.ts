@@ -175,7 +175,11 @@ describe('SimpleMergeService', () => {
       ]);
       const result = await service.claimPendingSnapshot('chat-123');
       expect(result.messages.map((message) => message.messageId)).toEqual(['msg-123', 'msg-456']);
-      expect(result.batchId).toMatch(/^batch_chat-123_\d+$/);
+      expect(result.batchId).toMatch(/^batch_chat-123_[a-f0-9]{32}$/);
+      mockRedisService.lrange.mockResolvedValueOnce([...result.messages].reverse());
+      expect((await service.claimPendingSnapshot('chat-123')).batchId).toBe(result.batchId);
+      mockRedisService.lrange.mockResolvedValueOnce([validMessageData]);
+      expect((await service.claimPendingSnapshot('chat-123')).batchId).not.toBe(result.batchId);
       expect(mockRedisService.lrange).toHaveBeenCalledWith('wecom:message:pending:chat-123', 0, -1);
       expect(mockRedisService.ltrim).not.toHaveBeenCalled();
       expect(mockRedisService.eval).not.toHaveBeenCalled();

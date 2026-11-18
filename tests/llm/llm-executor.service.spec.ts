@@ -26,6 +26,15 @@ jest.mock('@providers/types', () => {
 });
 
 const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
+function testStream(parts: object[]) {
+  return new ReadableStream({
+    start(controller) {
+      for (const part of parts) controller.enqueue(part);
+      controller.close();
+    },
+  });
+}
+
 const mockStreamText = streamText as jest.MockedFunction<typeof streamText>;
 const mockOutputObject = Output.object as unknown as jest.MockedFunction<typeof Output.object>;
 const mockSupportsVision = supportsVision as jest.MockedFunction<typeof supportsVision>;
@@ -52,8 +61,8 @@ describe('LlmExecutorService', () => {
   let mockRegistry: MockRegistry;
   let mockReliable: MockReliable;
 
-  const primaryModelId = 'anthropic/claude-sonnet-4-6';
-  const fallbackModelId = 'openai/gpt-5.4-mini';
+  const primaryModelId = 'qwen/qwen4-max';
+  const fallbackModelId = 'deepseek/deepseek-flash';
   const primaryModel = { modelId: primaryModelId };
   const fallbackModel = { modelId: fallbackModelId };
 
@@ -192,49 +201,16 @@ describe('LlmExecutorService', () => {
       );
     });
 
-    it('should use adaptive thinking for Anthropic Claude 4.7 models', async () => {
+    it('passes DeepSeek thinking mode and effort to Flash', async () => {
       mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
-
       await service.generate({
-        role: ModelRole.Chat,
-        modelId: 'anthropic/claude-opus-4-7',
+        modelId: fallbackModelId,
         prompt: 'hello',
-        disableFallbacks: true,
-        thinking: { type: 'enabled', budgetTokens: 4000 },
+        thinking: { type: 'enabled', budgetTokens: 2048, effort: 'high' },
       });
-
-      expect(mockGenerateText).toHaveBeenCalledWith(
-        expect.objectContaining({
-          providerOptions: {
-            anthropic: {
-              thinking: { type: 'adaptive' },
-              effort: 'high',
-            },
-          },
-        }),
-      );
-    });
-
-    it('should keep budgeted thinking for older Anthropic Claude models', async () => {
-      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
-
-      await service.generate({
-        role: ModelRole.Chat,
-        modelId: 'anthropic/claude-opus-4-6',
-        prompt: 'hello',
-        disableFallbacks: true,
-        thinking: { type: 'enabled', budgetTokens: 4000 },
+      expect(mockGenerateText.mock.calls[0][0].providerOptions).toEqual({
+        deepseek: { thinking: { type: 'enabled' }, reasoningEffort: 'high' },
       });
-
-      expect(mockGenerateText).toHaveBeenCalledWith(
-        expect.objectContaining({
-          providerOptions: {
-            anthropic: {
-              thinking: { type: 'enabled', budgetTokens: 4000 },
-            },
-          },
-        }),
-      );
     });
 
     it('disables Qwen deep thinking for multimodal requests while keeping the image input', async () => {
@@ -307,9 +283,9 @@ describe('LlmExecutorService', () => {
 
     it('should retry the primary model before falling back', async () => {
       mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 500 primary attempt 1'))
-        .mockRejectedValueOnce(new Error('HTTP 500 primary attempt 2'))
-        .mockRejectedValueOnce(new Error('HTTP 500 primary attempt 3'))
+        .mockRejectedValueOnce(new Error('Invalid model output: primary attempt 1'))
+        .mockRejectedValueOnce(new Error('Invalid model output: primary attempt 2'))
+        .mockRejectedValueOnce(new Error('Invalid model output: primary attempt 3'))
         .mockResolvedValueOnce(makeGenerateResult({ text: 'fallback response' }));
 
       const result = await service.generate({
@@ -354,8 +330,8 @@ describe('LlmExecutorService', () => {
     it('should skip text-only fallbacks for image input requests', async () => {
       mockSupportsVision.mockImplementation((modelId: string) => modelId === primaryModelId);
       mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 500 primary vision failed'))
-        .mockRejectedValueOnce(new Error('HTTP 500 primary vision failed again'));
+        .mockRejectedValueOnce(new Error('Invalid model output: primary vision failed'))
+        .mockRejectedValueOnce(new Error('Invalid model output: primary vision failed again'));
 
       await expect(
         service.generate({
@@ -383,8 +359,8 @@ describe('LlmExecutorService', () => {
 
     it('should not use fallbacks when disableFallbacks is true', async () => {
       mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 500 attempt 1'))
-        .mockRejectedValueOnce(new Error('HTTP 500 attempt 2'));
+        .mockRejectedValueOnce(new Error('Invalid model output: attempt 1'))
+        .mockRejectedValueOnce(new Error('Invalid model output: attempt 2'));
 
       await expect(
         service.generate({
@@ -437,7 +413,7 @@ describe('LlmExecutorService', () => {
     it('同模型重试后成功：无条件发射一条含完整尝试轨迹的事件', async () => {
       mockReliable.getBackoffMs.mockReturnValue(7);
       mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 500 flaky'))
+        .mockRejectedValueOnce(new Error('Invalid model output: flaky'))
         .mockResolvedValueOnce(makeGenerateResult({ text: '重试成功' }));
       const onAttemptStart = jest.fn();
 
@@ -467,7 +443,7 @@ describe('LlmExecutorService', () => {
         errorCategory: 'retryable',
         backoffMs: 7,
       });
-      expect(events[0].attempts[0].error).toContain('HTTP 500 flaky');
+      expect(events[0].attempts[0].error).toContain('Invalid model output: flaky');
       expect(events[0].attempts[1]).toMatchObject({ attempt: 2, status: 'success' });
       expect(onAttemptStart).toHaveBeenNthCalledWith(1, {
         modelId: primaryModelId,
@@ -510,8 +486,8 @@ describe('LlmExecutorService', () => {
     it('全链耗尽：抛错前发射 exhausted 事件，vision 预检跳过的候选以 skipped 入轨', async () => {
       mockSupportsVision.mockImplementation((modelId: string) => modelId === primaryModelId);
       mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 500 a'))
-        .mockRejectedValueOnce(new Error('HTTP 500 b'));
+        .mockRejectedValueOnce(new Error('Invalid model output: a'))
+        .mockRejectedValueOnce(new Error('Invalid model output: b'));
 
       await expect(
         service.generate({
@@ -545,7 +521,9 @@ describe('LlmExecutorService', () => {
     });
 
     it('stream 初始化成功同样发射事件（耗时仅覆盖初始化窗口）', async () => {
-      mockStreamText.mockReturnValueOnce({} as ReturnType<typeof streamText>);
+      mockStreamText.mockReturnValueOnce({
+        fullStream: testStream([{ type: 'text-delta' }]),
+      } as unknown as ReturnType<typeof streamText>);
 
       await service.stream({ role: ModelRole.Chat, prompt: 'hi', disableFallbacks: true });
 
@@ -650,12 +628,12 @@ describe('LlmExecutorService', () => {
       return events[0];
     }
 
-    it('provider 中途超时：重试把已完成工具步接到对话末尾续跑，steps 合并且逐步标注尝试序号', async () => {
+    it('结果校验失败：重试把已完成工具步接到对话末尾续跑，steps 合并且逐步标注尝试序号', async () => {
       const finalStep = textStep('预约成功啦');
       mockGenerateText
         .mockImplementationOnce(async (options) => {
           await (options as GenerateOptions).onStepFinish?.(toolStep);
-          throw new Error('Cannot connect to API: Headers Timeout Error');
+          throw new Error('Invalid model output after tool completion');
         })
         .mockImplementationOnce(async (options) => {
           await (options as GenerateOptions).onStepFinish?.(finalStep);
@@ -813,7 +791,9 @@ describe('LlmExecutorService', () => {
 
     it('首次尝试（无续接）原样透传调用方的 stopWhen 与 prepareStep，多步循环不被 SDK 默认单步截断', async () => {
       const finalStep = textStep('你好');
-      mockGenerateText.mockResolvedValueOnce(makeGenerateResult({ text: '你好', steps: [finalStep] }));
+      mockGenerateText.mockResolvedValueOnce(
+        makeGenerateResult({ text: '你好', steps: [finalStep] }),
+      );
       const prepareStep = jest.fn().mockReturnValue({});
       const stopWhen = jest.fn().mockReturnValue(false);
 
@@ -867,11 +847,12 @@ describe('LlmExecutorService', () => {
     it('should try the fallback model when the primary stream initialization fails', async () => {
       const streamResult = {
         textStream: 'fallback stream',
+        fullStream: testStream([{ type: 'text-delta' }]),
       } as unknown as ReturnType<typeof streamText>;
       mockStreamText
-        .mockImplementationOnce(() => {
-          throw new Error('primary stream init failed');
-        })
+        .mockReturnValueOnce({
+          fullStream: testStream([{ type: 'start' }, { type: 'error', error: new Error('503') }]),
+        } as unknown as ReturnType<typeof streamText>)
         .mockReturnValueOnce(streamResult);
 
       const result = await service.stream({
@@ -1024,7 +1005,7 @@ describe('LlmExecutorService', () => {
   });
 
   describe('fallback chain overrides（运行时降级链覆盖）', () => {
-    const dbChain = ['qwen/qwen3.7-plus', 'anthropic/claude-sonnet-5'];
+    const dbChain = ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'];
 
     function makeServiceWithChainOverride(
       getFallbackChainOverride: (role: string) => Promise<string[] | undefined>,
@@ -1061,13 +1042,13 @@ describe('LlmExecutorService', () => {
 
       await overriddenService.generate({
         role: ModelRole.Chat,
-        fallbacks: ['deepseek/deepseek-v4-flash'],
+        fallbacks: ['deepseek/deepseek-flash'],
         prompt: 'hi',
       });
 
       expect(getChain).not.toHaveBeenCalled();
       expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
-        expect.objectContaining({ fallbacks: ['deepseek/deepseek-v4-flash'] }),
+        expect.objectContaining({ fallbacks: ['deepseek/deepseek-flash'] }),
       );
     });
 

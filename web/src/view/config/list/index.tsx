@@ -685,7 +685,8 @@ export default function Config() {
                       </span>
                     </div>
                     <p className={styles.settingDescription}>
-                      主模型不可用时按此顺序换用，逗号分隔，留空走环境变量。
+                      主聊的 Qwen 超时会直接切到 DeepSeek V4.1
+                      Flash。其他角色按配置顺序切换供应商，留空使用环境变量。
                     </p>
                     <div className={styles.settingMeta}>
                       <span>当前生效: {fallbackChains.default.chain.join(' → ') || '未配置'}</span>
@@ -695,7 +696,7 @@ export default function Config() {
                     <input
                       type="text"
                       className={styles.selectInput}
-                      placeholder="留空走 env，如 qwen/qwen3.7-plus, anthropic/claude-sonnet-5"
+                      placeholder="留空走 env，如 deepseek/deepseek-flash, qwen/qwen3.7-plus"
                       value={((getCurrentValue('defaultFallbackModelIds') as string[]) ?? []).join(
                         ', ',
                       )}
@@ -738,7 +739,7 @@ export default function Config() {
                     <input
                       type="text"
                       className={styles.selectInput}
-                      placeholder="留空走 env，如 anthropic/claude-sonnet-5"
+                      placeholder="留空走 env，如 deepseek/deepseek-flash"
                       value={((getCurrentValue('visionFallbackModelIds') as string[]) ?? []).join(
                         ', ',
                       )}

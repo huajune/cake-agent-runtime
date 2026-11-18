@@ -1,6 +1,7 @@
 import type { ActionMode } from '../action-execution/action-execution.types';
 import type {
   ReplyProjectionStatus,
+  ReplyReviewReason,
   ReplyTurnStatus,
   ReplyDeliveryPolicy,
   ReplyDeliveryOutcome,
@@ -33,11 +34,17 @@ export interface ReplyTurn extends ReplyTurnScope {
   fence: number;
   recovery: Record<string, unknown>;
   projectionStatus?: ReplyProjectionStatus;
+  reviewRequired?: boolean;
+  reviewReason?: ReplyReviewReason;
+  reviewNotifiedAt?: string;
 }
 
 /** Deliberate suspension, never a reason to generate/send a fallback. */
 export class ReplyDeferredError extends Error {
-  constructor(public readonly reason: string) {
+  constructor(
+    public readonly reason: string,
+    public readonly cause?: unknown,
+  ) {
     super(`reply_deferred:${reason}`);
     this.name = 'ReplyDeferredError';
   }

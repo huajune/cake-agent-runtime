@@ -517,7 +517,7 @@ Content-Type: application/json
 
 {
   "message": "你好，请介绍一下你自己",
-  "model": "anthropic/claude-3-5-haiku-latest",
+  "model": "qwen/qwen4-max",
   "conversationId": "test-allowed-model-001"
 }
 
@@ -544,14 +544,14 @@ Content-Type: application/json
 }
 
 ### ========================================
-### 32. 测试模型安全校验 - 使用其他允许的 Claude 模型
+### 32. 测试模型安全校验 - 使用允许的 DeepSeek 模型
 POST {{baseUrl}}/agent/test-model-validation
 Content-Type: application/json
 
 {
-  "message": "使用 Sonnet 模型进行测试",
-  "model": "anthropic/claude-3-5-sonnet-latest",
-  "conversationId": "test-sonnet-model-001"
+  "message": "使用 Flash 模型进行测试",
+  "model": "deepseek/deepseek-flash",
+  "conversationId": "test-flash-model-001"
 }
 
 ### ========================================

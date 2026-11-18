@@ -1,3 +1,4 @@
+import type { ReplyModelRoute } from '@/llm/llm.types';
 import { streamText } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import type { LlmThinkingConfig } from '@/llm/llm.types';
@@ -46,6 +47,7 @@ export interface GeneratorInputMessage {
 }
 
 export interface GeneratorInvokeParams {
+  replyModelRoute?: ReplyModelRoute;
   /** 调用方身份；决定是否加载短期记忆、默认 strategySource 等运行时行为。 */
   callerKind: CallerKind;
   /**

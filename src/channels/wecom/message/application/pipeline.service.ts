@@ -45,7 +45,8 @@ export class MessagePipelineService {
   async processMergedMessages(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
-  ): Promise<void> {
-    return this.replyWorkflow.processMergedMessages(messages, batchId);
+    assertOwned?: () => Promise<void>,
+  ): Promise<'deferred' | void> {
+    return this.replyWorkflow.processMergedMessages(messages, batchId, assertOwned);
   }
 }

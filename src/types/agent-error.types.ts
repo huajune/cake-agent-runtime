@@ -7,6 +7,7 @@ export interface AgentErrorMeta {
   modelsAttempted?: string[];
   totalAttempts?: number;
   lastCategory?: string;
+  providerOutage?: boolean;
   sessionId?: string;
   userId?: string;
   messageCount?: number;

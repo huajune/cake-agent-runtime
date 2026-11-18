@@ -14,7 +14,8 @@ import {
   ArrayMinSize,
   Matches,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { SUPPORTED_MODEL_ID_PATTERN } from '@providers/models';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { GeneratorToolMode } from '@agent/generator/generator.types';
 import {
@@ -304,7 +305,8 @@ export class VercelAIChatRequestDto {
     description: '覆盖聊天模型 ID（provider/model 格式），缺省走角色路由',
   })
   @IsOptional()
-  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @Matches(SUPPORTED_MODEL_ID_PATTERN, { message: 'modelId 必须使用 Qwen 或 DeepSeek 供应商' })
   modelId?: string;
 
   @ApiPropertyOptional({ description: '来源排障链路（BadCase/chat/message/trace 等）' })
@@ -440,7 +442,8 @@ export class TestChatRequestDto {
     description: '覆盖聊天模型 ID（provider/model 格式），缺省走角色路由',
   })
   @IsOptional()
-  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @Matches(SUPPORTED_MODEL_ID_PATTERN, { message: 'modelId 必须使用 Qwen 或 DeepSeek 供应商' })
   modelId?: string;
 
   @ApiPropertyOptional({ description: '来源排障链路（BadCase/chat/message/trace 等）' })

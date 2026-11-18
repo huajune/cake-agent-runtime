@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -11,10 +12,11 @@ import {
 } from './reply-execution.types';
 import {
   REPLY_TURN_OPERATION,
+  REPLY_TURN_STATUS,
   REPLY_DELIVERY_POLICY,
 } from '@biz/reply-execution/reply-execution.constants';
 import { ACTION_MODE, isActionMode } from '@shared-types/action-execution.contract';
-import type { ReplyTurnOperation } from './reply-execution.constants';
+import type { ReplyReviewReason, ReplyTurnOperation } from './reply-execution.constants';
 
 const RETENTION_MS = 90 * 86400_000;
 
@@ -95,8 +97,63 @@ export class ReplyTurnsService {
     }
   }
 
+  /** Renew only the current worker's unexpired DB fence. A delayed heartbeat cannot revive a lost turn. */
+  async withGenerationLease<T>(
+    turn: ReplyTurn,
+    assertOwned: (() => Promise<void>) | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    let renewing: Promise<void> | undefined;
+    const timer = setInterval(() => {
+      if (renewing) return;
+      renewing = (async () => {
+        await assertOwned?.();
+        const current = await this.update(turn, REPLY_TURN_OPERATION.RENEW);
+        if (
+          current.status === REPLY_TURN_STATUS.SETTLED ||
+          current.status === REPLY_TURN_STATUS.ACKED
+        )
+          clearInterval(timer);
+      })()
+        .catch((error: unknown) => {
+          this.logger.warn(`reply.renew_failed ${turn.logicalTurnId}: ${String(error)}`);
+        })
+        .finally(() => {
+          renewing = undefined;
+        });
+    }, 60_000);
+    timer.unref();
+    try {
+      return await work();
+    } finally {
+      clearInterval(timer);
+      await renewing;
+    }
+  }
+
+  async recordFailure(turn: ReplyTurn, stage: string, cause?: string): Promise<void> {
+    try {
+      await this.update(turn, REPLY_TURN_OPERATION.RECORD_FAILURE, { failure: { stage, cause } });
+    } catch {
+      this.logger.warn(`reply.failure_evidence_unavailable ${turn.logicalTurnId}`);
+    }
+  }
+
+  closeModelOutage(turn: ReplyTurn, models: readonly string[]): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.CLOSE_MODEL_OUTAGE, { models });
+  }
+
+  requestReview(turn: ReplyTurn, reviewReason: ReplyReviewReason): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.REQUEST_REVIEW, { reviewReason });
+  }
+  reviewNotified(turn: ReplyTurn): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.REVIEW_NOTIFIED);
+  }
   async saveEffects(turn: ReplyTurn, effects: Record<string, unknown>): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.SAVE_EFFECTS, { effects });
+  }
+  saveLateEffects(turn: ReplyTurn, effects: Record<string, unknown>): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.SAVE_LATE_EFFECTS, { effects });
   }
   async startDelivery(turn: ReplyTurn): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.START_DELIVERY);
@@ -128,6 +185,7 @@ export class ReplyTurnsService {
     // No original text/model result is retained for background regeneration.
     const keys = ['orgId', 'imBotId', 'chatId', 'imContactId', 'imRoomId', 'groupId', '_apiType'];
     return {
+      ...(typeof recovery.traceId === 'string' ? { traceId: recovery.traceId } : {}),
       primary: Object.fromEntries(
         keys.filter((key) => primary[key] !== undefined).map((key) => [key, primary[key]]),
       ),
@@ -143,8 +201,11 @@ export class ReplyTurnsService {
       const next = await this.repository.transition(operation, { ...turn, ...extra });
       if (!next) throw new Error('turn_missing');
       return next;
-    } catch {
-      throw new ReplyDeferredError(`${operation}_not_confirmed`);
+    } catch (cause) {
+      this.logger.warn(
+        `reply.transition_failed turn=${turn.logicalTurnId} operation=${operation} cause=${toErrorMessage(cause)}`,
+      );
+      throw new ReplyDeferredError(`${operation}_not_confirmed`, cause);
     }
   }
 }

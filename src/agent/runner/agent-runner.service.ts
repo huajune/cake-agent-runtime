@@ -1,3 +1,4 @@
+import { ReplyModelRoute } from '@/llm/llm.types';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import { attachReplayEvidence } from '@infra/utils/action-receipt.util';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -236,6 +237,7 @@ export class AgentRunnerService {
   ): Promise<ReviewedRunResult> {
     const turnParams = {
       ...params,
+      replyModelRoute: params.replyModelRoute ?? new ReplyModelRoute(),
       toolCallCounts: params.toolCallCounts ?? new Map<string, number>(),
     };
     const first = await this.generator.invoke(turnParams);
@@ -418,6 +420,7 @@ export class AgentRunnerService {
         : this.buildRepairedResult(
             first,
             await this.replyRepairAgent.repair({
+              replyModelRoute: params.replyModelRoute,
               userMessage: ctx.userMessage,
               originalReply: firstText,
               violations: decision.violations,
@@ -1170,6 +1173,7 @@ export class AgentRunnerService {
     const { sessionRef, context } = req;
     const telemetryContext = {
       traceId: context?.messageId,
+      logicalTurnId: context?.logicalTurnId,
       chatId: sessionRef.sessionId,
       userId: sessionRef.userId,
       corpId: sessionRef.corpId,
@@ -1186,6 +1190,10 @@ export class AgentRunnerService {
 
   private async runInboundTurnObserved(req: InboundTurnRequest): Promise<TurnOutcome> {
     const startedAt = Date.now();
+    const timing = () => {
+      const durationMs = Date.now() - startedAt;
+      return { durationMs, ...(durationMs >= 180_000 ? { slow: true } : {}) };
+    };
     this.tracer?.emit({ type: 'agent_start' });
 
     try {
@@ -1195,13 +1203,14 @@ export class AgentRunnerService {
         steps: outcome.agentSteps?.length,
         totalTokens: outcome.usage?.totalTokens,
         cachedTokens: outcome.usage?.cachedInputTokens,
-        durationMs: Date.now() - startedAt,
+        ...timing(),
       });
       return outcome;
     } catch (error) {
       this.tracer?.emit({
         type: 'agent_error',
         error: toErrorMessage(error),
+        ...timing(),
       });
       throw error;
     }
@@ -1258,6 +1267,7 @@ export class AgentRunnerService {
       shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
       hasNewerUserInput: context?.hasNewerUserInput,
       toolCallCounts: context?.toolCallCounts,
+      replyModelRoute: context?.replyModelRoute,
       onPreparedRequest: context?.onPreparedRequest,
     };
 

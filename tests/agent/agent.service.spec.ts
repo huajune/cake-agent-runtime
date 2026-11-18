@@ -100,14 +100,21 @@ describe('GeneratorAgent', () => {
   it('should prepare with vision capability resolved from llm executor', async () => {
     await service.invoke(invokeParams);
 
+    const route = mockLlm.generate.mock.calls[0][0].replyModelRoute;
+    expect(route).toBeDefined();
     expect(mockLlm.supportsVisionInput).toHaveBeenCalledWith({
       role: 'chat',
+      replyModelRoute: route,
       modelId: undefined,
       disableFallbacks: undefined,
     });
-    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke', {
-      enableVision: true,
-    });
+    expect(mockPreparation.prepare).toHaveBeenCalledWith(
+      { ...invokeParams, replyModelRoute: route },
+      'invoke',
+      {
+        enableVision: true,
+      },
+    );
   });
 
   it('should invoke llm executor and expose prepared request snapshot', async () => {

@@ -10,6 +10,7 @@ import {
   type StepResult,
   type ToolSet,
 } from 'ai';
+import { DEEPSEEK_FLASH_MODEL_ID, ModelProvider } from '@providers/models';
 import { RegistryService } from '@providers/registry.service';
 import { ReliableService } from '@providers/reliable.service';
 import { RouterService } from '@providers/router.service';
@@ -18,13 +19,14 @@ import type { AgentError } from '@shared-types/agent-error.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import type { LlmAttemptTrace } from '@observability/observer.interface';
 import { z } from 'zod';
-import { type LlmThinkingConfig, ModelRole } from './llm.types';
+import { type LlmThinkingConfig, ModelRole, type ReplyModelRoute } from './llm.types';
 import { ROLE_MODEL_OVERRIDES, type RoleModelOverridesProvider } from './role-model-overrides';
 import { snapshotToolDefinitions } from './tool-definition-snapshot';
 import { ToolReplayFence, type ToolReplayPolicy } from './tool-replay-fence';
 import type { ToolReplayEvidence } from '@shared-types/tool-replay.types';
 
 export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>[0], 'model'> {
+  replyModelRoute?: ReplyModelRoute;
   /** Caller-declared external action fence, retained through every provider attempt. */
   toolReplayPolicy?: ToolReplayPolicy;
   role?: ModelRole | string;
@@ -64,6 +66,7 @@ export interface LlmGenerateStructuredOptions<TSchema extends z.ZodTypeAny>
 }
 
 export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0], 'model'> {
+  replyModelRoute?: ReplyModelRoute;
   toolReplayPolicy?: ToolReplayPolicy;
   role?: ModelRole | string;
   modelId?: string;
@@ -138,9 +141,10 @@ export class LlmExecutorService {
       validateResult,
       purpose,
       toolReplayPolicy,
+      replyModelRoute,
       ...routeOptions
     } = options;
-    const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
+    const plan = await this.resolveExecutionPlanWithOverrides(routeOptions, replyModelRoute);
     const executionStartMs = Date.now();
     const trail: LlmAttemptTrace[] = [];
     let backoffTotalMs = 0;
@@ -155,7 +159,14 @@ export class LlmExecutorService {
     let attemptOrdinal = 0;
     const toolFence = new ToolReplayFence(toolReplayPolicy);
     const fencedTools = toolFence.wrap(routeOptions.tools);
+    const attemptedProviders = new Set<string>();
     for (const modelId of this.iterateCandidateModels(plan)) {
+      const provider = modelId.split('/')[0];
+      if (attemptedProviders.has(provider)) continue;
+      if (replyModelRoute?.unavailableProviders.has(provider)) {
+        trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '本轮该供应商已不可用'));
+        continue;
+      }
       if (requiresVisionInput && !supportsVision(modelId)) {
         trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '模型不支持图片输入'));
         continue;
@@ -165,6 +176,9 @@ export class LlmExecutorService {
         continue;
       }
 
+      attemptedProviders.add(provider);
+      if (replyModelRoute && modelId !== plan.primaryModelId)
+        replyModelRoute.fallbackModelId = modelId;
       const model = this.registry.resolve(modelId);
       const effectiveThinking = this.resolveRequestThinking(modelId, thinking, requiresVisionInput);
       const providerOptions = this.buildProviderOptions(modelId, effectiveThinking);
@@ -231,6 +245,8 @@ export class LlmExecutorService {
           };
           toolFence.observe(carried.steps);
           const category = this.reliable.classifyError(err);
+          if (category === 'provider_unavailable' || category === 'rate_limited')
+            replyModelRoute?.unavailableProviders.add(provider);
           const message = toErrorMessage(err);
           const entry: LlmAttemptTrace = {
             modelId,
@@ -251,6 +267,7 @@ export class LlmExecutorService {
             throw this.buildExhaustedError(plan, trail, lastRawError, toolFence.snapshot());
           }
 
+          if (routeOptions.abortSignal?.aborted) throw routeOptions.abortSignal.reason ?? err;
           if (!this.reliable.shouldRetry(category, attempt, retryConfig)) {
             break;
           }
@@ -295,10 +312,17 @@ export class LlmExecutorService {
   }
 
   async stream(options: LlmStreamOptions): Promise<ReturnType<typeof streamText>> {
-    const { onPreparedRequest, thinking, purpose, toolReplayPolicy, ...routeOptions } = options;
+    const {
+      onPreparedRequest,
+      thinking,
+      purpose,
+      toolReplayPolicy,
+      replyModelRoute,
+      ...routeOptions
+    } = options;
     const toolFence = new ToolReplayFence(toolReplayPolicy);
     routeOptions.tools = toolFence.wrap(routeOptions.tools);
-    const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
+    const plan = await this.resolveExecutionPlanWithOverrides(routeOptions, replyModelRoute);
     const executionStartMs = Date.now();
     const trail: LlmAttemptTrace[] = [];
     const requiresVisionInput = this.hasVisionInput(routeOptions.messages);
@@ -306,7 +330,14 @@ export class LlmExecutorService {
 
     let lastError: Error | undefined;
     let previousModelId: string | undefined;
+    const attemptedProviders = new Set<string>();
     for (const modelId of this.iterateCandidateModels(plan)) {
+      const provider = modelId.split('/')[0];
+      if (attemptedProviders.has(provider)) continue;
+      if (replyModelRoute?.unavailableProviders.has(provider)) {
+        trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '本轮该供应商已不可用'));
+        continue;
+      }
       if (requiresVisionInput && !supportsVision(modelId)) {
         trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '模型不支持图片输入'));
         lastError = new Error(`模型不支持图片输入: ${modelId}`);
@@ -318,6 +349,9 @@ export class LlmExecutorService {
         continue;
       }
 
+      attemptedProviders.add(provider);
+      if (replyModelRoute && modelId !== plan.primaryModelId)
+        replyModelRoute.fallbackModelId = modelId;
       const attemptStartMs = Date.now();
       try {
         this.emitModelAttempt(plan, modelId, previousModelId, this.formatAttempt(trail.at(-1)));
@@ -333,8 +367,24 @@ export class LlmExecutorService {
             this.buildProviderOptions(modelId, effectiveThinking),
           ),
           model: this.registry.resolve(modelId),
-          maxRetries: boundedModelAttempts((routeOptions.maxRetries ?? 2) + 1) - 1,
+          maxRetries: 0,
         } as Parameters<typeof streamText>[0]);
+        // streamText returns before the HTTP request. Probe its tee before exposing the stream
+        // to the caller, so only failures before any output/tool execution can switch providers.
+        const probe = streamResult.fullStream.getReader();
+        try {
+          for (;;) {
+            const { value, done } = await probe.read();
+            if (done) throw new Error('Model stream closed before producing a response');
+            if (value.type === 'error') throw value.error;
+            if (value.type === 'abort') throw new Error(value.reason ?? 'Model stream aborted');
+            if (!['start', 'start-step', 'text-start', 'reasoning-start'].includes(value.type))
+              break;
+          }
+        } finally {
+          void probe.cancel().catch(() => undefined);
+          probe.releaseLock();
+        }
         trail.push({
           modelId,
           attempt: 1,
@@ -352,13 +402,17 @@ export class LlmExecutorService {
           err = new Error(String(error));
         }
         lastError = err;
+        if (routeOptions.abortSignal?.aborted) throw routeOptions.abortSignal.reason ?? err;
+        const category = this.reliable.classifyError(err);
+        if (category === 'provider_unavailable' || category === 'rate_limited')
+          replyModelRoute?.unavailableProviders.add(provider);
         trail.push({
           modelId,
           attempt: 1,
           startOffsetMs: attemptStartMs - executionStartMs,
           durationMs: Date.now() - attemptStartMs,
           status: 'error',
-          errorCategory: this.reliable.classifyError(err),
+          errorCategory: category,
           error: this.truncateErrorForTrace(err.message),
         });
         if (toolFence.snapshot().length > 0) {
@@ -400,18 +454,19 @@ export class LlmExecutorService {
    * 当前路由（primary + 降级链）是否有任一候选支持图片输入。
    *
    * 语义：只要链上存在认图候选就按多模态构建请求——纯文本主模型
-   * （如 deepseek）会在生成时被 vision 闸门跳过，整轮落到链上首个认图候选亲眼看图，
+   * （如 DeepSeek V4 Pro）会在生成时被 vision 闸门跳过，整轮落到链上首个认图候选亲眼看图，
    * 取代旧的「主模型不认图就预描述转文字」间接路径（信息保真更高、save_image_description
    * 回到一手描述）。链上全为纯文本模型时返回 false；该场景由 reply-workflow 的运行时
    * 兼容重跑兜底（入站预描述分支已于 废弃）。
    */
   async supportsVisionInput(options: {
+    replyModelRoute?: ReplyModelRoute;
     role?: ModelRole | string;
     modelId?: string;
     fallbacks?: string[];
     disableFallbacks?: boolean;
   }): Promise<boolean> {
-    const plan = await this.resolveExecutionPlanWithOverrides(options);
+    const plan = await this.resolveExecutionPlanWithOverrides(options, options.replyModelRoute);
     return this.iterateCandidateModels(plan).some((modelId) => supportsVision(modelId));
   }
 
@@ -420,12 +475,22 @@ export class LlmExecutorService {
    * （ROLE_MODEL_OVERRIDES，如 agent_reply_config.repairModelId）> AGENT_{ROLE}_MODEL
    * 环境变量。覆盖读取失败按无覆盖处理，绝不阻塞生成链路。
    */
-  private async resolveExecutionPlanWithOverrides(options: {
-    role?: ModelRole | string;
-    modelId?: string;
-    fallbacks?: string[];
-    disableFallbacks?: boolean;
-  }): Promise<ExecutionPlan> {
+  private async resolveExecutionPlanWithOverrides(
+    options: {
+      role?: ModelRole | string;
+      modelId?: string;
+      fallbacks?: string[];
+      disableFallbacks?: boolean;
+    },
+    replyModelRoute?: ReplyModelRoute,
+  ): Promise<ExecutionPlan> {
+    if (replyModelRoute?.fallbackModelId && !options.disableFallbacks) {
+      return this.resolveExecutionPlan({
+        role: options.role,
+        modelId: replyModelRoute.fallbackModelId,
+        disableFallbacks: true,
+      });
+    }
     const effective = { ...options };
     const role = String(options.role ?? ModelRole.Chat);
 
@@ -445,21 +510,24 @@ export class LlmExecutorService {
       try {
         const override = await this.roleModelOverrides.getRoleModelOverride(role);
         if (override) {
-          return this.resolveExecutionPlan({ ...effective, modelId: override });
+          return this.resolveExecutionPlan({ ...effective, modelId: override }, replyModelRoute);
         }
       } catch (error) {
         this.logger.warn(`读取角色模型覆盖失败，回退环境变量路由: role=${role}`, error);
       }
     }
-    return this.resolveExecutionPlan(effective);
+    return this.resolveExecutionPlan(effective, replyModelRoute);
   }
 
-  private resolveExecutionPlan(options: {
-    role?: ModelRole | string;
-    modelId?: string;
-    fallbacks?: string[];
-    disableFallbacks?: boolean;
-  }): ExecutionPlan {
+  private resolveExecutionPlan(
+    options: {
+      role?: ModelRole | string;
+      modelId?: string;
+      fallbacks?: string[];
+      disableFallbacks?: boolean;
+    },
+    replyModelRoute?: ReplyModelRoute,
+  ): ExecutionPlan {
     const role = options.role ?? ModelRole.Chat;
     const route = this.router.resolveRoute({
       role,
@@ -471,7 +539,12 @@ export class LlmExecutorService {
     return {
       role,
       primaryModelId: route.modelId,
-      fallbackModelIds: route.fallbacks ?? [],
+      fallbackModelIds:
+        replyModelRoute &&
+        !options.disableFallbacks &&
+        route.modelId.split('/')[0] === ModelProvider.Qwen
+          ? [DEEPSEEK_FLASH_MODEL_ID]
+          : (route.fallbacks ?? []),
     };
   }
 
@@ -610,68 +683,21 @@ export class LlmExecutorService {
     if (!provider || !thinking) return undefined;
 
     const isDeepMode = thinking.type === 'enabled';
-    const budgetTokens = thinking.budgetTokens > 0 ? thinking.budgetTokens : 1024;
-    // 深度思考档位：缺省 high 保持历史行为；仅深度模式使用。
     const effort = thinking.effort ?? 'high';
-
-    if (!isDeepMode) {
-      switch (provider) {
-        case 'deepseek':
-          return { deepseek: { thinking: { type: 'disabled' } } } as ProviderOptions;
-        case 'google':
-          return { google: { thinkingConfig: { thinkingLevel: 'minimal' } } } as ProviderOptions;
-        case 'openai':
-          return { openai: { reasoningEffort: 'minimal' } } as ProviderOptions;
-        case 'qwen':
-          return { qwen: { enable_thinking: false } } as ProviderOptions;
-        default:
-          return undefined;
-      }
+    if (provider === 'qwen') {
+      return {
+        qwen: { enable_thinking: isDeepMode, ...(isDeepMode && { reasoningEffort: effort }) },
+      };
     }
-
-    switch (provider) {
-      case 'anthropic':
-        if (this.requiresAdaptiveAnthropicThinking(modelId)) {
-          return {
-            anthropic: { thinking: { type: 'adaptive' }, effort },
-          } as ProviderOptions;
-        }
-        return { anthropic: { thinking: { type: 'enabled', budgetTokens } } } as ProviderOptions;
-      case 'deepseek':
-        return {
-          deepseek: { thinking: { type: 'enabled' }, reasoningEffort: effort },
-        } as ProviderOptions;
-      case 'google':
-        return {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: budgetTokens,
-              thinkingLevel: effort,
-            },
-          },
-        } as ProviderOptions;
-      case 'openai':
-        return { openai: { reasoningEffort: effort } } as ProviderOptions;
-      case 'qwen':
-        return { qwen: { enable_thinking: true, reasoningEffort: effort } } as ProviderOptions;
-      case 'moonshotai':
-      case 'ohmygpt':
-      case 'gateway':
-      case 'openrouter':
-        return { openai: { reasoningEffort: effort } } as ProviderOptions;
-      default:
-        return undefined;
+    if (provider === 'deepseek') {
+      return {
+        deepseek: {
+          thinking: { type: thinking.type },
+          ...(isDeepMode && { reasoningEffort: effort }),
+        },
+      };
     }
-  }
-
-  private requiresAdaptiveAnthropicThinking(modelId: string): boolean {
-    const anthropicModelId = modelId.split('/').pop() ?? modelId;
-    const match = /^claude-(?:opus|sonnet|fable)-(\d+)(?:-(\d+))?/.exec(anthropicModelId);
-    if (!match) return false;
-    const major = Number(match[1]);
-    const minor = match[2] === undefined ? 0 : Number(match[2]);
-    // 4.7+ 起 adaptive thinking + effort 成为推荐配置；5 系（Opus 5/Sonnet 5/Fable 5）默认自适应。
-    return major > 4 || (major === 4 && minor >= 7);
+    return undefined;
   }
 
   private buildGenerateParams(
@@ -788,8 +814,7 @@ export class LlmExecutorService {
   }
 
   /**
-   * 换模型续接时剥离 assistant 消息里的 reasoning 段：签名型思考块（Anthropic）不能喂给
-   * 另一个模型，其它 provider 也不消费别家的思考文本；工具调用/结果原样保留。
+   * 跨模型续接移除原供应商的推理内容，保留成对的工具调用与结果。
    */
   private stripReasoningParts(messages: ModelMessage[]): ModelMessage[] {
     return messages.map((message) => {
@@ -882,12 +907,19 @@ export class LlmExecutorService {
     const trail = lines.length > 0 ? lines.join('\n  ') : '无可用模型';
     const error = new Error(`所有模型均失败:\n  ${trail}`) as AgentError;
     const lastCategory = lastRawError ? this.reliable.classifyError(lastRawError) : 'retryable';
+    const failed = attempts.filter((attempt) => attempt.status === 'error');
     error.isAgentError = true;
     error.agentMeta = {
       ...(this.getExistingAgentMeta(lastRawError) ?? {}),
       modelsAttempted: this.iterateCandidateModels(plan),
       totalAttempts: attempts.length,
       lastCategory,
+      providerOutage:
+        failed.length > 0 &&
+        failed.every(
+          ({ errorCategory }) =>
+            errorCategory === 'provider_unavailable' || errorCategory === 'rate_limited',
+        ),
       ...(replayBlockedBy.length > 0 ? { replayBlockedBy } : {}),
     };
     error.apiKey = this.getApiKey(lastRawError);
