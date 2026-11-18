@@ -12,7 +12,7 @@ import { DEFAULT_RELIABLE_CONFIG, ErrorCategory, ReliableConfig } from './types'
  * 三层容错（从内到外）：
  * 1. 重试 — 同一模型指数退避重试（retryable 错误）
  * 2. 模型降级 — primary 失败后按 fallback 链逐个尝试
- * 3. 错误分类 — 区分 retryable / non_retryable / rate_limited
+ * 3. 错误分类 — 供应商不可用或限流时直接跨供应商，输出错误保留有限重试
  */
 @Injectable()
 export class ReliableService {
@@ -34,21 +34,28 @@ export class ReliableService {
    *
    * - non_retryable: 400/401/403/404, 参数错误/认证/模型不存在/余额不足
    * - rate_limited: 429
-   * - retryable: 5xx, timeout, 网络错误
+   * - provider_unavailable: 5xx、超时和连接错误，直接切供应商
+   * - retryable: 可重试的输出或校验错误
    */
   classifyError(err: unknown): ErrorCategory {
-    if (!(err instanceof Error)) return 'retryable';
-
-    const msg = err.message.toLowerCase();
+    // DOMException and SDK errors may originate in the fetch implementation's realm.
+    if (typeof err !== 'object' || !err) return 'retryable';
+    const name = 'name' in err ? err.name : undefined;
+    const msg =
+      'message' in err && typeof err.message === 'string' ? err.message.toLowerCase() : '';
+    const cause = 'cause' in err ? err.cause : undefined;
+    const causeName =
+      cause && typeof cause === 'object' && 'name' in cause ? cause.name : undefined;
 
     // AI SDK 会在请求发往 provider 前抛出 InvalidPromptError。
     // 这类本地参数错误不会因重复调用恢复，应停止当前模型的重试。
-    if (err.name === 'AI_InvalidPromptError' || msg.startsWith('invalid prompt:')) {
+    if (name === 'AI_InvalidPromptError' || msg.startsWith('invalid prompt:')) {
       return 'non_retryable';
     }
 
-    const statusMatch = msg.match(/(\d{3})/);
-    const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+    const httpStatus = 'statusCode' in err ? err.statusCode : undefined;
+    const status =
+      typeof httpStatus === 'number' ? httpStatus : Number(msg.match(/\b([45]\d{2})\b/)?.[1]);
 
     // Non-retryable: auth, not found, bad request, business limits
     if ([401, 403, 404, 400].includes(status)) return 'non_retryable';
@@ -67,7 +74,19 @@ export class ReliableService {
     if (status === 429) return 'rate_limited';
     if (msg.includes('rate limit') || msg.includes('too many requests')) return 'rate_limited';
 
-    // Everything else is retryable (5xx, timeout, network)
+    if (
+      status === 408 ||
+      (status >= 500 && status < 600) ||
+      name === 'TimeoutError' ||
+      name === 'AbortError' ||
+      causeName === 'TimeoutError' ||
+      causeName === 'AbortError' ||
+      /headers time(?:out|d out)|connect time(?:out|d out)|cannot connect to api|fetch failed|econnreset|econnrefused|etimedout|enotfound|socket hang up|request timed? ?out|request timeout|operation was aborted due to timeout/.test(
+        msg,
+      )
+    )
+      return 'provider_unavailable';
+
     return 'retryable';
   }
 
@@ -81,8 +100,7 @@ export class ReliableService {
 
   shouldRetry(category: ErrorCategory, attempt: number, config?: Partial<ReliableConfig>): boolean {
     const cfg = this.getRetryConfig(config);
-    if (category === 'non_retryable') return false;
-    return attempt < cfg.maxRetries;
+    return category === 'retryable' && attempt < cfg.maxRetries;
   }
 
   getBackoffMs(attempt: number, err: unknown, config?: Partial<ReliableConfig>): number {

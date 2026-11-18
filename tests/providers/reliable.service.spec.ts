@@ -9,7 +9,7 @@ describe('ReliableService', () => {
   beforeEach(async () => {
     mockRegistry = {
       resolve: jest.fn((modelId: string) => {
-        if (modelId === 'anthropic/claude-sonnet-4-6') {
+        if (modelId === 'qwen/qwen4-max') {
           return { modelId };
         }
         throw new Error(`Provider not found: ${modelId}`);
@@ -25,8 +25,8 @@ describe('ReliableService', () => {
 
   describe('isModelAvailable', () => {
     it('should return true when the model can be resolved', () => {
-      expect(service.isModelAvailable('anthropic/claude-sonnet-4-6')).toBe(true);
-      expect(mockRegistry.resolve).toHaveBeenCalledWith('anthropic/claude-sonnet-4-6');
+      expect(service.isModelAvailable('qwen/qwen4-max')).toBe(true);
+      expect(mockRegistry.resolve).toHaveBeenCalledWith('qwen/qwen4-max');
     });
 
     it('should return false when resolving the model throws', () => {
@@ -58,7 +58,10 @@ describe('ReliableService', () => {
     });
 
     it('should classify other errors as retryable', () => {
-      expect(service.classifyError(new Error('Request timeout'))).toBe('retryable');
+      expect(service.classifyError(new Error('Request timeout'))).toBe('provider_unavailable');
+      expect(
+        service.classifyError(Object.assign(new Error('Bad gateway'), { statusCode: 502 })),
+      ).toBe('provider_unavailable');
       expect(service.classifyError('string error')).toBe('retryable');
     });
   });
@@ -85,7 +88,8 @@ describe('ReliableService', () => {
 
     it('should retry retryable errors before reaching max retries', () => {
       expect(service.shouldRetry('retryable', 1, { maxRetries: 3 })).toBe(true);
-      expect(service.shouldRetry('rate_limited', 2, { maxRetries: 3 })).toBe(true);
+      expect(service.shouldRetry('rate_limited', 2, { maxRetries: 3 })).toBe(false);
+      expect(service.shouldRetry('provider_unavailable', 1)).toBe(false);
     });
 
     it('should stop retrying once max retries is reached', () => {

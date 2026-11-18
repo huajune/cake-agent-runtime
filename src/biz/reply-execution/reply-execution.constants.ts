@@ -16,14 +16,25 @@ export type ReplyProjectionStatus =
 
 export const REPLY_REVIEW_REASON = {
   BUSINESS_EFFECTS_UNCONFIRMED: 'business_effects_unconfirmed',
+  INTERRUPTED: 'ordinary_reply_interrupted_no_resend',
+  PROVIDER_OUTAGE: 'model_unavailable_before_tools',
+  RECOVERY_DEADLINE: 'recovery_deadline',
 } as const;
+
+export type ReplyReviewReason = (typeof REPLY_REVIEW_REASON)[keyof typeof REPLY_REVIEW_REASON];
 
 export const REPLY_TURN_OPERATION = {
   OPEN: 'open',
   START_DELIVERY: 'start_delivery',
   SAVE_EFFECTS: 'save_effects',
+  SAVE_LATE_EFFECTS: 'save_late_effects',
   CHECK_DELIVERY: 'check_delivery',
   CHECK_INPUT: 'check_input',
+  RENEW: 'renew',
+  RECORD_FAILURE: 'record_failure',
+  CLOSE_MODEL_OUTAGE: 'close_model_outage',
+  REQUEST_REVIEW: 'request_review',
+  REVIEW_NOTIFIED: 'review_notified',
   INTERRUPT: 'interrupt',
   SETTLE: 'settle',
   ACK: 'ack',

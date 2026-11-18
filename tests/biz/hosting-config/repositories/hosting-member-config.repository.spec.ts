@@ -1,48 +1,59 @@
 import { HostingMemberConfigRepository } from '@biz/hosting-config/repositories/hosting-member-config.repository';
 import { HOSTING_MEMBER_CONFIG_KEY } from '@biz/hosting-config/types/hosting-member-config.types';
-import { SupabaseService } from '@infra/supabase/supabase.service';
-
-type RepositoryWithSelectOne = HostingMemberConfigRepository & {
-  selectOne<T>(columns?: string, modifier?: (query: unknown) => unknown): Promise<T | null>;
-};
 
 describe('HostingMemberConfigRepository', () => {
-  function buildRepository(isInitialized = true) {
-    return new HostingMemberConfigRepository({
-      getSupabaseClient: jest.fn(),
-      isClientInitialized: jest.fn().mockReturnValue(isInitialized),
-    } as unknown as SupabaseService);
+  function buildRepository(initialized = true) {
+    const query = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn(),
+    };
+    const from = jest.fn().mockReturnValue(query);
+    const repository = new HostingMemberConfigRepository({
+      getSupabaseClient: () => ({ from }),
+      isClientInitialized: () => initialized,
+    } as never);
+    return { repository, query, from };
   }
 
-  beforeEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it('reads hosting_member_config from system_config.value', async () => {
-    const repository = buildRepository();
-    const selectOneSpy = jest
-      .spyOn(repository as RepositoryWithSelectOne, 'selectOne')
-      .mockResolvedValue({
-        value: { members: { 'bot-1': { dulidayToken: 'token-1' } } },
-      });
-
+  it('reads the single DB record and preserves receiver and persona fields', async () => {
+    const { repository, query, from } = buildRepository();
+    const value = {
+      members: { 'henan-bot': { feishuOpenId: 'ou_henan', dulidayToken: 'private', gender: '男' } },
+      operationsReceivers: [{ openId: ' ou_ops ', name: '运营' }],
+      taskOwners: { default: [' ou_default '] },
+    };
+    query.maybeSingle.mockResolvedValue({ data: { value }, error: null });
     await expect(repository.readConfig()).resolves.toEqual({
-      members: { 'bot-1': { dulidayToken: 'token-1' } },
+      ...value,
+      operationsReceivers: [{ openId: 'ou_ops', name: '运营' }],
+      taskOwners: { default: ['ou_default'] },
     });
-    expect(selectOneSpy).toHaveBeenCalledWith('value', expect.any(Function));
-
-    const query = { eq: jest.fn().mockReturnValue('filtered') };
-    const modifier = selectOneSpy.mock.calls[0][1];
-    expect(modifier?.(query)).toBe('filtered');
+    expect(from).toHaveBeenCalledWith('system_config');
     expect(query.eq).toHaveBeenCalledWith('key', HOSTING_MEMBER_CONFIG_KEY);
   });
 
-  it('returns null for missing, array, or unavailable config', async () => {
-    const repository = buildRepository();
-    jest.spyOn(repository as RepositoryWithSelectOne, 'selectOne').mockResolvedValue({ value: [] });
+  it('distinguishes intentional deletion from DB failure', async () => {
+    const { repository, query } = buildRepository();
+    query.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
     await expect(repository.readConfig()).resolves.toBeNull();
+    query.maybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: { code: '42501', message: 'private' },
+    });
+    await expect(repository.readConfig()).rejects.toThrow('读取托管成员配置失败');
+    await expect(buildRepository(false).repository.readConfig()).rejects.toThrow('暂不可用');
+  });
 
-    const unavailable = buildRepository(false);
-    await expect(unavailable.readConfig()).resolves.toBeNull();
+  it.each([
+    [],
+    { members: [] },
+    { members: { bot: { feishuOpenId: 42 } } },
+    { operationsReceivers: [{ openId: ' ', name: 'invalid' }] },
+    { taskOwners: { T4: 'not-an-array' } },
+  ])('rejects malformed config so the service can retain its last good snapshot', async (value) => {
+    const { repository, query } = buildRepository();
+    query.maybeSingle.mockResolvedValue({ data: { value }, error: null });
+    await expect(repository.readConfig()).rejects.toThrow('配置格式无效');
   });
 });

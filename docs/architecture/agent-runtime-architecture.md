@@ -543,13 +543,9 @@ LlmExecutorService
 
 调用方显式 fallbacks > Dashboard fallback chain > `AGENT_{ROLE}_FALLBACKS` >
 `AGENT_DEFAULT_FALLBACKS`；`disableFallbacks=true` 会清空降级链。每个候选模型先做 vision 能力和
-provider 注册检查，再在模型内重试，耗尽后切下一模型。
+provider 注册检查。企微主聊每次 HTTP 请求独立计时 120 秒。遇到模型服务超时、限流或 5xx 时，跳过同一供应商，带上已完成的工具步骤切到另一家。主聊从 Qwen 切到 DeepSeek V4.1 Flash 后，空回复补答、重新规划和出站修复沿用 Flash。每次请求均有完整的 120 秒，整轮超过 180 秒仅在执行事件中标记慢回合。两家都不可用时结束本次生成。
 
-Registry 按 API key 条件注册：
-
-- 原生 SDK：Anthropic、Google、DeepSeek；
-- 自定义接入：OpenAI 代理、OpenRouter；
-- OpenAI-compatible：Qwen、Moonshot、OhMyGPT 和自定义 Gateway。
+Registry 根据各自的 API key 注册 Qwen（DashScope 的 OpenAI 兼容接口）和 DeepSeek（官方 SDK）。Qwen 主聊和图片轮使用 DeepSeek V4.1 Flash 作为备用。
 
 Provider 专属 `providerOptions` 当前只承载 thinking / reasoning 配置；不承载显式 Prompt 缓存断点。
 
@@ -807,9 +803,9 @@ Evaluation、Memory、Tool 和 Feishu Sync。
 
 ## 15. 扩展指南
 
-### 15.1 新增 Provider 或模型
+### 15.1 新增已支持供应商的模型
 
-1. 在 `RegistryService` 注册原生/自定义 provider，或更新 `providers/types.ts` 的 compatible 配置。
+1. 确认 Qwen 或 DeepSeek 官方接口提供对应的模型 ID。
 2. 在 `providers/models.ts` 登记模型能力，尤其是 multimodal。
 3. 配置 provider API key 与 `AGENT_{ROLE}_MODEL` / fallbacks。
 4. 为路由、provider options、结构化输出和 fallback 补测试。

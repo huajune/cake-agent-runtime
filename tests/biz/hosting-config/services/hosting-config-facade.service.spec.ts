@@ -81,7 +81,7 @@ describe('HostingConfigFacadeService', () => {
           source: 'role_environment',
         },
         extractModelId: {
-          modelId: 'deepseek/deepseek-v4-flash',
+          modelId: 'deepseek/deepseek-flash',
           source: 'role_environment',
         },
         visionModelId: {
@@ -163,6 +163,17 @@ describe('HostingConfigFacadeService', () => {
       await expect(service.updateAgentReplyConfig(partial)).resolves.toMatchObject({
         message: '配置已更新',
       });
+    });
+
+    it('rejects retired primary and fallback providers and text-only vision fallbacks', async () => {
+      for (const config of [
+        { wecomCallbackModelId: 'moonshotai/kimi-k3' },
+        { defaultFallbackModelIds: ['anthropic/claude-sonnet-5'] },
+        { visionFallbackModelIds: ['deepseek/deepseek-v4-pro'] },
+      ]) {
+        await expect(service.updateAgentReplyConfig(config)).rejects.toThrow();
+      }
+      expect(mockSystemConfigService.setAgentReplyConfig).not.toHaveBeenCalled();
     });
 
     it('rejects unregistered model ids for role overrides', async () => {

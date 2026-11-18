@@ -13,7 +13,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
-import { ModelRole } from '@/llm/llm.types';
+import { ModelRole, ReplyModelRoute } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { containsSimulatedToolExchange } from '@agent/guardrail/output/rules/invalid-model-output.rule';
 import { isCollectionAuthorized, verdictOf } from '@resolution/collection';
@@ -172,9 +172,11 @@ export class GeneratorAgent {
 
   /** 非流式执行入口。 */
   async invoke(params: GeneratorInvokeParams): Promise<GeneratorRunResult> {
+    params = { ...params, replyModelRoute: params.replyModelRoute ?? new ReplyModelRoute() };
     const enableVision = await this.llm.supportsVisionInput({
       role: ModelRole.Chat,
       modelId: params.modelId,
+      replyModelRoute: params.replyModelRoute,
       disableFallbacks: params.disableFallbacks,
     });
     const ctx = await this.preparation.prepare(params, 'invoke', { enableVision });
@@ -206,9 +208,11 @@ export class GeneratorAgent {
       onFinish?: (result: GeneratorRunResult) => Promise<void> | void;
     },
   ): Promise<GeneratorStreamResult> {
+    params = { ...params, replyModelRoute: params.replyModelRoute ?? new ReplyModelRoute() };
     const enableVision = await this.llm.supportsVisionInput({
       role: ModelRole.Chat,
       modelId: params.modelId,
+      replyModelRoute: params.replyModelRoute,
       disableFallbacks: params.disableFallbacks,
     });
     const ctx = await this.preparation.prepare(params, 'stream', { enableVision });
@@ -287,6 +291,7 @@ export class GeneratorAgent {
     return {
       role: ModelRole.Chat,
       modelId: params.modelId,
+      replyModelRoute: params.replyModelRoute,
       disableFallbacks: params.disableFallbacks,
       thinking: this.resolveThinkingConfig(params.thinking),
       instructions: ctx.finalPrompt,
@@ -842,6 +847,7 @@ export class GeneratorAgent {
       const recovery = await this.llm.generate({
         role: ModelRole.Chat,
         modelId: params.modelId,
+        replyModelRoute: params.replyModelRoute,
         disableFallbacks: params.disableFallbacks,
         thinking: { type: 'disabled', budgetTokens: 0 },
         instructions: `${ctx.finalPrompt}\n\n[空响应恢复模式]\n只输出一条候选人可见的中文回复。不要提系统、工具、模型、thinking、恢复或异常。不要调用工具。`,

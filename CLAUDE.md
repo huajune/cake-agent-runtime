@@ -147,7 +147,7 @@ Catalog 仅管理可独立识别与治理的规则：Input、Tool、Output 各�
 
 三层配置，完整清单见 `.env.example`；本地开发 `cp .env.example .env.local`。
 
-1. **必填环境变量**（密钥/URL，无默认值）：各厂商 API key（`ANTHROPIC_API_KEY` 等）、角色路由模型 `AGENT_CHAT_MODEL` / `AGENT_EXTRACT_MODEL` / `AGENT_VISION_MODEL` / `AGENT_EVALUATE_MODEL`、`API_GUARD_TOKEN`（全局 ApiTokenGuard，`@Public()` 装饰器放行）、Upstash Redis、`DULIDAY_API_TOKEN`、Stride 托管平台、飞书告警/多维表格、Supabase URL + `SUPABASE_SERVICE_ROLE_KEY`、`SUPABASE_DB_URL_TEST/PROD`（迁移用）。
+1. **必填环境变量**（密钥/URL，无默认值）：Qwen 和 DeepSeek 的 API key（`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`）、角色路由模型 `AGENT_CHAT_MODEL` / `AGENT_EXTRACT_MODEL` / `AGENT_VISION_MODEL` / `AGENT_EVALUATE_MODEL`、`API_GUARD_TOKEN`（全局 ApiTokenGuard，`@Public()` 装饰器放行）、Upstash Redis、`DULIDAY_API_TOKEN`、Stride 托管平台、飞书告警/多维表格、Supabase URL + `SUPABASE_SERVICE_ROLE_KEY`、`SUPABASE_DB_URL_TEST/PROD`（迁移用）。
 2. **可选环境变量**（代码有默认值）：`PORT`(8585)、消息历史上限/TTL、打字延迟等。
 3. **托管配置（DB 动态）**：消息聚合窗口 `initialMergeWindowMs` 等在 `hosting_config` 表，Dashboard 可改，不走环境变量；守卫开关在 `system_config`。
 

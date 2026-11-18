@@ -1,3 +1,9 @@
+/** One logical reply owns this state across generation, follow-up and outbound repair. */
+export class ReplyModelRoute {
+  fallbackModelId?: string;
+  readonly unavailableProviders = new Set<string>();
+}
+
 export enum ModelRole {
   Chat = 'chat',
   Extract = 'extract',
@@ -9,8 +15,7 @@ export enum ModelRole {
 }
 
 /**
- * 深度思考档位（各 provider 能力交集：anthropic effort / openai reasoningEffort /
- * google thinkingLevel / deepseek reasoningEffort / qwen reasoningEffort 均支持这三档）。
+ * Qwen 与 DeepSeek 共用的深度思考档位。
  * provider 专有的 minimal/xhigh/max 等档位刻意不纳入，保证配置可跨模型迁移。
  */
 export const LLM_THINKING_EFFORTS = ['low', 'medium', 'high'] as const;

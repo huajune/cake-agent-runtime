@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { FeishuCardColor } from '@infra/feishu/interfaces/interface';
-import { FeishuReceiver, FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { AlertContext, AlertDiagnostics, AlertScope } from '../types/alert.types';
 
@@ -108,10 +107,6 @@ export class AlertCardRenderer {
         key: `security.prompt_injection_detected:${params.userId}`,
       },
     };
-  }
-
-  createGroupFullMentionUsers(): FeishuReceiver[] {
-    return [FEISHU_RECEIVER_USERS.GAO_YAQI];
   }
 
   private buildContent(context: AlertContext, level: AlertLevel, errorMessage: string): string {

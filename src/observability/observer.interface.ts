@@ -20,7 +20,7 @@ export interface LlmAttemptTrace {
   startOffsetMs: number;
   durationMs: number;
   status: 'success' | 'error' | 'skipped';
-  /** reliable.classifyError 三分类；success/skipped 时缺省。 */
+  /** reliable.classifyError 的供应商或输出错误分类；success/skipped 时缺省。 */
   errorCategory?: ErrorCategory;
   error?: string;
   /** 本次失败后进入的指数退避等待（ms）；最后一次失败/不重试时缺省。 */
@@ -52,6 +52,7 @@ export interface TurnSourceLoadTrace {
 
 export interface AgentEventContext {
   traceId?: string;
+  logicalTurnId?: string;
   chatId?: string;
   userId?: string;
   corpId?: string;
@@ -75,8 +76,9 @@ export type AgentEvent = AgentEventContext &
          */
         cachedTokens?: number;
         durationMs: number;
+        slow?: boolean;
       }
-    | { type: 'agent_error'; userId?: string; error: string }
+    | { type: 'agent_error'; userId?: string; error: string; durationMs?: number; slow?: boolean }
     | {
         type: 'candidate_progress_difference';
         reader: ProgressReader;

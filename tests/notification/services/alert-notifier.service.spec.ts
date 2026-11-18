@@ -1,6 +1,6 @@
 import { Environment } from '@enums/environment.enum';
 import { AlertLevel } from '@enums/alert.enum';
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { TEST_OPERATIONS_RECEIVER } from '../../fixtures/feishu-receivers';
 import { AlertCardRenderer } from '@notification/renderers/alert-card.renderer';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertContext } from '@notification/types/alert.types';
@@ -64,7 +64,7 @@ describe('AlertNotifierService', () => {
         requiresHumanIntervention: true,
       },
       routing: {
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       },
       diagnostics: {
         error: new Error('messages 为空，无法调用 LLM'),

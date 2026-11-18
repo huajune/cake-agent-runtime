@@ -62,6 +62,33 @@ describe('durable reply input boundaries', () => {
     );
     expect(repository.transition).not.toHaveBeenCalled();
   });
+  it('renews an active worker beyond the original ten minutes and stops at completion', async () => {
+    const { service, repository } = setup();
+    const owned = jest.fn().mockResolvedValue(undefined);
+    let finish!: () => void;
+    const result = service.withGenerationLease(
+      turn,
+      owned,
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await jest.advanceTimersByTimeAsync(11 * 60_000);
+    expect(owned).toHaveBeenCalledTimes(11);
+    expect(repository.transition).toHaveBeenCalledTimes(11);
+    expect(repository.transition).toHaveBeenLastCalledWith(
+      'renew',
+      expect.objectContaining({ owner: turn.owner, fence: turn.fence }),
+    );
+    owned.mockRejectedValueOnce(new Error('Redis owner changed'));
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(repository.transition).toHaveBeenCalledTimes(11);
+    finish();
+    await result;
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(repository.transition).toHaveBeenCalledTimes(11);
+  });
   it('requires confirmed effects and terminal writes before acknowledging input', async () => {
     const { service, repository } = setup();
     repository.transition.mockRejectedValue(new Error('write may have committed'));

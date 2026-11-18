@@ -1,5 +1,5 @@
 import { AlertLevel } from '@enums/alert.enum';
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { TEST_OPERATIONS_RECEIVER } from '../../fixtures/feishu-receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { AlertCardRenderer } from '@notification/renderers/alert-card.renderer';
 
@@ -38,7 +38,7 @@ describe('AlertCardRenderer', () => {
         requiresHumanIntervention: true,
       },
       routing: {
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       },
       diagnostics: {
         error: new Error('所有模型均失败'),
@@ -54,7 +54,7 @@ describe('AlertCardRenderer', () => {
     const payload = cardBuilder.buildMarkdownCard.mock.calls[0][0];
     expect(payload.title).toBe('🚨 Agent 调用异常 · 需要人工介入');
     expect(payload.color).toBe('red');
-    expect(payload.atUsers).toEqual([FEISHU_RECEIVER_USERS.GAO_YAQI]);
+    expect(payload.atUsers).toEqual([TEST_OPERATIONS_RECEIVER]);
     expect(payload.content).toContain('**微信昵称**: Alice');
     expect(payload.content).toContain('**托管账号**: 招募经理A');
     expect(payload.content).toContain('**用户消息**: 你好，我想找兼职');
@@ -191,6 +191,5 @@ describe('AlertCardRenderer', () => {
     expect(promptAlert.dedupe).toEqual({
       key: 'security.prompt_injection_detected:user-1',
     });
-    expect(renderer.createGroupFullMentionUsers()).toEqual([FEISHU_RECEIVER_USERS.GAO_YAQI]);
   });
 });

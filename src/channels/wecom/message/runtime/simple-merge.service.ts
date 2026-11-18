@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { MESSAGE_MERGE_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { RedisLeaseService } from '@infra/queue/redis-lease.service';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -176,7 +177,10 @@ export class SimpleMergeService implements OnModuleInit {
       }
     }
 
-    const batchId = messages.length ? `batch_${chatId}_${Date.now()}` : '';
+    const membership = JSON.stringify([...seenIds].sort());
+    const batchId = messages.length
+      ? `batch_${chatId}_${createHash('sha256').update(membership).digest('hex').slice(0, 32)}`
+      : '';
     this.logger.debug(`[${chatId}] 读取 ${messages.length} 条待处理消息, batchId=${batchId}`);
 
     return { messages, batchId };
@@ -343,11 +347,10 @@ export class SimpleMergeService implements OnModuleInit {
     const timer = setInterval(() => {
       void this.renewProcessingLock(chatId, ownerToken)
         .then((renewed) => {
-          if (!renewed) {
-            this.logger.warn(
-              `[${chatId}] 处理锁心跳续期失败：锁已过期或易主（本 worker 可能已被判定死亡）`,
-            );
-          }
+          if (renewed) return this.refreshPendingLease(chatId);
+          this.logger.warn(
+            `[${chatId}] 处理锁心跳续期失败：锁已过期或易主（本 worker 可能已被判定死亡）`,
+          );
         })
         .catch((error: unknown) => {
           const errorMessage = toErrorMessage(error);
@@ -359,7 +362,7 @@ export class SimpleMergeService implements OnModuleInit {
   }
 
   /** 仅当仍是锁持有者时才续期（Lua 原子判断），避免误续他人的锁。 */
-  private async renewProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
+  async renewProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
     return this.leases.renew({
       key: RedisKeyBuilder.lock(chatId),
       owner: ownerToken,

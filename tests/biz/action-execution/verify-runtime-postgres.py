@@ -170,6 +170,10 @@ blocked_contract('contract-blocks-hidden-dependency', 'legacy_reply_column_still
 apply('contract-remove-dependency-fixture.sql', 'DROP FUNCTION public.contract_dependency_test();')
 apply('20261112020000_retire_main_reply_compat.sql', contract)
 apply('contract-idempotence.sql', contract)
+reply_recovery = '20261118010000_reply_lease_and_manual_review.sql'
+apply(reply_recovery, source('supabase/migrations/' + reply_recovery))
+apply('reply-recovery-idempotence.sql', source('supabase/migrations/' + reply_recovery))
+
 
 for path in [
  'tests/biz/action-execution/action-records.postgres.sql',

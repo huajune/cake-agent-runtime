@@ -697,6 +697,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(generator.invoke).toHaveBeenCalledTimes(1);
     expect(replyRepairAgent.repair).toHaveBeenCalledWith(
       expect.objectContaining({
+        replyModelRoute: generator.invoke.mock.calls[0][0].replyModelRoute,
         originalReply: '不要新疆户籍的',
         ruleIds: ['discriminatory_screening_leak'],
         // 视觉事实以首版账本为准，修复证据需要它

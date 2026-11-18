@@ -2,7 +2,7 @@
  * Provider 配置类型与默认值
  *
  * 每个 Provider 通过环境变量 API Key 按需注册。
- * OpenAI-compatible 厂商使用 @ai-sdk/openai-compatible 接入。
+ * Qwen 通过 DashScope 接入，DeepSeek 使用官方端点。
  */
 
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
@@ -13,27 +13,8 @@ export { ModelRole };
 
 // ==================== Provider 配置 ====================
 
-/** 单个 Provider 的静态配置 */
-export interface ProviderDefaultConfig {
-  /** 环境变量名（API Key） */
-  envKey: string;
-  /** 环境变量名（baseURL 覆盖，可选） */
-  baseUrlEnvKey?: string;
-  /** 默认 baseURL */
-  defaultBaseURL: string;
-  /** 显示名称 */
-  displayName: string;
-  /** OpenAI-compatible chat 端点是否支持 JSON Schema structured outputs。 */
-  supportsStructuredOutputs?: boolean;
-  /**
-   * 结构化输出改走 JSON 模式，schema（含字段说明）写进提示词，不交给厂商的 json_schema 约束解码。
-   * 用于厂商约束解码会让模型看不到字段说明或按字段顺序截掉内容的情况。
-   */
-  jsonSchemaInPrompt?: boolean;
-}
-
 /** 错误分类（对标 ZeroClaw reliable.rs） */
-export type ErrorCategory = 'retryable' | 'non_retryable' | 'rate_limited';
+export type ErrorCategory = 'retryable' | 'non_retryable' | 'rate_limited' | 'provider_unavailable';
 
 /** 容错配置 */
 export interface ReliableConfig {
@@ -51,61 +32,4 @@ export const DEFAULT_RELIABLE_CONFIG: ReliableConfig = {
   maxBackoffMs: 10_000,
 };
 
-/**
- * OpenAI-compatible Provider 默认配置表
- *
- * 原生 AI SDK Provider（anthropic, google, deepseek）不在此表中，
- * 它们使用各自专用 SDK，在 RegistryService 中单独注册。
- *
- * deepseek 同时出现在此表（兼容模式备用）和原生注册中，
- * RegistryService 优先使用原生 SDK，此处会被跳过。
- *
- * openai / ohmygpt 通过代理服务访问，共享 ANTHROPIC_API_KEY。
- */
-// ==================== Vision 能力检测 ====================
-
-import { modelHasCapability } from './models';
-
-/**
- * 检测模型是否支持多模态 vision（图片输入）
- *
- * 以 MODEL_DICTIONARY.capabilities 中的 'multimodal' 标签为单一来源。
- * 支持嵌套路由格式如 openrouter/anthropic/claude-sonnet-5（resolveModelCapabilities 按后缀
- * 逐级回退查找，至少需 3 段；ohmygpt/xxx 这类 2 段 provider/model 只走直接匹配，不触发回退）。
- * 未登记的模型保守返回 false，上层据此降级为文字描述。
- */
-export function supportsVision(modelId: string): boolean {
-  return modelHasCapability(modelId, 'multimodal');
-}
-
-// ==================== Provider 默认配置 ====================
-
-export const PROVIDER_DEFAULTS: Record<string, ProviderDefaultConfig> = {
-  deepseek: {
-    envKey: 'DEEPSEEK_API_KEY',
-    baseUrlEnvKey: 'DEEPSEEK_BASE_URL',
-    defaultBaseURL: 'https://api.deepseek.com',
-    displayName: 'DeepSeek',
-  },
-  qwen: {
-    envKey: 'DASHSCOPE_API_KEY',
-    baseUrlEnvKey: 'QWEN_BASE_URL',
-    defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    displayName: '通义千问 (DashScope)',
-    // DashScope 的 json_schema 约束解码：严格模式不把 schema 放进模型上下文，字段说明对模型不可见；
-    // 非严格模式按字段顺序约束输出，模型先写排在后面的字段时，前面的字段就写不进去，还会补出表示撤销的 null。
-    jsonSchemaInPrompt: true,
-  },
-  moonshotai: {
-    envKey: 'MOONSHOT_API_KEY',
-    baseUrlEnvKey: 'MOONSHOT_BASE_URL',
-    defaultBaseURL: 'https://api.moonshot.cn/v1',
-    displayName: 'MoonshotAI / Kimi',
-  },
-  ohmygpt: {
-    envKey: 'ANTHROPIC_API_KEY',
-    baseUrlEnvKey: 'OHMYGPT_BASE_URL',
-    defaultBaseURL: 'https://c-z0-api-01.hash070.com/v1',
-    displayName: 'OhMyGPT (代理)',
-  },
-};
+export { supportsVision } from './models';

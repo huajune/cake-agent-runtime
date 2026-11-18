@@ -1,17 +1,15 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { normalizeBotImId } from '@biz/ops-events/services/bot-group-resolver.service';
-import { BOT_TO_RECEIVER, type FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { type FeishuReceiver } from '@infra/feishu/interfaces/receiver.interface';
 import { HostingMemberConfigRepository } from '../repositories/hosting-member-config.repository';
 import { HostingMemberConfig, HostingMemberEntry } from '../types/hosting-member-config.types';
 
 /**
  * 托管成员统一配置解析（飞书接收人 + 海绵 token），按 botImId 索引。
  *
- * 用 botImId（wecom 系统分配的稳定数字 id，与硬编码 BOT_TO_RECEIVER 同 key）而非 wecomUserId
- * （可改的名字）。直接 config[botImId] 命中，无需绕 Stride 查经理。
- * 全程带兜底：DB 未填时飞书接收人回退硬编码 BOT_TO_RECEIVER、海绵 token 由调用方
- * 回退 DULIDAY_API_TOKEN，线上零中断。
+ * 用稳定的 botImId 而非可改名的 wecomUserId 索引，飞书接收人只读数据库。
+ * 刷新失败时保留最后一次成功读取的配置，不回退代码名单。
  *
  * @Global 注入：飞书 notifier、海绵 service 等可直接注入，无需各自 import 模块，避免 DI 环。
  */
@@ -36,14 +34,32 @@ export class HostingMemberConfigService {
     return config?.members?.[key] ?? null;
   }
 
-  /** 飞书接收人：DB 配置优先，回退硬编码 BOT_TO_RECEIVER。 */
+  /** 飞书接收人：数据库为唯一来源，未绑定时由调用方处理。 */
   async resolveFeishuReceiver(
     botImId: string | null | undefined,
   ): Promise<FeishuReceiver | undefined> {
     const entry = await this.getByBotImId(botImId);
     const openId = entry?.feishuOpenId?.trim();
     if (openId) return { openId, name: entry?.feishuName?.trim() || '' };
-    return botImId ? BOT_TO_RECEIVER[botImId] : undefined;
+    return undefined;
+  }
+
+  /** 群满、拉群失败和群任务汇总的固定运营接收人。 */
+  async resolveOperationsReceivers(): Promise<FeishuReceiver[]> {
+    const config = await this.loadConfig();
+    return Array.from(
+      new Map(
+        (config?.operationsReceivers ?? []).map(({ openId, name }) => [
+          openId.trim(),
+          { openId: openId.trim(), name: name.trim() },
+        ]),
+      ).values(),
+    );
+  }
+
+  /** 总部特殊任务类别负责人；河南仍只使用本账号的飞书身份。 */
+  async resolveTaskOwners(): Promise<NonNullable<HostingMemberConfig['taskOwners']>> {
+    return (await this.loadConfig())?.taskOwners ?? {};
   }
 
   /** 海绵 token：按 botImId 取（唯一配置源）；查不到返回 null，由调用方回退 DULIDAY_API_TOKEN。 */
@@ -54,7 +70,7 @@ export class HostingMemberConfigService {
 
   /**
    * 已配置海绵 token 的托管账号 botImId 全集（带外工单补偿扫描按账号遍历）。
-   * 配置读取失败返回空数组：扫描宁可这一轮不跑，也不能用默认 token 拉别家账号的工单。
+   * 无已读取配置时返回空数组，不使用默认 token 拉其他账号的工单。
    */
   async listTokenConfiguredBotImIds(): Promise<string[]> {
     const config = await this.loadConfig();
@@ -93,11 +109,10 @@ export class HostingMemberConfigService {
         return config;
       } catch (error) {
         this.logger.warn(
-          `读取 hosting_member_config 失败，回退硬编码/旧配置: ${toErrorMessage(error)}`,
+          `读取 hosting_member_config 失败，保留上次成功配置: ${toErrorMessage(error)}`,
         );
-        this.cache = null;
         this.cacheExpireAt = Date.now() + this.TTL_MS;
-        return null;
+        return this.cache;
       } finally {
         this.loadPromise = null;
       }

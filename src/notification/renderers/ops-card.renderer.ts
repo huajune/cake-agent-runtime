@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { FeishuReceiver } from '@infra/feishu/interfaces/receiver.interface';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import type { GroupTaskStatus } from '@biz/group-task/group-task.types';
 import { GROUP_TASK_STATUS } from '@biz/group-task/group-task.types';

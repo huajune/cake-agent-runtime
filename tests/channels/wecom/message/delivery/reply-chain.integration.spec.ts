@@ -385,6 +385,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         status: string;
         delivery_policy: string;
         projection_status: string;
+        review_required: boolean;
+        next_check_at: string | null;
         delivery_result: { outcome: string; accepted: number; total: number };
         recovery: Record<string, unknown>;
       };
@@ -398,7 +400,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       }>;
       callbackEvidenceCount: number;
     }>(`SELECT json_build_object(
-      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,delivery_policy,delivery_result,projection_status FROM agent_reply_turns LIMIT 1) t),
+      'turn',(SELECT row_to_json(t) FROM (SELECT status,recovery,delivery_policy,delivery_result,projection_status,review_required,next_check_at FROM agent_reply_turns LIMIT 1) t),
       'actions',(SELECT coalesce(json_agg(a ORDER BY a.created_at),'[]'::json) FROM (SELECT status,local_sync,dispatch_attempt_id,request_id,result,evidence,created_at FROM agent_action_records) a),
       'callbackEvidenceCount',(SELECT count(*) FROM agent_action_evidence WHERE completion->'result'->>'stage'='delivery_callback'));`);
   }
@@ -421,7 +423,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   async function recoverStoredTurn() {
     // Make the isolated fixture immediately due rather than waiting for cron.
     client.query(
-      "UPDATE agent_action_records SET next_check_at=now()-interval '1 second' WHERE mode='execute' AND (status IN ('executing','unknown') OR (status='succeeded' AND local_sync='pending')); UPDATE agent_reply_turns SET next_check_at=now()-interval '1 second' WHERE status IN ('planned','settled');",
+      "UPDATE agent_action_records SET next_check_at=now()-interval '1 second' WHERE mode='execute' AND (status IN ('executing','unknown') OR (status='succeeded' AND local_sync='pending')); UPDATE agent_reply_turns SET next_check_at=now()-interval '1 second' WHERE status IN ('planned','settled') AND next_check_at IS NOT NULL;",
     );
     await module!.get(ActionRecoveryService).recoverDue();
     await module!.get(ReplyRecoveryService).recoverDue();
@@ -828,22 +830,113 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
           "UPDATE agent_reply_turns SET generation_until=now()-interval '1 second',next_check_at=now()-interval '1 second';",
         );
         await recoverStoredTurn();
-        expect(module!.get(IncidentReporterService).notifyAsync).toHaveBeenCalledWith(
+        expect(module!.get(IncidentReporterService).notify).toHaveBeenCalledWith(
           expect.objectContaining({
             code: 'reply.manual_review_required',
-            error: expect.objectContaining({
-              message: expect.stringContaining('business_effects_unconfirmed'),
-            }),
+            error: expect.stringContaining('business_effects_unconfirmed'),
           }),
         );
         // 入站重试也不能把尚未确认的业务义务吞掉。
         await submitInput('enterprise');
         expect(databaseState().turn.status).not.toBe('acked');
-        expect(pending.has(inboundId)).toBe(true);
-        expect(ackPendingMessageIds).not.toHaveBeenCalled();
+        expect(pending.has(inboundId)).toBe(false);
+        expect(pending.has(newerInputId)).toBe(true);
+        expect(databaseState().turn).toMatchObject({
+          status: 'settled',
+          review_required: true,
+          projection_status: 'none',
+          next_check_at: null,
+        });
+        await recoverStoredTurn();
+        expect(module!.get(IncidentReporterService).notify).toHaveBeenCalledTimes(1);
       }
       expect(runInboundTurn).toHaveBeenCalledTimes(1);
       expect(sendCalls).toHaveLength(0);
+    },
+    30000,
+  );
+
+  it('keeps an authenticated late booking result for projection without sending or re-running the turn', async () => {
+    await start();
+    runInboundTurn.mockImplementationOnce(async () => {
+      client.query("UPDATE agent_reply_turns SET generation_until=now()-interval '1 second';");
+      return {
+        kind: 'reply',
+        reply: { text: '报名已提交' },
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {},
+            result: { success: true, workOrderId: 9876 },
+          },
+        ],
+      };
+    });
+    await submitInput('enterprise');
+    expect(databaseState().turn).toMatchObject({
+      status: 'settled',
+      projection_status: 'pending',
+      delivery_result: { outcome: 'interrupted' },
+    });
+    await restart('observe');
+    await recoverStoredTurn();
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      projection_status: 'complete',
+      next_check_at: null,
+    });
+    expect(module!.get(ReengagementAnchorService).handleToolAnchors).toHaveBeenCalledWith(
+      {
+        toolCalls: [
+          expect.objectContaining({
+            toolName: 'duliday_interview_booking',
+            result: { success: true, workOrderId: 9876 },
+          }),
+        ],
+      },
+      expect.any(Object),
+    );
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    expect(sendCalls).toHaveLength(0);
+  }, 30000);
+
+  it.each([false, true])(
+    'classifies a provider outage using the live tool execution counter (toolStarted=%s)',
+    async (toolStarted) => {
+      await start();
+      runInboundTurn.mockImplementationOnce(async (req) => {
+        if (toolStarted) req.context.toolCallCounts.set('duliday_interview_booking', 1);
+        throw Object.assign(new Error('model service unavailable'), {
+          agentMeta: {
+            providerOutage: true,
+            modelsAttempted: ['qwen/qwen4-max', 'deepseek/deepseek-flash'],
+          },
+        });
+      });
+      await submitInput('enterprise');
+      if (toolStarted) {
+        expect(databaseState().turn).toMatchObject({
+          status: 'preparing',
+          projection_status: 'none',
+        });
+        expect(ackPendingMessageIds).not.toHaveBeenCalled();
+      } else {
+        expect(databaseState().turn).toMatchObject({
+          status: 'acked',
+          projection_status: 'complete',
+          review_required: true,
+          delivery_result: { accepted: 0, total: 0 },
+        });
+        await module!.get(ReplyRecoveryService).recoverDue();
+        expect(module!.get(IncidentReporterService).notify).toHaveBeenCalledWith(
+          expect.objectContaining({
+            error: expect.stringContaining('model_unavailable_before_tools'),
+          }),
+        );
+        expect(databaseState().turn.next_check_at).toBeNull();
+      }
+      expect(sendCalls).toHaveLength(0);
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
     },
     30000,
   );
@@ -860,7 +953,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       "UPDATE agent_reply_turns SET generation_until=now()-interval '1 second',next_check_at=now()-interval '1 second';",
     );
     await recoverStoredTurn();
-    expect(module!.get(IncidentReporterService).notifyAsync).toHaveBeenCalledWith(
+    expect(module!.get(IncidentReporterService).notify).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'reply.manual_review_required' }),
     );
     expect(runInboundTurn).toHaveBeenCalledTimes(1);

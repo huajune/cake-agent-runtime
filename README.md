@@ -33,7 +33,7 @@ DuLiDay 的招聘 AI Agent 运行时。系统通过企业微信承接候选人�
 | 领域 | 技术 |
 | --- | --- |
 | 后端 | NestJS 10、TypeScript、Vercel AI SDK |
-| 模型 | Anthropic、OpenAI、DeepSeek、Gemini、OpenRouter 等 |
+| 模型 | Qwen（阿里云 DashScope）、DeepSeek（官方 API） |
 | 数据 | Supabase/PostgreSQL、Upstash Redis、Bull |
 | 前端 | React 18、Vite |
 | 集成 | 企业微信、飞书、DuLiDay/Stride、MCP |

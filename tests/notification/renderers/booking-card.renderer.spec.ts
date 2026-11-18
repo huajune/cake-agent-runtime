@@ -1,5 +1,5 @@
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { TEST_OPERATIONS_RECEIVER } from '../../fixtures/feishu-receivers';
 import { BookingCardRenderer } from '@notification/renderers/booking-card.renderer';
 
 describe('BookingCardRenderer', () => {
@@ -32,7 +32,7 @@ describe('BookingCardRenderer', () => {
         message: '预约成功',
         booking_id: 'BK-1001',
       },
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(result.isFailure).toBe(false);
@@ -40,7 +40,7 @@ describe('BookingCardRenderer', () => {
       expect.objectContaining({
         title: '🎉 面试预约成功',
         color: 'green',
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       }),
     );
     expect(result.card.content as string).toContain('**候选人信息**');
@@ -141,14 +141,14 @@ describe('BookingCardRenderer', () => {
       cancelReason: '面试距离远',
       cancelReasonDesc: '候选人觉得距离有点远，不考虑了',
       userMessage: '不考虑了',
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(card).toEqual(
       expect.objectContaining({
         title: '🚨 面试预约已取消 · 需要人工确认',
         color: 'red',
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       }),
     );
     expect(card.content as string).toContain('候选人已取消面试预约');

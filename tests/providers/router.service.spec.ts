@@ -10,8 +10,8 @@ describe('RouterService', () => {
 
   beforeEach(async () => {
     env = {
-      AGENT_CHAT_MODEL: 'anthropic/claude-sonnet-4-6',
-      AGENT_CHAT_FALLBACKS: 'openai/gpt-4o, deepseek/deepseek-v4-flash',
+      AGENT_CHAT_MODEL: 'qwen/qwen4-max',
+      AGENT_CHAT_FALLBACKS: 'qwen/qwen3.7-plus, deepseek/deepseek-flash',
     };
 
     mockConfigService = {
@@ -31,8 +31,8 @@ describe('RouterService', () => {
 
   describe('listRoles', () => {
     it('should list only configured roles', () => {
-      env.AGENT_VISION_MODEL = 'google/gemini-2.0-flash';
-      env.AGENT_EVALUATE_MODEL = 'openai/gpt-4o-mini';
+      env.AGENT_VISION_MODEL = 'qwen/qwen3-vl-plus';
+      env.AGENT_EVALUATE_MODEL = 'qwen/qwen3.7-flash';
 
       expect(service.listRoles()).toEqual([ModelRole.Chat, ModelRole.Vision, ModelRole.Evaluate]);
     });
@@ -46,17 +46,17 @@ describe('RouterService', () => {
 
   describe('listRoleDetails', () => {
     it('should expose configured models with parsed fallbacks', () => {
-      env.AGENT_VISION_MODEL = 'google/gemini-2.0-flash';
-      env.AGENT_DEFAULT_FALLBACKS = 'openai/gpt-4o-mini';
+      env.AGENT_VISION_MODEL = 'qwen/qwen3-vl-plus';
+      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen3.7-flash';
 
       expect(service.listRoleDetails()).toEqual({
         chat: {
-          model: 'anthropic/claude-sonnet-4-6',
-          fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
+          model: 'qwen/qwen4-max',
+          fallbacks: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
         },
         vision: {
-          model: 'google/gemini-2.0-flash',
-          fallbacks: ['openai/gpt-4o-mini'],
+          model: 'qwen/qwen3-vl-plus',
+          fallbacks: ['qwen/qwen3.7-flash'],
         },
       });
     });
@@ -67,18 +67,18 @@ describe('RouterService', () => {
       env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen-max-latest';
 
       expect(service.getFallbacks(ModelRole.Chat)).toEqual([
-        'openai/gpt-4o',
-        'deepseek/deepseek-v4-flash',
+        'qwen/qwen3.7-plus',
+        'deepseek/deepseek-flash',
       ]);
     });
 
     it('should fall back to default fallbacks when role-specific fallbacks are missing', () => {
-      env.AGENT_EXTRACT_MODEL = 'openai/gpt-4o-mini';
-      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen-max-latest, google/gemini-2.5-flash';
+      env.AGENT_EXTRACT_MODEL = 'qwen/qwen3.7-flash';
+      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen-max-latest, deepseek/deepseek-v4-pro';
 
       expect(service.getFallbacks(ModelRole.Extract)).toEqual([
         'qwen/qwen-max-latest',
-        'google/gemini-2.5-flash',
+        'deepseek/deepseek-v4-pro',
       ]);
     });
 
@@ -89,7 +89,7 @@ describe('RouterService', () => {
 
   describe('getModelIdByRole', () => {
     it('should return the configured model id', () => {
-      expect(service.getModelIdByRole(ModelRole.Chat)).toBe('anthropic/claude-sonnet-4-6');
+      expect(service.getModelIdByRole(ModelRole.Chat)).toBe('qwen/qwen4-max');
     });
 
     it('should return an empty string when the role is not configured', () => {
@@ -100,15 +100,15 @@ describe('RouterService', () => {
   describe('getRouteByRole', () => {
     it('should return the route for a configured role', () => {
       expect(service.getRouteByRole(ModelRole.Chat)).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
       });
     });
 
     it('should treat role strings case-insensitively', () => {
       expect(service.getRouteByRole('CHAT')).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
       });
     });
 
@@ -119,22 +119,21 @@ describe('RouterService', () => {
     });
 
     it('should promote the default fallback chain when the role primary model is missing', () => {
-      env.AGENT_DEFAULT_FALLBACKS =
-        'moonshotai/kimi-k3, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen3.8-max, qwen/qwen4-max, deepseek/deepseek-flash';
 
       expect(service.getRouteByRole(ModelRole.Repair)).toEqual({
-        modelId: 'moonshotai/kimi-k3',
-        fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen3.8-max',
+        fallbacks: ['qwen/qwen4-max', 'deepseek/deepseek-flash'],
       });
     });
 
     it('should promote role-specific fallbacks before default fallbacks when primary is missing', () => {
-      env.AGENT_DEFAULT_FALLBACKS = 'moonshotai/kimi-k3';
-      env.AGENT_REPAIR_FALLBACKS = 'anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen3.8-max';
+      env.AGENT_REPAIR_FALLBACKS = 'qwen/qwen4-max, deepseek/deepseek-flash';
 
       expect(service.getRouteByRole(ModelRole.Repair)).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['deepseek/deepseek-flash'],
       });
     });
   });
@@ -142,8 +141,8 @@ describe('RouterService', () => {
   describe('resolveRoute', () => {
     it('should resolve the configured route when no override is provided', () => {
       expect(service.resolveRoute({ role: ModelRole.Chat })).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
       });
     });
 
@@ -151,11 +150,11 @@ describe('RouterService', () => {
       expect(
         service.resolveRoute({
           role: ModelRole.Chat,
-          fallbacks: ['google/gemini-2.5-flash'],
+          fallbacks: ['deepseek/deepseek-v4-pro'],
         }),
       ).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['google/gemini-2.5-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['deepseek/deepseek-v4-pro'],
       });
     });
 
@@ -163,34 +162,44 @@ describe('RouterService', () => {
       expect(
         service.resolveRoute({
           role: ModelRole.Chat,
-          overrideModelId: ' openai/gpt-4o-mini ',
+          overrideModelId: ' qwen/qwen3.7-flash ',
         }),
       ).toEqual({
-        modelId: 'openai/gpt-4o-mini',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen3.7-flash',
+        fallbacks: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
       });
+    });
+
+    it('rejects retired manual overrides and migrates persisted fallback settings', () => {
+      env.AGENT_CHAT_FALLBACKS = 'anthropic/claude-sonnet-5,deepseek/deepseek-v4-flash';
+      expect(service.getRouteByRole('chat').fallbacks).toEqual(['deepseek/deepseek-flash']);
+      expect(() => service.resolveRoute({ overrideModelId: 'moonshotai/kimi-k3' })).toThrow(
+        '不支持',
+      );
+      expect(() => service.resolveRoute({ fallbacks: ['openrouter/qwen/qwen4-max'] })).toThrow(
+        '不支持',
+      );
     });
 
     it('should disable fallbacks when requested', () => {
       expect(
         service.resolveRoute({
           role: ModelRole.Chat,
-          overrideModelId: 'openai/gpt-4o-mini',
+          overrideModelId: 'qwen/qwen3.7-flash',
           disableFallbacks: true,
         }),
       ).toEqual({
-        modelId: 'openai/gpt-4o-mini',
+        modelId: 'qwen/qwen3.7-flash',
         fallbacks: undefined,
       });
     });
 
     it('should resolve an unconfigured role through the default fallback chain', () => {
-      env.AGENT_DEFAULT_FALLBACKS =
-        'moonshotai/kimi-k3, anthropic/claude-sonnet-4-6, deepseek/deepseek-v4-flash';
+      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen3.8-max, qwen/qwen4-max, deepseek/deepseek-flash';
 
       expect(service.resolveRoute({ role: ModelRole.Repair })).toEqual({
-        modelId: 'moonshotai/kimi-k3',
-        fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen3.8-max',
+        fallbacks: ['qwen/qwen4-max', 'deepseek/deepseek-flash'],
       });
     });
 
@@ -198,11 +207,11 @@ describe('RouterService', () => {
       expect(
         service.resolveRoute({
           role: ModelRole.Repair,
-          fallbacks: ['anthropic/claude-sonnet-4-6', 'deepseek/deepseek-v4-flash'],
+          fallbacks: ['qwen/qwen4-max', 'deepseek/deepseek-flash'],
         }),
       ).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['deepseek/deepseek-flash'],
       });
     });
   });
@@ -210,19 +219,19 @@ describe('RouterService', () => {
   describe('resolveForTurn', () => {
     it('should default to the chat route', () => {
       expect(service.resolveForTurn({})).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['qwen/qwen3.7-plus', 'deepseek/deepseek-flash'],
       });
     });
 
     it('should honor explicit fallbacks for a chat turn', () => {
       expect(
         service.resolveForTurn({
-          fallbacks: ['google/gemini-2.5-flash'],
+          fallbacks: ['deepseek/deepseek-v4-pro'],
         }),
       ).toEqual({
-        modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['google/gemini-2.5-flash'],
+        modelId: 'qwen/qwen4-max',
+        fallbacks: ['deepseek/deepseek-v4-pro'],
       });
     });
   });

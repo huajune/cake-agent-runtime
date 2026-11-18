@@ -1,5 +1,5 @@
 import { CronRunnerService } from '@infra/queue/cron-runner.service';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { Cron } from '@nestjs/schedule';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
@@ -24,7 +24,7 @@ export class ReplyRecoveryService {
     private readonly workflow: ReplyWorkflowService,
     private readonly leases: ReplyRecoveryLeaseService,
     private readonly crons: CronRunnerService,
-    @Optional() private readonly incidents?: IncidentReporterService,
+    private readonly incidents: IncidentReporterService,
   ) {}
 
   @Cron('*/1 * * * *')
@@ -37,22 +37,22 @@ export class ReplyRecoveryService {
         if (Date.now() >= deadline) break;
         // Historical proactive turns have no primary input; their domain owns follow-up.
         if (!turn.recovery.primary) continue;
-        await this.leases.run(turn.chatId, async (assertOwned) => {
-          try {
-            await this.resumeTurn(turn, assertOwned);
-          } catch {
-            this.logger.warn(`reply.recovery_pending ${turn.logicalTurnId}`);
-            if (
-              turn.status === REPLY_TURN_STATUS.PLANNED &&
-              Date.parse(turn.inputOccurredAt) < Date.now() - 86400_000
-            ) {
-              this.manualReview(turn.logicalTurnId, 'recovery_deadline');
-            }
-          } finally {
+        await this.leases
+          .run(turn.chatId, async (assertOwned) => {
             await assertOwned();
-            await this.turns.defer(turn);
-          }
-        });
+            try {
+              await this.resumeTurn(turn, assertOwned);
+            } catch (error) {
+              this.logger.warn(`reply.recovery_pending ${turn.logicalTurnId}: ${String(error)}`);
+              await assertOwned();
+              await this.turns.defer(turn);
+            }
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              `reply.recovery_lease_or_store_unavailable ${turn.logicalTurnId}: ${String(error)}`,
+            );
+          });
       }
     } catch {
       this.logger.error('reply.recovery_scan_failed');
@@ -62,15 +62,31 @@ export class ReplyRecoveryService {
   }
 
   private async resumeTurn(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<void> {
-    if (turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
-      // An interrupted generation cannot prove that no booking or modification succeeded.
-      this.manualReview(turn.logicalTurnId, REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
-      return;
+    // Re-read under the SQL lock. A live owner may have renewed or completed since due() ran.
+    let terminal = await this.turns.interrupt(turn);
+    const unknown = terminal.projectionStatus === REPLY_PROJECTION_STATUS.NONE;
+    const reason = unknown
+      ? REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED
+      : terminal.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.INTERRUPTED
+        ? REPLY_REVIEW_REASON.INTERRUPTED
+        : undefined;
+    if (reason && !terminal.reviewReason)
+      terminal = await this.turns.requestReview(terminal, reason);
+    try {
+      if (!unknown && terminal.status !== REPLY_TURN_STATUS.ACKED)
+        await this.workflow.resumeInputCompletion(terminal, assertOwned);
+    } catch (error) {
+      if (!terminal.reviewReason && Date.parse(terminal.inputOccurredAt) < Date.now() - 86400_000)
+        terminal = await this.turns.requestReview(terminal, REPLY_REVIEW_REASON.RECOVERY_DEADLINE);
+      throw error;
+    } finally {
+      if (terminal.reviewRequired && !terminal.reviewNotifiedAt && terminal.reviewReason) {
+        await assertOwned();
+        await this.notifyReview(terminal);
+        await assertOwned();
+        await this.turns.reviewNotified(terminal);
+      }
     }
-    const terminal = await this.turns.interrupt(turn);
-    if (terminal.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.INTERRUPTED)
-      this.manualReview(turn.logicalTurnId, 'ordinary_reply_interrupted_no_resend');
-    await this.workflow.resumeInputCompletion(terminal, assertOwned);
   }
 
   @Cron('47 */10 * * * *', { timeZone: 'Asia/Shanghai' })
@@ -82,8 +98,18 @@ export class ReplyRecoveryService {
     );
   }
 
-  private manualReview(logicalTurnId: string, reason: string): void {
-    this.incidents?.notifyAsync({
+  private async notifyReview(turn: ReplyTurn): Promise<void> {
+    const summaries = {
+      [REPLY_REVIEW_REASON.PROVIDER_OUTAGE]:
+        '模型服务不可用，候选人尚未收到回复。本轮未执行工具，请人工接续对话',
+      [REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED]:
+        '回复已中断，业务结果未保存。请核对本轮的工单、群邀请及发送记录',
+      [REPLY_REVIEW_REASON.INTERRUPTED]: '回复在投递完成前中断。请核对已受理的消息分段',
+      [REPLY_REVIEW_REASON.RECOVERY_DEADLINE]:
+        '回复的本地收尾持续失败。请核对业务补账和输入确认记录',
+    };
+    const reason = turn.reviewReason!;
+    const delivered = await this.incidents.notify({
       source: {
         subsystem: 'reply-execution',
         component: 'ReplyRecoveryService',
@@ -91,9 +117,29 @@ export class ReplyRecoveryService {
         trigger: 'cron',
       },
       code: 'reply.manual_review_required',
-      summary: '原输入需要人工核实，未重新发送',
-      error: new Error(`${logicalTurnId}: ${reason}`),
-      dedupe: { key: `reply.manual_review_required:${logicalTurnId}` },
+      summary: summaries[reason],
+      error: `${turn.logicalTurnId}: ${reason}`,
+      scope: {
+        corpId: turn.corpId,
+        chatId: turn.chatId,
+        messageId:
+          typeof turn.recovery.traceId === 'string' ? turn.recovery.traceId : turn.inputIds[0],
+      },
+      impact: { requiresHumanIntervention: true },
+      diagnostics: {
+        category: reason,
+        messageCount: turn.inputIds.length,
+        payload: {
+          logicalTurnId: turn.logicalTurnId,
+          inputOccurredAt: turn.inputOccurredAt,
+          inputMessageIds: turn.inputIds,
+          delivery: turn.deliveryResult?.outcome,
+          projection: turn.projectionStatus,
+          failure: turn.recovery.failure,
+        },
+      },
+      dedupe: { key: `reply.manual_review_required:${turn.logicalTurnId}` },
     });
+    if (!delivered) throw new Error('review_notification_unconfirmed');
   }
 }

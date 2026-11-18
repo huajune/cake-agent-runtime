@@ -1,3 +1,4 @@
+import { ReplyDeferredError } from '@biz/reply-execution/reply-execution.types';
 import { QueueFailureService } from '@infra/queue/queue-failure.service';
 import { CandidateBlacklistFilterRule } from '../application/filter-rules/message-filter.rules';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -258,7 +259,18 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
       }
 
       // 处理消息
-      await this.processMessages(messages, batchId);
+      const result = await this.messagePipeline.processMergedMessages(
+        messages,
+        batchId,
+        async () => {
+          if (!(await this.simpleMergeService.renewProcessingLock(chatId, lockOwner)))
+            throw new ReplyDeferredError('conversation_lease_lost');
+        },
+      );
+      if (result === 'deferred') {
+        await this.simpleMergeService.scheduleLockRetryCheck(chatId);
+        return;
+      }
 
       // 处理完后若又收到了新消息，则按“最后一条消息后的静默窗口”补建下一轮检查任务
       await this.simpleMergeService.checkAndProcessNewMessages(chatId);
@@ -276,17 +288,6 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
       }
       this.workerManager.releaseExecutionSlot();
     }
-  }
-
-  /**
-   * 处理消息的核心逻辑
-   * 委托聚合工作流；初始输入及 replay 合入的输入都按原消息 ID 确认。
-   */
-  private async processMessages(
-    messages: EnterpriseMessageCallbackDto[],
-    batchId: string,
-  ): Promise<void> {
-    await this.messagePipeline.processMergedMessages(messages, batchId);
   }
 
   /**

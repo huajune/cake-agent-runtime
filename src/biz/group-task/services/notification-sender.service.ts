@@ -10,7 +10,6 @@ import {
   TaskExecutionResult,
   GROUP_TASK_TYPE_NAMES,
 } from '../group-task.types';
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import {
@@ -233,7 +232,6 @@ export class NotificationSenderService {
         durationSeconds: duration,
         details: result.details,
         errors: result.errors,
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       });
     } catch (error) {
       this.exceptionNotifier?.notifyAsync({
