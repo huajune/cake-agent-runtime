@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { FeishuCardColor } from '../interfaces/interface';
-import { FeishuReceiver } from '../constants/receivers';
+import { FeishuReceiver } from '../interfaces/receiver.interface';
 
 export interface FeishuCardBuildOptions {
   title: string;

@@ -67,14 +67,13 @@ PR 正文按模板填中文说明，重点这些小节（自动化脚本按中�
 pnpm config:hosting:check:prod
 ```
 
-若提示 drift，先执行对应环境同步并复查：
+检查只验证数据库接收人完整性，不再和代码名单比较。缺失的成员身份直接在数据库补齐，保留 token、人设和其他成员；无需修改 `receivers.ts` 或为日常人员变动发版。
 
-```bash
-pnpm config:hosting:sync:prod
-pnpm config:hosting:check:prod
-```
-
-新增非敏感的飞书接收人映射时，优先补一个幂等 SQL migration，避免只改 seed 脚本导致生产运行时配置漏同步。明文 Duliday token 不进 migration，由生产配置单独维护。
+首次切换为数据库唯一来源时，先执行 `20261118090000_unify_feishu_receivers_in_database.sql`，再发布代码。
+迁移只补缺失的历史接收人和固定运营接收人，不覆盖数据库已有值。
+如果环境中仍配置了 `FEISHU_TASK_OWNER_OPEN_IDS_JSON`，先用 `node scripts/seed-hosting-member-config.js --env <环境文件>` 预览，再加 `--apply` 导入 `taskOwners` 并复查；然后移除旧变量。
+此脚本仅补缺失 token / 导入旧 Task 负责人，不会同步代码名单，写入遇到并发更新会拒绝覆盖。
+明文 Duliday token 不进 migration，由生产配置单独维护。
 
 ---
 

@@ -3,7 +3,6 @@ import { Injectable, Logger, Optional, type OnApplicationBootstrap } from '@nest
 import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Environment } from '@enums/environment.enum';
-import { FEISHU_RECEIVER_USERS, type FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { ALERT_THROTTLE } from '@infra/feishu/constants/constants';
 import { AlertLevel } from '@enums/alert.enum';
 import { FeishuAlertChannel } from '../channels/feishu-alert.channel';
@@ -151,14 +150,6 @@ export class AlertNotifierService implements OnApplicationBootstrap {
     contentPreview: string;
   }): AlertContext {
     return this.alertCardRenderer.createPromptInjectionAlert(params);
-  }
-
-  createGroupFullMentionUsers(): FeishuReceiver[] {
-    return this.alertCardRenderer.createGroupFullMentionUsers();
-  }
-
-  getDefaultReceivers(): FeishuReceiver[] {
-    return [FEISHU_RECEIVER_USERS.GAO_YAQI];
   }
 
   private shouldSend(key: string): boolean {

@@ -1,7 +1,7 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
-import { FEISHU_RECEIVER_USERS, FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { type FeishuReceiver } from '@infra/feishu/interfaces/receiver.interface';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { FeishuOpsChannel } from '../channels/feishu-ops.channel';
 import { AlertNotifierService } from './alert-notifier.service';
@@ -60,7 +60,10 @@ export class OpsNotifierService {
     errors: GroupTaskExecutionError[];
     atUsers?: FeishuReceiver[];
   }): Promise<void> {
-    const card = this.opsCardRenderer.buildGroupTaskReportCard(params);
+    const card = this.opsCardRenderer.buildGroupTaskReportCard({
+      ...params,
+      atUsers: params.atUsers ?? (await this.hostingMemberConfig.resolveOperationsReceivers()),
+    });
     await this.opsChannel.sendOrThrow(card);
   }
 
@@ -72,7 +75,7 @@ export class OpsNotifierService {
   }): Promise<boolean> {
     const card = this.opsCardRenderer.buildGroupFullAlertCard({
       ...params,
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: await this.hostingMemberConfig.resolveOperationsReceivers(),
     });
     return this.opsChannel.send(card);
   }
@@ -104,15 +107,20 @@ export class OpsNotifierService {
       error?: string;
     }>;
   }): Promise<boolean> {
-    // 同时 @ 接客 bot 负责人和 GAO_YAQI（群主固定为琪琪），让两边都能跟进
-    const atUsers = new Set<FeishuReceiver>([FEISHU_RECEIVER_USERS.GAO_YAQI]);
+    // 同时 @ 运营接收人与接客账号负责人；按 openId 去重。
+    const atUsers = new Map(
+      (await this.hostingMemberConfig.resolveOperationsReceivers()).map((user) => [
+        user.openId,
+        user,
+      ]),
+    );
     if (params.chatBotImId) {
       const chatReceiver = await this.hostingMemberConfig.resolveFeishuReceiver(params.chatBotImId);
-      if (chatReceiver) atUsers.add(chatReceiver);
+      if (chatReceiver) atUsers.set(chatReceiver.openId, chatReceiver);
     }
     const card = this.opsCardRenderer.buildInviteRejectedAlertCard({
       ...params,
-      atUsers: Array.from(atUsers),
+      atUsers: Array.from(atUsers.values()),
     });
     const delivered = await this.opsChannel.send(card);
 
@@ -144,7 +152,7 @@ export class OpsNotifierService {
             opsCardDelivered: delivered,
           },
         },
-        routing: { atUsers: Array.from(atUsers) },
+        routing: { atUsers: Array.from(atUsers.values()) },
         dedupe: {
           key: [
             'wecom.invite_to_group.api_rejected',

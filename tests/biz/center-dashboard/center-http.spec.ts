@@ -65,7 +65,8 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       app.get(CenterDashboardInterceptor),
       new ResponseInterceptor(new Reflector()),
     );
-    await app.init();
+    // 整套测试共用监听中的服务，避免逐请求关闭临时服务与 HTTP keep-alive 复用发生竞态。
+    await app.listen(0, '127.0.0.1');
   });
   afterAll(() => app.close());
   beforeEach(() => {

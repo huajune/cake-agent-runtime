@@ -65,14 +65,6 @@ export const DEFAULT_FIELD_NAMES = {
 
 export type FieldKey = keyof typeof DEFAULT_FIELD_NAMES;
 
-interface OwnerConfig {
-  supervisor?: string[];
-  T4?: string[];
-  T5?: string[];
-  T8?: string[];
-  default?: string[];
-}
-
 interface TaskDraft {
   chatId: string;
   category: InterventionTaskCategory;
@@ -122,7 +114,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
   private readonly tasklistGuid: string;
   private readonly henanTasklistGuid: string;
   private readonly fieldNames: Record<FieldKey, string>;
-  private readonly owners: OwnerConfig;
   private runtimeConfig: FeishuTaskRuntimeConfig | null = null;
   private runtimeConfigExpiry = 0;
   private longTermService: LongTermService | null = null;
@@ -145,7 +136,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     if (this.henanTasklistGuid && this.henanTasklistGuid === this.tasklistGuid)
       throw new Error('河南任务清单必须与总部清单不同');
     this.fieldNames = this.loadFieldNames();
-    this.owners = this.loadOwners();
   }
 
   onApplicationBootstrap(): void {
@@ -488,19 +478,18 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       if (!openId) throw new Error('河南托管账号尚未绑定飞书任务负责人');
       return [{ id: openId, type: 'user', role: 'assignee' }];
     }
+    const owners = await this.hostingMemberConfig.resolveTaskOwners();
     const meta = CATEGORY_META[category];
     const ordered: string[][] = [];
-    if (meta.owner === 'supervisor') ordered.push(this.owners.supervisor ?? []);
+    if (meta.owner === 'supervisor') ordered.push(owners.supervisor ?? []);
     if (meta.owner === 'configured') {
       const configured =
-        category === 'T4' || category === 'T5' || category === 'T8'
-          ? this.owners[category]
-          : undefined;
+        category === 'T4' || category === 'T5' || category === 'T8' ? owners[category] : undefined;
       ordered.push(configured ?? []);
     }
     const hosting = await this.resolveHostingReceiverOpenId(botImId);
     ordered.push(hosting ? [hosting] : []);
-    ordered.push(this.owners.default ?? []);
+    ordered.push(owners.default ?? []);
 
     const picked = ordered.find((ids) => ids.length > 0) ?? [];
     return Array.from(new Set(picked)).map((id) => ({ id, type: 'user', role: 'assignee' }));
@@ -534,34 +523,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       );
     }
     return names;
-  }
-
-  private loadOwners(): OwnerConfig {
-    const raw = this.configService.get<string>('FEISHU_TASK_OWNER_OPEN_IDS_JSON')?.trim();
-    if (!raw) return {};
-    try {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const pick = (key: string): string[] | undefined => {
-        const value = parsed[key];
-        if (!Array.isArray(value)) return undefined;
-        const ids = value.filter(
-          (item): item is string => typeof item === 'string' && item.trim() !== '',
-        );
-        return ids.length > 0 ? ids : undefined;
-      };
-      return {
-        supervisor: pick('supervisor'),
-        T4: pick('T4'),
-        T5: pick('T5'),
-        T8: pick('T8'),
-        default: pick('default'),
-      };
-    } catch (error) {
-      this.logger.warn(
-        `FEISHU_TASK_OWNER_OPEN_IDS_JSON 解析失败，负责人只回退托管账号: ${toErrorMessage(error)}`,
-      );
-      return {};
-    }
   }
 
   private async alertFailure(

@@ -1,4 +1,4 @@
-import { BOT_TO_RECEIVER, FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { TEST_BOT_RECEIVERS, TEST_OPERATIONS_RECEIVER } from '../../fixtures/feishu-receivers';
 import { OpsCardRenderer } from '@notification/renderers/ops-card.renderer';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 
@@ -16,8 +16,9 @@ describe('OpsNotifierService', () => {
   } as unknown as jest.Mocked<OpsCardRenderer>;
 
   const mockHostingMemberConfig = {
+    resolveOperationsReceivers: jest.fn(async () => [TEST_OPERATIONS_RECEIVER]),
     resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
-      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+      botImId ? TEST_BOT_RECEIVERS[botImId] : undefined,
     ),
   };
 
@@ -89,7 +90,7 @@ describe('OpsNotifierService', () => {
       durationSeconds: 12.3,
       details: [],
       errors: [{ groupName: '成都A群', error: 'webhook failed' }],
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(mockRenderer.buildGroupTaskReportCard).toHaveBeenCalled();
@@ -106,7 +107,7 @@ describe('OpsNotifierService', () => {
 
     expect(mockRenderer.buildGroupFullAlertCard).toHaveBeenCalledWith(
       expect.objectContaining({
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       }),
     );
     expect(mockOpsChannel.send).toHaveBeenCalledWith({ kind: 'group-full-card' });
@@ -136,7 +137,7 @@ describe('OpsNotifierService', () => {
     expect(mockRenderer.buildInviteRejectedAlertCard).toHaveBeenCalledWith(
       expect.objectContaining({
         city: '天津',
-        atUsers: expect.arrayContaining([FEISHU_RECEIVER_USERS.GAO_YAQI]),
+        atUsers: expect.arrayContaining([TEST_OPERATIONS_RECEIVER]),
       }),
     );
     expect(mockOpsChannel.send).toHaveBeenCalledWith({ kind: 'invite-rejected-card' });
@@ -162,6 +163,49 @@ describe('OpsNotifierService', () => {
           }),
         }),
       }),
+    );
+  });
+  it('resolves report recipients from DB and preserves an explicit empty override', async () => {
+    const params = {
+      typeName: '通知',
+      dryRun: false,
+      totalGroups: 1,
+      successCount: 1,
+      failedCount: 0,
+      skippedCount: 0,
+      durationSeconds: 1,
+      details: [],
+      errors: [],
+    };
+    const changed = { openId: 'ou_changed', name: '新运营' };
+    mockHostingMemberConfig.resolveOperationsReceivers.mockResolvedValueOnce([changed]);
+    await service.sendGroupTaskReport(params);
+    expect(mockRenderer.buildGroupTaskReportCard).toHaveBeenLastCalledWith({
+      ...params,
+      atUsers: [changed],
+    });
+    await service.sendGroupTaskReport({ ...params, atUsers: [] });
+    expect(mockRenderer.buildGroupTaskReportCard).toHaveBeenLastCalledWith({
+      ...params,
+      atUsers: [],
+    });
+    expect(mockHostingMemberConfig.resolveOperationsReceivers).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates the same DB identity across operations and account receivers', async () => {
+    mockHostingMemberConfig.resolveFeishuReceiver.mockResolvedValueOnce({
+      ...TEST_OPERATIONS_RECEIVER,
+    });
+    await service.sendInviteRejectedAlert({
+      city: '郑州',
+      chatBotImId: 'henan-bot',
+      rejectedGroups: [],
+    });
+    expect(mockRenderer.buildInviteRejectedAlertCard).toHaveBeenCalledWith(
+      expect.objectContaining({ atUsers: [TEST_OPERATIONS_RECEIVER] }),
+    );
+    expect(mockAlertNotifier.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ routing: { atUsers: [TEST_OPERATIONS_RECEIVER] } }),
     );
   });
 });

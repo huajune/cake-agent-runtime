@@ -53,63 +53,39 @@
 
 ### 托管账号 → 飞书负责人映射
 
-通过 `BOT_TO_RECEIVER` 映射表，根据消息来源的托管账号 wxid（`imBotId`）自动找到对应的飞书负责人：
+接收人唯一配置源是 `system_config` 表中 `key = hosting_member_config` 的 `value`。
+`HostingMemberConfigService` 按归一化后的 botImId 读取 `members[botImId].feishuOpenId/feishuName`，不再读取本地名单。
 
-```
-消息到达 → 携带 imBotId（托管账号 wxid）
-                ↓
-        BOT_TO_RECEIVER[imBotId]
-                ↓
-    ┌───────────┴───────────┐
-    ↓                       ↓
-  找到映射                 未找到
-    ↓                       ↓
- atUsers: [receiver]     atAll: true（兜底）
-```
+| 配置字段 | 用途 |
+| --- | --- |
+| `members[botImId].feishuOpenId/feishuName` | 预约、取消、风险、转人工、消息处理失败等账号通知；普通 Task 负责人 |
+| `operationsReceivers: [{openId, name}]` | 群满、群任务汇总的固定 @ 人；拉群失败同时 @ 账号负责人，按 openId 去重 |
+| `taskOwners: {supervisor?, T4?, T5?, T8?, default?}` | 总部特殊类别 Task 负责人，各字段为 open_id 数组；未配置时沿用账号负责人 |
 
-### 映射表
+配置缓存为 **5 分钟**，修改后无需改代码或重新发版，最长 5 分钟生效。
+数据库刷新失败或数据格式无效时保留进程内最后一次有效配置；首次读取失败时没有接收人。
+成功读取到删除/清空配置会按新配置生效，不恢复旧名单。未绑定账号的消息沿用原调用方的 @all/无 @ 降级。
 
-配置文件：`src/infra/feishu/constants/receivers.ts`
+### 河南分流
 
-| bot wxid           | 小组       | bot 昵称 | @飞书用户     |
-| ------------------ | ---------- | -------- | ------------- |
-| `1688855974513959` | 琪琪组     | 高雅琪   | GAO_YAQI      |
-| `1688854747775509` | 艾酱组     | 朱洁     | AI_JIANG      |
-| `1688855171908166` | 宇航组     | 李宇杭   | LI_YUHANG     |
-| `1688854363869800` | 小祝组     | 祝东升   | ZHU_DONGSHENG |
-| `1688857592548257` | 小祝组     | HeMin    | ZHU_DONGSHENG |
-| `1688856098846503` | 小祝组     | 陈美嘉   | ZHU_DONGSHENG |
-| `1688854359801821` | 南瓜组     | 李涵婷   | NAN_GUA       |
-| `1688854263771949` | 盼盼组     | 吴盼盼   | PAN_PAN       |
-| `1688855753660960` | 艾酱测试组 | 郭晓阳   | GUO_XIAOYANG  |
+接收人与发送目的地分开解析：河南小组归属继续由现有小组标记解析。
+河南通知发到河南私聊监控群；河南 Task 进入独立清单，**只派给本托管账号绑定的人**，不使用总部主管、类别或 default 负责人。
+河南账号没有绑定飞书身份时拒绝创建任务，不转派总部。蒋一锋的授权派单身份配置不受此调整影响。
 
-### 使用此映射的场景
+### 配置维护与首次切换
 
-- **降级兜底响应**：`imBotId` 来自 `params.primaryMessage.imBotId`
-- **面试预约通知**：`imBotId` 来自 tool 的 `context.botImId`
-
-### 固定 @人的场景
-
-- **群满员告警**：固定 @高雅琪
-- **群任务执行汇总**：固定 @高雅琪
+- 新增或修改成员，只更新数据库对应 botImId 的接收人字段，并保留同项 token、人设等字段。
+- 固定运营接收人直接维护 `operationsReceivers`；`[]` 表示不 @ 固定人员。
+- 运行 `pnpm config:hosting:check:prod` 检查已有成员和固定接收人配置完整性；它不再和代码名单比较，也不会写库。
+- 首次切换先执行 `20261118090000_unify_feishu_receivers_in_database.sql`，再部署代码。迁移仅补缺失的历史账号接收人及原固定运营接收人，保留 DB 覆盖值、河南账号和 token，可重复执行。
+- 若某环境以前使用 `FEISHU_TASK_OWNER_OPEN_IDS_JSON`，先运行 `node scripts/seed-hosting-member-config.js --env <环境文件>` 预览；确认后加 `--apply` 一次性迁入 `taskOwners`，检查通过后移除旧变量再部署。已有 `taskOwners` 不会被覆盖。
+- `seed-hosting-member-config.js` 仅补缺失的旧 token / 导入旧 Task 负责人；不再持有飞书人员名单。写入使用乐观锁，并发变更会停止同步。
 
 ### @功能优先级
 
-`atUsers` > `atAll` > 无@
+`atUsers` > `atAll` > 无 @。Webhook/Task 清单的环境配置仍决定发送目的地，不属于人员名单。
 
-## 飞书接收人配置
-
-配置文件：`src/infra/feishu/constants/receivers.ts`
-
-| Key             | open_id                               | 姓名   |
-| --------------- | ------------------------------------- | ------ |
-| `AI_JIANG`      | `ou_72e8d17db5dab36e4feeddfccaa6568d` | 艾酱   |
-| `GAO_YAQI`      | `ou_54b8b053840d689ae42d3ab6b61800d8` | 高雅琪 |
-| `NAN_GUA`       | `ou_954fb7341fd7fdd320de2d419d26df19` | 南瓜   |
-| `LI_YUHANG`     | `ou_e6868065cb0baa3c0304441a6a8c16e7` | 李宇航 |
-| `ZHU_DONGSHENG` | `ou_9834f6ccffb3abdbeeabbc28581af6df` | 祝东升 |
-| `PAN_PAN`       | `ou_12cf003c378f89299f8ccf32252c22c0` | 盼盼   |
-| `GUO_XIAOYANG`  | `ou_6d3f217a88b5033ff256c64492e52ae7` | 小阳   |
+## 飞书身份绑定
 
 ### 获取 open_id
 
@@ -148,7 +124,7 @@ curl -X POST 'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?use
 | 文件                                                               | 职责                             |
 | ------------------------------------------------------------------ | -------------------------------- |
 | `src/infra/feishu/constants/constants.ts`                          | Webhook 通道环境变量键、节流配置 |
-| `src/infra/feishu/constants/receivers.ts`                          | 接收人配置、BOT_TO_RECEIVER 映射 |
+| `src/biz/hosting-config/services/hosting-member-config.service.ts` | 数据库接收人、运营名单、Task 负责人解析 |
 | `src/infra/feishu/services/alert.service.ts`                       | 告警发送、节流控制               |
 | `src/infra/feishu/services/webhook.service.ts`                     | Webhook 签名、HTTP 发送          |
 | `src/infra/feishu/services/card-builder.service.ts`                | 飞书卡片构建（Markdown、@人）    |
@@ -170,9 +146,10 @@ curl -X POST 'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?use
 
 1. 确认 `open_id` 正确（飞书自定义机器人只支持 open_id）
 2. 确认被 @的人在该群中
-3. 检查 `BOT_TO_RECEIVER` 映射是否包含对应 `imBotId`
+3. 检查 `hosting_member_config.members[imBotId]` 是否配置该成员，并等待最多 5 分钟缓存刷新
 
 ### 新增托管账号
 
-1. 在 `receivers.ts` 的 `FEISHU_RECEIVER_USERS` 添加飞书用户（需 open_id）
-2. 在 `BOT_TO_RECEIVER` 添加 `'bot wxid': FEISHU_RECEIVER_USERS.XXX`
+1. 核对 botImId 和本人飞书身份（外部成员可在群里 @ 应用完成绑定）。
+2. 在数据库 `hosting_member_config.members[botImId]` 配置 `feishuOpenId`、`feishuName`，保留 token、人设等字段。
+3. 等待缓存刷新，验证对应通知群和 Task 清单；无需维护代码名单。

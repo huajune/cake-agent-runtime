@@ -63,7 +63,8 @@ const cli = parseArgs(process.argv.slice(2));
 import { ConfigService } from '@nestjs/config';
 import { toErrorStack } from '@infra/utils/error.util';
 import { FeishuApiService } from '@infra/feishu/services/api.service';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { createClient } from '@supabase/supabase-js';
+import { hostingMemberConfigSchema } from '@biz/hosting-config/types/hosting-member-config.schema';
 import { FeishuTaskClient } from '@notification/feishu-task/feishu-task.client';
 import {
   DEFAULT_FIELD_NAMES,
@@ -173,8 +174,22 @@ async function main(): Promise<void> {
   );
 
   log('== 现有群卡片 @ 用的 open_id（是否属于本应用需 --write --assignee 实测）：');
-  for (const [botImId, receiver] of Object.entries(BOT_TO_RECEIVER)) {
-    log(`  - bot ${botImId} → ${receiver.name} ${receiver.openId}`);
+  const db = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const { data, error } = await db
+    .from('system_config')
+    .select('value')
+    .eq('key', 'hosting_member_config')
+    .maybeSingle();
+  if (error) throw new Error('读取托管成员配置失败');
+  const parsed = hostingMemberConfigSchema.safeParse(data?.value);
+  if (!parsed.success) throw new Error('托管成员配置缺失或格式无效');
+  for (const [botImId, entry] of Object.entries(parsed.data.members ?? {})) {
+    if (entry.feishuOpenId?.trim())
+      log(`  - bot ${botImId} → ${entry.feishuName || ''} ${entry.feishuOpenId}`);
   }
 
   if (!cli.write) {
