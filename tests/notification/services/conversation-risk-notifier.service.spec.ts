@@ -1,4 +1,4 @@
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { TEST_BOT_RECEIVERS } from '../../fixtures/feishu-receivers';
 import { ConversationRiskCardRenderer } from '@notification/renderers/conversation-risk-card.renderer';
 import { ConversationRiskNotifierService } from '@notification/services/conversation-risk-notifier.service';
 
@@ -11,10 +11,9 @@ describe('ConversationRiskNotifierService', () => {
     buildConversationRiskCard: jest.fn(),
   } as unknown as jest.Mocked<ConversationRiskCardRenderer>;
 
-  // 复刻原硬编码行为：resolveFeishuReceiver = botImId ? BOT_TO_RECEIVER[botImId] : undefined。
   const mockHostingMemberConfig = {
     resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
-      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+      botImId ? TEST_BOT_RECEIVERS[botImId] : undefined,
     ),
   };
 
@@ -50,7 +49,7 @@ describe('ConversationRiskNotifierService', () => {
     expect(success).toBe(true);
     expect(mockRenderer.buildConversationRiskCard).toHaveBeenCalledWith(
       expect.objectContaining({
-        atUsers: [BOT_TO_RECEIVER[botImId]],
+        atUsers: [TEST_BOT_RECEIVERS[botImId]],
       }),
     );
     expect(mockPrivateChatChannel.send).toHaveBeenCalledWith({ kind: 'risk-card' }, botImId);

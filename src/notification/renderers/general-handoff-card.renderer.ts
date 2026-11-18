@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { FeishuReceiver } from '@infra/feishu/interfaces/receiver.interface';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import { isUrgentHandoff } from '@enums/handoff-reason.enum';

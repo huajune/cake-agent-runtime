@@ -1,4 +1,4 @@
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { TEST_OPERATIONS_RECEIVER } from '../../fixtures/feishu-receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { OpsCardRenderer } from '@notification/renderers/ops-card.renderer';
 
@@ -52,14 +52,14 @@ describe('OpsCardRenderer', () => {
         { groupKey: '上海D', groupCount: 1, dataSummary: '全部发送失败', status: 'failed' },
       ],
       errors: [{ groupName: '上海D-1群', error: 'Webhook timeout' }],
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(card).toEqual(
       expect.objectContaining({
         title: '⚠️ 兼职通知 — 部分失败',
         color: 'yellow',
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       }),
     );
     expect(card.content as string).toContain('**总群数**: 5 | **分组**: 4');
@@ -105,14 +105,14 @@ describe('OpsCardRenderer', () => {
         },
       ],
       toolNames: ['duliday_job_list', 'advance_stage'],
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(card).toEqual(
       expect.objectContaining({
         title: '⚠️ Agent 回复事实矛盾（与本轮 tool 结果不一致）',
         color: 'yellow',
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       }),
     );
     expect(card.content as string).toContain('**候选人**: 候选人A');
@@ -134,7 +134,7 @@ describe('OpsCardRenderer', () => {
           error: 'errcode=-8, errmsg=is not a friend, wxid: 7881299461958069',
         },
       ],
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(card).toEqual(
@@ -185,14 +185,14 @@ describe('OpsCardRenderer', () => {
       industry: '零售',
       memberLimit: 200,
       groups: [{ name: '上海零售1群', memberCount: 200 }, { name: '上海零售2群' }],
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(card).toEqual(
       expect.objectContaining({
         title: '⚠️ 上海/零售 所有兼职群已满，需要创建新群',
         color: 'yellow',
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       }),
     );
     expect(card.content as string).toContain('**范围**: 上海 / 零售');

@@ -37,15 +37,12 @@ describe('InterventionTaskService', () => {
   };
   const env: Record<string, string> = {
     FEISHU_TASK_TASKLIST_GUID: 'tl-1',
-    FEISHU_TASK_OWNER_OPEN_IDS_JSON: JSON.stringify({
-      supervisor: ['ou_boss'],
-      default: ['ou_default'],
-    }),
   };
   const configService = { get: jest.fn((key: string) => env[key]) };
   const centerScope = { getScope: jest.fn() };
   const systemConfig = { getConfigValue: jest.fn() };
   const hostingMember = {
+    resolveTaskOwners: jest.fn(async () => ({ supervisor: ['ou_boss'], default: ['ou_default'] })),
     getByBotImId: jest.fn(async () => ({ wecomNickname: '东升', feishuOpenId: 'ou_dongsheng' })),
     resolveFeishuReceiver: jest.fn(async () => ({ openId: 'ou_dongsheng', name: '祝东升' })),
   };
@@ -194,6 +191,7 @@ describe('InterventionTaskService', () => {
           members: [{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }],
         }),
       );
+      expect(hostingMember.resolveTaskOwners).not.toHaveBeenCalled();
       expect(client.resolveFieldGuid.mock.calls.every(([list]) => list === 'tl-henan')).toBe(true);
       expect(client.resolveSectionGuid.mock.calls.every(([list]) => list === 'tl-henan')).toBe(
         true,
@@ -614,6 +612,29 @@ describe('InterventionTaskService', () => {
     expect(input.members).toEqual([{ id: 'ou_boss', type: 'user', role: 'assignee' }]);
     expect(input.description).not.toContain('候选人] 周四下午可以吗');
     expect(input.description).toContain('详见企微会话');
+  });
+
+  it('总部新任务使用最新数据库主管配置，无需重新创建服务', async () => {
+    const risk: RiskInterventionPayload = {
+      ...basePayload,
+      kind: 'conversation_risk',
+      source: 'regex_intercept',
+      riskType: 'abuse',
+      riskLabel: '辱骂/攻击',
+      summary: '风险测试',
+    };
+    await service.submit(risk);
+    hostingMember.resolveTaskOwners.mockResolvedValueOnce({
+      supervisor: ['ou_new_boss'],
+      default: [],
+    });
+    await service.submit(risk);
+    expect(client.createTask.mock.calls[0][0].members).toEqual([
+      { id: 'ou_boss', type: 'user', role: 'assignee' },
+    ]);
+    expect(client.createTask.mock.calls[1][0].members).toEqual([
+      { id: 'ou_new_boss', type: 'user', role: 'assignee' },
+    ]);
   });
 
   it('工作任务创建失败时向队列抛错并告警', async () => {

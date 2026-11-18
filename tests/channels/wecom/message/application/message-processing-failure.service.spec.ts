@@ -1,5 +1,5 @@
 import { ScenarioType } from '@enums/agent.enum';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { TEST_BOT_RECEIVERS } from '../../../../fixtures/feishu-receivers';
 import { MessageProcessingFailureService } from '@channels/wecom/message/application/message-processing-failure.service';
 import { DeliveryFailureError } from '@channels/wecom/message/types';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
@@ -27,7 +27,7 @@ describe('MessageProcessingFailureService', () => {
   };
   const hostingMemberConfig = {
     resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
-      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+      botImId ? TEST_BOT_RECEIVERS[botImId] : undefined,
     ),
   };
 
@@ -204,7 +204,7 @@ describe('MessageProcessingFailureService', () => {
     expect(alertService.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         routing: {
-          atUsers: [BOT_TO_RECEIVER[botImId]],
+          atUsers: [TEST_BOT_RECEIVERS[botImId]],
         },
       }),
     );

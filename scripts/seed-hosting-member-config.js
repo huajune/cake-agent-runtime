@@ -1,18 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * 把分散的「飞书接收人（硬编码）」+「海绵 token（sponge_token_config）」导出成统一的
- * system_config.hosting_member_config（按 botImId/wxid 索引），供新解析链 / 未来 web 配置使用。
- *
- * 数据来源：
- *   - Stride getGroupBots：权威的 bot wxid 列表（核对哪些 botImId 仍在册）
- *   - 本脚本内联的 FEISHU 接收人表（拷贝自 src/infra/feishu/constants/receivers.ts）→ feishuOpenId
- *   - system_config.sponge_token_config（若有）→ dulidayToken（tokenEnv 会从环境变量解析成明文）
- *
- * 安全：默认 dry-run（只打印、不写库）。只有显式 --apply 才 upsert system_config。
- * 用法：
- *   node scripts/seed-hosting-member-config.js --env .env.local            # 预览
- *   node scripts/seed-hosting-member-config.js --env .env.local --apply    # 写入
+ * 从旧 sponge_token_config 补齐缺失 token；飞书身份只在数据库维护。
+ * 已有接收人、token、人设、运营接收人和扩展字段一律保留。
+ * 首次切换版本前可一次性导入旧 FEISHU_TASK_OWNER_OPEN_IDS_JSON，导入后移除旧变量。
+ * 默认 dry-run，--apply 使用乐观锁写入，避免覆盖并发配置更新。
  */
 
 const fs = require('fs');
@@ -22,21 +14,6 @@ const { createClient } = require('@supabase/supabase-js');
 const HOSTING_MEMBER_CONFIG_KEY = 'hosting_member_config';
 const SPONGE_TOKEN_CONFIG_KEY = 'sponge_token_config';
 const DEFAULT_STRIDE_BASE = 'https://stride-bg.dpclouds.com/hub-api';
-
-// 拷贝自 src/infra/feishu/constants/receivers.ts（一次性种子，故内联）。botImId(wxid) → 飞书接收人。
-const BOT_TO_RECEIVER = {
-  1688855974513959: { openId: 'ou_54b8b053840d689ae42d3ab6b61800d8', name: '高雅琪' },
-  1688854747775509: { openId: 'ou_72e8d17db5dab36e4feeddfccaa6568d', name: '艾酱' },
-  1688855171908166: { openId: 'ou_e6868065cb0baa3c0304441a6a8c16e7', name: '李宇航' },
-  1688854363869800: { openId: 'ou_9834f6ccffb3abdbeeabbc28581af6df', name: '祝东升' },
-  1688857592548257: { openId: 'ou_9834f6ccffb3abdbeeabbc28581af6df', name: '祝东升' },
-  1688856098846503: { openId: 'ou_9834f6ccffb3abdbeeabbc28581af6df', name: '祝东升' },
-  1688854359801821: { openId: 'ou_954fb7341fd7fdd320de2d419d26df19', name: '南瓜' },
-  1688854263771949: { openId: 'ou_12cf003c378f89299f8ccf32252c22c0', name: '盼盼' },
-  1688855753660960: { openId: 'ou_6d3f217a88b5033ff256c64492e52ae7', name: '小阳' },
-  1688855468965879: { openId: 'ou_c88101c10aa900578ec97b6c6d529fa1', name: '辛瑜琦' },
-  1688857954985709: { openId: 'ou_a519e2e0172ced44c9fca02daa2d7ffa', name: '蒋一锋' },
-};
 
 function parseArgs(argv) {
   const args = { env: '.env.local', apply: false };
@@ -137,6 +114,56 @@ async function fetchGroupBots(strideBase, token) {
   return bots;
 }
 
+function mergeConfig(existing, bots, tokenResolver, legacyOwners) {
+  if (
+    existing.members !== undefined &&
+    (!existing.members || typeof existing.members !== 'object' || Array.isArray(existing.members))
+  ) {
+    throw new Error('members 格式无效，停止同步');
+  }
+  for (const entry of Object.values(existing.members ?? {})) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+      throw new Error('成员配置格式无效，停止同步');
+  }
+  const members = { ...(existing.members ?? {}) };
+  for (const bot of bots) {
+    if (!bot.wxid) continue;
+    const entry = { ...(members[bot.wxid] ?? {}) };
+    if (!entry.dulidayToken?.trim()) {
+      const token = tokenResolver({
+        botImId: bot.wxid,
+        botUserId: bot.wecomUserId,
+        groupId: bot.groupId,
+      });
+      if (token) entry.dulidayToken = token;
+    }
+    if (Object.keys(entry).length) members[bot.wxid] = entry;
+  }
+  const config = { ...existing, members };
+  if (config.taskOwners === undefined && legacyOwners?.trim()) {
+    let owners;
+    try {
+      owners = JSON.parse(legacyOwners);
+    } catch {
+      throw new Error('旧 Task 负责人配置 JSON 无效');
+    }
+    if (!owners || typeof owners !== 'object' || Array.isArray(owners))
+      throw new Error('旧 Task 负责人配置必须是 object');
+    const keys = ['supervisor', 'T4', 'T5', 'T8', 'default'];
+    config.taskOwners = {};
+    for (const key of keys) {
+      if (owners[key] === undefined) continue;
+      if (
+        !Array.isArray(owners[key]) ||
+        owners[key].some((id) => typeof id !== 'string' || !id.trim())
+      )
+        throw new Error('旧 Task 负责人列表无效');
+      config.taskOwners[key] = owners[key].map((id) => id.trim());
+    }
+  }
+  return config;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   loadEnvFile(args.env);
@@ -162,66 +189,51 @@ async function main() {
       .select('value')
       .eq('key', SPONGE_TOKEN_CONFIG_KEY)
       .maybeSingle()
-      .then((r) => r.data?.value ?? null),
+      .then((r) => {
+        if (r.error) throw new Error('读取配置失败，停止同步');
+        return r.data?.value ?? null;
+      }),
     client
       .from('system_config')
       .select('value')
       .eq('key', HOSTING_MEMBER_CONFIG_KEY)
       .maybeSingle()
-      .then((r) => r.data?.value ?? null),
+      .then((r) => {
+        if (r.error) throw new Error('读取配置失败，停止同步');
+        return r.data?.value ?? null;
+      }),
   ]);
-  const existingConfig =
-    existingHostingRow && typeof existingHostingRow === 'object' && !Array.isArray(existingHostingRow)
-      ? existingHostingRow
-      : {};
+  if (
+    !existingHostingRow ||
+    typeof existingHostingRow !== 'object' ||
+    Array.isArray(existingHostingRow)
+  ) {
+    throw new Error('hosting_member_config 缺失或无效，请先执行数据库迁移');
+  }
+  const existingConfig = existingHostingRow;
   const tokenResolver = buildTokenResolver(
     typeof spongeRow === 'string' ? JSON.parse(spongeRow) : spongeRow,
   );
 
-  // 合并式同步：已有 hosting_member_config 是生产运行时真相源之一，尤其可能包含
-  // 明文 dulidayToken 或暂未出现在 Stride 当前列表中的历史账号。这里默认保留，
-  // 只补齐/更新本脚本能权威生成的飞书接收人与可解析 token。
-  const members = { ...(existingConfig.members ?? {}) };
-  const unmatchedReceivers = new Set(Object.keys(BOT_TO_RECEIVER));
-  for (const bot of bots) {
-    if (!bot.wxid) continue;
-    const receiver = BOT_TO_RECEIVER[bot.wxid];
-    if (receiver) unmatchedReceivers.delete(bot.wxid);
-    const token = tokenResolver({
-      botImId: bot.wxid,
-      botUserId: bot.wecomUserId,
-      groupId: bot.groupId,
-    });
-    const entry = { ...(members[bot.wxid] ?? {}) };
-    if (receiver?.openId) {
-      entry.feishuOpenId = receiver.openId;
-      entry.feishuName = receiver.name;
-    }
-    if (token) entry.dulidayToken = token;
-    if (Object.keys(entry).length > 0) members[bot.wxid] = entry;
-  }
-
-  const config = { members };
-  console.log(`\n--- 生成结果（${Object.keys(members).length} 个 bot）---`);
-  // 打印时脱敏 dulidayToken（海绵 token），避免泄露到终端/CI 日志；真实值只在 --apply 写库。
+  const config = mergeConfig(
+    existingConfig,
+    bots,
+    tokenResolver,
+    process.env.FEISHU_TASK_OWNER_OPEN_IDS_JSON,
+  );
+  console.log(`\n--- 生成结果（${Object.keys(config.members).length} 个 bot）---`);
   console.log(JSON.stringify(redactTokens(config), null, 2));
-  if (unmatchedReceivers.size > 0) {
-    console.log(
-      `\n⚠️ 以下飞书接收人 botImId 不在 Stride 当前账号列表里（可能已停用，请人工核对）：`,
-    );
-    for (const id of unmatchedReceivers) console.log(`  ${id} → ${BOT_TO_RECEIVER[id].name}`);
-  }
 
   if (args.apply) {
-    const { error } = await client.from('system_config').upsert(
-      {
-        key: HOSTING_MEMBER_CONFIG_KEY,
-        value: config,
-        description: '托管成员统一配置（飞书+海绵token）',
-      },
-      { onConflict: 'key' },
-    );
-    if (error) throw new Error(`写入失败: ${error.message}`);
+    // 配置必须由迁移创建，禁止读取失败/缺行后覆盖整个生产配置。
+    const { data, error } = await client
+      .from('system_config')
+      .update({ value: config, updated_at: new Date().toISOString() })
+      .eq('key', HOSTING_MEMBER_CONFIG_KEY)
+      .eq('value', JSON.stringify(existingHostingRow))
+      .select('key');
+    if (error) throw new Error(`写入失败: ${error.code || '数据库请求失败'}`);
+    if (data?.length !== 1) throw new Error('配置已被并发修改，请重新预览后再执行');
     console.log(`\n写入完成: system_config.${HOSTING_MEMBER_CONFIG_KEY}\n`);
   } else {
     console.log(`\n这是 dry-run，没有写库。确认无误后加 --apply 写入。\n`);
@@ -240,4 +252,5 @@ module.exports = {
   resolveTokenValue,
   buildTokenResolver,
   redactTokens,
+  mergeConfig,
 };

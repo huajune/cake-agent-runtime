@@ -1,5 +1,4 @@
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 
 describe('HostingMemberConfigService', () => {
   const repository = {
@@ -40,13 +39,11 @@ describe('HostingMemberConfigService', () => {
     await expect(service.resolveDulidayToken('1688855974513959')).resolves.toBe('token-custom');
   });
 
-  it('falls back to the hard-coded Feishu receiver when DB has no openId', async () => {
+  it('does not resurrect a former code receiver when DB has no openId', async () => {
     repository.readConfig.mockResolvedValueOnce({ members: {} });
     const service = new HostingMemberConfigService(repository as never);
 
-    await expect(service.resolveFeishuReceiver('1688855171908166')).resolves.toEqual(
-      BOT_TO_RECEIVER['1688855171908166'],
-    );
+    await expect(service.resolveFeishuReceiver('1688855171908166')).resolves.toBeUndefined();
     await expect(service.resolveDulidayToken('1688855171908166')).resolves.toBeNull();
   });
 
@@ -64,9 +61,73 @@ describe('HostingMemberConfigService', () => {
     const service = new HostingMemberConfigService(repository as never);
 
     await expect(service.resolveDulidayToken('1688855974513959')).resolves.toBeNull();
-    await expect(service.resolveFeishuReceiver('1688855974513959')).resolves.toEqual(
-      BOT_TO_RECEIVER['1688855974513959'],
-    );
+    await expect(service.resolveFeishuReceiver('1688855974513959')).resolves.toBeUndefined();
+  });
+
+  describe('database refresh', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('refreshes account, operations and task receivers after five minutes', async () => {
+      repository.readConfig.mockResolvedValueOnce({
+        members: { henan: { feishuOpenId: 'ou_henan', feishuName: '河南成员' } },
+        operationsReceivers: [{ openId: 'ou_ops', name: '原运营' }],
+        taskOwners: { supervisor: ['ou_supervisor'] },
+      });
+      const service = new HostingMemberConfigService(repository as never);
+      await expect(service.resolveFeishuReceiver('prod-sync:henan')).resolves.toEqual({
+        openId: 'ou_henan',
+        name: '河南成员',
+      });
+      await expect(service.resolveOperationsReceivers()).resolves.toEqual([
+        { openId: 'ou_ops', name: '原运营' },
+      ]);
+      await expect(service.resolveTaskOwners()).resolves.toEqual({ supervisor: ['ou_supervisor'] });
+      repository.readConfig.mockResolvedValue({
+        members: {},
+        operationsReceivers: [],
+        taskOwners: {},
+      });
+      jest.advanceTimersByTime(299999);
+      expect(await service.resolveFeishuReceiver('henan')).toBeDefined();
+      jest.advanceTimersByTime(1);
+      await expect(service.resolveFeishuReceiver('henan')).resolves.toBeUndefined();
+      await expect(service.resolveOperationsReceivers()).resolves.toEqual([]);
+      await expect(service.resolveTaskOwners()).resolves.toEqual({});
+      expect(repository.readConfig).toHaveBeenCalledTimes(2);
+    });
+
+    it('retains last successful DB configuration during failure and recovers on the next refresh', async () => {
+      const service = new HostingMemberConfigService(repository as never);
+      await service.resolveFeishuReceiver('1688855974513959');
+      repository.readConfig.mockRejectedValueOnce(new Error('database unavailable'));
+      jest.advanceTimersByTime(300000);
+      await expect(service.resolveFeishuReceiver('1688855974513959')).resolves.toEqual({
+        openId: 'ou_custom',
+        name: '琪琪',
+      });
+      await expect(service.resolveDulidayToken('1688855974513959')).resolves.toBe('token-custom');
+      repository.readConfig.mockResolvedValueOnce(null);
+      jest.advanceTimersByTime(300000);
+      await expect(service.resolveFeishuReceiver('1688855974513959')).resolves.toBeUndefined();
+    });
+
+    it('coalesces concurrent refreshes and deduplicates operations identities', async () => {
+      repository.readConfig.mockResolvedValue({
+        operationsReceivers: [
+          { openId: ' ou_ops ', name: ' 运营 ' },
+          { openId: 'ou_ops', name: '运营' },
+        ],
+      });
+      const service = new HostingMemberConfigService(repository as never);
+      const [receivers] = await Promise.all([
+        service.resolveOperationsReceivers(),
+        service.resolveTaskOwners(),
+        service.getByBotImId('bot'),
+      ]);
+      expect(receivers).toEqual([{ openId: 'ou_ops', name: '运营' }]);
+      expect(repository.readConfig).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('resolveAgentAccountIdentity (badcase chat 6a5dedb2ce406a6aeee1ea62)', () => {

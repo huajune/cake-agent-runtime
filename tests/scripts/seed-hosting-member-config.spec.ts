@@ -1,4 +1,12 @@
+import type { HostingMemberConfig } from '@biz/hosting-config/types/hosting-member-config.types';
+
 type SeedHelpers = {
+  mergeConfig(
+    existing: HostingMemberConfig,
+    bots: { wxid: string }[],
+    resolver: () => string | null,
+    owners?: string,
+  ): HostingMemberConfig;
   parseArgs(argv: string[]): { env: string; apply: boolean };
   resolveTokenValue(value: unknown): string | null;
   buildTokenResolver(
@@ -56,6 +64,46 @@ describe('seed-hosting-member-config helpers', () => {
     expect(resolve({ botUserId: 'user-2' })).toBe('mapped-user-token');
     expect(resolve({ groupId: 'group-2' })).toBe('mapped-group-token');
     expect(resolve({})).toBeNull();
+  });
+
+  it('preserves DB identities, tokens, Henan members and top-level settings while seeding only missing tokens', () => {
+    const existing = {
+      members: {
+        hq: { feishuOpenId: 'ou_custom', dulidayToken: 'existing' },
+        henan: { feishuOpenId: 'ou_henan', gender: '男' },
+      },
+      operationsReceivers: [{ openId: 'ou_ops_custom', name: '运营' }],
+      taskOwners: { default: ['ou_custom_default'] },
+      futureField: 'keep',
+    };
+    expect(
+      helpers.mergeConfig(
+        existing,
+        [{ wxid: 'hq' }, { wxid: 'henan' }],
+        () => 'seeded',
+        '{"default":["ou_legacy"]}',
+      ),
+    ).toEqual({
+      ...existing,
+      members: {
+        ...existing.members,
+        henan: { ...existing.members.henan, dulidayToken: 'seeded' },
+      },
+    });
+    expect(existing.members.henan).not.toHaveProperty('dulidayToken');
+  });
+
+  it('imports old task owners only once and rejects malformed input without exposing it', () => {
+    expect(helpers.mergeConfig({ members: {} }, [], () => null, '{"T4":[" ou_legacy "]}')).toEqual({
+      members: {},
+      taskOwners: { T4: ['ou_legacy'] },
+    });
+    expect(
+      helpers.mergeConfig({ taskOwners: {} }, [], () => null, '{"default":["ou_old"]}').taskOwners,
+    ).toEqual({});
+    expect(() => helpers.mergeConfig({}, [], () => null, 'secret-bad-json')).toThrow(
+      '旧 Task 负责人配置 JSON 无效',
+    );
   });
 
   it('redacts duliday tokens while preserving the last four characters', () => {

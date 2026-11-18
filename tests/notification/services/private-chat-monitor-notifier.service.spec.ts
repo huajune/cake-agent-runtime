@@ -1,4 +1,4 @@
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { TEST_BOT_RECEIVERS } from '../../fixtures/feishu-receivers';
 import { BookingCardRenderer } from '@notification/renderers/booking-card.renderer';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 
@@ -15,7 +15,7 @@ describe('PrivateChatMonitorNotifierService', () => {
 
   const mockHostingMemberConfig = {
     resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
-      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+      botImId ? TEST_BOT_RECEIVERS[botImId] : undefined,
     ),
   };
 
@@ -52,7 +52,7 @@ describe('PrivateChatMonitorNotifierService', () => {
     const payload = mockRenderer.buildInterviewBookingCard.mock.calls[0][0];
     expect(payload).toEqual(
       expect.objectContaining({
-        atUsers: [BOT_TO_RECEIVER[botImId]],
+        atUsers: [TEST_BOT_RECEIVERS[botImId]],
       }),
     );
     expect(payload).not.toHaveProperty('atAll');
@@ -89,7 +89,7 @@ describe('PrivateChatMonitorNotifierService', () => {
     expect(success).toBe(true);
     expect(mockRenderer.buildInterviewCancellationCard).toHaveBeenCalledWith(
       expect.objectContaining({
-        atUsers: [BOT_TO_RECEIVER[botImId]],
+        atUsers: [TEST_BOT_RECEIVERS[botImId]],
         contactName: 'wx_alice',
         candidateName: '张三',
         workOrderId: 123,

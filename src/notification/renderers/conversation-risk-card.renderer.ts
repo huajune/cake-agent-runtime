@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { FeishuReceiver } from '@infra/feishu/interfaces/receiver.interface';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import { getHandoffReasonLabel } from '@enums/handoff-reason.enum';
 import { ConversationRiskNotificationPayload } from '../types/conversation-risk-notification.types';

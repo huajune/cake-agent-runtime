@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 
-/**
- * Compare code-owned Feishu receiver mappings with runtime hosting_member_config.
- *
- * This catches the release gap where Supabase migrations are up to date, but
- * system_config.hosting_member_config was not seeded/synced for a new bot.
- */
+/** 检查数据库接收人配置完整性；不再与代码名单比较或覆盖 DB。 */
 
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
 const HOSTING_MEMBER_CONFIG_KEY = 'hosting_member_config';
-const RECEIVERS_FILE = path.resolve(__dirname, '../src/infra/feishu/constants/receivers.ts');
 
 function parseArgs(argv) {
   const args = { env: '.env.local', json: false };
@@ -52,58 +46,41 @@ function requireEnv(name, fallbackName) {
   return v;
 }
 
-function parseCodeMappings() {
-  const source = fs.readFileSync(RECEIVERS_FILE, 'utf8');
-  const userEntries = new Map();
-  const userRegex =
-    /([A-Z0-9_]+):\s*\{\s*openId:\s*'([^']+)'\s*,\s*name:\s*'([^']+)'\s*\}/g;
-  for (const match of source.matchAll(userRegex)) {
-    userEntries.set(match[1], { openId: match[2], name: match[3] });
-  }
-
-  const botEntries = {};
-  const botRegex = /'([^']+)':\s*FEISHU_RECEIVER_USERS\.([A-Z0-9_]+)/g;
-  for (const match of source.matchAll(botRegex)) {
-    const receiver = userEntries.get(match[2]);
-    if (!receiver) throw new Error(`BOT_TO_RECEIVER 引用了未知接收人: ${match[2]}`);
-    botEntries[match[1]] = receiver;
-  }
-  return botEntries;
-}
-
-function compare(expected, actualConfig) {
-  const members = actualConfig?.members && typeof actualConfig.members === 'object'
-    ? actualConfig.members
-    : {};
-  const missing = [];
-  const mismatched = [];
-
-  for (const [botImId, receiver] of Object.entries(expected)) {
-    const entry = members[botImId];
-    if (!entry) {
-      missing.push({ botImId, expectedName: receiver.name });
+function validateConfig(config) {
+  const issues = [];
+  const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const text = (v) => typeof v === 'string' && v.trim() !== '';
+  if (!object(config) || !object(config.members))
+    return { ok: false, memberCount: 0, issues: ['members 缺失或无效'] };
+  for (const [id, entry] of Object.entries(config.members)) {
+    if (!object(entry)) {
+      issues.push(`${id}: 成员格式无效`);
       continue;
     }
-    const actualOpenId = typeof entry.feishuOpenId === 'string' ? entry.feishuOpenId.trim() : '';
-    const actualName = typeof entry.feishuName === 'string' ? entry.feishuName.trim() : '';
-    if (actualOpenId !== receiver.openId || (actualName && actualName !== receiver.name)) {
-      mismatched.push({
-        botImId,
-        expectedName: receiver.name,
-        actualName: actualName || null,
-        expectedOpenIdTail: receiver.openId.slice(-6),
-        actualOpenIdTail: actualOpenId ? actualOpenId.slice(-6) : null,
-      });
+    for (const key of ['feishuOpenId', 'feishuName', 'dulidayToken', 'wecomNickname', 'gender']) {
+      if (entry[key] !== undefined && typeof entry[key] !== 'string')
+        issues.push(`${id}: ${key} 必须是字符串`);
     }
+    if (!text(entry.feishuOpenId)) issues.push(`${id}: 未配置飞书接收人`);
   }
-
-  return {
-    expectedCount: Object.keys(expected).length,
-    actualCount: Object.keys(members).length,
-    missing,
-    mismatched,
-    ok: missing.length === 0 && mismatched.length === 0,
-  };
+  if (!Array.isArray(config.operationsReceivers))
+    issues.push('operationsReceivers 缺失或无效，请先执行接收人迁移');
+  else if (
+    config.operationsReceivers.some(
+      (r) => !object(r) || !text(r.openId) || typeof r.name !== 'string',
+    )
+  )
+    issues.push('operationsReceivers 含无效接收人');
+  if (config.taskOwners !== undefined) {
+    if (!object(config.taskOwners)) issues.push('taskOwners 必须是 object');
+    else
+      for (const key of ['supervisor', 'T4', 'T5', 'T8', 'default']) {
+        const ids = config.taskOwners[key];
+        if (ids !== undefined && (!Array.isArray(ids) || ids.some((id) => !text(id))))
+          issues.push(`taskOwners.${key} 无效`);
+      }
+  }
+  return { ok: issues.length === 0, memberCount: Object.keys(config.members).length, issues };
 }
 
 async function main() {
@@ -116,7 +93,6 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const expected = parseCodeMappings();
   const { data, error } = await client
     .from('system_config')
     .select('value')
@@ -124,26 +100,18 @@ async function main() {
     .maybeSingle();
   if (error) throw new Error(`读取 ${HOSTING_MEMBER_CONFIG_KEY} 失败: ${error.message}`);
 
-  const result = compare(expected, data?.value ?? null);
-  if (args.json) {
-    console.log(JSON.stringify(result, null, 2));
-  } else if (result.ok) {
-    console.log(
-      `hosting_member_config OK: ${result.actualCount} runtime members cover ${result.expectedCount} code mappings.`,
-    );
-  } else {
-    console.error(
-      `hosting_member_config drift: ${result.missing.length} missing, ${result.mismatched.length} mismatched.`,
-    );
-    for (const item of result.missing) {
-      console.error(`  missing ${item.botImId} (${item.expectedName})`);
-    }
-    for (const item of result.mismatched) {
-      console.error(
-        `  mismatched ${item.botImId} (${item.expectedName}): openId tail ${item.actualOpenIdTail} != ${item.expectedOpenIdTail}`,
-      );
-    }
+  const result = validateConfig(data?.value ?? null);
+  if (
+    process.env.FEISHU_TASK_OWNER_OPEN_IDS_JSON?.trim() &&
+    data?.value?.taskOwners === undefined
+  ) {
+    result.ok = false;
+    result.issues.push('旧 Task 负责人环境变量尚未迁入 taskOwners，请先运行 sync 预览/导入');
   }
+  if (args.json) console.log(JSON.stringify(result, null, 2));
+  else if (result.ok)
+    console.log(`hosting_member_config OK: ${result.memberCount} 个数据库成员；接收人配置完整。`);
+  else for (const issue of result.issues) console.error(issue);
 
   if (!result.ok) process.exit(1);
 }
@@ -154,3 +122,5 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = { validateConfig };

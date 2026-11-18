@@ -1,11 +1,13 @@
+import type { FeishuReceiver } from '@infra/feishu/interfaces/receiver.interface';
+
 /**
  * 托管成员（经理/账号）统一配置。
  *
  * 各按 botImId 手维护的「挂在人身上」的配置统一收口在一份（system_config）：
- * - 飞书接收人 openId（miss 时回退 src/infra/feishu/constants/receivers.ts 硬编码）
+ * - 飞书接收人 openId（唯一来源，不再回退代码名单）
  * - 海绵 Duliday token（唯一 DB 配置源；miss 时调用方回退 DULIDAY_API_TOKEN）
  *
- * 以 botImId（wecom 系统分配的稳定数字 id，与硬编码 BOT_TO_RECEIVER 同 key）为 key，
+ * 以 botImId（wecom 系统分配的稳定数字 id）为 key，
  * 而非可改名的 wecomUserId。未来 web 配置页读写此 key。
  */
 export const HOSTING_MEMBER_CONFIG_KEY = 'hosting_member_config';
@@ -30,4 +32,14 @@ export interface HostingMemberEntry {
 export interface HostingMemberConfig {
   /** key = botImId（托管账号 wxid 数字 id，如 '1688855171908166'） */
   members?: Record<string, HostingMemberEntry>;
+  /** 群满、拉群失败和群任务汇总接收人。空数组表示不 @ 固定人员。 */
+  operationsReceivers?: FeishuReceiver[];
+  /** 总部特殊类别派单规则，河南任务始终只使用账号对应接收人。 */
+  taskOwners?: {
+    supervisor?: string[];
+    T4?: string[];
+    T5?: string[];
+    T8?: string[];
+    default?: string[];
+  };
 }

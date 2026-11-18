@@ -1,5 +1,5 @@
 import { AlertLevel } from '@enums/alert.enum';
-import { FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { FeishuReceiver } from '@infra/feishu/interfaces/receiver.interface';
 
 export type AlertTrigger = 'http' | 'cron' | 'startup' | 'process' | 'queue' | 'tool' | 'manual';
 

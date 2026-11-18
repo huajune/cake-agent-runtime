@@ -1,5 +1,5 @@
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { TEST_OPERATIONS_RECEIVER } from '../../fixtures/feishu-receivers';
 import { ConversationRiskCardRenderer } from '@notification/renderers/conversation-risk-card.renderer';
 import {
   EntityExtractionResultSchema,
@@ -91,14 +91,14 @@ describe('ConversationRiskCardRenderer', () => {
         },
         invitedGroups: null,
       },
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      atUsers: [TEST_OPERATIONS_RECEIVER],
     });
 
     expect(card).toEqual(
       expect.objectContaining({
         title: '🚨 交流异常 · 投诉/举报风险',
         color: 'red',
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        atUsers: [TEST_OPERATIONS_RECEIVER],
       }),
     );
     expect(card.content as string).not.toContain('风险类型：');
