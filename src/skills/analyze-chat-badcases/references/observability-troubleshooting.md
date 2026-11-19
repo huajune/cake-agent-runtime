@@ -14,11 +14,13 @@
 
 测试流为了不污染“今日托管”等生产指标，会跳过 `message_processing_records` 等生产 tracking 写入；`guardrail_review_records` 也只在带生产 `traceId` 的回合落库。因此测试排障应以这些字段为主：
 
-- `test_executions.agent_request`：实际测试入参和历史。
-- `test_executions.agent_response / actual_output`：运行结果，不等同于业务通过。
-- `test_executions.tool_calls`：工具输入、输出和错误。
-- `test_executions.execution_trace`：steps、guardrailTrace、投递/终态证据。
-- `test_executions.memory_setup / memory_trace`：记忆 fixture 与执行前后状态。
+按执行 ID 查询 `test_execution_results`。这个视图会还原精简存储的回复正文，历史记录也使用同一查询。
+
+- `agent_request` 保存实际测试入参和历史。
+- `agent_response` 和 `actual_output` 用于核对原始回复与展示文本。业务评审另看 `review_status`。
+- `tool_calls` 保存工具输入、输出和错误。
+- `execution_trace` 保存步骤、守卫和投递终态证据。
+- `memory_setup` 和 `memory_trace` 保存记忆夹具与执行前后状态。
 - `agent_execution_events`：若能从执行 trace 取得运行时 traceId，可补查模型、工具、语义评审事件；不要假设每条测试都存在生产主流水或守卫档案。
 
 ## 2. 表的职责与关联方式
@@ -47,7 +49,7 @@
 - `reply_preview / is_fallback / fallback_success`
 - 各阶段 duration 与 `ttft_ms`
 
-只有在上述证据不足，且需要确认 prompt、历史注入、时间戳或工具 schema 时，才读取该 trace 的 `agent_invocation -> request -> agentRequest`。不要把 `agent_invocation` 加进批量抽样 SQL。
+需要核实模型实际输入时，按单条流水读取 `GET /analytics/message-processing-records/:messageId` 的 `agentInvocation.request.agentRequest`。该详情会还原工具引用并兼容历史快照。快照过期时，主流水仍可提供步骤与工具。
 
 ## 4. 分层查询模板
 
@@ -59,10 +61,10 @@
 SELECT
   message_id, chat_id, received_at, status, error, scenario,
   reply_segments, reply_preview, anomaly_flags,
-  tool_calls, agent_steps, memory_snapshot,
+  tool_calls, public.processing_read_steps(r) AS agent_steps, memory_snapshot,
   guardrail_input, guardrail_output, post_processing_status,
   is_fallback, fallback_success, total_duration, ttft_ms
-FROM message_processing_records
+FROM public.message_processing_records AS r
 WHERE message_id = '<trace_id>';
 ```
 
