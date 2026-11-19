@@ -41,7 +41,7 @@ begin
   -- Late writer cannot overwrite the row, but its evidence is retained for recovery.
   r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','one','dispatchAttemptId','one','fence',1,'evidenceHash','late-success','completion',c));
   assert r->'record'->>'status'='unknown';
-  select count(*) into n from public.agent_action_evidence where action_id='a' and evidence_hash='late-success'; assert n=1;
+  select count(*) into n from public.agent_action_evidence where corp_id='test-corp' and action_id='a' and attempt_id='one' and completion=c and evidence_hash in ('late-success',encode(sha256(convert_to(c::text,'UTF8')),'hex')); assert n=1;
   r:=public.transition_agent_action('settle',jsonb_build_object('corpId','test-corp','actionId','a','owner','reconciler','dispatchAttemptId','one','fence',2,'evidenceHash','confirmed','completion',c));
   assert r->'record'->>'status'='succeeded';
   assert r->'record'->>'local_sync'='pending';

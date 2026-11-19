@@ -79,6 +79,7 @@ export class UserHostingRepository extends BaseRepository {
       isPermanent: boolean;
       reason?: string;
       operator?: string;
+      handoffScope?: { corpId: string; botImId?: string; chatId: string };
       source?: string;
     },
   ): Promise<void> {
@@ -92,6 +93,9 @@ export class UserHostingRepository extends BaseRepository {
         pause_reason: params.reason ?? null,
         pause_operator: params.operator ?? null,
         pause_source: params.source ?? null,
+        handoff_scope: params.handoffScope
+          ? { ...params.handoffScope, pausedAt: params.pausedAt }
+          : null,
         pause_count: 1,
       },
       { onConflict: 'user_id', returnData: false },

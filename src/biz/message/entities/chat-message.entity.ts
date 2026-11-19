@@ -23,6 +23,7 @@ export interface ChatMessageRecord {
   im_contact_id?: string;
   contact_type?: StorageContactType;
   is_self?: boolean;
+  payload_text_v1?: -1;
   payload?: Record<string, unknown>;
   avatar?: string;
   external_user_id?: string;

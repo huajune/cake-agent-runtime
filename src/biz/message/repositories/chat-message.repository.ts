@@ -330,7 +330,7 @@ export class ChatMessageRepository extends BaseRepository {
 
     try {
       const results = await this.select<ChatMessageRecord>(
-        'message_id,role,content,timestamp,candidate_name,manager_name,message_type,source,contact_type,is_self,avatar,external_user_id,payload',
+        'message_id,role,content,timestamp,candidate_name,manager_name,message_type,source,contact_type,is_self,avatar,external_user_id,payload:chat_read_payload',
         (q) => q.eq('chat_id', chatId).order('timestamp'),
       );
 
@@ -828,7 +828,7 @@ export class ChatMessageRepository extends BaseRepository {
         message_id: string;
         content: string;
         payload: Record<string, unknown> | null;
-      }>('message_id,content,payload', (q) => {
+      }>('message_id,content,payload:chat_read_payload', (q) => {
         let query = q
           .eq('chat_id', chatId)
           .eq('role', 'user')
@@ -930,6 +930,7 @@ export class ChatMessageRepository extends BaseRepository {
       contact_type: toStorageContactType(message.contactType),
       is_self: message.isSelf,
       payload: message.payload,
+      payload_text_v1: -1,
       avatar: message.avatar,
       external_user_id: message.externalUserId,
       // 只在有值时带列名：批量 upsert 会把所有键写进 columns 参数，普通消息不引用新列

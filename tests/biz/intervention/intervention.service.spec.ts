@@ -123,6 +123,7 @@ describe('InterventionService', () => {
       await service.dispatch(payload);
       expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', {
         source: 'intervention',
+        handoffScope: { corpId: 'corp-1', botImId: 'bot-im-1', chatId: 'chat-1' },
         permanent: false,
         reason: '人工介入暂停',
       });
@@ -135,6 +136,7 @@ describe('InterventionService', () => {
       await service.dispatch({ ...riskPayload, riskType: 'interview_result_inquiry' });
       expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', {
         source: 'intervention',
+        handoffScope: { corpId: 'corp-1', botImId: 'bot-im-1', chatId: 'chat-1' },
         permanent: false,
         reason: '会话风险人工介入',
       });

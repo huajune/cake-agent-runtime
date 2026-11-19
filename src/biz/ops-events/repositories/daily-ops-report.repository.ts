@@ -52,12 +52,15 @@ export class DailyOpsReportRepository extends BaseRepository {
   async findByReportDate(reportDate: string): Promise<DailyOpsReportRow[]> {
     // selectAllPaged：受熔断器保护 + 翻页拉全（单日 bot 数可能超 1000）；
     // group_name/manager_name 非唯一，补 id 作稳定二级排序，避免分页漏/重。
-    return this.selectAllPaged<DailyOpsReportRow>(this.tableName, '*', (q) =>
-      q
-        .eq('report_date', reportDate)
-        .order('group_name', { ascending: true })
-        .order('manager_name', { ascending: true })
-        .order('id', { ascending: true }),
+    return this.selectAllPaged<DailyOpsReportRow>(
+      this.tableName,
+      `report_date,bot_im_id,manager_name,group_name,${SUM_COLUMNS},candidate_summary,booking_brands`,
+      (q) =>
+        q
+          .eq('report_date', reportDate)
+          .order('group_name', { ascending: true })
+          .order('manager_name', { ascending: true })
+          .order('id', { ascending: true }),
     );
   }
 

@@ -17,7 +17,6 @@ interface HandoffEventRow {
   missing_job_info: string[] | null;
   idempotency_key: string;
   created_at: string;
-  sequence_no: number | null;
 }
 
 /**
@@ -39,6 +38,7 @@ export class HandoffEventsRepository extends BaseRepository {
    */
   async insertHandoffEvent(
     input: RecordHandoffInput & { occurredAt: Date },
+    group?: { managerName: string; groupName: string } | null,
   ): Promise<HandoffWriteOutcome> {
     const payload: HandoffEventRow = {
       corp_id: input.corpId,
@@ -54,45 +54,19 @@ export class HandoffEventsRepository extends BaseRepository {
       missing_job_info: input.missingJobInfo?.length ? input.missingJobInfo : null,
       idempotency_key: input.idempotencyKey,
       created_at: input.occurredAt.toISOString(),
-      sequence_no: null,
     };
 
-    if (!this.isAvailable()) {
-      this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} upsert`);
-      return 'failed';
+    const result = await this.rpc<string>('record_handoff', {
+      p_ticket: payload,
+      p_origin: input.origin ?? 'agent_tool',
+      p_manager: group?.managerName ?? null,
+      p_group: group?.groupName ?? null,
+    });
+    if (result === 'scope_conflict') {
+      this.logger.error('转人工幂等键与所属账号冲突，已保留原记录');
+      return 'duplicate';
     }
-    if (this.circuitBlocked('UPSERT')) {
-      return 'failed';
-    }
-
-    try {
-      // 会话内序号（区分"反复转"与"新问题"）：DB 侧取 MAX+1，取不到不阻断写入
-      payload.sequence_no = await this.nextSequenceNo(input.corpId, input.chatId);
-
-      // BaseRepository.upsert() returns null for both conflict and failures. This path needs to
-      // preserve that distinction for outcome-layer handoff idempotency.
-      const { data, error } = await this.getClient()
-        .from(this.tableName)
-        .upsert(payload as unknown as Record<string, unknown>, {
-          onConflict: 'corp_id,idempotency_key',
-          ignoreDuplicates: true,
-        })
-        .select('idempotency_key');
-
-      if (error) {
-        this.noteOutcome('UPSERT', error);
-        this.handleError('UPSERT', error);
-        return 'failed';
-      }
-
-      const insertedRows = (data as Array<Pick<HandoffEventRow, 'idempotency_key'>> | null) ?? [];
-      this.recordCircuitSuccess('UPSERT');
-      return insertedRows.length > 0 ? 'inserted' : 'duplicate';
-    } catch (error) {
-      this.noteOutcome('UPSERT', error);
-      this.handleError('UPSERT', error);
-      return 'failed';
-    }
+    return result === 'inserted' || result === 'duplicate' ? result : 'failed';
   }
 
   /**
@@ -116,39 +90,11 @@ export class HandoffEventsRepository extends BaseRepository {
    * 由托管恢复路径调用；写失败只 warn，不阻断恢复。
    */
   async markResolvedByChat(chatId: string, outcome: string): Promise<number> {
-    if (!this.isAvailable()) return 0;
-    if (this.circuitBlocked('UPDATE')) return 0;
-    try {
-      const { data, error } = await this.getClient()
-        .from(this.tableName)
-        .update({ outcome, resolved_at: new Date().toISOString() })
-        .eq('chat_id', chatId)
-        .is('outcome', null)
-        .select('id');
-      if (error) {
-        this.noteOutcome('UPDATE', error);
-        this.handleError('UPDATE', error);
-        return 0;
-      }
-      this.recordCircuitSuccess('UPDATE');
-      return (data as Array<{ id: number }> | null)?.length ?? 0;
-    } catch (error) {
-      this.noteOutcome('UPDATE', error);
-      this.handleError('UPDATE', error);
-      return 0;
-    }
-  }
-
-  private async nextSequenceNo(corpId: string, chatId: string): Promise<number | null> {
-    try {
-      const result = await this.rpc<number | string>('next_handoff_sequence_no', {
-        p_corp_id: corpId,
-        p_chat_id: chatId,
-      });
-      const n = Number(result);
-      return Number.isFinite(n) && n > 0 ? n : null;
-    } catch {
-      return null;
-    }
+    return (
+      (await this.rpc<number>('resolve_hosting_handoffs', {
+        p_user: chatId,
+        p_outcome: outcome,
+      })) ?? 0
+    );
   }
 }

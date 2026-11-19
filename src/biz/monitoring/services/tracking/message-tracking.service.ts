@@ -509,7 +509,11 @@ export class MessageTrackingService {
    * 保存消息处理记录到数据库（带重试）
    */
   private async saveRecordToDatabase(record: MessageProcessingRecordInput): Promise<void> {
-    await this.withRetry(() => this.messageProcessingService.saveRecord(record));
+    await this.withRetry(async () => {
+      if (!(await this.messageProcessingService.saveRecord(record))) {
+        throw new Error('Message processing transaction was not committed');
+      }
+    });
     this.logger.debug(`已保存消息处理记录到数据库 [${record.messageId}]`);
   }
 
