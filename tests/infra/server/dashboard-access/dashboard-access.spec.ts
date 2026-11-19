@@ -7,8 +7,11 @@ import { DashboardAccessGuard } from '@infra/server/dashboard-access/dashboard-a
 const request = (peer: string, headers = {}, path = '/dashboard/access', method = 'GET') =>
   ({ socket: { remoteAddress: peer }, headers, path, method }) as Request;
 const context = (req: Request) =>
-  ({ switchToHttp: () => ({ getRequest: () => req }) }) as ExecutionContext;
+  ({
+    switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ setHeader: jest.fn() }) }),
+  }) as unknown as ExecutionContext;
 const config = {
+  HEADQUARTERS_DASHBOARD_IPS: '203.0.113.4',
   HENAN_DASHBOARD_IPS: '1.193.23.48',
   HENAN_DASHBOARD_BOT_IDS: 'center-bot',
   DASHBOARD_TRUSTED_PROXY_IPS: '172.18.0.1',
@@ -109,7 +112,7 @@ describe('Dashboard source scope', () => {
     delete req.headers['x-center-action'];
     expect(() => guard.canActivate(context(req))).toThrow();
   });
-  it('preserves existing behavior for other network sources and disabled configuration', () => {
+  it('allows only explicitly listed headquarters sources and denies empty configuration', () => {
     expect(
       guard.canActivate(
         context(request('172.18.0.1', { 'x-real-ip': '203.0.113.4' }, '/config', 'POST')),
@@ -117,8 +120,55 @@ describe('Dashboard source scope', () => {
     ).toBe(true);
     expect(
       new DashboardAccessService(new ConfigService()).resolve(request('1.193.23.48')).centerId,
-    ).toBeNull();
+    ).toBe('denied');
+    expect(access.resolve(request('203.0.113.5')).centerId).toBe('denied');
+    expect(
+      access.resolve(
+        request('203.0.113.5', { 'x-real-ip': '203.0.113.4', 'x-forwarded-for': '203.0.113.4' }),
+      ).centerId,
+    ).toBe('denied');
+    expect(access.resolve(request('172.18.0.1', { 'x-real-ip': '203.0.113.5' })).centerId).toBe(
+      'denied',
+    );
+    expect(access.resolve(request('')).centerId).toBe('denied');
   });
+  it('normalizes IPv6 and IPv4-mapped sources without granting proxy addresses HQ access', () => {
+    const resolver = new DashboardAccessService(
+      new ConfigService({
+        ...config,
+        HEADQUARTERS_DASHBOARD_IPS: '203.0.113.4,2001:db8::a',
+      }),
+    );
+    expect(
+      resolver.resolve(request('2001:0DB8:0000:0000:0000:0000:0000:000A')).centerId,
+    ).toBeNull();
+    expect(resolver.resolve(request('::ffff:cb00:7104')).centerId).toBeNull();
+    expect(resolver.resolve(request('::ffff:203.0.113.4')).centerId).toBeNull();
+    expect(resolver.resolve(request('172.18.0.1')).centerId).toBe('denied');
+  });
+  it('keeps the smaller center scope if the two lists overlap', () => {
+    const resolver = new DashboardAccessService(
+      new ConfigService({ ...config, HEADQUARTERS_DASHBOARD_IPS: '1.193.23.48' }),
+    );
+    expect(resolver.resolve(centerRequest('/')).centerId).toBe('henan');
+  });
+  it('does not mistake a similarly prefixed IPv6 address for an allowed mapped IPv4', () => {
+    const resolver = new DashboardAccessService(
+      new ConfigService({
+        HEADQUARTERS_DASHBOARD_IPS: '203.0.0.0,0.0.0.1',
+      }),
+    );
+    expect(resolver.resolve(request('::ffff:cb00')).centerId).toBe('denied');
+    expect(resolver.resolve(request('::ffff:0:1:1234')).centerId).toBe('denied');
+  });
+  it.each(['*', '203.0.113.0/24', 'not-an-ip', 'fe80::1%en0'])(
+    'refuses invalid headquarters allowlist entry %s',
+    (ip) => {
+      expect(
+        () => new DashboardAccessService(new ConfigService({ HEADQUARTERS_DASHBOARD_IPS: ip })),
+      ).toThrow();
+    },
+  );
   it('refuses partial activation and invalid address configuration', () => {
     expect(
       () => new DashboardAccessService(new ConfigService({ HENAN_DASHBOARD_IPS: '1.193.23.48' })),

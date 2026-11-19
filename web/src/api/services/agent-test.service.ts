@@ -1,4 +1,5 @@
 import { api, unwrapResponse } from '../client';
+import { checkDashboardStreamAccess } from '../dashboard-access';
 import type {
   TestChatRequest,
   TestChatResponse,
@@ -105,6 +106,7 @@ export function executeTestStream(
     signal: controller.signal,
   })
     .then(async (response) => {
+      await checkDashboardStreamAccess(response);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }

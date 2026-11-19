@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { checkDashboardStreamAccess } from '@/api/dashboard-access';
 
 /** 后端只推刷新信号；业务数据仍通过当前 IP 范围的接口获取。 */
 export function useDashboardUpdates(refresh: () => void) {
@@ -13,6 +14,7 @@ export function useDashboardUpdates(refresh: () => void) {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           signal: controller.signal,
         });
+        await checkDashboardStreamAccess(response);
         if (
           !response.ok ||
           !response.body ||
