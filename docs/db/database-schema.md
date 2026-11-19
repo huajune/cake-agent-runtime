@@ -10,9 +10,9 @@
 
 ---
 
-### 2026-11-19 候选版本的读写约定
+### v11.18.0 的读写约定
 
-本节对应六份数据库治理迁移。测试库已应用，生产部署状态与门槛见[候选版本验收](../todo/runtime-data-model-execution-plan.md#8-2026-年-11-月-19-日候选版本验收)。
+六份数据库治理迁移定义了下列读写接口。各字段的启用条件和回退方法见[专项验收](../todo/runtime-data-model-execution-plan.md#8-2026-年-11-月-19-日候选版本验收)。交付版本见 [v11.18.0 发布说明](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.18.0)。
 
 | 数据 | 写入与查询 |
 | --- | --- |
