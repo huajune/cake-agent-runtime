@@ -52,6 +52,7 @@ export default defineConfig(({ mode }) => {
       port: 5175, // 使用不同端口避免冲突
       proxy: Object.fromEntries(
         [
+          '/web/access-denied',
           '/agent',
           '/analytics',
           '/candidate-blacklist',
