@@ -90,16 +90,18 @@ export default function MessageProcessingPage() {
   useEffect(() => {
     const deepLinkMessageId = searchParams.get('messageId');
     if (!deepLinkMessageId) return;
-    const timer = setTimeout(() => setSelectedMessageId(deepLinkMessageId), 0);
-    // 消费后清掉参数，避免关闭抽屉后刷新又弹出来
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('messageId');
-        return next;
-      },
-      { replace: true },
-    );
+    const timer = setTimeout(() => {
+      setSelectedMessageId(deepLinkMessageId);
+      // 先打开详情再消费参数。提前 replace 会触发 effect 清理并取消这次打开。
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('messageId');
+          return next;
+        },
+        { replace: true },
+      );
+    }, 0);
     return () => clearTimeout(timer);
   }, [searchParams, setSearchParams]);
   const [activeTab, setActiveTab] = useState<'realtime' | 'slowest'>('realtime');

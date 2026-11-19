@@ -100,6 +100,7 @@ export class InterventionService {
     // 转人工统一进入临时禁止托管，次日零点恢复；面试后业务仍由真人处理。
     await this.userHostingService.pauseUser(payload.pauseTargetId, {
       source: 'intervention',
+      handoffScope: { corpId: payload.corpId, botImId: payload.botImId, chatId: payload.chatId },
       permanent: false,
       reason: payload.kind === 'conversation_risk' ? '会话风险人工介入' : '人工介入暂停',
     });

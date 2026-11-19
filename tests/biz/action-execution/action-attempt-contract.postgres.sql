@@ -2,6 +2,7 @@
 begin;
 set local statement_timeout='5s';
 do $$
+<<contract>>
 declare base jsonb; r jsonb; completion jsonb; invalid jsonb; n integer;
 begin
   base:='{"corpId":"attempt-test","actionId":"a","owner":"attempt-A","fence":1,"dispatchAttemptId":"attempt-A"}';
@@ -36,7 +37,7 @@ begin
   -- Even the current owner/fence may not apply attempt A's late evidence to B.
   r:=public.transition_agent_action('settle',base||jsonb_build_object('owner','attempt-B','fence',2,'evidenceHash','A-late','completion',completion));
   assert r->>'conflict'='dispatch_attempt_mismatch' and r->'record'='null'::jsonb;
-  assert exists(select 1 from public.agent_action_evidence where corp_id='attempt-test' and attempt_id='attempt-A' and evidence_hash='A-late');
+  assert exists(select 1 from public.agent_action_evidence where corp_id='attempt-test' and attempt_id='attempt-A' and action_id='a' and agent_action_evidence.completion=contract.completion and evidence_hash in ('A-late',encode(sha256(convert_to(agent_action_evidence.completion::text,'UTF8')),'hex')));
   assert (select status='executing' and dispatch_attempt_id='attempt-B' and owner='attempt-B' and fence=2 from public.agent_action_records where corp_id='attempt-test' and action_id='a');
   update public.agent_action_records set next_check_at=now()-interval '1 second' where corp_id='attempt-test';
   r:=public.transition_agent_action('reconcile_claim',base||'{"owner":"query-owner"}');

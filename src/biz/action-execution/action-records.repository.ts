@@ -11,7 +11,6 @@ import type { ActionDbRecord } from './repository.types';
 import { actionDigest, identifyAction } from './action-identity';
 import { ACTION_RECORD_OPERATION } from '@biz/action-execution/action-records.constants';
 import {
-  ACTION_EVIDENCE_KIND,
   ACTION_MODE,
   ACTION_STATE,
   LOCAL_SYNC_STATE,
@@ -145,33 +144,16 @@ export class ActionRecordsRepository extends BaseRepository {
   ): Promise<{ completion?: ActionCompletion<unknown>; conflicting: boolean }> {
     const dispatchAttemptId = this.requireDispatchAttemptId(record);
     const { data, error } = await this.getClient()
-      .from('agent_action_evidence')
-      .select('completion')
-      .eq('corp_id', record.intent.corpId)
-      .eq('action_id', record.actionId)
-      .eq('attempt_id', dispatchAttemptId)
-      .order('created_at', { ascending: false })
-      .limit(20)
+      .rpc('action_terminal_evidence', {
+        p_corp: record.intent.corpId,
+        p_action: record.actionId,
+        p_attempt: dispatchAttemptId,
+      })
       .abortSignal(AbortSignal.timeout(5000));
     if (error) throw error;
-    const completions = (data ?? [])
-      .map((row) => row.completion as ActionCompletion<unknown>)
-      .filter(
-        (completion) =>
-          completion.evidence.requestTerminated &&
-          (completion.status === ACTION_STATE.SUCCEEDED ||
-            (completion.status === ACTION_STATE.FAILED &&
-              completion.evidence.kind === ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT)),
-      );
-    const successes = completions.filter(
-      (completion) => completion.status === ACTION_STATE.SUCCEEDED,
-    );
-    return {
-      completion: successes[0] ?? completions[0],
-      conflicting:
-        successes.length > 0 &&
-        completions.some((completion) => completion.status === ACTION_STATE.FAILED),
-    };
+    if (!data || typeof data.conflicting !== 'boolean')
+      throw new Error('Invalid action evidence response');
+    return data;
   }
 
   async redactCompleted(limit = 100): Promise<number> {

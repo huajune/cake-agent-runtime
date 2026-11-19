@@ -90,72 +90,27 @@ describe('MessageProcessingRepository', () => {
       expect(result).toBe(false);
     });
 
-    it('should return true on successful save', async () => {
+    it('commits the master and the optional snapshot together', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      const upsertResult = makeQueryMock({ data: null, error: null });
-      mockSupabaseClient.from.mockReturnValue(upsertResult);
-
-      const result = await repository.saveMessageProcessingRecord(baseRecord);
-
-      expect(result).toBe(true);
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('message_processing_records');
+      mockSupabaseClient.rpc.mockResolvedValue({ data: true, error: null });
+      const snapshot = { response: { toolCalls: [] } };
+      expect(
+        await repository.saveMessageProcessingRecord({ ...baseRecord, agentInvocation: snapshot }),
+      ).toBe(true);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('save_processing_snapshot', {
+        p_record: expect.objectContaining({ message_id: baseRecord.messageId }),
+        p_invocation: snapshot,
+      });
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
 
-    it('should return true even when underlying upsert encounters a db error (error is swallowed by BaseRepository.upsert)', async () => {
+    it('keeps a failed snapshot eligible for the caller’s retry', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      // BaseRepository.upsert() catches all errors internally via handleError() and returns null,
-      // so saveMessageProcessingRecord() does not see any thrown error and returns true.
-      const errorResult = makeQueryMock({
+      mockSupabaseClient.rpc.mockResolvedValue({
         data: null,
-        error: { message: 'DB error', code: '42P01' },
+        error: { code: '23514', message: 'snapshot rejected' },
       });
-      mockSupabaseClient.from.mockReturnValue(errorResult);
-
-      const result = await repository.saveMessageProcessingRecord(baseRecord);
-
-      expect(result).toBe(true);
-    });
-  });
-
-  describe('saveMessageProcessingRecord → message_processing_invocations 子表', () => {
-    beforeEach(() => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-    });
-
-    it('writes the invocation snapshot to the child table instead of the main row', async () => {
-      const mainUpsert = makeQueryMock({ data: null, error: null });
-      const childUpsert = makeQueryMock({ data: null, error: null });
-      mockSupabaseClient.from.mockImplementation((table: string) =>
-        table === 'message_processing_invocations' ? childUpsert : mainUpsert,
-      );
-      const invocation = { request: { agentRequest: 'prompt' }, response: { text: 'hi' } };
-
-      const result = await repository.saveMessageProcessingRecord({
-        ...baseRecord,
-        agentInvocation: invocation,
-      });
-
-      expect(result).toBe(true);
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('message_processing_invocations');
-      expect(childUpsert.upsert).toHaveBeenCalledWith(
-        { message_id: baseRecord.messageId, agent_invocation: invocation },
-        { onConflict: 'message_id' },
-      );
-      // 主表不再落 agent_invocation（59 KB/行的快照与高频更新的标量分开住）
-      const mainPayload = mainUpsert.upsert.mock.calls[0][0] as Record<string, unknown>;
-      expect(mainPayload).not.toHaveProperty('agent_invocation');
-      expect(mainPayload).not.toHaveProperty('ai_start_at');
-    });
-
-    it('skips the child table when the record carries no invocation', async () => {
-      const mainUpsert = makeQueryMock({ data: null, error: null });
-      mockSupabaseClient.from.mockReturnValue(mainUpsert);
-
-      await repository.saveMessageProcessingRecord(baseRecord);
-
-      expect(mockSupabaseClient.from).not.toHaveBeenCalledWith('message_processing_invocations');
+      expect(await repository.saveMessageProcessingRecord(baseRecord)).toBe(false);
     });
   });
 

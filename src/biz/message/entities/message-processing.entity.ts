@@ -28,6 +28,7 @@ export interface MessageProcessingDbRecord {
   is_fallback?: boolean;
   fallback_success?: boolean;
   agent_invocation?: unknown;
+  invocation_version?: string | null;
   batch_id?: string;
   /** 工具调用详情 JSONB */
   tool_calls?: unknown;

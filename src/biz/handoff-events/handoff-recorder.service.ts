@@ -1,6 +1,6 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
-import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
+import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { HandoffEventsRepository } from './handoff-events.repository';
 import type { HandoffWriteOutcome, RecordHandoffInput } from './handoff-events.types';
 
@@ -19,51 +19,20 @@ export class HandoffRecorderService {
 
   constructor(
     private readonly repository: HandoffEventsRepository,
-    private readonly opsEventsRecorder: OpsEventsRecorderService,
+    private readonly botGroups: BotGroupResolverService,
   ) {}
 
   async record(input: RecordHandoffInput): Promise<HandoffWriteOutcome> {
-    const occurredAt = input.occurredAt ?? new Date();
-    let handoffWriteOutcome: HandoffWriteOutcome = 'failed';
-
     try {
-      handoffWriteOutcome = await this.repository.insertHandoffEvent({ ...input, occurredAt });
-      if (handoffWriteOutcome === 'failed') {
-        this.logger.error(
-          `写入 handoff_events 失败 chat=${input.chatId} code=${input.reasonCode} key=${input.idempotencyKey}`,
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `写入 handoff_events 失败 chat=${input.chatId} code=${input.reasonCode}: ${this.errorMessage(error)}`,
+      const outcome = await this.repository.insertHandoffEvent(
+        { ...input, occurredAt: input.occurredAt ?? new Date() },
+        this.botGroups.resolve(input.botImId),
       );
-      handoffWriteOutcome = 'failed';
+      if (outcome === 'failed') this.logger.warn(`转人工记录事务失败 chat=${input.chatId}`);
+      return outcome;
+    } catch (error) {
+      this.logger.warn(`转人工记录事务失败 chat=${input.chatId}: ${toErrorMessage(error)}`);
+      return 'failed';
     }
-
-    // handoff.triggered 事件底账 + 日报投影（manager/group 由 OpsEventsRecorder 反范式带出）。
-    await this.opsEventsRecorder.recordEvent({
-      corpId: input.corpId,
-      eventName: 'handoff.triggered',
-      idempotencyKey: input.idempotencyKey,
-      occurredAt,
-      botImId: input.botImId,
-      userId: input.userId,
-      chatId: input.chatId,
-      payload: {
-        reason_code: input.reasonCode,
-        reason: input.reason ?? null,
-        stage: input.stage ?? null,
-        work_order_id: input.workOrderId ?? null,
-        job_id: input.jobId ?? null,
-        missing_job_info: input.missingJobInfo?.length ? input.missingJobInfo : null,
-        origin: input.origin ?? 'agent_tool',
-      },
-    });
-
-    return handoffWriteOutcome;
-  }
-
-  private errorMessage(error: unknown): string {
-    return toErrorMessage(error);
   }
 }

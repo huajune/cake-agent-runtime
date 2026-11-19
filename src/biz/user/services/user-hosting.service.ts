@@ -39,6 +39,7 @@ interface SharedCacheEntry {
  * 暂停托管选项
  */
 export interface PauseUserOptions {
+  handoffScope?: { corpId: string; botImId?: string; chatId: string };
   /** 永久暂停（不自动解禁），如店长微信、客户微信、黑名单候选人 */
   permanent?: boolean;
   /** 暂停理由（如候选人黑名单的拉黑理由），供运营查看 */
@@ -192,6 +193,7 @@ export class UserHostingService {
         reason: options?.reason,
         operator: options?.operator,
         source: options?.source,
+        handoffScope: options?.handoffScope,
       });
       persisted = true;
       this.logger.log(
