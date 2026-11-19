@@ -1,9 +1,47 @@
 {
   "baseVersion": "11.18.0",
-  "nextVersion": "11.18.0",
+  "nextVersion": "11.18.1",
   "updatedAt": "2026-11-19",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1551",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1551",
+      "title": "对齐数据库治理后的排障读法",
+      "author": "huajune",
+      "mergedAt": "2026-11-19",
+      "opsNotes": [],
+      "businessUpdates": [
+        "对齐数据库治理后的排障读法",
+        "单条问题流水的排障 SQL 通过 `processing_read_steps` 读取完整步骤，调用快照沿用现有的流水详情接口。",
+        "测试执行的排障说明指向 `test_execution_results`，保留可还原的原始回复和工具。",
+        "数据库说明和工程待办索引标出 v11.18.0 已交付的读写约定，以及需要继续跟踪的字段切换与旧列清理条件。"
+      ],
+      "summary": [
+        "对齐数据库治理后的排障读法",
+        "单条问题流水的排障 SQL 通过 `processing_read_steps` 读取完整步骤，调用快照沿用现有的流水详情接口。",
+        "测试执行的排障说明指向 `test_execution_results`，保留可还原的原始回复和工具。",
+        "数据库说明和工程待办索引标出 v11.18.0 已交付的读写约定，以及需要继续跟踪的字段切换与旧列清理条件。"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "单条问题流水的排障 SQL 通过 `processing_read_steps` 读取完整步骤，调用快照沿用现有的流水详情接口。",
+        "测试执行的排障说明指向 `test_execution_results`，保留可还原的原始回复和工具。",
+        "数据库说明和工程待办索引标出 v11.18.0 已交付的读写约定，以及需要继续跟踪的字段切换与旧列清理条件。",
+        "对齐数据库治理后的排障读法"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "在测试库对完整、精简格式的多步骤合成记录运行文档中的查询，读回内容逐字段相等。",
+        "逐一核对测试结果视图的列名与流水详情接口的快照读取方式。",
+        "`git diff --check` 通过。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.18.0",
     "date": "2026-11-19",
@@ -61,5 +99,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "8b8868514b8b31dd25e627e555d584c42686bb24"
+  "lastAnalyzedSha": "534596e44de062dfc485618c56a20b199dbcdba5"
 }
