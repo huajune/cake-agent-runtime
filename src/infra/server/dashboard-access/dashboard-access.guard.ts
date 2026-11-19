@@ -1,6 +1,5 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
-import type { Request, Response } from 'express';
-import { DASHBOARD_IP_DENIED } from '@shared-types/dashboard-access.contract';
+import type { Request } from 'express';
 import { DashboardAccessService } from './dashboard-access.service';
 
 import { centerRoute } from './center-routes';
@@ -12,19 +11,11 @@ export class DashboardAccessGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
     const path = request.path.replace(/\/+$/, '') || '/';
-    // 机器回调不使用办公室网络身份；只豁免已存在的精确方法/路径，不能按 @Public 一概放行。
+    // 部署探针直连容器端口，没有入口代理的来源头；只放行既有公开健康检查。
     if (request.method === 'GET' && path === '/agent/health') return true;
-    if (
-      request.method === 'POST' &&
-      ['/message', '/message/sent-result', '/message/sentResult', '/new-customer'].includes(path)
-    )
-      return true;
     const scope = this.access.resolve(request);
     if (!scope.centerId) return true;
-    if (scope.centerId === 'denied') {
-      context.switchToHttp().getResponse<Response>().setHeader('Cache-Control', 'no-store');
-      throw new ForbiddenException({ code: DASHBOARD_IP_DENIED, message: '无访问权限' });
-    }
+    if (scope.centerId === 'denied') throw new ForbiddenException('无法识别访问来源');
     // 静态页面不携带业务数据；业务读操作走专用范围接口。
     if (
       request.method === 'GET' &&
