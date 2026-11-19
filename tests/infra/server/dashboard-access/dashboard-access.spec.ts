@@ -129,6 +129,40 @@ describe('Dashboard source scope', () => {
     expect(new DashboardAccessGuard(officeAccess).canActivate(context(officeRequest))).toBe(true);
     expect(officeAccess.resolve(centerRequest('/')).centerId).toBe('henan');
   });
+  it.each([
+    ['2001:0DB8:0000:0000:0000:0000:0000:000A', '2001:db8::a'],
+    ['2001:db8::a', '2001:0DB8:0000:0000:0000:0000:0000:000A'],
+    ['::ffff:cb00:7104', '203.0.113.4'],
+    ['203.0.113.4', '::ffff:cb00:7104'],
+  ])('keeps equivalent center and proxy addresses scoped: %s', (configured, forwarded) => {
+    const scopedAccess = new DashboardAccessService(
+      new ConfigService({
+        HENAN_DASHBOARD_IPS: configured,
+        DASHBOARD_TRUSTED_PROXY_IPS: '2001:0DB8:0000:0000:0000:0000:0000:0002',
+      }),
+    );
+    const scopedRequest = request('2001:db8::2', { 'x-real-ip': forwarded }, '/strategy');
+
+    expect(scopedAccess.resolve(scopedRequest).centerId).toBe('henan');
+    expect(() =>
+      new DashboardAccessGuard(scopedAccess).canActivate(context(scopedRequest)),
+    ).toThrow();
+  });
+  it('does not treat a similarly prefixed IPv6 address as the trusted IPv4 proxy', () => {
+    const scopedAccess = new DashboardAccessService(
+      new ConfigService({
+        HENAN_DASHBOARD_IPS: '::ffff:0:1:1234',
+        DASHBOARD_TRUSTED_PROXY_IPS: '0.0.0.1',
+      }),
+    );
+
+    expect(
+      scopedAccess.resolve(request('::ffff:0:1:1234', { 'x-real-ip': '203.0.113.4' })).centerId,
+    ).toBe('henan');
+  });
+  it.each(['', 'not-an-ip', 'fe80::1%en0'])('rejects an invalid source: %s', (ip) => {
+    expect(access.resolve(request(ip)).centerId).toBe('denied');
+  });
   it('refuses partial activation and invalid address configuration', () => {
     expect(
       () => new DashboardAccessService(new ConfigService({ HENAN_DASHBOARD_IPS: '1.193.23.48' })),

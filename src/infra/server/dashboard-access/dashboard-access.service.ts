@@ -9,7 +9,17 @@ export interface DashboardAccess {
 }
 
 function normalizeIp(ip: string): string {
-  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  if (isIP(ip) !== 6) return ip;
+  if (ip.includes('%')) return ''; // 不接受本机接口作用域地址。
+  // IPv6 的压缩、大小写写法必须识别为同一地址。
+  const canonical = new URL(`http://[${ip}]`).hostname.slice(1, -1);
+  if (!canonical.startsWith('::ffff:')) return canonical;
+  const words = canonical
+    .slice(7)
+    .split(':')
+    .map((word) => parseInt(word, 16));
+  if (words.length !== 2) return canonical;
+  return [words[0] >> 8, words[0] & 255, words[1] >> 8, words[1] & 255].join('.');
 }
 
 /** 运营后台附加范围。总部及机器入口的原有网络访问控制继续由部署入口负责。 */
@@ -46,7 +56,7 @@ export class DashboardAccessService {
         : null
       : peer;
     // 可信入口缺少合法来源时不能退回总部权限。
-    if (source === null) return { centerId: 'denied', name: '无法识别访问来源' };
+    if (!source || !isIP(source)) return { centerId: 'denied', name: '无法识别访问来源' };
     return this.centerIps.has(source)
       ? { centerId: 'henan', name: '河南自招中心' }
       : { centerId: null, name: '总部' };
