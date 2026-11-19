@@ -99,7 +99,11 @@ describe('DailyOpsReportRepository', () => {
     await repository.findByReportDate('2026-06-05');
     await expect(repository.getEarliestReportDate()).resolves.toBe('2026-05-29');
 
-    expect(selectAllPagedSpy).toHaveBeenCalledWith('daily_ops_report', '*', expect.any(Function));
+    expect(selectAllPagedSpy).toHaveBeenCalledWith(
+      'daily_ops_report',
+      expect.stringContaining('candidate_summary,booking_brands'),
+      expect.any(Function),
+    );
     const reportQuery = {
       eq: jest.fn().mockReturnThis(),
       order: jest.fn().mockReturnThis(),

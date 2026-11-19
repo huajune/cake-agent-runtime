@@ -76,7 +76,7 @@ export class MessageProcessingRepository extends BaseRepository {
     'ttft_ms',
     'send_duration',
     'tool_calls',
-    'agent_steps',
+    'agent_steps:processing_read_steps',
     'anomaly_flags',
     'guardrail_input',
     'guardrail_output',
@@ -92,7 +92,7 @@ export class MessageProcessingRepository extends BaseRepository {
   // 工具执行、Trace、Delivery、Fallback 等富字段全部依赖该 jsonb。
   // 详情投影：主表列 + 子表 embed。agent_invocation 已拆到 message_processing_invocations（1:0..1）；
   // 主表同名列仅存量兼容（7d 置空任务耗尽后可删），读时两处取其一。
-  private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation,message_processing_invocations(agent_invocation)`;
+  private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation,invocation_version,message_processing_invocations(agent_invocation:processing_read_invocation)`;
 
   // Dashboard 业务趋势只需要时间、用户和预约工具调用结果，避免为图表拉取大块快照字段。
   private readonly businessTrendSelectedColumns = [
@@ -118,19 +118,12 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const dbRecord = this.toDbRecord(record);
-      const invocation = record.agentInvocation;
-
-      await this.upsert(dbRecord, {
-        onConflict: 'message_id',
-        returnData: false,
-      });
-      if (invocation !== undefined && invocation !== null) {
-        await this.upsertInvocation(record.messageId, invocation);
-      }
-
-      this.logger.debug(`[消息处理记录] 已保存: ${record.messageId}`);
-      return true;
+      return (
+        (await this.rpc<boolean>('save_processing_snapshot', {
+          p_record: this.toDbRecord(record),
+          p_invocation: record.agentInvocation ?? null,
+        })) === true
+      );
     } catch (error) {
       this.logger.error(`[消息处理记录] 保存失败 [${record.messageId}]:`, error);
       return false;
@@ -1187,36 +1180,12 @@ export class MessageProcessingRepository extends BaseRepository {
       .message_processing_invocations;
     if (Array.isArray(embedded)) {
       const first = embedded[0] as { agent_invocation?: unknown } | undefined;
-      if (first?.agent_invocation) return first.agent_invocation;
+      if (first?.agent_invocation != null) return first.agent_invocation;
     } else if (embedded && typeof embedded === 'object') {
       const single = embedded as { agent_invocation?: unknown };
-      if (single.agent_invocation) return single.agent_invocation;
+      if (single.agent_invocation != null) return single.agent_invocation;
     }
-    return record.agent_invocation ?? undefined;
-  }
-
-  /** 回合快照写子表（59 KB/行，与主表高频更新的标量分开住）。 */
-  private async upsertInvocation(messageId: string, invocation: unknown): Promise<void> {
-    const operation = 'UPSERT:message_processing_invocations';
-    if (this.circuitBlocked(operation)) return;
-
-    try {
-      const { error } = await this.getClient()
-        .from('message_processing_invocations')
-        .upsert(
-          { message_id: messageId, agent_invocation: invocation as Record<string, unknown> },
-          { onConflict: 'message_id' },
-        );
-      if (error) {
-        this.noteOutcome(operation, error);
-        this.handleError(operation, error);
-        return;
-      }
-      this.recordCircuitSuccess(operation);
-    } catch (error) {
-      this.noteOutcome(operation, error);
-      this.handleError(operation, error);
-    }
+    return record.invocation_version ? undefined : (record.agent_invocation ?? undefined);
   }
 
   private extractTtftFromInvocation(invocation: unknown): number | undefined {

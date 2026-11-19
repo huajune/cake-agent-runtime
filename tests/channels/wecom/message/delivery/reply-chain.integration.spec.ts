@@ -584,6 +584,50 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(next?.logicalTurnId).not.toBeUndefined();
   }, 30000);
 
+  it.each(['callback-first', 'acceptance-first'])(
+    'retains both receipts and ACKs each accepted segment once with %s',
+    async (ordering) => {
+      await start();
+      const callback = () =>
+        module!.get(MessageIngressController).receiveMessage(
+          incoming('enterprise', {
+            isSelf: true,
+            source: MessageSource.API_SEND,
+            messageId: 'fixture-interleaved-callback',
+            externalRequestId: sendCalls[0].body.externalRequestId,
+            payload: { text: parts[0] },
+          }),
+        );
+      if (ordering === 'callback-first') {
+        onSend = async (index) => {
+          if (index === 0) await callback();
+        };
+      }
+      await submitInput('enterprise');
+      if (ordering === 'acceptance-first') await callback();
+      await callback();
+      await restart('observe');
+      await recoverStoredTurn();
+      const state = databaseState();
+      expect(state.turn).toMatchObject({
+        status: 'acked',
+        delivery_result: { accepted: 2, total: 2 },
+      });
+      expect(state.actions).toHaveLength(2);
+      for (const action of state.actions) {
+        expect(action).toMatchObject({
+          status: 'succeeded',
+          local_sync: 'complete',
+          result: { stage: 'accepted' },
+        });
+      }
+      expect(state.callbackEvidenceCount).toBe(1);
+      expect(sendCalls).toHaveLength(2);
+      expect(pending).toEqual(new Set([newerInputId]));
+    },
+    30000,
+  );
+
   it('settles a manually parked unknown through an authenticated late callback without resending', async () => {
     await start();
     onSend = async () => {

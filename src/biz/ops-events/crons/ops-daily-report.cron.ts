@@ -140,7 +140,7 @@ function isWeekend(reportDate: string): boolean {
  * → 按真实表头字段名映射 → 批量写入飞书多维表格。
  *
  * 安全约定：
- * - 可用 FEISHU_OPS_REPORT_ENABLED=false 显式 dry-run：只聚合 + 打印将写入的记录，不写飞书。
+ * - 可用 FEISHU_OPS_REPORT_ENABLED=false 显式 dry-run：只记录日期和聚合行数，不写飞书。
  */
 @Injectable()
 export class OpsDailyReportCronService {
@@ -200,8 +200,7 @@ export class OpsDailyReportCronService {
 
     if (!this.enabled) {
       this.logger.warn(
-        `运营日报 dry-run（FEISHU_OPS_REPORT_ENABLED≠true）: ${reportDate} 共 ${rows.length} 行，未写入飞书。` +
-          ` 启用前请核对字段映射。样例: ${JSON.stringify(this.buildFieldsByName(rows[0]))}`,
+        `运营日报 dry-run（FEISHU_OPS_REPORT_ENABLED≠true）: ${reportDate} 共 ${rows.length} 行，未写入飞书。`,
       );
       return { rows: rows.length, written: 0 };
     }
@@ -510,13 +509,6 @@ export class OpsDailyReportCronService {
   private mergeTextList(left: string[] | null, right: string[] | null): string[] | null {
     const merged = this.uniqueText([...(left ?? []), ...(right ?? [])]);
     return merged.length > 0 ? merged : null;
-  }
-
-  /** dry-run 样例用：按列名 → 原始值（不做飞书类型转换）。 */
-  private buildFieldsByName(row: OpsDailyReportOutputRow): Record<string, string | number | null> {
-    const out: Record<string, string | number | null> = {};
-    for (const col of REPORT_COLUMNS) out[col.fieldName] = col.value(row);
-    return out;
   }
 
   /** 真实写入用：按飞书字段类型转换值（date→epoch ms / number / text / multi-select）。 */

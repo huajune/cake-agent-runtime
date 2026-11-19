@@ -2,13 +2,27 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**：2026-08-26
+**最后更新**：2026-11-19（补充候选版本读写约定）
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
 **项目环境**：prod `resexopnhpthuoxfwydx` / test `gaovfitvetoojkvtalxy`
 
 ---
+
+### 2026-11-19 候选版本的读写约定
+
+本节对应六份数据库治理迁移。测试库已应用，生产部署状态与门槛见[候选版本验收](../todo/runtime-data-model-execution-plan.md#8-2026-年-11-月-19-日候选版本验收)。
+
+| 数据 | 写入与查询 |
+| --- | --- |
+| 消息流水与短期快照 | 通过 `save_processing_snapshot` 同事务写入。详情从 `processing_read_steps` 与 `processing_read_invocation` 还原对应代次的工具和响应。列表保持现有轻量投影。 |
+| 渠道聊天 | 读完整载荷使用 `chat_read_payload`。Center 继续按账号和会话返回原有受限投影。 |
+| 测试执行 | 写 `test_executions`，完整查询和导出读 `test_execution_results`。该视图执行调用角色权限，服务角色可查。 |
+| 转人工 | 调用 `record_handoff` 写事件、处理明细及日报投影。恢复托管通过 `resolve_hosting_handoffs` 按原暂停作用域关闭对应明细。 |
+| 动作回执、人工裁定 | 现行 RPC 按原派发尝试保存采信回执。`action_record_json` 返回完整动作，`action_terminal_evidence` 识别同一次尝试的冲突证据。`agent_action_reviews` 对服务角色仅支持直接查询，裁定使用 `review_agent_action`。 |
+
+`system_config` 中 `runtime_storage_writes` 的 `response_tools`、`steps`、`chat_text`、`test_text`、`action_body` 各自控制合格新写。仅 JSON 布尔值 `true` 开启相应格式，初始均关闭。停写后仍可通过完整投影读取已有记录。每次还原显式指定至多 100 个业务键。[按键还原脚本](../../scripts/restore-runtime-storage.sql)
 
 ## 目录
 
