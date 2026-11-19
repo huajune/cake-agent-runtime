@@ -179,4 +179,39 @@ BEGIN
   END LOOP;
   UPDATE public.system_config SET value=current_config WHERE key='runtime_storage_writes';
 END $$;
+-- API acceptance and a delivery callback agree; a second channel message or definitive failure does not.
+DO $$
+DECLARE
+  intent jsonb := jsonb_build_object('corpId','gov-receipt','accountId','bot','chatId','chat','logicalTurnId','turn',
+    'kind','wecom.reply_segment','target','target','parameters','{"text":"fixture"}'::jsonb,'occurredAt',now());
+  identity jsonb := '{"corpId":"gov-receipt","actionId":"one","requestId":"req","resourceHash":"target","payloadHash":"frozen","mode":"execute"}';
+  own jsonb := '{"corpId":"gov-receipt","actionId":"one","owner":"dispatch","dispatchAttemptId":"dispatch","fence":1}';
+  api_body jsonb := '{"status":"succeeded","result":{"stage":"accepted"},"evidence":{"kind":"accepted","requestTerminated":true}}';
+  callback_input jsonb := '{"corpId":"gov-receipt","accountId":"bot","chatId":"chat","requestId":"req","messageId":"m1","messageType":"7","text":"fixture"}';
+  contrary jsonb := '{"status":"failed","evidence":{"kind":"definitive_no_effect","requestTerminated":true}}';
+  chosen jsonb; response jsonb;
+BEGIN
+  PERFORM public.transition_agent_action('prepare',identity||jsonb_build_object('intent',intent,'recoveryDeadline',now()+interval '1 day'));
+  PERFORM public.transition_agent_action('claim',own);
+  ASSERT public.append_agent_reply_callback(callback_input);
+  response:=public.transition_agent_action('settle',own||jsonb_build_object('completion',api_body));
+  ASSERT response#>>'{record,status}'='succeeded' AND (response#>>'{record,review_required}')::boolean=false;
+  ASSERT response#>'{record,result}'=api_body->'result';
+  ASSERT (SELECT count(*)=2 FROM public.agent_action_evidence WHERE corp_id='gov-receipt' AND action_id='one');
+  chosen:=public.action_terminal_evidence('gov-receipt','one','dispatch');
+  ASSERT chosen->'conflicting'='false' AND chosen#>>'{completion,result,channelMessageId}'='m1';
+  ASSERT public.append_agent_reply_callback(callback_input);
+  ASSERT public.action_terminal_evidence('gov-receipt','one','dispatch')=chosen;
+  ASSERT public.append_agent_reply_callback(callback_input||'{"messageId":"m2"}');
+  ASSERT public.action_terminal_evidence('gov-receipt','one','dispatch')='{"conflicting":true}';
+  ASSERT public.action_terminal_evidence('gov-receipt','one','other')='{"conflicting":false}';
+
+  own:=own||'{"actionId":"two"}'; identity:=identity||'{"actionId":"two","requestId":"req2","resourceHash":"target2"}';
+  PERFORM public.transition_agent_action('prepare',identity||jsonb_build_object('intent',intent,'recoveryDeadline',now()+interval '1 day'));
+  PERFORM public.transition_agent_action('claim',own);
+  ASSERT public.append_agent_reply_callback(callback_input||'{"requestId":"req2"}');
+  response:=public.transition_agent_action('settle',own||jsonb_build_object('completion',contrary));
+  ASSERT response->>'conflict'='terminal_evidence_conflict' AND response#>>'{record,status}'='unknown';
+  ASSERT public.action_terminal_evidence('gov-receipt','two','dispatch')='{"conflicting":true}';
+END $$;
 ROLLBACK;
