@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { redirectIfDashboardIpDenied } from './dashboard-access';
 
 // ==================== 错误类型 ====================
 
@@ -86,6 +87,7 @@ api.interceptors.response.use(
     const body = error.response.data as Record<string, unknown> | undefined;
     if (body && typeof body === 'object' && 'error' in body) {
       const err = body.error as Record<string, unknown>;
+      redirectIfDashboardIpDenied(error.response.status, err.code);
       throw new ApiError(
         (err.code as string) || `HTTP_${error.response.status}`,
         (err.message as string) || '请求失败',
