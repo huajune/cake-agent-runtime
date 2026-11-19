@@ -473,7 +473,7 @@ export class LlmExecutorService {
   /**
    * 带运行时角色覆盖的路由解析。优先级：调用方显式 modelId > Dashboard 角色覆盖
    * （ROLE_MODEL_OVERRIDES，如 agent_reply_config.repairModelId）> AGENT_{ROLE}_MODEL
-   * 环境变量。覆盖读取失败按无覆盖处理，绝不阻塞生成链路。
+   * 环境变量。覆盖读取失败回退环境变量链；Qwen 主聊在未配置降级链时以 Flash 保底。
    */
   private async resolveExecutionPlanWithOverrides(
     options: {
@@ -542,6 +542,8 @@ export class LlmExecutorService {
       fallbackModelIds:
         replyModelRoute &&
         !options.disableFallbacks &&
+        options.fallbacks === undefined &&
+        !route.fallbacks?.length &&
         route.modelId.split('/')[0] === ModelProvider.Qwen
           ? [DEEPSEEK_FLASH_MODEL_ID]
           : (route.fallbacks ?? []),

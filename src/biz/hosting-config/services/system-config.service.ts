@@ -462,7 +462,7 @@ export class SystemConfigService {
     this.aiReplyEnabledExpiry = 0;
     this.messageMergeEnabled = null;
     this.messageMergeEnabledExpiry = 0;
-    this.agentReplyConfig = null;
+    // 失效后仍保留最近配置，强制回源失败时可继续服务。
     this.agentReplyConfigExpiry = 0;
 
     await this.loadAiReplyStatus({ bypassSharedCache: true });
@@ -581,9 +581,9 @@ export class SystemConfigService {
         }
       }
 
-      const result = await this.systemConfigRepository.getConfigValue<Partial<AgentReplyConfig>>(
-        SystemConfigKey.AGENT_REPLY_CONFIG,
-      );
+      const result = await this.systemConfigRepository.getConfigValueOrThrow<
+        Partial<AgentReplyConfig>
+      >(SystemConfigKey.AGENT_REPLY_CONFIG);
 
       if (result !== null) {
         this.setAgentReplyConfigCache(this.normalizeAgentReplyConfig(result));
@@ -602,8 +602,13 @@ export class SystemConfigService {
       this.logger.log('Agent 回复策略配置已加载');
       return this.agentReplyConfig ?? this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
     } catch (error) {
-      this.logger.error('加载 Agent 回复策略配置失败，使用默认值', error);
-      this.agentReplyConfig = this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
+      this.logger.error(
+        this.agentReplyConfig
+          ? '加载 Agent 回复策略配置失败，保留本地缓存配置'
+          : '加载 Agent 回复策略配置失败，无可用缓存，使用默认配置',
+        error,
+      );
+      this.agentReplyConfig ??= this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
       this.agentReplyConfigExpiry = Date.now() + 30000; // 30 秒后重试
       return this.agentReplyConfig;
     }

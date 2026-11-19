@@ -26,6 +26,8 @@ export interface ModelSelectorProps {
   resolvedDefaultId?: string;
   showModelId?: boolean;
   triggerDisplay?: 'name' | 'id';
+  showDefaultOption?: boolean;
+  ariaLabel?: string;
 }
 
 interface CapabilityMeta {
@@ -106,6 +108,8 @@ export function ModelSelector({
   resolvedDefaultId,
   showModelId = true,
   triggerDisplay = 'name',
+  showDefaultOption = true,
+  ariaLabel,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -192,6 +196,9 @@ export function ModelSelector({
         className={`${styles.trigger} ${isOpen ? styles.open : ''}`}
         onClick={() => !isDisabled && setIsOpen((prev) => !prev)}
         disabled={isDisabled}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
       >
         <span className={styles.triggerContent}>
           <span className={`${styles.triggerTitle} ${!selected && !value ? styles.placeholder : ''}`}>
@@ -218,22 +225,24 @@ export function ModelSelector({
               width: dropdownStyle.width,
             }}
           >
-            <button
-              type="button"
-              className={`${styles.optionItem} ${styles.optionDefault} ${value === '' ? styles.optionSelected : ''}`}
-              onClick={() => handleSelect('')}
-              role="option"
-              aria-selected={value === ''}
-            >
-              <div className={styles.optionMain}>
-                <div className={styles.optionTitleRow}>
-                  <Sparkles size={14} className={styles.optionIcon} />
-                  <span className={styles.optionTitle}>{defaultOptionLabel}</span>
-                  {value === '' && <Check size={14} className={styles.optionCheck} />}
+            {showDefaultOption && (
+              <button
+                type="button"
+                className={`${styles.optionItem} ${styles.optionDefault} ${value === '' ? styles.optionSelected : ''}`}
+                onClick={() => handleSelect('')}
+                role="option"
+                aria-selected={value === ''}
+              >
+                <div className={styles.optionMain}>
+                  <div className={styles.optionTitleRow}>
+                    <Sparkles size={14} className={styles.optionIcon} />
+                    <span className={styles.optionTitle}>{defaultOptionLabel}</span>
+                    {value === '' && <Check size={14} className={styles.optionCheck} />}
+                  </div>
+                  <p className={styles.optionDesc}>{defaultOptionDesc}</p>
                 </div>
-                <p className={styles.optionDesc}>{defaultOptionDesc}</p>
-              </div>
-            </button>
+              </button>
+            )}
 
             {options.map((option) => {
               const isSelected = option.id === value;
