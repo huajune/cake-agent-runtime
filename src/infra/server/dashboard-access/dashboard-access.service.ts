@@ -22,10 +22,9 @@ function normalizeIp(ip: string): string {
   return [words[0] >> 8, words[0] & 255, words[1] >> 8, words[1] & 255].join('.');
 }
 
-/** 运营后台网络准入及中心范围；未列入总部/中心名单的来源默认拒绝。 */
+/** 运营后台附加范围。总部及机器入口的原有网络访问控制继续由部署入口负责。 */
 @Injectable()
 export class DashboardAccessService {
-  private readonly headquartersIps: Set<string>;
   private readonly centerIps: Set<string>;
   private readonly proxyIps: Set<string>;
 
@@ -36,10 +35,9 @@ export class DashboardAccessService {
         .split(',')
         .map((v) => v.trim())
         .filter(Boolean);
-    this.headquartersIps = new Set(list('HEADQUARTERS_DASHBOARD_IPS').map(normalizeIp));
     this.centerIps = new Set(list('HENAN_DASHBOARD_IPS').map(normalizeIp));
     this.proxyIps = new Set(list('DASHBOARD_TRUSTED_PROXY_IPS').map(normalizeIp));
-    for (const ip of [...this.headquartersIps, ...this.centerIps, ...this.proxyIps]) {
+    for (const ip of [...this.centerIps, ...this.proxyIps]) {
       if (!isIP(ip))
         throw new Error('Dashboard IP 配置必须为单个 IPv4/IPv6 地址，不接受任意代理或网段');
     }
@@ -59,9 +57,8 @@ export class DashboardAccessService {
       : peer;
     // 可信入口缺少合法来源时不能退回总部权限。
     if (!source || !isIP(source)) return { centerId: 'denied', name: '无法识别访问来源' };
-    // 即使配置误重叠，也优先保留中心的较小权限范围。
-    if (this.centerIps.has(source)) return { centerId: 'henan', name: '河南自招中心' };
-    if (this.headquartersIps.has(source)) return { centerId: null, name: '总部' };
-    return { centerId: 'denied', name: '无访问权限' };
+    return this.centerIps.has(source)
+      ? { centerId: 'henan', name: '河南自招中心' }
+      : { centerId: null, name: '总部' };
   }
 }
