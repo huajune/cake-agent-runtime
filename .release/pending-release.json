@@ -1,9 +1,50 @@
 {
   "baseVersion": "11.19.0",
-  "nextVersion": "11.19.0",
+  "nextVersion": "11.19.1",
   "updatedAt": "2026-11-19",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1558",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1558",
+      "title": "撤回后台新增 IP 准入拦截",
+      "author": "huajune",
+      "mergedAt": "2026-11-19",
+      "opsNotes": [
+        "**后台访问恢复** ✅ 本次修复",
+        "- 撤回新增的办公网络 IP 拦截和无权限跳转，恢复原有后台访问行为。",
+        "- 河南团队继续使用本中心菜单、机器人数据和小组开关。",
+        "- 简单用户登录留到后续独立实现。"
+      ],
+      "businessUpdates": [
+        "撤回后台新增IP准入拦截"
+      ],
+      "summary": [
+        "撤回后台新增IP准入拦截",
+        "保留中心来源地址规范化",
+        "撤回后台新增 IP 准入拦截"
+      ],
+      "features": [
+        "撤回后台新增IP准入拦截"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "保留中心来源地址规范化"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "4 个定向套件、49 项测试通过，含真实 HTTP 路由、中心查询范围及小组控制。",
+        "提交前全量 lint/format 和 diff 检查通过。",
+        "最终提交完整 CI 等价检查通过：567 个套件、9,348 项测试及 3 个快照；3 个套件和 30 项按既有配置跳过。包含全量 lint/format/typecheck、规则校验及前后端构建。",
+        "GitHub CI 和当前提交审批。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.19.0",
     "date": "2026-11-19",
@@ -119,5 +160,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "41212982f40ff4f236b9144742137e6537c9b836"
+  "lastAnalyzedSha": "9177c4543f3f29b3a30b246e248c5650c2b03c6a"
 }
