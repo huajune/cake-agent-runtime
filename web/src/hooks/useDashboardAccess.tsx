@@ -1,11 +1,19 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { Navigate, useLocation } from 'react-router-dom';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
+import { matchPath, Navigate, useLocation } from 'react-router-dom';
 import { api } from '@/api/client';
+import { dashboardAuth } from '@/api/dashboard-session';
+import type { DashboardOrganization } from '@/api/dashboard-accounts';
+import Login from '@/view/login/list';
 
 interface DashboardAccess {
+  userId: string;
+  displayName: string;
+  isAdministrator: boolean;
+  organization: DashboardOrganization;
   centerId: string | null;
   name: string;
+  henanGroupMarker?: string;
   scopeKey: string;
 }
 const AccessContext = createContext<DashboardAccess | null>(null);
@@ -19,15 +27,16 @@ export const CENTER_MENU_PATHS = [
 export const useDashboardAccess = () => useContext(AccessContext);
 
 function ScopedQueries({ access, children }: { access: DashboardAccess; children: ReactNode }) {
-  // 网络身份或小组成员变化时丢弃旧查询缓存，防止先前总部数据闪现。
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } }),
   );
+  useEffect(() => () => client.clear(), [client]);
   const location = useLocation();
   return (
     <AccessContext.Provider value={access}>
       <QueryClientProvider client={client}>
-        {access.centerId && !CENTER_MENU_PATHS.includes(location.pathname) ? (
+        {(!access.isAdministrator && matchPath('/accounts/*', location.pathname)) ||
+        (access.centerId && !CENTER_MENU_PATHS.includes(location.pathname)) ? (
           <Navigate to="/hosting" replace />
         ) : (
           children
@@ -37,9 +46,16 @@ function ScopedQueries({ access, children }: { access: DashboardAccess; children
   );
 }
 
-export function DashboardAccessBoundary({ children }: { children: ReactNode }) {
+function AuthorizedDashboard({ userId, children }: { userId: string; children: ReactNode }) {
+  const client = useQueryClient();
+  useEffect(() => {
+    const recheck = () => void client.invalidateQueries({ queryKey: ['dashboard-access', userId] });
+    window.addEventListener('cake-dashboard-access-changed', recheck);
+    return () => window.removeEventListener('cake-dashboard-access-changed', recheck);
+  }, [client, userId]);
   const access = useQuery({
-    queryKey: ['dashboard-access'],
+    queryKey: ['dashboard-access', userId],
+    gcTime: 0,
     queryFn: async () => (await api.get<DashboardAccess>('/dashboard/access')).data,
     retry: false,
     staleTime: 0,
@@ -47,11 +63,69 @@ export function DashboardAccessBoundary({ children }: { children: ReactNode }) {
     refetchOnWindowFocus: 'always',
   });
   if (access.isLoading) return <p role="status">正在确认访问范围…</p>;
-  if (access.isError || !access.data)
-    return <p role="alert">无法确认访问范围，请检查网络后刷新页面。</p>;
+  if (access.isError || !access.data || access.data.userId !== userId)
+    return (
+      <main className="dashboard-access-notice">
+        <h1>暂时无法进入后台</h1>
+        <p role="alert">{access.error?.message || '无法确认账号权限，请重新登录'}</p>
+        <button onClick={() => void access.refetch()}>重试</button>
+        <button onClick={() => void dashboardAuth?.signOut({ scope: 'local' })}>返回登录</button>
+      </main>
+    );
   return (
-    <ScopedQueries key={`${access.data.centerId}:${access.data.scopeKey}`} access={access.data}>
+    <ScopedQueries
+      key={[
+        userId,
+        access.data.organization,
+        access.data.isAdministrator,
+        access.data.scopeKey,
+      ].join(':')}
+      access={access.data}
+    >
       {children}
     </ScopedQueries>
+  );
+}
+
+function AccountSession({ userId, children }: { userId: string; children: ReactNode }) {
+  const [client] = useState(() => new QueryClient());
+  useEffect(() => () => client.clear(), [client]);
+  return (
+    <QueryClientProvider client={client}>
+      <AuthorizedDashboard userId={userId}>{children}</AuthorizedDashboard>
+    </QueryClientProvider>
+  );
+}
+
+export function DashboardAccessBoundary({ children }: { children: ReactNode }) {
+  const [userId, setUserId] = useState<string | null | undefined>(dashboardAuth ? undefined : null);
+  const location = useLocation();
+  useEffect(() => {
+    if (!dashboardAuth) return;
+    const { data } = dashboardAuth.onAuthStateChange((_event, session) =>
+      setUserId(session?.user.id ?? null),
+    );
+    return () => data.subscription.unsubscribe();
+  }, []);
+  if (userId === undefined) return <p role="status">正在恢复登录状态…</p>;
+  if (!userId)
+    return location.pathname === '/login' ? (
+      <Login />
+    ) : (
+      <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+    );
+  if (location.pathname === '/login') {
+    const from = location.state?.from;
+    return (
+      <Navigate
+        replace
+        to={typeof from === 'string' && /^\/(?![/\\])/.test(from) && from !== '/login' ? from : '/'}
+      />
+    );
+  }
+  return (
+    <AccountSession key={userId} userId={userId}>
+      {children}
+    </AccountSession>
   );
 }

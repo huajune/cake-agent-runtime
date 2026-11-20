@@ -1,177 +1,153 @@
-import { ConfigService } from '@nestjs/config';
-import type { ExecutionContext } from '@nestjs/common';
-import type { Request } from 'express';
+import { DashboardAccountsService } from '@infra/server/dashboard-access/dashboard-accounts.service';
+import type { SupabaseService } from '@infra/supabase/supabase.service';
 import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
-import { DashboardAccessGuard } from '@infra/server/dashboard-access/dashboard-access.guard';
+import { dashboardLoginIdentity, normalizeDashboardPhone } from '@/types/dashboard-account';
+import type { Request } from 'express';
 
-const request = (peer: string, headers = {}, path = '/dashboard/access', method = 'GET') =>
-  ({ socket: { remoteAddress: peer }, headers, path, method }) as Request;
-const context = (req: Request) =>
-  ({ switchToHttp: () => ({ getRequest: () => req }) }) as ExecutionContext;
-const config = {
-  HENAN_DASHBOARD_IPS: '1.193.23.48',
-  HENAN_DASHBOARD_BOT_IDS: 'center-bot',
-  DASHBOARD_TRUSTED_PROXY_IPS: '172.18.0.1',
-};
-
-describe('Dashboard source scope', () => {
-  const access = new DashboardAccessService(new ConfigService(config));
-  const guard = new DashboardAccessGuard(access);
-  const centerRequest = (path: string, method = 'GET') =>
-    request('172.18.0.1', { 'x-real-ip': '1.193.23.48' }, path, method);
-
-  it('uses only the overwritten header from an explicitly trusted proxy', () => {
-    expect(access.resolve(centerRequest('/')).centerId).toBe('henan');
-    expect(access.resolve(request('1.193.23.48', { 'x-real-ip': '8.8.8.8' })).centerId).toBe(
-      'henan',
-    );
-    expect(
-      access.resolve(
-        request('172.18.0.1', { 'x-real-ip': '1.193.23.48', 'x-forwarded-for': '8.8.8.8' }),
-      ).centerId,
-    ).toBe('henan');
-    expect(access.resolve(request('::ffff:1.193.23.48')).centerId).toBe('henan');
+describe('staff accounts and organization authority', () => {
+  const authUser = { id: 'employee', phone: '12025550127', phone_confirmed_at: 'today' };
+  const row = {
+    userId: authUser.id,
+    phone: '+12025550127',
+    name: '同事',
+    organization: 'henan',
+    disabled: false,
+  };
+  const single = jest.fn();
+  const updateSingle = jest.fn();
+  const update = jest.fn(() => ({ eq: () => ({ select: () => ({ maybeSingle: updateSingle }) }) }));
+  const getUser = jest.fn();
+  const admin = { createUser: jest.fn(), updateUserById: jest.fn() };
+  const service = new DashboardAccountsService({
+    getSupabaseClient: () => ({
+      auth: { getUser, admin },
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: single }) }), update }),
+    }),
+  } as unknown as SupabaseService);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getUser.mockResolvedValue({ data: { user: authUser }, error: null });
+    single.mockResolvedValue({ data: row, error: null });
   });
-
-  it.each([{}, { 'x-real-ip': 'bad' }, { 'x-real-ip': ['1.193.23.48', '8.8.8.8'] }])(
-    'denies invalid trusted-proxy headers',
-    (headers) => {
-      expect(() => guard.canActivate(context(request('172.18.0.1', headers)))).toThrow();
+  it('checks account status anew for each request, only reuses the identity within one request', async () => {
+    const access = new DashboardAccessService(service);
+    const first = {} as Request;
+    await access.authenticate(first, 'session');
+    await access.authenticate(first, 'session');
+    expect(getUser).toHaveBeenCalledTimes(1);
+    single.mockResolvedValue({ data: { ...row, disabled: true }, error: null });
+    await expect(access.authenticate({} as Request, 'session')).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(access.requireAccount(first)).toEqual(row);
+  });
+  it.each([null, { ...row, phone: '+12025550129' }, { ...row, organization: 'unknown' }])(
+    'denies unmapped accounts',
+    async (entry) => {
+      single.mockResolvedValue({ data: entry });
+      await expect(service.identify('session')).rejects.toMatchObject({ status: 403 });
     },
   );
-
-  it('allows the deployment health probe without granting access to business endpoints', () => {
-    for (const path of ['/agent/health', '/agent/health/']) {
-      expect(guard.canActivate(context(request('172.18.0.1', {}, path)))).toBe(true);
-    }
-    for (const path of ['/agent/models', '/agent/health/details', '/dashboard/access']) {
-      expect(() => guard.canActivate(context(request('172.18.0.1', {}, path)))).toThrow();
-    }
-    expect(() =>
-      guard.canActivate(context(request('172.18.0.1', {}, '/agent/health', 'POST'))),
-    ).toThrow();
-  });
-
-  it.each([
-    '/group/list',
-    '/bot/configured-list',
-    '/config/blacklist',
-    '/analytics/users',
-    '/analytics/chat-sessions-optimized',
-    '/analytics/chat-sessions/chat/messages',
-    '/analytics/message-processing-records/id',
-    '/analytics/reengagement-candidates',
-    '/analytics/reengagement-records/detail',
-    '/dashboard/access',
-    '/dashboard/events',
-    '/web/hosting',
-  ])('allows original scoped read endpoint: %s', (path) => {
-    expect(guard.canActivate(context(centerRequest(path)))).toBe(true);
-  });
-  it.each([
-    '/strategy',
-    '/feishu/send',
-    '/config/agent-config',
-    '/config/ai-reply-status',
-    '/config/toggle-ai-reply',
-    '/analytics/dashboard/overview',
-    '/user/users/paused',
-    '/center-dashboard/users',
-  ])('blocks unauthorized endpoint: %s', (path) => {
-    expect(() => guard.canActivate(context(centerRequest(path)))).toThrow();
-  });
-  it('denies writes even to an allowed read path', () => {
-    expect(() =>
-      guard.canActivate(context(centerRequest('/center-dashboard/users', 'POST'))),
-    ).toThrow();
-  });
-  it('allows only same-origin JSON group switch writes, never legacy global/group controls', () => {
-    const req = centerRequest('/config/blacklist', 'POST');
-    Object.assign(req.headers, {
-      host: 'cake.example.com',
-      origin: 'https://cake.example.com',
-      'x-center-action': 'hosting',
-      'content-type': 'application/json',
-    });
-    expect(guard.canActivate(context(req))).toBe(true);
-    for (const path of [
-      '/config/agent-config',
-      '/config/toggle-ai-reply',
-      '/center-dashboard/hosting/foreign',
+  it('accepts the dedicated confirmed Auth identity only with its bound account row', async () => {
+    const identity = {
+      id: 'admin-uuid',
+      email: 'cakeadmin@dashboard.cake.invalid',
+      email_confirmed_at: 'today',
+      app_metadata: { cake_dashboard_account: { login_name: 'cakeadmin' } },
+    };
+    const administrator = {
+      ...row,
+      userId: identity.id,
+      phone: null,
+      loginName: 'cakeadmin',
+      organization: 'headquarters',
+    };
+    single.mockResolvedValue({ data: administrator });
+    getUser.mockResolvedValue({ data: { user: identity } });
+    await expect(service.identify('session')).resolves.toEqual(administrator);
+    for (const user of [
+      { ...identity, email_confirmed_at: null },
+      { ...identity, email: 'other@example.invalid' },
+      { ...identity, app_metadata: {}, user_metadata: identity.app_metadata },
+      authUser,
     ]) {
-      expect(() => guard.canActivate(context({ ...req, path } as Request))).toThrow();
+      getUser.mockResolvedValue({ data: { user } });
+      await expect(service.identify('session')).rejects.toMatchObject({ status: 403 });
     }
-    req.headers.origin = 'https://foreign.example.com';
-    expect(() => guard.canActivate(context(req))).toThrow();
-    delete req.headers.origin;
-    expect(() => guard.canActivate(context(req))).toThrow();
-    req.headers.origin = 'https://cake.example.com';
-    delete req.headers['x-center-action'];
-    expect(() => guard.canActivate(context(req))).toThrow();
+    getUser.mockResolvedValue({ data: { user: identity } });
+    single.mockResolvedValue({ data: { ...administrator, disabled: true } });
+    await expect(service.identify('session')).rejects.toMatchObject({ status: 403 });
+    single.mockResolvedValue({ data: { ...administrator, loginName: null } });
+    await expect(service.identify('session')).rejects.toMatchObject({ status: 403 });
   });
-  it('preserves existing behavior for other network sources and disabled configuration', () => {
-    expect(
-      guard.canActivate(
-        context(request('172.18.0.1', { 'x-real-ip': '203.0.113.4' }, '/config', 'POST')),
-      ),
-    ).toBe(true);
-    expect(
-      new DashboardAccessService(new ConfigService()).resolve(request('1.193.23.48')).centerId,
-    ).toBeNull();
+  it('fails closed during a membership outage', async () => {
+    single.mockResolvedValue({ error: { message: 'offline' } });
+    await expect(service.identify('session')).rejects.toMatchObject({ status: 503 });
   });
-  it('ignores the retired headquarters allowlist for office access', () => {
-    const officeAccess = new DashboardAccessService(
-      new ConfigService({ ...config, HEADQUARTERS_DASHBOARD_IPS: '203.0.113.4' }),
+  it('provisions the Auth user with a password and trusted organization data', async () => {
+    single.mockResolvedValueOnce({ data: { ...row, userId: null } });
+    admin.createUser.mockResolvedValue({ data: { user: authUser } });
+    await service.create(
+      { name: row.name, phone: row.phone, organization: 'henan', password: 'test-only-pass' },
+      'hq',
     );
-    const officeRequest = request('172.18.0.1', { 'x-real-ip': '58.247.24.23' });
-
-    expect(officeAccess.resolve(officeRequest).centerId).toBeNull();
-    expect(new DashboardAccessGuard(officeAccess).canActivate(context(officeRequest))).toBe(true);
-    expect(officeAccess.resolve(centerRequest('/')).centerId).toBe('henan');
+    expect(admin.createUser).toHaveBeenCalledWith({
+      phone: row.phone,
+      password: 'test-only-pass',
+      phone_confirm: true,
+      app_metadata: { cake_dashboard_account: { name: row.name, organization: 'henan' } },
+    });
   });
-  it.each([
-    ['2001:0DB8:0000:0000:0000:0000:0000:000A', '2001:db8::a'],
-    ['2001:db8::a', '2001:0DB8:0000:0000:0000:0000:0000:000A'],
-    ['::ffff:cb00:7104', '203.0.113.4'],
-    ['203.0.113.4', '::ffff:cb00:7104'],
-  ])('keeps equivalent center and proxy addresses scoped: %s', (configured, forwarded) => {
-    const scopedAccess = new DashboardAccessService(
-      new ConfigService({
-        HENAN_DASHBOARD_IPS: configured,
-        DASHBOARD_TRUSTED_PROXY_IPS: '2001:0DB8:0000:0000:0000:0000:0000:0002',
-      }),
-    );
-    const scopedRequest = request('2001:db8::2', { 'x-real-ip': forwarded }, '/strategy');
-
-    expect(scopedAccess.resolve(scopedRequest).centerId).toBe('henan');
-    expect(() =>
-      new DashboardAccessGuard(scopedAccess).canActivate(context(scopedRequest)),
-    ).toThrow();
+  it('blocks duplicate and conflicting roster entries before contacting Auth', async () => {
+    const input = {
+      name: row.name,
+      phone: row.phone,
+      organization: 'henan' as const,
+      password: 'fixture-pass',
+    };
+    await expect(service.create(input, 'hq')).rejects.toMatchObject({ status: 409 });
+    single.mockResolvedValueOnce({ data: { ...row, userId: null, organization: 'headquarters' } });
+    await expect(service.create(input, 'hq')).rejects.toMatchObject({ status: 409 });
+    expect(admin.createUser).not.toHaveBeenCalled();
   });
-  it('does not treat a similarly prefixed IPv6 address as the trusted IPv4 proxy', () => {
-    const scopedAccess = new DashboardAccessService(
-      new ConfigService({
-        HENAN_DASHBOARD_IPS: '::ffff:0:1:1234',
-        DASHBOARD_TRUSTED_PROXY_IPS: '0.0.0.1',
-      }),
-    );
-
-    expect(
-      scopedAccess.resolve(request('::ffff:0:1:1234', { 'x-real-ip': '203.0.113.4' })).centerId,
-    ).toBe('henan');
+  it('bans only a managed Auth identity and checks its synchronized status', async () => {
+    admin.updateUserById.mockResolvedValue({ error: null });
+    single
+      .mockResolvedValueOnce({ data: row })
+      .mockResolvedValueOnce({ data: { ...row, disabled: true } });
+    await service.update(row.userId, { disabled: true }, 'hq');
+    expect(admin.updateUserById).toHaveBeenCalledWith(row.userId, { ban_duration: '876000h' });
+    single.mockResolvedValueOnce({ data: null });
+    await expect(service.update('unknown', { disabled: true }, 'hq')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(admin.updateUserById).toHaveBeenCalledTimes(1);
   });
-  it.each(['', 'not-an-ip', 'fe80::1%en0'])('rejects an invalid source: %s', (ip) => {
-    expect(access.resolve(request(ip)).centerId).toBe('denied');
+  it('limits password reset to an active Cake account', async () => {
+    admin.updateUserById.mockResolvedValue({ error: null });
+    await service.resetPassword(authUser.id, 'test-new-pass', 'hq');
+    expect(admin.updateUserById).toHaveBeenCalledWith(authUser.id, { password: 'test-new-pass' });
+    single.mockResolvedValue({ data: null });
+    await expect(service.resetPassword('unmanaged', 'test-new-pass', 'hq')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(admin.updateUserById).toHaveBeenCalledTimes(1);
   });
-  it('refuses partial activation and invalid address configuration', () => {
-    expect(
-      () => new DashboardAccessService(new ConfigService({ HENAN_DASHBOARD_IPS: '1.193.23.48' })),
-    ).toThrow();
-    expect(
-      () =>
-        new DashboardAccessService(
-          new ConfigService({ ...config, DASHBOARD_TRUSTED_PROXY_IPS: '*' }),
-        ),
-    ).toThrow();
+  it('does not disable or change the acting headquarters account', async () => {
+    await expect(service.update('hq', { disabled: true }, 'hq')).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+  it('normalizes mainland and international login names', () => {
+    expect(normalizeDashboardPhone(' 13900000000 ')).toBe('+8613900000000');
+    expect(normalizeDashboardPhone(row.phone)).toBe(row.phone);
+    expect(normalizeDashboardPhone('bad')).toBeNull();
+    expect(dashboardLoginIdentity(' cakeadmin ')).toEqual({
+      email: 'cakeadmin@dashboard.cake.invalid',
+    });
+    expect(dashboardLoginIdentity('13900000000')).toEqual({ phone: '+8613900000000' });
+    expect(dashboardLoginIdentity('other')).toBeNull();
+    expect(dashboardLoginIdentity('cakeadmin@dashboard.cake.invalid')).toBeNull();
   });
 });

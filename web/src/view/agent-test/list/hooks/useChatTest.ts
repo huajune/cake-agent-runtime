@@ -1,3 +1,4 @@
+import { dashboardFetch } from '@/api/dashboard-session';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from 'ai';
@@ -306,15 +307,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
 
   // Transport 只保留静态配置，动态请求参数在 sendMessage 时传入
   const transport = useMemo(() => {
-    const headers: Record<string, string> = {};
-    const token = import.meta.env.API_GUARD_TOKEN;
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
     return new DefaultChatTransport({
       api: CHAT_API_ENDPOINT,
-      headers,
+      fetch: dashboardFetch,
     });
   }, []);
 

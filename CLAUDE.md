@@ -12,7 +12,7 @@ Cake Agent Runtime — DuLiDay（独立客）旗下的招聘专用 AI Agent 运�
 pnpm run install:all       # 安装根 + web 依赖
 pnpm run start:dev         # 开发（先 build web，再 nest --watch）
 pnpm run web:dev           # 仅前端 Dashboard 热更新
-pnpm run build             # 构建后端；build:ci 含 web + 占位 token
+pnpm run build             # 构建后端；build:ci 含 web
 
 # 质量检查（CI 跑的是 ci:check 全家桶）
 pnpm run lint:check        # ESLint（--max-warnings=0）
@@ -147,7 +147,7 @@ Catalog 仅管理可独立识别与治理的规则：Input、Tool、Output 各�
 
 三层配置，完整清单见 `.env.example`；本地开发 `cp .env.example .env.local`。
 
-1. **必填环境变量**（密钥/URL，无默认值）：Qwen 和 DeepSeek 的 API key（`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`）、角色路由模型 `AGENT_CHAT_MODEL` / `AGENT_EXTRACT_MODEL` / `AGENT_VISION_MODEL` / `AGENT_EVALUATE_MODEL`、`API_GUARD_TOKEN`（全局 ApiTokenGuard，`@Public()` 装饰器放行）、Upstash Redis、`DULIDAY_API_TOKEN`、Stride 托管平台、飞书告警/多维表格、Supabase URL + `SUPABASE_SERVICE_ROLE_KEY`、`SUPABASE_DB_URL_TEST/PROD`（迁移用）。
+1. **必填环境变量**（密钥/URL，无默认值）：Qwen 和 DeepSeek 的 API key（`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`）、角色路由模型 `AGENT_CHAT_MODEL` / `AGENT_EXTRACT_MODEL` / `AGENT_VISION_MODEL` / `AGENT_EVALUATE_MODEL`、后台使用 Supabase 员工会话，自动化接口可单独配置 `CAKE_MACHINE_API_TOKEN`、Upstash Redis、`DULIDAY_API_TOKEN`、Stride 托管平台、飞书告警/多维表格、Supabase URL + `SUPABASE_SERVICE_ROLE_KEY`、`SUPABASE_DB_URL_TEST/PROD`（迁移用）。
 2. **可选环境变量**（代码有默认值）：`PORT`(8585)、消息历史上限/TTL、打字延迟等。
 3. **托管配置（DB 动态）**：消息聚合窗口 `initialMergeWindowMs` 等在 `hosting_config` 表，Dashboard 可改，不走环境变量；守卫开关在 `system_config`。
 
@@ -183,9 +183,9 @@ Conventional Commits + 标准 semver：`feat:` → minor，`fix:`/其余 → pat
 
 ```bash
 curl http://localhost:8585/agent/health       # 健康检查（已注册 Provider）
-curl http://localhost:8585/agent/models       # 可用模型
+curl -H "Authorization: Bearer $DASHBOARD_ACCESS_TOKEN" http://localhost:8585/agent/models
 curl -X POST http://localhost:8585/agent/debug-chat \
-  -H "Content-Type: application/json" -H "Authorization: Bearer $API_GUARD_TOKEN" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $DASHBOARD_ACCESS_TOKEN" \
   -d '{"message":"你好","conversationId":"debug-001"}'
 
 tail -f logs/combined-$(date +%Y-%m-%d).log   # 日志

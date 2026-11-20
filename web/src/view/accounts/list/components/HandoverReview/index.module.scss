@@ -1,0 +1,49 @@
+.review {
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: $radius-xl;
+  padding: 18px 20px;
+  margin: 16px 0;
+  h2 {
+    font-size: 18px;
+  }
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    padding: 12px 0;
+    border-top: 1px solid $border;
+  }
+  li:first-child {
+    border: 0;
+  }
+  p {
+    margin: 4px 0;
+  }
+  form,
+  label {
+    display: grid;
+    gap: 6px;
+  }
+  input {
+    width: fit-content;
+    font: inherit;
+    color: $text-body;
+    border: 1px solid $border-strong;
+    border-radius: $radius-sm;
+    padding: 7px;
+  }
+}
+.line,
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.buttons {
+  justify-content: flex-start;
+}

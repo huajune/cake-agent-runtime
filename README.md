@@ -64,7 +64,7 @@ pnpm run start:dev
 
 - 模型 Provider 密钥和 `AGENT_*_MODEL` 角色映射
 - Redis、Supabase 和 DuLiDay/Stride 连接信息
-- `API_GUARD_TOKEN`
+- Supabase Auth 手机号密码登录，自动化接口可另配服务端 `CAKE_MACHINE_API_TOKEN`
 - 飞书应用、表格和告警配置
 - 可选的复聊、测试套件和外部集成配置
 
@@ -129,11 +129,11 @@ cake-agent-runtime/
 curl http://localhost:8585/agent/health
 ```
 
-配置了 `API_GUARD_TOKEN` 后，其余接口需要 Bearer Token：
+员工使用个人手机号和密码登录 `/web/login`。专用管理员用 `cakeadmin` 和密码登录，负责权限管理和全局 AI 回复开关。后台按当前账号的组织授权。下面的接口示例使用总部员工会话的短期访问令牌。首次开户见 [后台账号初始化](src/biz/center-dashboard/README.md#环境初始化)。
 
 ```bash
 curl \
-  -H "Authorization: Bearer $API_GUARD_TOKEN" \
+  -H "Authorization: Bearer $DASHBOARD_ACCESS_TOKEN" \
   http://localhost:8585/agent/models
 ```
 
@@ -141,7 +141,7 @@ curl \
 
 ```bash
 curl -X POST http://localhost:8585/agent/debug-chat \
-  -H "Authorization: Bearer $API_GUARD_TOKEN" \
+  -H "Authorization: Bearer $DASHBOARD_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "message": "你好，我想找附近的兼职",

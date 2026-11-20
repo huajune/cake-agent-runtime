@@ -29,7 +29,7 @@ export default function GlobalSwitch({ enabled, isPending, onToggle }: GlobalSwi
           <div className={styles.statusInfo}>
             <div className={styles.statusTitle}>智能回复 {enabled ? '已启用' : '已禁用'}</div>
             <div className={styles.statusDesc}>
-              {enabled ? '所有用户消息将触发 AI 自动回复' : '所有用户消息将被忽略，不触发 AI 回复'}
+              {enabled ? '已开启托管的小组和用户可收到 AI 回复' : '所有小组的 AI 自动回复已暂停'}
             </div>
           </div>
         </div>

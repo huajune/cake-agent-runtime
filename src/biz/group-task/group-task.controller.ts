@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Body, Param, UseGuards, ParseEnumPipe } from '@nestjs/common';
-import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
+import { AllowMachineAccess, ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 import { GroupTaskAdminService } from './services/group-task-admin.service';
 import { GroupTaskType } from './group-task.types';
 
@@ -15,6 +15,7 @@ import { GroupTaskType } from './group-task.types';
  * 显式声明 ApiTokenGuard，防止全局 Guard 配置变更时意外暴露。
  */
 @UseGuards(ApiTokenGuard)
+@AllowMachineAccess()
 @Controller('group-task')
 export class GroupTaskController {
   constructor(private readonly adminService: GroupTaskAdminService) {}

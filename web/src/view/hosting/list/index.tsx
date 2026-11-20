@@ -6,31 +6,36 @@ import {
   useToggleAiReply,
 } from '@/hooks/config/useSystemConfig';
 import { useGroupList } from '@/hooks/config/useWorker';
+import { DEFAULT_HENAN_GROUP_MARKER } from '../../../../../src/types/hosting-group';
 
 // 组件导入
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import GlobalSwitch from './components/GlobalSwitch';
 import GroupTable from './components/GroupTable';
 import InfoCard from './components/InfoCard';
+import { summarizeHostingGroups } from './group-sections';
 
 // 样式导入
 import styles from './styles/index.module.scss';
 
 export default function Hosting() {
-  const restricted = Boolean(useDashboardAccess()?.centerId);
+  const access = useDashboardAccess();
+  const restricted = Boolean(access?.centerId);
+  const henanMarker = access?.henanGroupMarker ?? DEFAULT_HENAN_GROUP_MARKER;
   // 数据 hooks
-  const { data: blacklist, isLoading: isLoadingBlacklist } = useBlacklist();
-  const { data: groupList, isLoading: isLoadingGroups } = useGroupList();
+  const blacklist = useBlacklist();
+  const groupList = useGroupList();
   const addToBlacklist = useAddToBlacklist();
   const removeFromBlacklist = useRemoveFromBlacklist();
-  const { data: aiStatus } = useAiReplyStatus(true, !restricted);
+  const { data: aiStatus } = useAiReplyStatus(true, Boolean(access?.isAdministrator));
   const toggleAiReply = useToggleAiReply();
 
-  // 计算小组状态（是否在黑名单中）
-  const groupsWithStatus = (groupList || []).map((group) => ({
-    ...group,
-    isBlacklisted: (blacklist?.groupIds || []).includes(group.id),
-  }));
+  const summary = summarizeHostingGroups(
+    groupList.data ?? [],
+    blacklist.data?.groupIds ?? [],
+    henanMarker,
+    restricted ? access?.name : undefined,
+  );
 
   // 切换黑名单状态
   const handleToggleBlacklist = (groupId: string, remove: boolean) => {
@@ -46,7 +51,7 @@ export default function Hosting() {
   return (
     <div className={styles.page}>
       {/* 全局 AI 开关 */}
-      {!restricted && (
+      {access?.isAdministrator && (
         <GlobalSwitch
           enabled={aiStatus?.enabled ?? false}
           isPending={toggleAiReply.isPending}
@@ -56,9 +61,13 @@ export default function Hosting() {
 
       {/* 小组托管管理 */}
       <GroupTable
-        groups={groupsWithStatus}
-        blacklistCount={blacklist?.groupIds?.length || 0}
-        isLoading={isLoadingGroups || isLoadingBlacklist}
+        summary={summary}
+        isLoading={groupList.isLoading || blacklist.isLoading}
+        isError={groupList.isError || blacklist.isError}
+        onRetry={() => {
+          if (groupList.isError) void groupList.refetch();
+          if (blacklist.isError) void blacklist.refetch();
+        }}
         isPending={addToBlacklist.isPending || removeFromBlacklist.isPending}
         onToggleBlacklist={handleToggleBlacklist}
       />

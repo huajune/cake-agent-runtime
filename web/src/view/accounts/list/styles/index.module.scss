@@ -1,0 +1,152 @@
+.page {
+  color: $text-primary;
+  header,
+  footer,
+  nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header,
+  footer {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  header {
+    margin-bottom: 24px;
+  }
+  h1,
+  h2 {
+    margin: 0;
+  }
+  p {
+    color: $text-secondary;
+    margin: 8px 0;
+  }
+  button {
+    font: inherit;
+    color: $primary-dark;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: $radius-sm;
+    &:hover {
+      background: $bg-secondary;
+    }
+    &:disabled {
+      color: $text-muted;
+      opacity: 0.6;
+      cursor: default;
+    }
+  }
+  .primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: $primary-dark;
+    color: $text-on-primary;
+    padding: 10px 17px;
+    border-radius: $radius-md;
+    &:hover {
+      background: $primary-dark;
+    }
+  }
+  .danger {
+    color: $danger-text;
+  }
+}
+.guideLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: $primary-dark;
+  font-size: $font-size-sm;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.panel {
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: $radius-xl;
+  box-shadow: $shadow-sm;
+  overflow: hidden;
+  > p,
+  footer {
+    padding: 14px 18px;
+  }
+  footer {
+    border-top: 1px solid $border;
+    font-size: 13px;
+    color: $text-secondary;
+  }
+}
+.scroll {
+  overflow-x: auto;
+}
+.page table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  th,
+  td {
+    padding: 13px 16px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  th {
+    color: $text-secondary;
+    background: $bg-secondary;
+  }
+  td {
+    border-top: 1px solid $border;
+  }
+}
+.dialog {
+  border: 1px solid $border;
+  border-radius: $radius-xl;
+  padding: 26px;
+  width: min(calc(100vw - 32px), 390px);
+  box-sizing: border-box;
+  margin: auto;
+  color: $text-primary;
+  box-shadow: $shadow-xl;
+  &::backdrop {
+    background: rgba($text-primary, 0.32);
+  }
+  form,
+  label {
+    display: grid;
+    gap: 7px;
+  }
+  form {
+    gap: 14px;
+  }
+  label {
+    font-weight: $font-weight-medium;
+  }
+  input,
+  select {
+    border: 1px solid $border-strong;
+    border-radius: $radius-md;
+    padding: 10px;
+    font: inherit;
+    color: $text-body;
+    background: $bg-primary;
+  }
+  footer {
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+}
+.syncBar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding: 4px 0 12px;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+}

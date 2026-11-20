@@ -1,0 +1,191 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import type { AuthError, SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseService } from '@infra/supabase/supabase.service';
+import {
+  DashboardAccount,
+  DashboardAccountPage,
+  DashboardOrganization,
+  isConfirmedDashboardAdminUser,
+  isDashboardAdministrator,
+  isDashboardOrganization,
+} from '@/types/dashboard-account';
+
+import type { HostingGroupSelection } from '@/types/hosting-binding';
+
+const ACCOUNT_COLUMNS =
+  'memberId:id,userId:user_id,loginName:login_name,name,organization,phone,disabled,hostingGroupId:hosting_group_id';
+const TABLE = 'dashboard_accounts';
+
+@Injectable()
+export class DashboardAccountsService {
+  private readonly logger = new Logger(DashboardAccountsService.name);
+  constructor(private readonly supabase: SupabaseService) {}
+
+  private get client(): SupabaseClient {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) throw new ServiceUnavailableException('后台账号服务暂不可用');
+    return client;
+  }
+
+  async identify(token: string): Promise<DashboardAccount> {
+    const { data, error } = await this.client.auth.getUser(token);
+    if (error && (!error.status || error.status >= 500 || error.status === 429))
+      throw new ServiceUnavailableException('暂时无法验证登录状态');
+    const user = data.user;
+    if (error || !user) throw new UnauthorizedException('请重新登录');
+    const account = await this.find('user_id', user.id);
+    if (
+      !account ||
+      account.disabled ||
+      !isDashboardOrganization(account.organization) ||
+      !(isDashboardAdministrator(account)
+        ? isConfirmedDashboardAdminUser(user)
+        : !account.loginName &&
+          user.phone &&
+          user.phone_confirmed_at &&
+          account.phone === '+' + user.phone.replace(/^\+/, ''))
+    ) {
+      throw new ForbiddenException({
+        code: 'DASHBOARD_ACCOUNT_INACTIVE',
+        message: '该账号尚未开通或已停用，请联系总部',
+      });
+    }
+    return account;
+  }
+
+  async list(page: number): Promise<DashboardAccountPage> {
+    const offset = (page - 1) * 50;
+    const { data, error, count } = await this.client
+      .from(TABLE)
+      .select(ACCOUNT_COLUMNS, { count: 'exact' })
+      .order('organization')
+      .order('name')
+      .order('phone')
+      .range(offset, offset + 49);
+    if (error) throw new ServiceUnavailableException('暂时无法读取账号名单');
+    return { accounts: data as DashboardAccount[], total: count ?? 0 };
+  }
+
+  async create(
+    input: {
+      name: string;
+      phone: string;
+      organization: DashboardOrganization;
+      password: string;
+      memberId?: string;
+      hostingBinding?: HostingGroupSelection;
+    },
+    actor: string,
+  ): Promise<void> {
+    const existing = input.memberId
+      ? await this.find('id', input.memberId)
+      : await this.find('phone', input.phone);
+    if (
+      input.memberId &&
+      (!existing ||
+        existing.name !== input.name ||
+        (existing.phone && existing.phone !== input.phone))
+    )
+      throw new ConflictException('待开通成员资料已变化，请刷新后核对');
+    if (
+      existing &&
+      (existing.userId || existing.disabled || existing.organization !== input.organization)
+    )
+      throw new ConflictException('该手机号已有账号或所属组织与待开通名单不一致');
+    const { data, error } = await this.client.auth.admin.createUser({
+      phone: input.phone,
+      password: input.password,
+      phone_confirm: true,
+      app_metadata: {
+        cake_dashboard_account: {
+          name: input.name,
+          organization: input.organization,
+          ...(input.memberId && { member_id: input.memberId }),
+          ...(input.hostingBinding && { hosting_binding: { ...input.hostingBinding, actor } }),
+        },
+      },
+    });
+    if (error && input.hostingBinding && error.code === 'unexpected_failure')
+      throw new ConflictException('开户未完成，请同步 Stride 并核对组织和小组负责人后重试');
+    if (error) this.throwAdminError(error);
+    if (!data.user || !(await this.find('user_id', data.user.id)))
+      throw new ServiceUnavailableException('账号绑定未完成，请核对后台账号迁移');
+    this.logger.log(
+      `开通后台账号 actor=${actor} user=${data.user.id} organization=${input.organization}`,
+    );
+  }
+
+  async resetPassword(userId: string, password: string, actor: string): Promise<void> {
+    const account = await this.find('user_id', userId);
+    if (!account) throw new NotFoundException('后台账号不存在');
+    if (account.disabled) throw new ConflictException('账号已停用');
+    const { error } = await this.client.auth.admin.updateUserById(userId, { password });
+    if (error) this.throwAdminError(error);
+    this.logger.log(`重置后台密码 actor=${actor} user=${userId}`);
+  }
+
+  async update(
+    userId: string,
+    changes: { organization: DashboardOrganization } | { disabled: true },
+    actor: string,
+  ): Promise<void> {
+    if (userId === actor) throw new ConflictException('管理员账号固定归属总部并保持启用');
+    if ('disabled' in changes) {
+      const account = await this.find('user_id', userId);
+      if (!account) throw new NotFoundException('后台账号不存在');
+      if (account.disabled) return;
+      // GoTrue and the account-status trigger commit the ban in one database transaction.
+      const { error } = await this.client.auth.admin.updateUserById(userId, {
+        ban_duration: '876000h',
+      });
+      if (error) this.throwAdminError(error);
+      if (!(await this.find('user_id', userId))?.disabled)
+        throw new ServiceUnavailableException('请检查后台账号停用状态同步迁移');
+    } else {
+      const { data, error } = await this.client
+        .from(TABLE)
+        .update(changes)
+        .eq('user_id', userId)
+        .eq('disabled', false)
+        .select('user_id')
+        .maybeSingle();
+      if (error) throw new ServiceUnavailableException('暂时无法调整所属组织');
+      if (!data) throw new NotFoundException('找不到已启用的后台账号');
+    }
+    this.logger.log(
+      `更新后台账号 actor=${actor} user=${userId} action=${'disabled' in changes ? 'disable' : changes.organization}`,
+    );
+  }
+
+  private async find(
+    column: 'id' | 'user_id' | 'phone',
+    value: string,
+  ): Promise<DashboardAccount | null> {
+    const { data, error } = await this.client
+      .from(TABLE)
+      .select(ACCOUNT_COLUMNS)
+      .eq(column, value)
+      .maybeSingle();
+    if (error) throw new ServiceUnavailableException('暂时无法确认后台账号权限');
+    return data as DashboardAccount | null;
+  }
+
+  private throwAdminError(error: AuthError): never {
+    if (['user_already_exists', 'phone_exists'].includes(error.code) || error.status === 409)
+      throw new ConflictException('该手机号已存在，请在账号列表中核对');
+    if (error.code === 'weak_password' || error.code === 'same_password')
+      throw new BadRequestException('请使用符合项目密码要求的新密码');
+    if (error.status === 400 || error.status === 422)
+      throw new BadRequestException('手机号或密码不符合认证要求');
+    throw new ServiceUnavailableException('账号服务暂不可用，请刷新名单后重试');
+  }
+}

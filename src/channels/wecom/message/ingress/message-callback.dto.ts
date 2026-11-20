@@ -1,3 +1,4 @@
+import { VERIFIED_HOSTING_ROUTE, type HostingRoute } from '@/types/hosting-route';
 import { IsBoolean, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
 import {
   MessageType,
@@ -253,6 +254,7 @@ export class EnterpriseMessageCallbackDto {
 
   // 内部标记（用于动态 API 选择，不参与验证）
   _apiType?: WecomApiType; // API 类型标记（企业级 or 小组级）
+  [VERIFIED_HOSTING_ROUTE]?: HostingRoute;
   _receivedAtMs?: number; // 服务端实际接收时间（内部字段，不参与回调校验）
 }
 

@@ -35,7 +35,7 @@ describe('Existing dashboard contracts under a center scope', () => {
   });
   it('freshly checks only the submitted owned group and blocks foreign/global writes', async () => {
     await service.handle('group-switch', req({ id: 'own', type: 'groupId' }, 'POST'));
-    expect(scopes.getScope).toHaveBeenCalledWith(true);
+    expect(scopes.getScope).toHaveBeenCalledWith(true, 'henan');
     expect(blacklist.setGroupBlacklisted).toHaveBeenCalledWith('own', true, expect.any(String));
     await service.handle('group-switch', req({ id: 'own', type: 'groupId' }, 'DELETE'));
     expect(blacklist.setGroupBlacklisted).toHaveBeenLastCalledWith(
@@ -58,7 +58,10 @@ describe('Existing dashboard contracts under a center scope', () => {
     for (const [path, kind] of Object.entries(CENTER_READ_ROUTES)) {
       if (!path.startsWith('/analytics') || kind === 'scenarios') continue;
       await service.handle(kind, req());
-      expect(repository.read).toHaveBeenLastCalledWith(kind, ['bot'], expect.any(Object));
+      const scope = ['sessions', 'chat-stats', 'chat-trend'].includes(kind)
+        ? { tenantId: 'henan' }
+        : ['bot'];
+      expect(repository.read).toHaveBeenLastCalledWith(kind, scope, expect.any(Object));
     }
     await service.handle('messages', {
       ...req(),
@@ -66,7 +69,7 @@ describe('Existing dashboard contracts under a center scope', () => {
     } as unknown as Request);
     expect(repository.read).toHaveBeenLastCalledWith(
       'messages',
-      ['bot'],
+      { tenantId: 'henan' },
       expect.objectContaining({ chatId: 'foreign-chat' }),
     );
   });
@@ -88,7 +91,11 @@ describe('Existing dashboard contracts under a center scope', () => {
       expect.objectContaining({ p_bot_ids: ['bot'], p_params: { limit: 50 } }),
     );
     abortSignal.mockResolvedValue({ data: null, error: { message: 'timeout' } });
-    await expect(db.read('sessions', [], {})).rejects.toThrow('暂不可用');
+    await expect(db.read('sessions', { tenantId: 'henan' }, {})).rejects.toThrow('暂不可用');
+    expect(rpc).toHaveBeenLastCalledWith(
+      'tenant_dashboard_chat_read',
+      expect.objectContaining({ p_tenant_id: 'henan' }),
+    );
     await expect(db.read('sessions', ['bot'], { limit: '999999' })).rejects.toThrow();
     await expect(db.read('users', ['bot'], { afterChatId: 'chat' })).rejects.toThrow(
       '游标必须完整',
@@ -96,5 +103,19 @@ describe('Existing dashboard contracts under a center scope', () => {
     await expect(
       db.read('sessions', ['bot'], { startDate: '2020-01-01', endDate: today }),
     ).rejects.toThrow();
+  });
+  it('reads historical chats by the signed-in organization even when its Bot has moved', async () => {
+    scopes.getScope.mockRejectedValue(new Error('directory unavailable'));
+    const request = {
+      query: { tenantId: 'headquarters' },
+      params: { chatId: 'old-chat' },
+    } as unknown as Request;
+    await service.handle('messages', request, 'shanghai_recruitment');
+    expect(scopes.getScope).not.toHaveBeenCalled();
+    expect(repository.read).toHaveBeenCalledWith(
+      'messages',
+      { tenantId: 'shanghai_recruitment' },
+      expect.objectContaining({ chatId: 'old-chat' }),
+    );
   });
 });

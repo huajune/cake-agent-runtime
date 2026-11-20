@@ -5,6 +5,7 @@ import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
+import { VERIFIED_HOSTING_ROUTE } from '@/types/hosting-route';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
 import { FilterResult, MessageFilterService } from './filter.service';
 import { ImageDescriptionService } from './image-description.service';
@@ -384,6 +385,7 @@ export class AcceptInboundMessageService {
       role: 'assistant',
       content,
       timestamp: this.resolveStoredTimestamp(parsed.timestamp),
+      hostingRoute: this.eventHostingRoute(messageData),
       candidateName,
       managerName: messageData.botUserId,
       messageType: messageData.messageType,
@@ -627,6 +629,7 @@ export class AcceptInboundMessageService {
       role: 'user',
       content,
       timestamp: this.resolveStoredTimestamp(parsed.timestamp),
+      hostingRoute: this.eventHostingRoute(messageData),
       candidateName: messageData.contactName || contactName,
       managerName: messageData.botUserId,
       messageType: messageData.messageType,
@@ -663,5 +666,12 @@ export class AcceptInboundMessageService {
 
   private resolveStoredTimestamp(timestamp: number): number {
     return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now();
+  }
+
+  private eventHostingRoute(message: EnterpriseMessageCallbackDto) {
+    const timestamp = Number(message.timestamp);
+    return Number.isSafeInteger(timestamp) && timestamp > 0
+      ? message[VERIFIED_HOSTING_ROUTE]
+      : undefined;
   }
 }

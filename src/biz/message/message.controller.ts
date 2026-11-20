@@ -1,3 +1,4 @@
+import { AllowMachineAccess } from '@infra/server/guards/api-token.guard';
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ChatSessionService } from './services/chat-session.service';
 import { MessageProcessingService } from './services/message-processing.service';
@@ -8,6 +9,7 @@ import type { MessageProcessingStatus } from '@enums/message.enum';
  * 消息查询控制器
  * 纯委托层，不包含任何业务逻辑
  */
+@AllowMachineAccess()
 @Controller('analytics')
 export class MessageController {
   constructor(

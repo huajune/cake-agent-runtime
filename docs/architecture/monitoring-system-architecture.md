@@ -302,7 +302,7 @@ AnalyticsDashboardService
 | POST | `/analytics/clear` | 清空所有监控数据 | - |
 | POST | `/analytics/cache/clear?type=all\|metrics\|history\|agent` | 清除缓存 | - |
 
-> API 默认启用 `ApiTokenGuard`，需要 Bearer `API_GUARD_TOKEN`；Dashboard 前端注入鉴权头后调用。
+> API 默认启用 `ApiTokenGuard`，Dashboard 使用个人的 Supabase 访问令牌；自动化监控可使用服务端 `CAKE_MACHINE_API_TOKEN`。
 
 ---
 

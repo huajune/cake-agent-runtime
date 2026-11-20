@@ -1,4 +1,6 @@
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
+import { dashboardAuth } from '@/api/dashboard-session';
+import toast from 'react-hot-toast';
 import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -9,6 +11,8 @@ import {
   ClipboardCheck,
   Layers,
   LayoutDashboard,
+  ContactRound,
+  LogOut,
   MessageSquare,
   MessageSquareCode,
   PanelLeftClose,
@@ -35,7 +39,8 @@ const NAV_ICON_STROKE = 1.6;
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
-  const restricted = Boolean(useDashboardAccess()?.centerId);
+  const access = useDashboardAccess();
+  const restricted = Boolean(access?.centerId);
   const location = useLocation();
 
   const shouldInterceptNavigation = (event: MouseEvent<HTMLAnchorElement>) =>
@@ -279,6 +284,19 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           </span>
           {!isCollapsed && <span className="nav-text">二次触发追溯</span>}
         </NavLink>
+        {access?.isAdministrator && (
+          <NavLink
+            to="/accounts"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title="账号管理"
+            {...bindPreload('/accounts')}
+          >
+            <span className="nav-icon">
+              <ContactRound size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">账号管理</span>}
+          </NavLink>
+        )}
         {!restricted && (
           <NavLink
             to="/system"
@@ -292,6 +310,24 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             {!isCollapsed && <span className="nav-text">系统监控</span>}
           </NavLink>
         )}
+        <button
+          type="button"
+          className="nav-item dashboard-logout"
+          title="退出登录"
+          onClick={async () => {
+            try {
+              const result = await dashboardAuth?.signOut({ scope: 'local' });
+              if (result?.error) throw result.error;
+            } catch {
+              toast.error('退出失败，请重试');
+            }
+          }}
+        >
+          <span className="nav-icon">
+            <LogOut size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+          </span>
+          {!isCollapsed && <span className="nav-text">退出登录 · {access?.displayName}</span>}
+        </button>
       </div>
     </aside>
   );

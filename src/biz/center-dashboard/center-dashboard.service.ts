@@ -1,10 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
+import { DASHBOARD_ORGANIZATIONS, type DashboardCenter } from '@/types/dashboard-account';
 import { CenterRoute } from '@infra/server/dashboard-access/center-routes';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/scenario-registry';
 import { CenterScopeService } from './center-scope.service';
-import { CenterDashboardRepository } from './center-dashboard.repository';
+import { CenterDashboardRepository, readsOwnedChat } from './center-dashboard.repository';
 
 @Injectable()
 export class CenterDashboardService {
@@ -14,8 +15,11 @@ export class CenterDashboardService {
     private readonly repository: CenterDashboardRepository,
   ) {}
 
-  async handle(kind: CenterRoute, request: Request) {
-    const scope = await this.scopes.getScope(kind === 'group-switch');
+  async handle(kind: CenterRoute, request: Request, organization: DashboardCenter = 'henan') {
+    const input: Record<string, unknown> = { ...request.query };
+    if (kind === 'messages') input.chatId = request.params.chatId;
+    if (readsOwnedChat(kind)) return this.repository.read(kind, { tenantId: organization }, input);
+    const scope = await this.scopes.getScope(kind === 'group-switch', organization);
     if (kind === 'groups') return scope.groups;
     if (kind === 'bots') return scope.bots;
     if (kind === 'blacklist') {
@@ -42,7 +46,7 @@ export class CenterDashboardService {
       await this.blacklist.setGroupBlacklisted(
         body.id,
         request.method === 'POST',
-        '河南自招团队小组开关',
+        DASHBOARD_ORGANIZATIONS[organization] + '小组开关',
       );
       return { message: '小组开关已保存' };
     }
@@ -60,8 +64,6 @@ export class CenterDashboardService {
         generationPolicy: scenario.generationPolicy,
         defaultRolloutEnabled: scenario.defaultRolloutEnabled,
       }));
-    const input: Record<string, unknown> = { ...request.query };
-    if (kind === 'messages') input.chatId = request.params.chatId;
     if (kind === 'processing-detail') input.id = request.params.messageId;
     return this.repository.read(kind, scope.botIds, input);
   }

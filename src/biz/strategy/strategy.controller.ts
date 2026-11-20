@@ -8,7 +8,6 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
 } from '@nestjs/common';
-import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { StrategyConfigService } from './services/strategy-config.service';
 import {
   StrategyPersona,
@@ -22,7 +21,6 @@ import {
  *
  * Web 前端读写 testing 版本，企微回调通过 ContextService 读 released 版本。
  */
-@Public()
 @Controller('strategy')
 export class StrategyController {
   constructor(private readonly strategyConfigService: StrategyConfigService) {}

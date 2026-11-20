@@ -13,9 +13,10 @@ export interface WorkerConcurrencyResponse {
 }
 
 export interface GroupInfo {
+  tenantId?: string | null;
   id: string;
   name: string;
-  description: string;
+  description?: string | null;
 }
 
 /** 提取质量对账：单字段一行 */

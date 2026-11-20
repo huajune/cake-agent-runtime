@@ -1,0 +1,15 @@
+.picker {
+  display: grid;
+  gap: 6px;
+  p {
+    margin: 0;
+    font-size: $font-size-sm;
+    overflow-wrap: anywhere;
+  }
+  .consent {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: $font-size-sm;
+  }
+}
