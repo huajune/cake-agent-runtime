@@ -1,3 +1,4 @@
+import { AllowMachineAccess } from '@infra/server/guards/api-token.guard';
 import { Controller, Post, Body, HttpCode, BadRequestException } from '@nestjs/common';
 import { ChatRecordSyncService } from './chat-record.service';
 import { FeishuBitableSyncService } from './bitable-sync.service';
@@ -18,12 +19,14 @@ export class FeishuSyncController {
     private readonly badcaseGovernanceDocumentService: BadcaseGovernanceDocumentService,
   ) {}
 
+  @AllowMachineAccess()
   @Post('badcase-governance/schema')
   @HttpCode(200)
   async ensureBadcaseGovernanceSchema(@Body() body: { apply?: boolean }) {
     return this.bitableSyncService.ensureBadcaseGovernanceFields(body.apply === true);
   }
 
+  @AllowMachineAccess()
   @Post('badcase-governance/document-check')
   @HttpCode(200)
   async checkBadcaseGovernanceDocument() {
@@ -38,6 +41,7 @@ export class FeishuSyncController {
    * 让文档只有一个写入口：事件 ID 统一、幂等统一、统计数字不会停在历史值。
    * eventId 建议传稳定值（如 `bcg-daily-triage-20260730`），同一批变更不要既走这里又手写。
    */
+  @AllowMachineAccess()
   @Post('badcase-governance/document-append')
   @HttpCode(200)
   async appendBadcaseGovernanceDocument(
@@ -67,6 +71,7 @@ export class FeishuSyncController {
   /**
    * 只刷新统计数字，不追加事件。用于文档被人手改过之后把数字拉回真实值。
    */
+  @AllowMachineAccess()
   @Post('badcase-governance/document-refresh-summary')
   @HttpCode(200)
   async refreshBadcaseGovernanceSummary() {

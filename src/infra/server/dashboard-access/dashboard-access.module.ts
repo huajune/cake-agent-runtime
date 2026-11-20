@@ -1,11 +1,12 @@
 import { Global, Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
 import { DashboardAccessService } from './dashboard-access.service';
-import { DashboardAccessGuard } from './dashboard-access.guard';
+import { DashboardAccountsService } from './dashboard-accounts.service';
+import { DashboardAccountsController } from './dashboard-accounts.controller';
 
 @Global()
 @Module({
-  providers: [DashboardAccessService, { provide: APP_GUARD, useClass: DashboardAccessGuard }],
+  controllers: [DashboardAccountsController],
+  providers: [DashboardAccessService, DashboardAccountsService],
   exports: [DashboardAccessService],
 })
 export class DashboardAccessModule {}

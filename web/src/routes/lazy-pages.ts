@@ -14,8 +14,10 @@ export type AppRoutePath =
   | '/chat-records'
   | '/agent-test'
   | '/test-suite'
+  | '/accounts'
   | '/strategy';
 
+const accountsLoader = () => import('@/view/accounts/list');
 const dashboardLoader = () => import('@/view/dashboard/list');
 const conversionAnalysisLoader = () => import('@/view/conversion-analysis/list');
 const usersLoader = () => import('@/view/users/list');
@@ -29,6 +31,7 @@ const agentTestLoader = () => import('@/view/agent-test/list');
 const testSuiteLoader = () => import('@/view/test-suite/list');
 const strategyLoader = () => import('@/view/strategy/list');
 
+export const Accounts = lazy(accountsLoader);
 export const Dashboard = lazy(dashboardLoader);
 export const ConversionAnalysis = lazy(conversionAnalysisLoader);
 export const Users = lazy(usersLoader);
@@ -55,6 +58,7 @@ export const ALL_ROUTE_PATHS: AppRoutePath[] = [
   '/agent-test',
   '/test-suite',
   '/strategy',
+  '/accounts',
 ];
 
 const routeLoaders: Record<AppRoutePath, RouteLoader> = {
@@ -70,6 +74,7 @@ const routeLoaders: Record<AppRoutePath, RouteLoader> = {
   '/agent-test': agentTestLoader,
   '/test-suite': testSuiteLoader,
   '/strategy': strategyLoader,
+  '/accounts': accountsLoader,
 };
 
 const preloadPromises = new Map<AppRoutePath, Promise<unknown>>();

@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  deploy-remote.sh --mode build --image-tag TAG --compose-source PATH --source-dir PATH --api-guard-token TOKEN --supabase-url URL --supabase-anon-key KEY [options]
+  deploy-remote.sh --mode build --image-tag TAG --compose-source PATH --source-dir PATH --supabase-url URL --supabase-anon-key KEY [options]
   deploy-remote.sh --mode load  --image-tag TAG --compose-source PATH --image-tar PATH [options]
 
 Options:
@@ -15,7 +15,6 @@ Options:
   --compose-source  Compose file to promote into workdir
   --source-dir      Source directory for docker build (required in build mode)
   --image-tar       Docker tarball to load (required in load mode)
-  --api-guard-token API guard token injected into the frontend build (required in build mode)
   --supabase-url    Supabase URL injected into the frontend build (required in build mode)
   --supabase-anon-key Supabase anon key injected into the frontend build (required in build mode)
 EOF
@@ -39,7 +38,6 @@ WORKDIR="/data/cake"
 COMPOSE_SOURCE=""
 SOURCE_DIR=""
 IMAGE_TAR=""
-API_GUARD_TOKEN=""
 SUPABASE_URL=""
 SUPABASE_ANON_KEY=""
 
@@ -73,10 +71,6 @@ while [[ $# -gt 0 ]]; do
       IMAGE_TAR="$2"
       shift 2
       ;;
-    --api-guard-token)
-      API_GUARD_TOKEN="$2"
-      shift 2
-      ;;
     --supabase-url)
       SUPABASE_URL="$2"
       shift 2
@@ -108,8 +102,8 @@ if [[ "$MODE" != "build" && "$MODE" != "load" ]]; then
 fi
 
 if [[ "$MODE" == "build" ]]; then
-  if [[ -z "$SOURCE_DIR" || -z "$API_GUARD_TOKEN" || -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
-    echo "build mode requires --source-dir, --api-guard-token, --supabase-url, and --supabase-anon-key" >&2
+  if [[ -z "$SOURCE_DIR" || -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
+    echo "build mode requires --source-dir, --supabase-url, and --supabase-anon-key" >&2
     exit 1
   fi
 fi
@@ -126,6 +120,7 @@ DEPLOY_ENV_BACKUP_FILE="${WORKDIR}/.deploy.env.rollback"
 COMPOSE_FILE="${WORKDIR}/docker-compose.yml"
 COMPOSE_BACKUP_FILE="${WORKDIR}/docker-compose.rollback.yml"
 RUNTIME_ENV_FILE="${WORKDIR}/.env.production"
+STAFF_ROSTER_DIR="${WORKDIR}/private/dashboard-onboarding/staff"
 ROLLBACK_TAG="rollback"
 HEALTH_ATTEMPTS=12
 HEALTH_INTERVAL_SECONDS=5
@@ -178,6 +173,30 @@ verify_image_runtime() {
       process.exit(1);
     }
   ' || return 1
+}
+
+run_staff_onboarding() {
+  local action="$1" mount_mode=ro owner project_url
+  if [[ -f "${STAFF_ROSTER_DIR}/complete.json" && -f "${STAFF_ROSTER_DIR}/cakeadmin.ready.json" \
+    && ! -f "${STAFF_ROSTER_DIR}/credentials.work.json" && ! -f "${STAFF_ROSTER_DIR}/cakeadmin.work.json" ]]; then
+    return 0
+  fi
+  if [[ ! -f "${STAFF_ROSTER_DIR}/roster.json" ]]; then
+    project_url="$(read_env_value NEXT_PUBLIC_SUPABASE_URL "$RUNTIME_ENV_FILE")"
+    if [[ "${project_url%/}" == 'https://resexopnhpthuoxfwydx.supabase.co' ]]; then
+      echo "首次正式发布须在发版窗口交付全员后台账号名单：${STAFF_ROSTER_DIR}/roster.json" >&2
+      return 1
+    fi
+    return 0
+  fi
+  [[ "$action" == apply ]] && mount_mode=rw
+  owner="$(stat -c '%u:%g' "$STAFF_ROSTER_DIR")" || return 1
+  (
+    flock -x 9 || exit 1
+    docker run --rm --user "$owner" --env-file "$RUNTIME_ENV_FILE" \
+      -v "${STAFF_ROSTER_DIR}:/onboarding:${mount_mode}" --entrypoint node \
+      "${IMAGE_NAME}:${IMAGE_TAG}" dist/cli/dashboard-onboarding.js "$action" /onboarding
+  ) 9>>"${STAFF_ROSTER_DIR}/.initialize.lock"
 }
 
 health_check() {
@@ -246,7 +265,6 @@ build_or_load_image() {
     # 待补测容器侧连通性、或服务器出站恢复后，应删除本行恢复构建期网络隔离。
     docker build \
       --network=host \
-      --build-arg API_GUARD_TOKEN="${API_GUARD_TOKEN}" \
       --build-arg NEXT_PUBLIC_SUPABASE_URL="${SUPABASE_URL}" \
       --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}" \
       -t "${IMAGE_NAME}:${IMAGE_TAG}" \
@@ -285,6 +303,12 @@ if ! verify_image_runtime; then
   exit 1
 fi
 
+if ! run_staff_onboarding check; then
+  [[ ! -f "$COMPOSE_BACKUP_FILE" ]] || cp "$COMPOSE_BACKUP_FILE" "$COMPOSE_FILE"
+  echo "后台开户预检失败，请核对迁移、Phone 登录及待开通名单。" >&2
+  exit 1
+fi
+
 write_deploy_env "$IMAGE_TAG"
 
 if ! run_compose; then
@@ -296,6 +320,11 @@ fi
 if ! health_check; then
   dump_deployment_diagnostics
   rollback_release || true
+  exit 1
+fi
+
+if ! run_staff_onboarding apply; then
+  echo "新版服务已启动，后台开户尚未完成。修复原因后重试同一批名单。" >&2
   exit 1
 fi
 

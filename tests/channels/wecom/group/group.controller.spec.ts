@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GroupController } from '@wecom/group/group.controller';
+import { HostingBindingsRepository } from '@biz/center-dashboard/hosting-bindings.repository';
 import { GroupService } from '@wecom/group/group.service';
 
 describe('GroupController', () => {
@@ -8,12 +9,19 @@ describe('GroupController', () => {
 
   const mockGroupService = {
     getGroupList: jest.fn(),
+    getAllGroups: jest.fn(),
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GroupController],
       providers: [
+        {
+          provide: HostingBindingsRepository,
+          useValue: {
+            scope: jest.fn().mockResolvedValue({ groups: { 'g-1': 'henan' }, bots: {} }),
+          },
+        },
         {
           provide: GroupService,
           useValue: mockGroupService,
@@ -31,6 +39,15 @@ describe('GroupController', () => {
   });
 
   describe('getGroupList', () => {
+    it('uses the complete directory when the dashboard requests all groups', async () => {
+      const groups = [{ id: 'g-1', name: '一组', description: '河南自招团队成员' }];
+      mockGroupService.getAllGroups.mockResolvedValue(groups);
+      await expect(controller.getGroupList(undefined, undefined, 'true')).resolves.toEqual([
+        { ...groups[0], tenantId: 'henan' },
+      ]);
+      expect(mockGroupService.getGroupList).not.toHaveBeenCalled();
+    });
+
     it('should call groupService.getGroupList with no pagination when none provided', async () => {
       const mockResult = { data: [{ groupId: 'g-1', name: 'Group 1' }], total: 1 };
 

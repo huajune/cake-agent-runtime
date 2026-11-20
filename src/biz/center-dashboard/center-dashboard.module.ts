@@ -7,16 +7,22 @@ import { CenterDashboardInterceptor } from './center-dashboard.interceptor';
 import { CenterScopeService } from './center-scope.service';
 import { DashboardAccessController } from './dashboard-access.controller';
 
+import { HostingBindingsRepository } from './hosting-bindings.repository';
+import { HostingBindingsController } from './hosting-bindings.controller';
+import { HostingBindingsService } from './hosting-bindings.service';
+
 @Global()
 @Module({
   imports: [HostingConfigModule],
-  controllers: [DashboardAccessController],
+  controllers: [DashboardAccessController, HostingBindingsController],
   providers: [
     CenterScopeService,
+    HostingBindingsRepository,
+    HostingBindingsService,
     CenterDashboardRepository,
     CenterDashboardService,
     { provide: APP_INTERCEPTOR, useClass: CenterDashboardInterceptor },
   ],
-  exports: [CenterScopeService],
+  exports: [CenterScopeService, HostingBindingsRepository],
 })
 export class CenterDashboardModule {}

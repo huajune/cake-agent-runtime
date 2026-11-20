@@ -22,6 +22,7 @@ import { EnterpriseMessageCallbackDto } from './ingress/message-callback.dto';
 import { getMessageSourceDescription, MessageSource } from '@enums/message-callback.enum';
 import { ACTION_MODE } from '@shared-types/action-execution.contract';
 import { WECOM_API_TYPE } from '@shared-types/wecom-api.types';
+import { STRIDE_PRIMARY_CONNECTION, VERIFIED_HOSTING_ROUTE } from '@/types/hosting-route';
 
 /**
  * 消息处理服务（重构版 v4 - 协调器模式）
@@ -76,6 +77,7 @@ export class MessageService implements OnModuleInit {
    * 普通消息立即 ACK；纳管发送回调须先验证来源并持久化证据。
    */
   handleMessage(messageData: EnterpriseMessageCallbackDto) {
+    delete messageData[VERIFIED_HOSTING_ROUTE];
     messageData._receivedAtMs = messageData._receivedAtMs ?? Date.now();
     const managed = this.isManagedCallback(messageData);
     if (
@@ -84,9 +86,14 @@ export class MessageService implements OnModuleInit {
     )
       return this.handleGroupMessage(messageData, managed);
     // Managed evidence must be durable before ACK; a storage error asks the provider to retry.
-    if (managed && this.hasTrustedCallbackCredential(messageData))
-      return this.appendManagedCallback(messageData, [messageData.orgId]);
-    return this.acceptMessageAsync(messageData);
+    if (this.hasTrustedCallbackCredential(messageData)) {
+      messageData[VERIFIED_HOSTING_ROUTE] = {
+        connectionId: STRIDE_PRIMARY_CONNECTION,
+        groupId: messageData.groupId,
+      };
+      if (managed) return this.appendManagedCallback(messageData, [messageData.orgId]);
+    }
+    return this.acceptMessageAsync(messageData, messageData._apiType === WECOM_API_TYPE.GROUP);
   }
 
   private isManagedCallback(message: EnterpriseMessageCallbackDto): boolean {
@@ -103,13 +110,7 @@ export class MessageService implements OnModuleInit {
   }
 
   private async handleGroupMessage(message: EnterpriseMessageCallbackDto, managed: boolean) {
-    const verified = await this.groupCredentials?.verifyCallback({
-      token: message.token,
-      accountId: message.imBotId,
-      corpId: message.orgId,
-      groupId: message.groupId,
-      botId: message.botId,
-    });
+    const verified = await this.verifyGroupRoute(message);
     if (!verified) {
       // Untrusted self callbacks never settle an action. New execute inputs need a bound route.
       if (
@@ -123,6 +124,24 @@ export class MessageService implements OnModuleInit {
     return managed
       ? this.appendManagedCallback(scoped, verified.corpIds)
       : this.acceptMessageAsync(scoped);
+  }
+
+  private async verifyGroupRoute(message: EnterpriseMessageCallbackDto) {
+    const verified = await this.groupCredentials?.verifyCallback({
+      token: message.token,
+      accountId: message.imBotId,
+      corpId: message.orgId,
+      groupId: message.groupId,
+      botId: message.botId,
+    });
+    // This callback contains no original group. A current directory group can differ from
+    // the group at dispatch time, so persist only the verified connection and look up the dated binding.
+    if (verified)
+      message[VERIFIED_HOSTING_ROUTE] = {
+        connectionId: STRIDE_PRIMARY_CONNECTION,
+        observedGroupId: verified.groupId,
+      };
+    return verified;
   }
 
   private async appendManagedCallback(message: EnterpriseMessageCallbackDto, corpIds: string[]) {
@@ -161,8 +180,8 @@ export class MessageService implements OnModuleInit {
     );
   }
 
-  private acceptMessageAsync(messageData: EnterpriseMessageCallbackDto) {
-    void this.processMessageAsync(messageData).catch((error) => {
+  private acceptMessageAsync(messageData: EnterpriseMessageCallbackDto, verifyGroup = false) {
+    void this.processMessageAsync(messageData, verifyGroup).catch((error) => {
       const errorMessage = toErrorMessage(error);
       this.logger.error(`[异步消息处理] messageId=${messageData.messageId} 失败: ${errorMessage}`);
     });
@@ -176,7 +195,17 @@ export class MessageService implements OnModuleInit {
    * 所有会命中 Supabase / Redis / 外部依赖的逻辑都在这里。任何抛错都被
    * handleMessage 的 .catch 兜底，不会影响已经返回给托管平台的 200。
    */
-  private async processMessageAsync(messageData: EnterpriseMessageCallbackDto): Promise<void> {
+  private async processMessageAsync(
+    messageData: EnterpriseMessageCallbackDto,
+    verifyGroup: boolean,
+  ): Promise<void> {
+    if (verifyGroup) {
+      try {
+        await this.verifyGroupRoute(messageData);
+      } catch {
+        this.logger.warn('无法核实小组回调来源，本条历史记录的租户待核对');
+      }
+    }
     await this.runtimeConfig.syncSnapshot();
 
     const sanitized = LogSanitizer.sanitizeMessageCallback(messageData);

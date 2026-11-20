@@ -12,6 +12,7 @@ import type {
 import type { GuardrailInputTrace, GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import type { MessageProcessingStatus } from '@enums/message.enum';
 import type { HistoryOnlyReason } from '@enums/message-filter.enum';
+import type { HostingRoute } from '@/types/hosting-route';
 
 /**
  * 聊天消息输入格式
@@ -28,6 +29,7 @@ export interface ChatMessageInput {
   source?: number;
   isRoom?: boolean;
   imBotId?: string;
+  hostingRoute?: HostingRoute;
   imContactId?: string;
   contactType?: number;
   isSelf?: boolean;

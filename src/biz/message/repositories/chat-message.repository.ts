@@ -926,6 +926,11 @@ export class ChatMessageRepository extends BaseRepository {
       source: toStorageMessageSource(message.source),
       is_room: message.isRoom ?? false,
       im_bot_id: message.imBotId,
+      ...(message.hostingRoute && {
+        hosting_connection_id: message.hostingRoute.connectionId,
+        hosting_group_id: message.hostingRoute.groupId,
+        hosting_observed_group_id: message.hostingRoute.observedGroupId,
+      }),
       im_contact_id: message.imContactId,
       contact_type: toStorageContactType(message.contactType),
       is_self: message.isSelf,

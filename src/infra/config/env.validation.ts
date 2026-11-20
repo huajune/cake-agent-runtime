@@ -79,8 +79,8 @@ export class EnvironmentVariables {
   AGENT_MAX_INPUT_CHARS?: number;
 
   @IsOptional()
-  @IsString({ message: 'API_GUARD_TOKEN 必须是字符串' })
-  API_GUARD_TOKEN?: string;
+  @IsString({ message: 'CAKE_MACHINE_API_TOKEN 必须是字符串' })
+  CAKE_MACHINE_API_TOKEN?: string;
 
   @IsOptional()
   @IsString({ message: 'READ_ONLY_PREVIEW 必须是字符串' })

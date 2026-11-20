@@ -1,3 +1,4 @@
+import { dashboardFetch } from '../dashboard-session';
 import { api, unwrapResponse } from '../client';
 import type {
   TestChatRequest,
@@ -93,12 +94,7 @@ export function executeTestStream(
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
   };
-  const token = import.meta.env.API_GUARD_TOKEN;
-  if (token) {
-    fetchHeaders['Authorization'] = `Bearer ${token}`;
-  }
-
-  fetch('/test-suite/chat/stream', {
+  dashboardFetch('/test-suite/chat/stream', {
     method: 'POST',
     headers: fetchHeaders,
     body: JSON.stringify(request),

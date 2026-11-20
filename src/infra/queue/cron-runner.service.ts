@@ -17,6 +17,12 @@ interface CronDefinition {
 
 const DAY = 86_400_000;
 export const MANAGED_CRONS: readonly CronDefinition[] = [
+  {
+    id: CRON_JOB.HOSTING_DIRECTORY_SYNC,
+    intervalMs: 5 * 60_000,
+    offsetMs: 23_000,
+    productionOnly: true,
+  },
   { id: CRON_JOB.OPS_DAILY_REPORT, intervalMs: DAY, offsetMs: 13 * 3_600_000 },
   { id: CRON_JOB.SPONGE_STATUS_POLL, intervalMs: 15 * 60_000, offsetMs: 0 },
   { id: CRON_JOB.CHAT_RECORD_SYNC, intervalMs: DAY, offsetMs: 16 * 3_600_000 },

@@ -42,7 +42,7 @@ export async function setWorkerConcurrency(concurrency: number) {
 }
 
 export async function getGroupList() {
-  const { data } = await api.get('/group/list');
+  const { data } = await api.get('/group/list', { params: { all: true } });
   const groups = unwrapResponse<GroupInfo[]>(data);
   return groups || [];
 }

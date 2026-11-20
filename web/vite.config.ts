@@ -23,7 +23,7 @@ function readRootEnvValue(mode: string, key: string): string {
 }
 
 export default defineConfig(({ mode }) => {
-  const apiGuardToken = process.env.API_GUARD_TOKEN || readRootEnvValue(mode, 'API_GUARD_TOKEN');
+  const publicEnv = (key: string) => process.env[key] || readRootEnvValue(mode, key);
   const apiProxyTarget =
     process.env.VITE_API_PROXY_TARGET ||
     process.env.API_PROXY_TARGET ||
@@ -32,7 +32,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      'import.meta.env.API_GUARD_TOKEN': JSON.stringify(apiGuardToken),
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(publicEnv('NEXT_PUBLIC_SUPABASE_URL')),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
+        publicEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+      ),
     },
     resolve: {
       alias: {
@@ -67,7 +70,7 @@ export default defineConfig(({ mode }) => {
           '/dashboard',
         ].map((prefix) => [
           prefix,
-          { target: apiProxyTarget, changeOrigin: true, timeout: 120000 },
+          { target: apiProxyTarget, changeOrigin: false, timeout: 120000 },
         ]),
       ),
     },

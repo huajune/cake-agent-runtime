@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Delete, HttpCode, Body } from '@nestjs/common';
+import { DashboardAdminOnly } from '@infra/server/guards/api-token.guard';
 import { HostingConfigFacadeService } from './services/hosting-config-facade.service';
 import {
   ToggleDto,
@@ -19,11 +20,13 @@ export class HostingConfigController {
   // ==================== 运行时开关 ====================
 
   @Get('ai-reply-status')
+  @DashboardAdminOnly()
   async getAiReplyStatus() {
     return { enabled: await this.facade.getAiReplyStatus() };
   }
 
   @Post('toggle-ai-reply')
+  @DashboardAdminOnly()
   @HttpCode(200)
   async toggleAiReply(@Body() body: ToggleDto) {
     return this.facade.toggleAiReply(body.enabled);

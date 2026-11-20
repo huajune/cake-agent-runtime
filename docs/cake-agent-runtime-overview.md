@@ -488,7 +488,7 @@ Input / Tool / Output 才负责运行时短路、动作拒绝与出站验收。P
 
 | 变量                      | 默认值 | 说明                                  |
 | ------------------------- | ------ | ------------------------------------- |
-| `API_GUARD_TOKEN`         | 无     | 管理端点 Bearer Token，未配置则不鉴权 |
+| `CAKE_MACHINE_API_TOKEN` | 无 | 可选，仅服务端自动化专用；管理员使用员工会话 |
 | `AGENT_MAX_OUTPUT_TOKENS` | 4096   | 单次输出上限                          |
 | `AGENT_MAX_INPUT_CHARS`   | 24000  | 输入字符上限                          |
 | `AGENT_DEFAULT_FALLBACKS` | 无     | 全局模型降级链                        |

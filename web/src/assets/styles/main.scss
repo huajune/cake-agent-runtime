@@ -87,3 +87,18 @@
   --shadow-glow: #{$shadow-glow};
 }
 
+
+.dashboard-logout {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dashboard-access-notice {
+  max-width: 28rem;
+  margin: 16vh auto;
+  padding: 24px;
+  button { margin: 8px 12px 0 0; cursor: pointer; }
+}

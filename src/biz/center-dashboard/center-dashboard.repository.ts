@@ -2,12 +2,19 @@ import { BadRequestException, Injectable, ServiceUnavailableException } from '@n
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { CenterRoute } from '@infra/server/dashboard-access/center-routes';
 
-/** 复用原页面的数据契约；所有筛选在 SQL 内与后端机器人范围取交集。 */
+export function readsOwnedChat(kind: CenterRoute): boolean {
+  return ['messages', 'sessions', 'chat-stats', 'chat-trend'].includes(kind);
+}
+
 @Injectable()
 export class CenterDashboardRepository {
   constructor(private readonly supabase: SupabaseService) {}
 
-  async read(kind: CenterRoute, botIds: string[], input: Record<string, unknown>) {
+  async read(
+    kind: CenterRoute,
+    scope: string[] | { tenantId: string },
+    input: Record<string, unknown>,
+  ) {
     const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
     const scalar = (key: string) => {
       const value = input[key];
@@ -87,10 +94,12 @@ export class CenterDashboardRepository {
       throw new BadRequestException('用户游标必须完整');
     const client = this.supabase.getSupabaseClient();
     if (!client) throw new ServiceUnavailableException('数据服务暂不可用');
+    if (readsOwnedChat(kind) === Array.isArray(scope))
+      throw new ServiceUnavailableException('当前数据范围无法确认');
     const { data, error } = await client
-      .rpc('center_dashboard_read', {
+      .rpc(Array.isArray(scope) ? 'center_dashboard_read' : 'tenant_dashboard_chat_read', {
         p_kind: kind,
-        p_bot_ids: botIds,
+        ...(Array.isArray(scope) ? { p_bot_ids: scope } : { p_tenant_id: scope.tenantId }),
         p_start: start,
         p_end: end,
         p_params: params,

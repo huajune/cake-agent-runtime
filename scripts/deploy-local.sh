@@ -88,14 +88,8 @@ notify_deploy_result() {
 
 trap 'exit_code=$?; notify_deploy_result "$exit_code"; exit "$exit_code"' EXIT
 
-API_GUARD_TOKEN="$(read_env_value API_GUARD_TOKEN "$RUNTIME_ENV_FILE")"
 NEXT_PUBLIC_SUPABASE_URL="$(read_env_value NEXT_PUBLIC_SUPABASE_URL "$RUNTIME_ENV_FILE")"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="$(read_env_value NEXT_PUBLIC_SUPABASE_ANON_KEY "$RUNTIME_ENV_FILE")"
-
-if [[ -z "$API_GUARD_TOKEN" ]]; then
-  echo "❌ API_GUARD_TOKEN not found in ${RUNTIME_ENV_FILE}"
-  exit 1
-fi
 
 if [[ -z "$NEXT_PUBLIC_SUPABASE_URL" ]]; then
   echo "❌ NEXT_PUBLIC_SUPABASE_URL not found in ${RUNTIME_ENV_FILE}"
@@ -129,7 +123,6 @@ echo ""
 echo "🔨 Building Docker image locally (tag: ${IMAGE_TAG})..."
 docker build \
   --platform linux/amd64 \
-  --build-arg API_GUARD_TOKEN="${API_GUARD_TOKEN}" \
   --build-arg NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL}" \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
   -t "${IMAGE_NAME}:${IMAGE_TAG}" \

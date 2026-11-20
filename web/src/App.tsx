@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import Layout from '@/components/Layout';
 import { DashboardAccessBoundary } from '@/hooks/useDashboardAccess';
 import {
+  Accounts,
   AgentTest,
   ChatRecords,
   Config,
@@ -45,6 +46,7 @@ function App() {
       />
       <Routes>
         <Route path="/" element={<Layout />}>
+          <Route path="accounts" element={<Accounts />} />
           <Route index element={<Dashboard />} />
           <Route path="conversion-analysis" element={<ConversionAnalysis />} />
           <Route path="users" element={<Users />} />

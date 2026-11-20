@@ -39,7 +39,7 @@ Dockerfile 构建镜像            docker-compose.yml 启动容器
                                   ↑ 在这里指定端口、环境变量、日志等
 ```
 
-容器启动时需要 `.env.production`，而镜像构建阶段也会从中读取前端构建必需的变量（如 `API_GUARD_TOKEN`、`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`）并注入到 `docker build`。
+容器启动时需要 `.env.production`，而镜像构建阶段也会从中读取前端构建必需的变量（如 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`）并注入到 `docker build`。
 
 ---
 
@@ -81,6 +81,10 @@ GitHub Actions                        远程服务器 /data/cake/
                                           失败 → 自动回滚到上一版本
 3. 飞书企微私域监控群通知部署结果
 ```
+
+首次发布手机号登录前，先在测试环境完成[租户隔离验收](../product/organization-members-and-business-accounts.md#当前实现和发版缺口)，覆盖总部跨租户查看、其他租户独立、历史业务归属和外部服务路由。当前分支已接入组织表和聊天归属，其余运营数据及外部服务仍需验收。正式全员开户待租户版发布。
+
+验收通过后的发布窗口内，发布人应用相应迁移、启用 Supabase Email 和 Phone 密码认证并关闭自助注册，将本机私有的全员开户名单交到服务器。部署脚本在切换服务前核对名单，在新服务通过健康检查后先开通专用管理员 `cakeadmin`，再为已有手机号的员工开户。中途失败可用同一批名单重试，总部从私有交付文件领取每人的随机初始密码。详细步骤见[全员账号开通说明](../../src/biz/center-dashboard/README.md#随正式发布初始化全员账号)。
 
 ---
 
@@ -215,7 +219,6 @@ docker compose logs --tail=50 cake-agent
 ```bash
 # SSH 到服务器手动构建查看详细错误
 ssh haimian-deploy 'cd /data/cake && docker build \
-  --build-arg API_GUARD_TOKEN="$(sed -n "s/^API_GUARD_TOKEN=//p" .env.production | head -n1)" \
   --build-arg NEXT_PUBLIC_SUPABASE_URL="$(sed -n "s/^NEXT_PUBLIC_SUPABASE_URL=//p" .env.production | head -n1)" \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$(sed -n "s/^NEXT_PUBLIC_SUPABASE_ANON_KEY=//p" .env.production | head -n1)" \
   -t cake-agent-runtime:latest ./source'
