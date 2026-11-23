@@ -62,11 +62,13 @@ export default function Accounts() {
             <ExternalLink size={14} aria-hidden="true" />
           </a>
         </div>
-        <button onClick={() => setAction({ type: 'register' })}>登记组织</button>
-        <button className={styles.primary} onClick={() => setAction({ type: 'open' })}>
-          <UserPlus size={17} />
-          开通账号
-        </button>
+        <div className={styles.headerActions}>
+          <button onClick={() => setAction({ type: 'register' })}>登记组织</button>
+          <button className={styles.primary} onClick={() => setAction({ type: 'open' })}>
+            <UserPlus size={17} />
+            开通账号
+          </button>
+        </div>
       </header>
       <div className={styles.syncBar}>
         <span>
@@ -112,7 +114,19 @@ export default function Accounts() {
                         ? (groupNames.get(account.hostingGroupId) ?? account.hostingGroupId)
                         : '—'}
                     </td>
-                    <td>{account.disabled ? '已停用' : account.userId ? '已开通' : '待开通'}</td>
+                    <td>
+                      <span
+                        className={
+                          account.disabled
+                            ? styles.disabled
+                            : account.userId
+                              ? styles.active
+                              : styles.pending
+                        }
+                      >
+                        {account.disabled ? '已停用' : account.userId ? '已开通' : '待开通'}
+                      </span>
+                    </td>
                     <td>
                       {!account.disabled && !account.loginName && account.memberId && (
                         <button onClick={() => setAction({ type: 'bind', account })}>

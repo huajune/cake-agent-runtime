@@ -1,152 +1,306 @@
+@use 'sass:color';
+
+$action-danger: color.mix($text-primary, $danger-text, 38%);
+
 .page {
+  min-width: 0;
   color: $text-primary;
-  header,
-  footer,
-  nav {
+  > header {
     display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  header,
-  footer {
     justify-content: space-between;
+    align-items: flex-start;
     flex-wrap: wrap;
-  }
-  header {
-    margin-bottom: 24px;
-  }
-  h1,
-  h2 {
-    margin: 0;
+    gap: 14px 24px;
+    margin-bottom: 18px;
+    h1 {
+      font-size: clamp(24px, 2.4vw, 30px);
+      line-height: 1.3;
+    }
+    p {
+      margin: 7px 0 4px;
+    }
   }
   p {
     color: $text-secondary;
-    margin: 8px 0;
+    line-height: 1.6;
   }
   button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid transparent;
+    border-radius: $radius-md;
+    background: transparent;
     font: inherit;
     color: $primary-dark;
-    border: 0;
-    background: transparent;
-    cursor: pointer;
-    padding: 6px 8px;
-    border-radius: $radius-sm;
-    &:hover {
+    padding: 5px 9px;
+    &:hover:not(:disabled) {
       background: $bg-secondary;
     }
     &:disabled {
       color: $text-muted;
-      opacity: 0.6;
       cursor: default;
     }
   }
+  :is(a, button, input, select):focus-visible {
+    outline: 2px solid $primary-dark;
+    outline-offset: 2px;
+  }
   .primary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background: $primary-dark;
     color: $text-on-primary;
-    padding: 10px 17px;
-    border-radius: $radius-md;
-    &:hover {
-      background: $primary-dark;
+    background: $primary-dark;
+    &:hover:not(:disabled) {
+      background: color.mix($text-primary, $primary-dark, 14%);
     }
   }
   .danger {
-    color: $danger-text;
+    color: $action-danger;
+  }
+  > p[role] {
+    margin: 0 0 12px;
+  }
+}
+.headerActions,
+.dialog footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  button {
+    min-height: 40px;
+    padding-inline: 16px;
+    border-color: $border-strong;
+    background: $bg-card;
+    color: $text-body;
+    font-weight: 600;
+  }
+  .primary {
+    border-color: transparent;
   }
 }
 .guideLink {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  padding-block: 3px;
   color: $primary-dark;
   font-size: $font-size-sm;
   text-decoration: underline;
   text-underline-offset: 3px;
+  text-decoration-color: $primary-35;
+  &:hover {
+    text-decoration-color: currentColor;
+  }
+}
+.syncBar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+  button {
+    min-height: 32px;
+  }
 }
 .panel {
+  overflow: hidden;
   background: $bg-card;
   border: 1px solid $border;
   border-radius: $radius-xl;
   box-shadow: $shadow-sm;
-  overflow: hidden;
-  > p,
-  footer {
-    padding: 14px 18px;
+  > p {
+    padding: 16px;
+  }
+  footer,
+  nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
   }
   footer {
+    justify-content: space-between;
+    padding: 10px 16px;
     border-top: 1px solid $border;
-    font-size: 13px;
+    font-size: $font-size-sm;
     color: $text-secondary;
+  }
+  nav button {
+    min-height: 32px;
   }
 }
 .scroll {
   overflow-x: auto;
 }
-.page table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 14px;
+.panel table {
+  font-size: $font-size-base;
   th,
   td {
-    padding: 13px 16px;
+    padding: 12px 14px;
     text-align: left;
-    white-space: nowrap;
   }
   th {
-    color: $text-secondary;
     background: $bg-secondary;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    white-space: nowrap;
   }
   td {
     border-top: 1px solid $border;
+    color: $text-body;
+    vertical-align: middle;
+  }
+  tr:hover td {
+    background: $primary-02;
+  }
+  td:first-child {
+    font-weight: 600;
+    color: $text-primary;
+    min-width: 5em;
+  }
+  td:nth-child(2) {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  td:nth-child(3),
+  td:nth-child(4) {
+    min-width: 6.5em;
+    max-width: 17em;
+    overflow-wrap: anywhere;
+  }
+  td:last-child {
+    padding-block: 6px;
+  }
+  td button {
+    min-height: 34px;
+    padding-inline: 6px;
+    white-space: nowrap;
+    font-size: $font-size-sm;
+  }
+  td .danger:hover {
+    background: $danger-bg;
   }
 }
+.active,
+.pending,
+.disabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: $radius-full;
+  padding: 3px 9px;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  line-height: 1.5;
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}
+.active {
+  color: color.mix($text-primary, $success-text, 52%);
+  background: $success-bg;
+}
+.pending {
+  color: color.mix($text-primary, $warning-text, 46%);
+  background: $warning-bg;
+}
+.disabled {
+  color: $text-secondary;
+  background: $bg-secondary;
+}
+
 .dialog {
+  width: min(calc(100% - 32px), 408px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  margin: auto;
+  padding: clamp(18px, 4vw, 26px);
   border: 1px solid $border;
   border-radius: $radius-xl;
-  padding: 26px;
-  width: min(calc(100vw - 32px), 390px);
-  box-sizing: border-box;
-  margin: auto;
-  color: $text-primary;
+  background: $bg-card;
+  color: $text-body;
   box-shadow: $shadow-xl;
+  &[data-action='open'] {
+    width: min(calc(100% - 32px), 480px);
+  }
   &::backdrop {
-    background: rgba($text-primary, 0.32);
+    background: rgba($text-primary, 0.38);
+  }
+  h2 {
+    font-size: $font-size-2xl;
+    line-height: 1.4;
+    color: $text-primary;
   }
   form,
   label {
     display: grid;
-    gap: 7px;
   }
   form {
     gap: 14px;
   }
   label {
-    font-weight: $font-weight-medium;
+    min-width: 0;
+    gap: 6px;
+    font-size: $font-size-sm;
+    font-weight: 600;
   }
-  input,
+  input:not([type='checkbox']),
   select {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 9px 12px;
     border: 1px solid $border-strong;
     border-radius: $radius-md;
-    padding: 10px;
-    font: inherit;
-    color: $text-body;
+    color: $text-primary;
     background: $bg-primary;
+    font: inherit;
+    font-size: $font-size-base;
+    font-weight: 400;
+    &[readonly],
+    &:disabled {
+      background: $bg-secondary;
+      color: $text-secondary;
+    }
   }
   footer {
     justify-content: flex-end;
-    margin-top: 8px;
+    padding-top: 14px;
+    border-top: 1px solid $border;
+  }
+  &[data-action='disable'] .primary {
+    background: $action-danger;
   }
 }
-.syncBar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  padding: 4px 0 12px;
-  color: $text-secondary;
-  font-size: $font-size-sm;
+.identityFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: $breakpoint-sm) {
+  .headerActions button {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+  .panel table {
+    min-width: 650px;
+  }
+  .panel footer {
+    padding: 8px 12px;
+  }
+}
+@media (max-width: 480px) {
+  .identityFields {
+    grid-template-columns: 1fr;
+  }
 }

@@ -110,6 +110,7 @@ export default function AccountDialog({
       ref={dialog}
       aria-labelledby="account-action-title"
       className={styles.dialog}
+      data-action={action.type}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
@@ -129,7 +130,7 @@ export default function AccountDialog({
           </p>
         )}
         {action.type === 'open' && (
-          <>
+          <div className={styles.identityFields}>
             <label>
               姓名
               <input
@@ -150,7 +151,7 @@ export default function AccountDialog({
                 required
               />
             </label>
-          </>
+          </div>
         )}
         {(action.type === 'open' || action.type === 'move') && (
           <label>
