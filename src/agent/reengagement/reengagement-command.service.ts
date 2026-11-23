@@ -4,6 +4,11 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Job, Queue } from 'bull';
 import { CRITICAL_WRITE_JOB_OPTIONS } from '@infra/queue/queue-policy';
 import { QueueFailureService } from '@infra/queue/queue-failure.service';
+import {
+  businessTenant,
+  BusinessTenantResolver,
+  runForTenant,
+} from '@infra/supabase/business-tenant';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import {
   FollowUpSchedulerService,
@@ -39,19 +44,21 @@ type Command =
       kind: typeof REENGAGEMENT_COMMAND_KIND.ACTIVITY;
       input: { corpId: string; userId: string; sessionId: string; timestamp: number };
     };
+type StoredCommand = Command & { tenantId?: string | null };
 
 /** Durable admission for previously unawaited anchor work; execution stays in its owning domain. */
 @Injectable()
 export class ReengagementCommandService implements OnModuleInit {
   constructor(
-    @InjectQueue(REENGAGEMENT_COMMAND_QUEUE) private readonly queue: Queue<Command>,
+    @InjectQueue(REENGAGEMENT_COMMAND_QUEUE) private readonly queue: Queue<StoredCommand>,
     private readonly scheduler: FollowUpSchedulerService,
     private readonly session: SessionStateService,
     private readonly failures: QueueFailureService,
+    private readonly tenants: BusinessTenantResolver,
   ) {}
 
   onModuleInit(): void {
-    this.queue.process(REENGAGEMENT_COMMAND_JOB, 1, (job: Job<Command>) => this.process(job));
+    this.queue.process(REENGAGEMENT_COMMAND_JOB, 1, (job: Job<StoredCommand>) => this.process(job));
     this.queue.on('failed', (job: Job, error: Error) => {
       void this.failures.exhausted(REENGAGEMENT_COMMAND_QUEUE, job, error);
     });
@@ -105,8 +112,21 @@ export class ReengagementCommandService implements OnModuleInit {
     );
   }
 
-  async process(job: Job<Command>): Promise<void> {
+  async process(job: Job<StoredCommand>): Promise<void> {
     const command = job.data;
+    let tenantId = command.tenantId;
+    if (tenantId === undefined && command.kind === REENGAGEMENT_COMMAND_KIND.ACTIVITY) {
+      // Older activity jobs contain only the session and the original message timestamp.
+      const { sessionId, timestamp } = command.input;
+      const botId = await this.tenants.historicalBot(sessionId, timestamp);
+      tenantId = botId ? (await this.tenants.resolve([{ botId, at: timestamp }]))[0] : null;
+    }
+    if (tenantId === null) throw new Error('暂时无法核实复聊任务的组织');
+    if (tenantId === undefined) return this.apply(command);
+    return runForTenant(tenantId, () => this.apply(command));
+  }
+
+  private async apply(command: Command): Promise<void> {
     switch (command.kind) {
       case REENGAGEMENT_COMMAND_KIND.SCHEDULE: {
         const stored = command.input;
@@ -141,10 +161,14 @@ export class ReengagementCommandService implements OnModuleInit {
   private async enqueue(command: Command, key: string): Promise<void> {
     const jobId = createHash('sha256').update(`${command.kind}:${key}`).digest('hex');
     try {
-      await this.queue.add(REENGAGEMENT_COMMAND_JOB, command, {
-        ...CRITICAL_WRITE_JOB_OPTIONS,
-        jobId,
-      });
+      await this.queue.add(
+        REENGAGEMENT_COMMAND_JOB,
+        { ...command, tenantId: businessTenant() },
+        {
+          ...CRITICAL_WRITE_JOB_OPTIONS,
+          jobId,
+        },
+      );
     } catch (error) {
       await this.failures.report('reengagement.command_not_durable', command.kind, error);
       throw error;
