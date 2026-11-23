@@ -153,6 +153,7 @@
 > 已落地方案删除并留在 Git 历史，不在 todo 中长期保存执行记录。
 
 - [运行时与业务数据模型改造执行计划](todo/runtime-data-model-execution-plan.md) — 27 张业务表的去留、读写与页面迁移、恢复验收和切换条件。
+- [业务数据补齐组织 ID](todo/business-data-tenant-id.md) — 聊天归属的发版验收、其他业务数据的组织隔离和历史回填。
 
 ---
 
