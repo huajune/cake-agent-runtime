@@ -2,7 +2,7 @@
 
 员工使用已开通的手机号和密码登录。总部、河南自招、上海自招分别是独立租户，每家外部供应商各自一个租户。上海智能体组归总部，自己承接的业务记在总部。总部员工可以跨租户查看业务，河南、上海自招及供应商员工可以查看本租户所有小组。仅专用管理员 `cakeadmin` 管理账号、权限和平台 AI 回复总开关。
 
-**验收进度（2026-11-23）**　测试库已应用账号、租户和托管归属的 8 个迁移。本地隔离环境已用 Supabase 密码会话验过两位河南员工的相同小组范围、上海自招的独立范围、总部的跨组织查看，以及开户、重置和停用。线上测试项目仍待配置手机密码认证。正式开户安排在发布窗口。详见[租户与账号设计](../../../docs/product/organization-members-and-business-accounts.md)。
+**验收进度（2026-11-23）**　测试库已应用账号、租户、托管归属及旧初始配置清理的 9 个迁移。本地隔离环境已用 Supabase 密码会话验过两位河南员工的相同小组范围、上海自招的独立范围、总部的跨组织查看，以及开户、重置和停用。线上测试项目仍待配置手机密码认证。正式开户安排在发布窗口。详见[租户与账号设计](../../../docs/product/organization-members-and-business-accounts.md)。
 
 ## 日常绑定与交接
 
@@ -35,7 +35,7 @@
 
 ### 环境初始化
 
-1. 从 `20261120120000_dashboard_accounts.sql` 到 `20261123090000_tenant_hosting_group_switch.sql` 依序应用 8 个迁移。先在测试环境确认查询计划和历史归属覆盖，再在正式发布窗口执行。保留前序中心读取 RPC 和后台专用数据库权限。在 Supabase Auth 启用 Email 和 Phone 密码认证，关闭自助注册。管理员使用预确认的内部邮箱标识。后台只接纳已开通名单中的 Auth 身份。
+1. 依序应用从 `20261120120000_dashboard_accounts.sql` 到 `20261123110000_retire_obsolete_hosting_seeds.sql` 的 9 个迁移。最后一项清理历史迁移写入的退役 Bot 初始配置，保留重新登记或已定制的配置。先在测试环境确认查询计划，核对在用 Bot 及其已登记时段的聊天归属，再在正式发布窗口执行。保留前序中心读取 RPC 和后台专用数据库权限。在 Supabase Auth 启用 Email 和 Phone 密码认证，关闭自助注册。管理员使用预确认的内部邮箱标识。后台只接纳已开通名单中的 Auth 身份。
 2. 前端构建读取 `NEXT_PUBLIC_SUPABASE_URL` 和公开的 `NEXT_PUBLIC_SUPABASE_ANON_KEY`。NestJS 使用同一项目的 URL 和服务端 `SUPABASE_SERVICE_ROLE_KEY`。浏览器仅向 Supabase 发起认证，业务数据经 NestJS 读取。
 3. 发布任务自动初始化专用管理员。在测试环境单独办理时，在受信任终端创建权限为 0700 的私有目录，再执行 `node --env-file=.env.local -r ts-node/register scripts/dashboard-accounts.ts bootstrap <私有目录>`。初始密码随机生成并写入该目录的 `cakeadmin.private.json`。已有账号重试时保留原密码。管理员已登录时，可在「账号管理」中重置自己的密码。遗失全部凭据时，由持有该项目服务权限的运维按 `cakeadmin.ready.json` 里的 Auth 用户 ID 重设密码。
 4. 全体托管同事使用下文的正式发布流程。单独登记待开通名单可用 `scripts/dashboard-accounts.ts import-henan <私有成员名单.json>`。同一人归并为一条登录记录，负责小组按 Stride 小组 ID 保存。组内可以暂时没有 Bot，也可以有多个。

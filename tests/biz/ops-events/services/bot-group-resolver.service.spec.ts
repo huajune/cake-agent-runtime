@@ -56,10 +56,18 @@ describe('BotGroupResolverService', () => {
     expect(service.resolveAgentId('prod-sync:1688856098846503')).toBe('LiYuHang-cake-2');
   });
 
-  it('resolves guoxiaoyang (晓阳组) on both bare and synced forms', () => {
-    const expected = { managerName: '郭晓阳', groupName: '晓阳组' };
-    expect(service.resolve('guoxiaoyang')).toEqual(expected);
-    expect(service.resolve('prod-sync:guoxiaoyang')).toEqual(expected);
+  it.each(['guoxiaoyang', '1688854747775509', '1688857592548257'])(
+    'leaves retired bot %s unassigned when Stride is offline',
+    (key) => {
+      for (const id of [key, `prod-sync:${key}`]) {
+        expect(service.resolve(id)).toBeNull();
+        expect(service.resolveAgentId(id)).toBeNull();
+      }
+    },
+  );
+
+  it('excludes retired groups from the offline group filter', () => {
+    expect(service.listBotKeysByGroups(['盼盼组', '晓阳组'])).toEqual([]);
   });
 
   it('returns null for unmapped / synthetic bots', () => {
@@ -94,15 +102,7 @@ describe('BotGroupResolverService', () => {
     it('maps group names to every bot key of that group from the fallback table', () => {
       const keys = service.listBotKeysByGroups(['琪琪组', '小祝组']);
 
-      expect(keys).toEqual(
-        expect.arrayContaining([
-          '1688855974513959',
-          '1688854363869800',
-          '1688857592548257',
-          '1688856098846503',
-        ]),
-      );
-      expect(keys).toHaveLength(4);
+      expect(keys.sort()).toEqual(['1688854363869800', '1688855974513959', '1688856098846503']);
     });
 
     it('returns an empty list for unknown or blank groups', () => {
@@ -127,7 +127,7 @@ describe('BotGroupResolverService', () => {
       );
       // 被动态表改组的 bot 不再算 琪琪组；动态表没有的 小祝组 仍从兜底表给出
       expect(dynamic.listBotKeysByGroups(['琪琪组'])).toEqual([]);
-      expect(dynamic.listBotKeysByGroups(['小祝组'])).toHaveLength(3);
+      expect(dynamic.listBotKeysByGroups(['小祝组'])).toHaveLength(2);
     });
   });
 });
