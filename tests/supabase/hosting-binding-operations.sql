@@ -2,20 +2,22 @@ BEGIN;
 DO $$
 DECLARE conn text:='stride-primary'; admin_id uuid:=gen_random_uuid(); outsider uuid:=gen_random_uuid();
   member uuid; second_member uuid; auth_id uuid:=gen_random_uuid(); blocked_id uuid:=gen_random_uuid();
-  groups jsonb:='[{"id":"source","name":"一组"},{"id":"dest","name":"二组"},{"id":"empty","name":"空组"}]';
+  groups jsonb:='[{"id":"source","name":"一组"},{"id":"dest","name":"二组"},{"id":"empty","name":"空组"},{"id":"peer","name":"河南二组"}]';
   bots jsonb:='[{"id":"new","name":"新号","group_id":"source"}]';
   moved jsonb:='[{"id":"new","name":"新号","group_id":"dest"}]';
-  opened jsonb; h hosting_bot_handovers%ROWTYPE; cutoff timestamptz; starting timestamptz;
+  opened jsonb; starting timestamptz; observed timestamptz;
 BEGIN
   IF has_function_privilege('authenticated','public.bind_dashboard_hosting_group(text,uuid,text,text,text,uuid,uuid)','execute')
-    OR has_function_privilege('anon','public.confirm_hosting_handover(text,uuid,text,timestamptz,uuid)','execute')
+    OR to_regprocedure('public.confirm_hosting_handover(text,uuid,text,timestamptz,uuid)') IS NOT NULL
+    OR has_table_privilege('service_role','public.hosting_bot_memberships','INSERT')
     OR has_table_privilege('authenticated','public.tenant_visible_chat_messages','select')
     THEN RAISE EXCEPTION 'private permissions missing'; END IF;
   INSERT INTO auth.users(id,email,raw_app_meta_data) VALUES(admin_id,'cakeadmin@dashboard.cake.invalid',
     '{"cake_dashboard_account":{"login_name":"cakeadmin","organization":"headquarters"}}');
   INSERT INTO dashboard_accounts(name,organization,phone) VALUES('旧负责人','henan','+12025550111') RETURNING id INTO member;
   INSERT INTO dashboard_accounts(name,organization,phone) VALUES('新负责人','henan','+12025550112') RETURNING id INTO second_member;
-  INSERT INTO hosting_group_ownership VALUES(conn,'dest',clock_timestamp()-interval '1 year','shanghai_recruitment');
+  INSERT INTO hosting_group_ownership VALUES(conn,'dest',clock_timestamp()-interval '1 year','shanghai_recruitment'),
+    (conn,'peer',clock_timestamp()-interval '1 year','henan');
   PERFORM pg_sleep(0.006);
   PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,'[]');
   PERFORM bind_dashboard_hosting_group(conn,member,'henan','source',NULL,NULL,admin_id);
@@ -57,51 +59,32 @@ BEGIN
   starting:=clock_timestamp();
   INSERT INTO chat_messages(chat_id,message_id,role,content,timestamp,im_bot_id,hosting_connection_id)
     VALUES ('ops-test','ops-before','user','before',starting,'new',conn);
-  PERFORM pg_sleep(0.006);
-  PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,bots);
-  cutoff:=clock_timestamp();
-  INSERT INTO chat_messages(chat_id,message_id,role,content,timestamp,im_bot_id,hosting_connection_id)
-    VALUES ('ops-test','ops-between','user','between',cutoff,'new',conn);
-  INSERT INTO chat_messages(chat_id,message_id,role,content,timestamp,im_bot_id,hosting_connection_id,hosting_observed_group_id)
-    VALUES ('ops-test','ops-fresh','user','new group verified before sync',cutoff,'new',conn,'dest');
-  IF EXISTS(SELECT FROM chat_messages WHERE message_id='ops-fresh' AND tenant_id IS NOT NULL)
-    THEN RAISE EXCEPTION 'current group mismatch assigned to old organization'; END IF;
-
-  PERFORM pg_sleep(0.006);
-  PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,moved);
-  SELECT * INTO STRICT h FROM hosting_bot_handovers WHERE connection_id=conn AND confirmed_at IS NULL;
-  IF h.to_group_id<>'dest' OR (hosting_scope_bindings(conn,ARRAY['source','dest'],ARRAY['new'])->'bots')?'new'
-    OR EXISTS(SELECT FROM tenant_visible_chat_messages WHERE message_id='ops-between')
-    OR NOT EXISTS(SELECT FROM tenant_visible_chat_messages WHERE message_id='ops-before' AND tenant_id='henan')
-    THEN RAISE EXCEPTION 'pending-interval exposure or lost prior history'; END IF;
+  -- A different organization's directory entry is a configuration error. A rejected snapshot changes nothing.
   BEGIN
-    PERFORM confirm_hosting_handover(conn,h.id,'empty',cutoff,admin_id);
-    RAISE EXCEPTION 'stale destination confirmed';
+    PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,moved);
+    RAISE EXCEPTION 'accepted a Bot assigned to the wrong organization';
   EXCEPTION WHEN check_violation THEN NULL; END;
-  INSERT INTO chat_messages(chat_id,message_id,role,content,timestamp,im_bot_id,hosting_connection_id)
-    SELECT 'ops-test','ops-page-'||n,'user','queued during handover',cutoff,'new',conn FROM generate_series(1,315) n;
-  PERFORM confirm_hosting_handover(conn,h.id,'dest',cutoff,admin_id);
-  PERFORM confirm_hosting_handover(conn,h.id,'dest',cutoff,admin_id);
-  IF reconcile_hosting_handover(conn)<>300 OR reconcile_hosting_handover(conn)<>17 OR reconcile_hosting_handover(conn)<>0
-    THEN RAISE EXCEPTION 'reconciliation did not resume at same-time message cursor'; END IF;
-  IF (SELECT tenant_id FROM chat_messages WHERE message_id='ops-before') IS DISTINCT FROM 'henan' OR
-    (SELECT count(*) FROM tenant_visible_chat_messages WHERE message_id IN ('ops-between','ops-fresh') AND tenant_id='shanghai_recruitment')<>2
-    THEN RAISE EXCEPTION 'confirmed handover did not reconcile the precise boundary'; END IF;
-  IF jsonb_array_length(hosting_management_directory(conn)->'handovers')<>0 THEN RAISE EXCEPTION 'closed review still displayed'; END IF;
-  PERFORM sync_hosting_directory(conn,clock_timestamp()-interval '1 minute',groups,bots);
-  IF EXISTS(SELECT FROM hosting_bot_handovers WHERE connection_id=conn AND confirmed_at IS NULL)
-    THEN RAISE EXCEPTION 'older overlapping response overrode recent scan'; END IF;
-  PERFORM pg_sleep(0.006);
-  PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,'[]');
-  PERFORM pg_sleep(0.006);
+  IF (SELECT d.bots FROM hosting_directory_scans d WHERE d.connection_id=conn) IS DISTINCT FROM bots OR
+     (SELECT tenant_id FROM tenant_visible_chat_messages WHERE message_id='ops-before') IS DISTINCT FROM 'henan'
+    THEN RAISE EXCEPTION 'bad snapshot changed the directory or message'; END IF;
+  moved := '[{"id":"new","name":"新号","group_id":"peer"}]';
   PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,moved);
-  SELECT * INTO STRICT h FROM hosting_bot_handovers WHERE connection_id=conn AND confirmed_at IS NULL;
-  IF h.target_changed_since IS NULL OR h.to_group_id<>h.from_group_id THEN RAISE EXCEPTION 'return after absence was lost'; END IF;
-  PERFORM pg_sleep(0.006);
-  cutoff:=clock_timestamp();
-  PERFORM confirm_hosting_handover(conn,h.id,'dest',cutoff,admin_id);
-  IF hosting_tenant_at(conn,'new',NULL,h.detected_at) IS NOT NULL
-    OR hosting_tenant_at(conn,'new',NULL,cutoff) IS DISTINCT FROM 'shanghai_recruitment'
-    THEN RAISE EXCEPTION 'unobserved absence was assigned across an unknown interval'; END IF;
+  observed:=clock_timestamp();
+  PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,moved);
+  PERFORM sync_hosting_directory(conn,starting,groups,bots);
+  IF hosting_scope_bindings(conn,ARRAY['source','peer'],ARRAY['new'])->'bots'->>'new' IS DISTINCT FROM 'peer' OR
+     (SELECT count(*) FROM hosting_bot_memberships WHERE connection_id=conn AND bot_im_id='new')<>2 OR
+     hosting_tenant_at(conn,'new','source',observed) IS DISTINCT FROM 'henan'
+    THEN RAISE EXCEPTION 'same-organization group change or directory replay failed'; END IF;
+  INSERT INTO chat_messages(chat_id,message_id,role,content,timestamp,im_bot_id,hosting_connection_id,hosting_observed_group_id)
+    VALUES ('ops-test','ops-current','user','same organization',observed,'new',conn,'peer'),
+           ('ops-test','ops-conflict','user','conflicting directory',observed,'new',conn,'dest');
+  PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,'[]');
+  PERFORM sync_hosting_directory(conn,clock_timestamp(),groups,moved);
+  IF (SELECT tenant_id FROM tenant_visible_chat_messages WHERE message_id='ops-current') IS DISTINCT FROM 'henan' OR
+     EXISTS(SELECT FROM tenant_visible_chat_messages WHERE message_id='ops-conflict') OR
+     hosting_tenant_at(conn,'new',NULL,clock_timestamp()) IS DISTINCT FROM 'henan' OR
+     hosting_management_directory(conn) ? 'handovers'
+    THEN RAISE EXCEPTION 'directory refresh changed business ownership'; END IF;
 END $$;
 ROLLBACK;

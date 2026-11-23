@@ -15,22 +15,10 @@ export interface ManagedHostingGroup {
   bots: Array<{ id: string; name: string }>;
 }
 
-export interface HostingHandover {
-  id: string;
-  botId: string;
-  botName: string;
-  fromGroupId: string | null;
-  toGroupId: string | null;
-  reviewFrom: string;
-  targetChangedSince: string | null;
-  detectedAt: string;
-}
-
 export interface HostingManagementDirectory {
   tenants: Tenant[];
   checkedAt: string | null;
   groups: ManagedHostingGroup[];
-  handovers: HostingHandover[];
 }
 
 export interface HostingScopeBindings {

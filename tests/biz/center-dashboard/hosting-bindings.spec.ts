@@ -50,32 +50,14 @@ describe('Daily Stride directory synchronization', () => {
     expect(db.call).not.toHaveBeenCalled();
     await expect(service.sync()).resolves.toBe(3);
   });
-  it('acquires the managed cron lease before reconciling and polling', async () => {
+  it('acquires the managed cron lease before polling Stride', async () => {
     const limits = { checkpoint: jest.fn(), recordProcessed: jest.fn() };
     cron.run.mockImplementation((_id, _limits, fn) => fn(limits));
     db.call.mockResolvedValue(0);
     await make({ NODE_ENV: 'production' }).scheduledSync();
     expect(cron.run).toHaveBeenCalledTimes(1);
-    expect(db.call.mock.calls.map((c) => c[0])).toEqual([
-      'reconcile_hosting_handover',
-      'reconcile_business_handover',
-      'sync_hosting_directory',
-    ]);
+    expect(db.call.mock.calls.map((c) => c[0])).toEqual(['sync_hosting_directory']);
     await make({ NODE_ENV: 'development' }).scheduledSync();
     expect(cron.run).toHaveBeenCalledTimes(1);
-  });
-  it('acknowledges a committed transfer when the first repair batch needs a retry', async () => {
-    db.call
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockRejectedValueOnce(new Error('batch timed out'));
-    await expect(
-      make().confirm('handover', 'new-group', '2026-11-20T00:00:00Z', 'admin'),
-    ).resolves.toBeUndefined();
-    expect(db.call.mock.calls.map((c) => c[0])).toEqual([
-      'sync_hosting_directory',
-      'confirm_hosting_handover',
-      'reconcile_hosting_handover',
-    ]);
   });
 });

@@ -201,11 +201,8 @@ export class FollowUpProcessor implements OnModuleInit {
       job.data.channelIdentity?.botImId ||
       (await this.tenants.historicalBot(job.data.sessionRef.sessionId, anchorAt));
     if (!botId) return;
-    const [owner, current] = await this.tenants.resolve([
-      { botId, at: anchorAt },
-      { botId, at: Date.now() },
-    ]);
-    if (owner && owner === current) await runForTenant(owner, () => this.processOwned(job, botId));
+    const [owner] = await this.tenants.resolve([{ botId, at: anchorAt }]);
+    if (owner) await runForTenant(owner, () => this.processOwned(job, botId));
   }
 
   private async processOwned(job: Job<FollowUpJob>, botImId: string): Promise<void> {

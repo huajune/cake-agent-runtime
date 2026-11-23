@@ -6,7 +6,6 @@ import type {
 export type {
   HostingManagementDirectory,
   HostingGroupSelection,
-  HostingHandover,
   ManagedHostingGroup,
 } from '../../../src/types/hosting-binding';
 import type { DashboardAccountPage, Tenant } from '../../../src/types/dashboard-account';
@@ -46,8 +45,3 @@ export const bindHostingGroup = (
   organization: string,
   selection: HostingGroupSelection,
 ) => api.post(bindingsPath + '/members/' + memberId, { organization, ...selection });
-export const confirmHostingHandover = (
-  id: string,
-  targetGroupId: string | null,
-  effectiveAt: string,
-) => api.post(bindingsPath + '/handovers/' + id, { targetGroupId, effectiveAt });

@@ -89,7 +89,7 @@ export class ToolActionService implements OnModuleInit {
         }),
         sync: async ({ intent, result }, context) => {
           if (!intent.kind.startsWith('sponge.')) return;
-          // Recovery runs outside the originating request, sometimes after a Bot handover.
+          // Recovery runs outside the originating request and needs its business tenant.
           const [owner] = await this.tenants.resolve([
             { botId: intent.accountId, at: Date.parse(intent.occurredAt) },
           ]);

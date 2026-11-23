@@ -38,9 +38,9 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
   const globalStatus = jest.fn().mockResolvedValue(true);
   const globalToggle = jest.fn().mockResolvedValue({ enabled: false });
   const adminGroupSwitch = jest.fn().mockResolvedValue({ message: '小组开关已保存' });
-  const hosting = { sync: jest.fn(), bind: jest.fn(), confirm: jest.fn() };
+  const hosting = { sync: jest.fn(), bind: jest.fn() };
   const hostingDirectory = {
-    directory: jest.fn().mockResolvedValue({ groups: [], handovers: [] }),
+    directory: jest.fn().mockResolvedValue({ groups: [], tenants: [], checkedAt: null }),
   };
   const operations = {
     list: jest.fn(),
@@ -172,13 +172,12 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
     await request(app.getHttpServer()).get('/group/list').expect(401);
     expect(legacyCalls).toBe(0);
   });
-  it('requires cakeadmin for the hosting directory, sync, binding and actual-time confirmation', async () => {
+  it('requires cakeadmin for the hosting directory, sync and group binding', async () => {
     const api = request(app.getHttpServer());
     const id = 'ab3c0191-8036-45b2-8296-b1d42d8dff81';
     const base = '/dashboard/hosting-bindings';
     const selection = { groupId: 'target', previousGroupId: null, previousOwnerId: null };
     const binding = { ...selection, organization: 'henan' };
-    const handover = { targetGroupId: 'target', effectiveAt: '2026-11-20T08:30:00.000Z' };
     for (const token of ['hq', 'henan-one', 'shanghai']) {
       await api
         .get(base)
@@ -187,7 +186,6 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       for (const [path, body] of [
         ['/sync', {}],
         ['/members/' + id, binding],
-        ['/handovers/' + id, handover],
       ] as const)
         await api
           .post(base + path)
@@ -206,17 +204,6 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       .send(binding)
       .expect(201);
     expect(hosting.bind).toHaveBeenCalledWith(id, 'henan', selection, 'admin');
-    await api
-      .post(base + '/handovers/' + id)
-      .set('Authorization', 'Bearer admin')
-      .send(handover)
-      .expect(201);
-    expect(hosting.confirm).toHaveBeenCalledWith(id, 'target', handover.effectiveAt, 'admin');
-    await api
-      .post(base + '/handovers/' + id)
-      .set('Authorization', 'Bearer admin')
-      .send({ ...handover, effectiveAt: 'yesterday' })
-      .expect(400);
   });
   it('only the dedicated administrator can list, provision, reset, disable and transfer accounts', async () => {
     const staffId = 'ab3c0191-8036-45b2-8296-b1d42d8dff81';

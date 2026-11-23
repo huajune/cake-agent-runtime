@@ -181,7 +181,7 @@ describe('BookingSnapshotService', () => {
     );
   });
 
-  it('同一 Bot 交接后，两份候选人预约缓存随组织分开', async () => {
+  it('候选人预约快照只读取当前组织的缓存', async () => {
     const cache = new Map<string, unknown>();
     redis.get.mockImplementation(async (key: string) => cache.get(key) ?? null);
     redis.setex.mockImplementation(async (key: string, _ttl: number, value: unknown) =>

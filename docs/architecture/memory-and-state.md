@@ -6,7 +6,7 @@
 
 ## 1. 一张图看全局
 
-图表中的 Redis 键省略环境和业务组织前缀。同一 Bot 跨组织交接后，收资表和主、活动候选人指针均从新组织的 `tenant:{tenantId}:` 空间读取。
+图表中的 Redis 键省略环境和业务组织前缀。收资表和主、活动候选人指针均从托管号所属组织的 `tenant:{tenantId}:` 空间读取。
 
 ```text
 候选人 × bot 聊天关系（sessionId = chatId）

@@ -6,7 +6,8 @@ DECLARE
   at_henan timestamptz := '2026-11-21 09:00+08';
   at_supplier timestamptz := '2026-11-21 15:00+08';
   reports jsonb;
-  bot constant text := 'qa-tenant-transfer-bot';
+  bot constant text := 'qa-henan-bot';
+  supplier_bot constant text := 'qa-supplier-bot';
   session constant text := 'qa-shared-session';
   corp constant text := 'qa-shared-corp';
   group_a constant text := 'qa-business-before';
@@ -21,14 +22,14 @@ BEGIN
   INSERT INTO hosting_group_ownership(connection_id,group_id,effective_from,tenant_id)
     VALUES('stride-primary',group_a,at_henan,'henan'),('stride-primary',group_b,at_henan,supplier);
   INSERT INTO hosting_bot_memberships(connection_id,bot_im_id,effective_from,group_id)
-    VALUES('stride-primary',bot,at_henan,group_a),('stride-primary',bot,at_supplier,group_b);
+    VALUES('stride-primary',bot,at_henan,group_a),('stride-primary',supplier_bot,at_henan,group_b);
 
   INSERT INTO chat_messages(chat_id,message_id,role,content,timestamp,im_bot_id,hosting_connection_id)
     VALUES(session,'qa-dec-before','user','before',at_henan,bot,'stride-primary'),
-      (session,'qa-dec-after','user','after',at_supplier,bot,'stride-primary');
+      (session,'qa-dec-after','user','after',at_supplier,supplier_bot,'stride-primary');
   IF hosting_event_tenants('stride-primary',jsonb_build_array(
     jsonb_build_object('bot',bot,'at',at_henan,'message_id','qa-dec-before'),
-    jsonb_build_object('bot',bot,'at',at_supplier,'message_id','qa-dec-after'),
+    jsonb_build_object('bot',supplier_bot,'at',at_supplier,'message_id','qa-dec-after'),
     jsonb_build_object('bot','qa-unknown','at',at_henan))) IS DISTINCT FROM jsonb_build_array('henan',supplier,NULL)
     THEN RAISE EXCEPTION 'wrong original ownership for merged inputs'; END IF;
 
@@ -53,23 +54,23 @@ BEGIN
   IF NOT EXISTS (SELECT FROM reengagement_touch_records t JOIN message_processing_records p ON p.message_id=t.batch_id
     WHERE t.touch_key='qa-dec-touch' AND p.tenant_id=t.tenant_id AND p.source_occurred_at=t.anchor_at
       AND p.received_at>t.anchor_at)
-    THEN RAISE EXCEPTION 'proactive turn must inherit the trigger event time even when processed after a handover'; END IF;
+    THEN RAISE EXCEPTION 'proactive turn must inherit the trigger event time when processed later'; END IF;
   INSERT INTO handoff_events(chat_id,corp_id,reason_code,idempotency_key,created_at,bot_im_id)
-    VALUES(session,corp,'other','qa-dec-handoff',at_supplier,bot);
+    VALUES(session,corp,'other','qa-dec-handoff',at_supplier,supplier_bot);
   IF (SELECT tenant_id FROM handoff_events WHERE idempotency_key='qa-dec-handoff') IS DISTINCT FROM supplier
     OR (SELECT tenant_id FROM reengagement_touch_records WHERE touch_key='qa-dec-touch') IS DISTINCT FROM 'henan'
     THEN RAISE EXCEPTION 'touch or handoff inherited the wrong tenant'; END IF;
 
   PERFORM upsert_ops_event(corp,'candidate.message_received','first',at_henan,bot,p_chat_id=>session);
-  PERFORM upsert_ops_event(corp,'candidate.message_received','second',at_supplier,bot,p_chat_id=>session);
+  PERFORM upsert_ops_event(corp,'candidate.message_received','second',at_supplier,supplier_bot,p_chat_id=>session);
   PERFORM upsert_ops_event(corp,'candidate.message_received','first',at_supplier,bot,p_chat_id=>session);
   PERFORM record_user_activity('qa-tenant-intake',session,NULL,NULL,1,0,at_henan,NULL,bot);
   PERFORM record_user_activity('qa-tenant-intake',session,NULL,NULL,1,0,at_supplier,NULL,bot);
-  PERFORM upsert_user_activity(session,p_active_at=>at_supplier,p_im_bot_id=>bot);
+  PERFORM upsert_user_activity(session,p_active_at=>at_supplier,p_im_bot_id=>supplier_bot);
   IF (SELECT count(*) FROM daily_ops_report WHERE corp_id=corp AND candidate_message_count=1 AND tenant_id IN ('henan',supplier))<>2
     OR (SELECT count(*) FROM user_activity WHERE chat_id=session AND message_count=1 AND tenant_id IN ('henan',supplier))<>2
     OR (SELECT tenant_id FROM ops_events WHERE corp_id=corp AND idempotency_key='first') IS DISTINCT FROM 'henan'
-    THEN RAISE EXCEPTION 'same-day transfer or duplicate event contaminated aggregate'; END IF;
+    THEN RAISE EXCEPTION 'same-day activity or duplicate event mixed organizations'; END IF;
 
   IF tenant_dashboard_read('processing-detail',supplier,'2026-11-21','2026-11-21','{"id":"qa-dec-trace"}') IS NOT NULL
     OR tenant_dashboard_read('touch-detail',supplier,'2026-11-21','2026-11-21','{"touchKey":"qa-dec-touch"}') IS NOT NULL
@@ -81,8 +82,8 @@ BEGIN
     OR tenant_dashboard_read('users',supplier,'2026-11-21','2026-11-21','{}')->'users'->0->>'messageCount' IS DISTINCT FROM '1'
     THEN RAISE EXCEPTION 'tenant report includes other owner'; END IF;
   UPDATE tenants SET name='供应商新名称' WHERE id=supplier;
-  IF NOT (hosting_scope_bindings('stride-primary',ARRAY[group_b],ARRAY[bot])->'tenantNames' @> jsonb_build_object(supplier,'供应商新名称'))
-    OR hosting_feishu_route('stride-primary',bot,at_supplier) IS NOT NULL
+  IF NOT (hosting_scope_bindings('stride-primary',ARRAY[group_b],ARRAY[supplier_bot])->'tenantNames' @> jsonb_build_object(supplier,'供应商新名称'))
+    OR hosting_feishu_route('stride-primary',supplier_bot,at_supplier) IS NOT NULL
     THEN RAISE EXCEPTION 'renamed supplier or optional integration failure'; END IF;
 
   PERFORM tenant_upsert_long_term_profile_facts('henan',corp,'person','stable-bot','{}','{"fixture":"A"}');
@@ -93,27 +94,6 @@ BEGIN
   IF (SELECT count(*) FROM agent_long_term_memories WHERE corp_id=corp AND bot_user_id='stable-bot' AND tenant_id IN ('henan',supplier))<>2
     OR (SELECT active_booking->'bookings'->0->>'work_order_id' FROM agent_long_term_memories WHERE corp_id=corp AND tenant_id='henan' AND bot_user_id IS NULL) IS DISTINCT FROM '111'
     THEN RAISE EXCEPTION 'memory profile or booking crossed tenants'; END IF;
-  -- A move is discovered after noon. Previously stamped facts are hidden at
-  -- detection and corrected when the effective time is confirmed.
-  INSERT INTO message_processing_records(message_id,chat_id,bot_im_id,received_at,source_occurred_at,status)
-    VALUES('qa-dec-late',session,bot,at_henan+interval '3 hours',at_henan+interval '3 hours','success');
-  PERFORM upsert_ops_event(corp,'agent.replied','late',at_henan+interval '3 hours',bot,p_chat_id=>session);
-  PERFORM record_user_activity('qa-late-act',session,NULL,NULL,1,5,at_henan+interval '3 hours',NULL,bot);
-  INSERT INTO hosting_bot_handovers(connection_id,bot_im_id,from_group_id,to_group_id,review_from,detected_at,target_changed_since)
-    VALUES('stride-primary',bot,group_a,group_b,at_henan+interval '1 hour',at_henan+interval '4 hours',at_henan+interval '4 hours');
-  IF EXISTS(SELECT FROM tenant_visible_message_processing_records WHERE message_id='qa-dec-late') THEN
-    RAISE EXCEPTION 'unconfirmed transfer exposed mixed facts'; END IF;
-  INSERT INTO hosting_bot_memberships VALUES('stride-primary',bot,at_henan+interval '2 hours',group_b);
-  UPDATE hosting_bot_handovers SET effective_at=at_henan+interval '2 hours',confirmed_at=at_henan+interval '5 hours'
-    WHERE bot_im_id=bot AND connection_id='stride-primary' AND confirmed_at IS NULL;
-  IF reconcile_business_handover('stride-primary')<3 OR reconcile_business_handover('stride-primary')<>0
-    THEN RAISE EXCEPTION 'bounded transfer repair lost facts or repeated a correction'; END IF;
-  IF (SELECT tenant_id FROM tenant_visible_message_processing_records WHERE message_id='qa-dec-late') IS DISTINCT FROM supplier
-    OR (SELECT agent_reply_count FROM daily_ops_report WHERE corp_id=corp AND tenant_id=supplier) IS DISTINCT FROM 1
-    OR (SELECT agent_reply_count FROM daily_ops_report WHERE corp_id=corp AND tenant_id='henan') IS DISTINCT FROM 0
-    OR (SELECT token_usage FROM user_activity WHERE chat_id=session AND tenant_id=supplier) IS DISTINCT FROM 5
-    OR (SELECT message_count FROM user_activity WHERE chat_id=session AND tenant_id='henan') IS DISTINCT FROM 1
-    THEN RAISE EXCEPTION 'retroactive correction did not move the right counters'; END IF;
   IF has_table_privilege('authenticated','public.chat_messages','SELECT') OR has_table_privilege('anon','public.message_processing_records','SELECT')
     OR has_function_privilege('authenticated','public.tenant_dashboard_read(text,text,date,date,jsonb)','EXECUTE')
     OR has_function_privilege('anon','public.tenant_upsert_long_term_profile_facts(text,text,text,text,jsonb,jsonb,jsonb)','EXECUTE')

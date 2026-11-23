@@ -1,10 +1,4 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { ConflictException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { CRON_JOB } from '@infra/queue/cron.constants';
@@ -23,7 +17,6 @@ import { CenterScopeService } from './center-scope.service';
 
 @Injectable()
 export class HostingBindingsService {
-  private readonly logger = new Logger(HostingBindingsService.name);
   private syncing?: Promise<number>;
   constructor(
     private readonly repository: HostingBindingsRepository,
@@ -39,12 +32,8 @@ export class HostingBindingsService {
     if (this.config.get<string>('NODE_ENV') !== 'production') return;
     await this.cron.run(
       CRON_JOB.HOSTING_DIRECTORY_SYNC,
-      { timeMs: 90_000, maxRows: 12_300 },
+      { timeMs: 90_000, maxRows: 12_000 },
       async (budget) => {
-        await budget.checkpoint();
-        budget.recordProcessed(await this.repository.call<number>('reconcile_hosting_handover'));
-        await budget.checkpoint();
-        budget.recordProcessed(await this.repository.call<number>('reconcile_business_handover'));
         await budget.checkpoint();
         budget.recordProcessed(await this.sync());
       },
@@ -69,24 +58,6 @@ export class HostingBindingsService {
       p_actor: actor,
     });
     this.scopes.invalidate();
-  }
-
-  async confirm(id: string, target: string | null, effectiveAt: string, actor: string) {
-    await this.sync();
-    await this.repository.call('confirm_hosting_handover', {
-      p_id: id,
-      p_target_group: target,
-      p_effective_at: effectiveAt,
-      p_actor: actor,
-    });
-    this.scopes.invalidate();
-    // Confirmation is durable. The scheduled worker resumes from its cursor if this first batch fails.
-    try {
-      await this.repository.call('reconcile_hosting_handover');
-      await this.repository.call('reconcile_business_handover');
-    } catch {
-      this.logger.warn('托管号交接已确认，业务归属核对将在下次同步时重试');
-    }
   }
 
   private assertWritable() {

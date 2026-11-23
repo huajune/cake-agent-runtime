@@ -166,7 +166,7 @@ describe('CollectionFormStore', () => {
     ).resolves.toBe(shared.candidateRef);
   });
 
-  it('Bot 交接后按组织加载、补写和删除各自的表单及指针', async () => {
+  it('按组织加载、补写和删除各自的收资表与候选人指针', async () => {
     const snapshots = new Map<string, unknown>();
     redis.setex.mockImplementation(async (key, _ttl, entry) => snapshots.set(key, entry));
     redis.get.mockImplementation(async (key) => snapshots.get(key) ?? null);

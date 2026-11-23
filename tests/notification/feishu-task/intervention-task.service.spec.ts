@@ -97,7 +97,7 @@ describe('InterventionTaskService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete env.HENAN_FEISHU_TASK_TASKLIST_GUID;
-    tenants.resolve.mockResolvedValue(['fixture-org', 'fixture-org']);
+    tenants.resolve.mockResolvedValue(['fixture-org']);
     centerScope.feishuRoute.mockResolvedValue('internal');
     // clearAllMocks 不还原 mockImplementation，显式重置字段解析默认行为（缺列用例会覆盖它）
     client.resolveFieldGuid.mockImplementation(
@@ -138,7 +138,7 @@ describe('InterventionTaskService', () => {
     jest.useRealTimers();
   });
 
-  it('队列重建触发时的组织，按该组织读预约，交接后的旧任务停止', async () => {
+  it('按托管号所属组织读取预约，队列组织不匹配时跳过任务', async () => {
     longTerm.tryGetActiveBookings.mockImplementationOnce(async () => {
       expect(businessTenant()).toBe('fixture-org');
       return null;
@@ -150,16 +150,15 @@ describe('InterventionTaskService', () => {
     };
     await expect(service.prepareRequest(job)).resolves.toMatchObject({ tasklistGuid: 'tl-1' });
     expect(longTerm.tryGetActiveBookings).toHaveBeenCalledTimes(1);
-    tenants.resolve.mockResolvedValue(['fixture-org', 'next-org']);
-    await expect(service.prepareRequest(job)).resolves.toBeNull();
+    await expect(service.prepareRequest({ ...job, tenantId: 'other-org' })).resolves.toBeNull();
+    expect(longTerm.tryGetActiveBookings).toHaveBeenCalledTimes(1);
+    expect(client.createTask).not.toHaveBeenCalled();
     await runForTenant('fixture-org', () => service.submit(basePayload));
     expect(taskQueue.add).toHaveBeenCalledWith(
       'create',
       expect.objectContaining({ tenantId: 'fixture-org' }),
       expect.anything(),
     );
-    expect(longTerm.tryGetActiveBookings).toHaveBeenCalledTimes(1);
-    expect(client.createTask).not.toHaveBeenCalled();
   });
 
   it('DEFAULT_FIELD_NAMES 键顺序即清单表头列顺序（列顺序 = 创建顺序，不可重排）', () => {

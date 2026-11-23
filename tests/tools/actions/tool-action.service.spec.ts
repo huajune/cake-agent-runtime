@@ -251,7 +251,7 @@ describe('ToolActionService actual external boundary', () => {
   });
 
   it.each(['sponge.booking', 'sponge.modify', 'sponge.cancel'])(
-    'repairs %s under the organization at the original input time after a Bot transfer',
+    'repairs %s under the organization of the original action',
     async (kind) => {
       const intent = { ...toolActionIntent(context, input), kind };
       const record = { intent, result: booking } as ActionRecord;

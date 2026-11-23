@@ -96,7 +96,7 @@ describe('FollowUpProcessor', () => {
   beforeEach(() => {
     jest.useRealTimers();
     tenants = {
-      resolve: jest.fn().mockResolvedValue(['qa-tenant', 'qa-tenant']),
+      resolve: jest.fn().mockResolvedValue(['qa-tenant']),
       historicalBot: jest.fn().mockResolvedValue('qa-bot'),
     };
     actionPermit = { evaluate: jest.fn().mockResolvedValue({ allowed: true }) };
@@ -2447,11 +2447,8 @@ describe('FollowUpProcessor', () => {
       );
     });
 
-    it.each([
-      [null, 'new-org'],
-      ['old-org', 'new-org'],
-    ])('锚点归属为 %s、当前为 %s 时不处理旧任务', async (owner, current) => {
-      tenants.resolve.mockResolvedValue([owner, current]);
+    it('触发事件缺少组织归属时跳过投递', async () => {
+      tenants.resolve.mockResolvedValue([null]);
       await buildProcessor().process(makeJob());
       expect(messageTracking.recordProactiveTurn).not.toHaveBeenCalled();
       expect(delivery.deliver).not.toHaveBeenCalled();

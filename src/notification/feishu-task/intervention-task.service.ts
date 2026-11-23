@@ -389,12 +389,8 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     // 复用中心归属；查询失败就停止，不能把河南任务回退到总部。
     if (!botImId) throw new Error('创建任务缺少托管账号，无法确认清单归属');
     const triggeredAt = new Date(job.triggeredAt);
-    const [owner, current] = await this.tenants.resolve([
-      { botId: botImId, at: triggeredAt.getTime() },
-      { botId: botImId, at: Date.now() },
-    ]);
-    // The recipient and external account follow the current Bot binding.
-    if (!owner || owner !== current || (job.tenantId && job.tenantId !== owner)) return null;
+    const [owner] = await this.tenants.resolve([{ botId: botImId, at: triggeredAt.getTime() }]);
+    if (!owner || (job.tenantId && job.tenantId !== owner)) return null;
     const route = await this.centerScope.feishuRoute(botImId, triggeredAt);
     if (!route) return null;
     const isHenan = route === 'henan';

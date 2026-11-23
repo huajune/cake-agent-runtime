@@ -20,7 +20,7 @@ export default function InfoCard() {
         </li>
         <li>
           <strong>组织归属</strong>由管理员在「账号管理」绑定托管小组。组内新加入的企微号会随 Stride
-          目录同步。换组的账号由管理员确认交接时间。
+          目录同步，归入小组所属组织。
         </li>
       </ul>
       <div className={styles.tipBox}>

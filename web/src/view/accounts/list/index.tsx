@@ -4,7 +4,6 @@ import { ExternalLink, UserPlus } from 'lucide-react';
 import { loadAccounts, loadHostingDirectory, syncHostingDirectory } from '@/api/dashboard-accounts';
 import { ACCOUNT_ONBOARDING_SOP_URL } from '@/constants';
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
-import HandoverReview from './components/HandoverReview';
 import AccountDialog, { type AccountAction } from './components/AccountDialog';
 import styles from './styles/index.module.scss';
 
@@ -81,15 +80,6 @@ export default function Accounts() {
         </button>
       </div>
       {directory.isError && <p role="alert">托管目录暂不可用，请重新同步。</p>}
-      {directory.data && (
-        <HandoverReview
-          directory={directory.data}
-          onSaved={() => {
-            setNotice('交接已确认');
-            refresh();
-          }}
-        />
-      )}
       {notice && <p role="status">{notice}</p>}
       {result.isLoading ? (
         <p role="status">正在加载账号…</p>

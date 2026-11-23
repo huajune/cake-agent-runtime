@@ -28,23 +28,23 @@ BEGIN
     ('qa-channel','qa-a','2026-01-01Z','henan'),('qa-channel','qa-b','2026-01-01Z','shanghai_recruitment'),
     ('qa-other','qa-a','2026-01-01Z','qa-supplier');
   INSERT INTO public.hosting_bot_memberships VALUES
-    ('qa-channel','qa-bot','2026-01-01Z','qa-a'),('qa-channel','qa-bot','2026-02-01Z','qa-b'),
-    ('qa-channel','qa-bot','2026-03-01Z',NULL),('qa-other','qa-bot','2026-01-01Z','qa-a');
+    ('qa-channel','qa-bot','2026-01-01Z','qa-a'),('qa-channel','qa-shanghai-bot','2026-01-01Z','qa-b'),
+    ('qa-other','qa-bot','2026-01-01Z','qa-a');
   IF public.hosting_tenant_at('qa-channel','qa-newly-scanned','qa-a','2026-01-31Z') IS DISTINCT FROM 'henan'
     OR public.hosting_tenant_at('qa-channel','qa-newly-scanned',NULL,'2026-01-31Z') IS NOT NULL
     THEN RAISE EXCEPTION 'new bot must have an original event group or a dated binding'; END IF;
   INSERT INTO public.chat_messages (chat_id,message_id,role,content,timestamp,im_bot_id,hosting_connection_id,hosting_group_id)
-    VALUES ('qa-chat','qa-after','user','after','2026-02-01Z','qa-bot','qa-channel','qa-b'),
+    VALUES ('qa-chat','qa-after','user','after','2026-02-01Z','qa-shanghai-bot','qa-channel','qa-b'),
            ('qa-chat','qa-before','user','before','2026-01-31Z','qa-bot','qa-channel',NULL),
            ('qa-chat','qa-conflict','user','conflict','2026-01-31Z','qa-bot','qa-channel','qa-b'),
-           ('qa-chat','qa-removed','user','closed','2026-03-01Z','qa-bot','qa-channel','qa-a'),
+           ('qa-chat','qa-unregistered','user','unknown Bot','2026-03-01Z','qa-unknown','qa-channel',NULL),
            ('qa-chat','qa-other','user','other','2026-01-31Z','qa-bot','qa-other','qa-a'),
            ('qa-chat','qa-legacy','user','legacy','2026-01-30Z','qa-bot',NULL,NULL),
            ('qa-chat','qa-missing','user','missing','2026-01-30Z',NULL,NULL,NULL);
   IF (SELECT tenant_id FROM public.chat_messages WHERE message_id='qa-before') IS DISTINCT FROM 'henan'
     OR (SELECT tenant_id FROM public.chat_messages WHERE message_id='qa-after') IS DISTINCT FROM 'shanghai_recruitment'
     OR (SELECT tenant_id FROM public.chat_messages WHERE message_id='qa-other') IS DISTINCT FROM 'qa-supplier'
-    OR EXISTS (SELECT FROM public.chat_messages WHERE message_id IN ('qa-removed','qa-conflict','qa-legacy','qa-missing') AND tenant_id IS NOT NULL)
+    OR EXISTS (SELECT FROM public.chat_messages WHERE message_id IN ('qa-unregistered','qa-conflict','qa-legacy','qa-missing') AND tenant_id IS NOT NULL)
     THEN RAISE EXCEPTION 'event-time ownership failed'; END IF;
   SELECT * INTO result FROM public.backfill_chat_tenants('qa-channel',ARRAY['qa-legacy','qa-missing','qa-legacy','qa-absent']);
   IF (result.requested,result.matched,result.assignable,result.applied) IS DISTINCT FROM (3,2,1,0)
