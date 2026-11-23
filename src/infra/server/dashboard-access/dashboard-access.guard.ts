@@ -1,10 +1,9 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
-import { centerRoute } from './center-routes';
+import type { CenterRoute } from './center-routes';
 
-/** Regional staff use the same route policy. The center service checks their own organization's data. */
-export function authorizeCenterRequest(request: Request): void {
-  const route = centerRoute(request);
+/** The center service checks the target organization after the route is admitted. */
+export function authorizeCenterRequest(request: Request, route: CenterRoute | undefined): void {
   if (route && request.method === 'GET') return;
   if (
     route === 'group-switch' &&

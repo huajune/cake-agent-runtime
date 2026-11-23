@@ -2,6 +2,7 @@ import type { GroupInfo } from '../../../api/types/monitoring.types';
 import {
   DASHBOARD_ORGANIZATIONS,
   isDashboardOrganization,
+  type DashboardOrganization,
 } from '../../../../../src/types/dashboard-account';
 import {
   groupDescriptionLines,
@@ -14,15 +15,19 @@ const UNASSIGNED = '归属待确认';
 interface GroupSection {
   name: string;
   blocked: number;
-  groups: { id: string; name: string; note: string; blocked: boolean }[];
+  groups: { id: string; name: string; note: string; blocked: boolean; canToggle: boolean }[];
 }
 
 export function summarizeHostingGroups(
   groups: GroupInfo[],
   blockedIds: string[],
   henanMarker: string,
-  centerName?: string,
+  access?: { organization: DashboardOrganization; isAdministrator: boolean } | null,
 ) {
+  const centerName =
+    access && access.organization !== 'headquarters'
+      ? DASHBOARD_ORGANIZATIONS[access.organization]
+      : undefined;
   // 展示分组仅整理服务端已授权返回的小组。上海的两种备注分别代表不同团队。
   const namesByMarker = new Map([
     ...SHANGHAI_GROUP_NAMES,
@@ -55,6 +60,9 @@ export function summarizeHostingGroups(
       name: group.name,
       note: lines.filter((line) => line !== marker).join('\n'),
       blocked,
+      canToggle: Boolean(
+        access && (access.isAdministrator || group.tenantId === access.organization),
+      ),
     });
   }
   const sections = [...byName.values()].sort(

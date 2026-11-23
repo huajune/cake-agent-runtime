@@ -1,4 +1,5 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import type { DashboardOrganization } from '@/types/dashboard-account';
 import { RedisService } from '@infra/redis/redis.service';
 import { GroupBlacklistRepository } from '../repositories/group-blacklist.repository';
 import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
@@ -63,11 +64,17 @@ export class GroupBlacklistService {
     return items;
   }
 
-  async setGroupBlacklisted(groupId: string, blacklisted: boolean, reason?: string): Promise<void> {
+  async setGroupBlacklisted(
+    groupId: string,
+    blacklisted: boolean,
+    reason?: string,
+    tenantId?: DashboardOrganization,
+  ): Promise<void> {
     const items = await this.groupBlacklistRepository.setGroupBlacklisted(
       groupId,
       blacklisted,
       reason,
+      tenantId,
     );
     this.populateMemoryCache(items);
     await this.persistSharedCache();

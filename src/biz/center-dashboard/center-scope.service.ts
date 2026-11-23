@@ -11,7 +11,7 @@ import {
   type GroupDirectoryProvider,
   type HostingGroup,
 } from '@biz/ops-events/providers/group-directory.provider';
-import type { DashboardCenter } from '@/types/dashboard-account';
+import type { DashboardOrganization } from '@/types/dashboard-account';
 import { HostingBindingsRepository } from './hosting-bindings.repository';
 
 export interface CenterScope {
@@ -44,7 +44,10 @@ export class CenterScopeService {
     this.loading = undefined;
   }
 
-  async getScope(fresh = false, organization: DashboardCenter = 'henan'): Promise<CenterScope> {
+  async getScope(
+    fresh = false,
+    organization: DashboardOrganization = 'henan',
+  ): Promise<CenterScope> {
     try {
       const [groups, bots] = await this.liveDirectory(fresh);
       // A cached Stride snapshot never grants access on its own after a move.

@@ -1,4 +1,6 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ForbiddenException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import type { DashboardOrganization } from '@/types/dashboard-account';
+import { STRIDE_PRIMARY_CONNECTION } from '@/types/hosting-route';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
@@ -23,15 +25,21 @@ export class GroupBlacklistRepository extends BaseRepository {
     groupId: string,
     blacklisted: boolean,
     reason?: string,
+    tenantId?: DashboardOrganization,
   ): Promise<GroupBlacklistItem[]> {
     if (!this.isAvailable()) throw new ServiceUnavailableException('托管开关暂不可用');
-    const { data, error } = await this.getClient()
-      .rpc('set_hosting_group_blacklisted', {
-        p_group_id: groupId,
-        p_blacklisted: blacklisted,
-        p_reason: reason ?? null,
-      })
-      .abortSignal(AbortSignal.timeout(5000));
+    const params = { p_group_id: groupId, p_blacklisted: blacklisted, p_reason: reason ?? null };
+    const client = this.getClient();
+    const operation =
+      tenantId === undefined
+        ? client.rpc('set_hosting_group_blacklisted', params)
+        : client.rpc('set_tenant_hosting_group_blacklisted', {
+            ...params,
+            p_connection_id: STRIDE_PRIMARY_CONNECTION,
+            p_tenant_id: tenantId,
+          });
+    const { data, error } = await operation.abortSignal(AbortSignal.timeout(5000));
+    if (error?.code === '42501') throw new ForbiddenException('无权操作此小组，请刷新小组列表');
     if (error || !Array.isArray(data))
       throw new ServiceUnavailableException('托管开关保存失败，请刷新确认后重试');
     return data as GroupBlacklistItem[];

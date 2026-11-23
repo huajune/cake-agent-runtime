@@ -37,6 +37,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
   const center = { handle: jest.fn() };
   const globalStatus = jest.fn().mockResolvedValue(true);
   const globalToggle = jest.fn().mockResolvedValue({ enabled: false });
+  const adminGroupSwitch = jest.fn().mockResolvedValue({ message: '小组开关已保存' });
   const hosting = { sync: jest.fn(), bind: jest.fn(), confirm: jest.fn() };
   const hostingDirectory = {
     directory: jest.fn().mockResolvedValue({ groups: [], handovers: [] }),
@@ -60,7 +61,11 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
         { provide: HostingBindingsRepository, useValue: hostingDirectory },
         {
           provide: HostingConfigFacadeService,
-          useValue: { getAiReplyStatus: globalStatus, toggleAiReply: globalToggle },
+          useValue: {
+            getAiReplyStatus: globalStatus,
+            toggleAiReply: globalToggle,
+            addToBlacklist: adminGroupSwitch,
+          },
         },
         DashboardAccessService,
         ApiTokenGuard,
@@ -131,6 +136,27 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       .set('Authorization', 'Bearer shanghai')
       .expect(403);
     expect(legacyCalls).toBe(0);
+  });
+  it('keeps headquarters reads global and routes both personal group switch actions to the headquarters tenant', async () => {
+    const api = request(app.getHttpServer());
+    for (const call of [api.post('/config/blacklist'), api.delete('/config/blacklist')]) {
+      await call
+        .set('Authorization', 'Bearer hq')
+        .set('Host', 'cake.test')
+        .set('Origin', 'https://cake.test')
+        .set('X-Center-Action', 'hosting')
+        .send({ id: 'hq', type: 'groupId' })
+        .expect(200);
+    }
+    expect(center.handle).toHaveBeenCalledTimes(2);
+    expect(center.handle).toHaveBeenCalledWith('group-switch', expect.anything(), 'headquarters');
+    expect(adminGroupSwitch).not.toHaveBeenCalled();
+    await api
+      .post('/config/blacklist')
+      .set('Authorization', 'Bearer admin')
+      .send({ id: 'own', type: 'groupId' })
+      .expect(200);
+    expect(adminGroupSwitch).toHaveBeenCalledTimes(1);
   });
   it('two employees see the same center regardless of source network', async () => {
     for (const token of ['henan-one', 'henan-two']) {

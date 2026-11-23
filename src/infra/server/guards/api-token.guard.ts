@@ -11,6 +11,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { DashboardAccessService } from '../dashboard-access/dashboard-access.service';
 import { authorizeCenterRequest } from '../dashboard-access/dashboard-access.guard';
+import { centerRoute, requiresTenantScope } from '../dashboard-access/center-routes';
 import { isDashboardAdministrator } from '@/types/dashboard-account';
 
 export const IS_PUBLIC_KEY = 'isPublic';
@@ -48,7 +49,8 @@ export class ApiTokenGuard implements CanActivate {
     const account = await this.access.authenticate(request, token);
     if (adminOnly && !isDashboardAdministrator(account))
       throw new ForbiddenException('仅管理员 cakeadmin 可使用此功能');
-    if (account.organization !== 'headquarters') authorizeCenterRequest(request);
+    const route = centerRoute(request);
+    if (requiresTenantScope(account, route)) authorizeCenterRequest(request, route);
     return true;
   }
 }

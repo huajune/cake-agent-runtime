@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import { isDashboardAdministrator, type DashboardAccount } from '@/types/dashboard-account';
 
 export const CENTER_READ_ROUTES = {
   '/dashboard/access': 'access',
@@ -28,8 +29,18 @@ export type CenterRoute =
   | 'messages'
   | 'processing-detail'
   | 'group-switch';
-export function centerRoute(request: Pick<Request, 'method' | 'path'>): CenterRoute | undefined {
-  const path = request.path.replace(/\/+$/, '') || '/';
+export function requiresTenantScope(account: DashboardAccount, route: CenterRoute | undefined) {
+  return (
+    account.organization !== 'headquarters' ||
+    (route === 'group-switch' && !isDashboardAdministrator(account))
+  );
+}
+
+export function centerRoute(request: Request): CenterRoute | undefined {
+  // Use the handler Express actually matched, including its canonical path casing.
+  const matchedPath: unknown = request.route?.path;
+  const path =
+    (typeof matchedPath === 'string' ? matchedPath : request.path).replace(/\/+$/, '') || '/';
   if (request.method === 'GET') {
     if (/^\/analytics\/chat-sessions\/[^/]+\/messages$/.test(path)) return 'messages';
     if (/^\/analytics\/message-processing-records\/[^/]+$/.test(path)) return 'processing-detail';

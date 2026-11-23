@@ -27,8 +27,8 @@ describe('小组托管状态分组', () => {
       ['归属待确认', 3, 0],
     ]);
     expect(result.sections[2].groups).toEqual([
-      { id: 'a', name: '一组', note: '晚班', blocked: true },
-      { id: 'b', name: '二组', note: '', blocked: false },
+      { id: 'a', name: '一组', note: '晚班', blocked: true, canToggle: false },
+      { id: 'b', name: '二组', note: '', blocked: false, canToggle: false },
     ]);
     expect(result.sections[3].groups[2].note).toBe('河南自招团队成员\n上海自招团队成员');
   });
@@ -40,8 +40,31 @@ describe('小组托管状态分组', () => {
     expect(hq.sections[0].groups[0].note).toBe('单独备注');
     const old = { ...group, description: DEFAULT_HENAN_GROUP_MARKER };
     expect(summarizeHostingGroups([old], [], '河南专用标识').sections[0].name).toBe('归属待确认');
-    const center = summarizeHostingGroups([group], ['outside'], '河南专用标识', '河南自招中心');
+    const center = summarizeHostingGroups([group], ['outside'], '河南专用标识', {
+      organization: 'henan',
+      isAdministrator: false,
+    });
     expect(center).toEqual(hq);
+  });
+  it('总部能查看全部小组，个人账号只操作登记在自己组织的小组', () => {
+    const groups = [
+      { id: 'a', name: '智能体组', tenantId: 'headquarters' },
+      { id: 'b', name: '中心组', tenantId: 'henan' },
+      { id: 'c', name: '待绑定', tenantId: null },
+      { id: 'd', name: '仅有备注', description: '上海智能体组内部成员' },
+    ];
+    const permissions = (organization: 'headquarters' | 'henan', isAdministrator = false) =>
+      Object.fromEntries(
+        summarizeHostingGroups(groups, [], DEFAULT_HENAN_GROUP_MARKER, {
+          organization,
+          isAdministrator,
+        }).sections.flatMap((section) =>
+          section.groups.map((group) => [group.id, group.canToggle]),
+        ),
+      );
+    expect(permissions('headquarters')).toEqual({ a: true, b: false, c: false, d: false });
+    expect(permissions('henan')).toEqual({ a: false, b: true, c: false, d: false });
+    expect(permissions('headquarters', true)).toEqual({ a: true, b: true, c: true, d: true });
   });
   it('已登记的组织优先，待绑定的小组不会因为旧备注归入中心', () => {
     const groups = [

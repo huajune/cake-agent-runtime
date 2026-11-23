@@ -30,18 +30,26 @@ describe('Existing dashboard contracts under a center scope', () => {
     ]);
   });
   it('filters existing group and blacklist responses without exposing global state', async () => {
-    expect(await service.handle('groups', req())).toEqual([{ id: 'own', name: '本组' }]);
+    expect(await service.handle('groups', req())).toEqual([
+      { id: 'own', name: '本组', tenantId: 'henan' },
+    ]);
     expect(await service.handle('blacklist', req())).toEqual({ chatIds: [], groupIds: ['own'] });
   });
   it('freshly checks only the submitted owned group and blocks foreign/global writes', async () => {
     await service.handle('group-switch', req({ id: 'own', type: 'groupId' }, 'POST'));
     expect(scopes.getScope).toHaveBeenCalledWith(true, 'henan');
-    expect(blacklist.setGroupBlacklisted).toHaveBeenCalledWith('own', true, expect.any(String));
+    expect(blacklist.setGroupBlacklisted).toHaveBeenCalledWith(
+      'own',
+      true,
+      expect.any(String),
+      'henan',
+    );
     await service.handle('group-switch', req({ id: 'own', type: 'groupId' }, 'DELETE'));
     expect(blacklist.setGroupBlacklisted).toHaveBeenLastCalledWith(
       'own',
       false,
       expect.any(String),
+      'henan',
     );
     await expect(
       service.handle('group-switch', req({ id: 'foreign', type: 'groupId' }, 'POST')),

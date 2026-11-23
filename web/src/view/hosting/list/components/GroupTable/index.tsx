@@ -79,18 +79,22 @@ export default function GroupTable({
                       <span className={styles.groupId}>{group.id}</span>
                       {group.note && <span className={styles.note}>{group.note}</span>}
                     </div>
-                    <label className={styles.toggle}>
+                    <div className={styles.toggle}>
                       <span className={group.blocked ? styles.blocked : styles.active}>
                         {group.blocked ? '已屏蔽' : '托管中'}
                       </span>
-                      <Switch
-                        aria-label={group.name + '托管开关'}
-                        size="sm"
-                        checked={!group.blocked}
-                        onChange={(enabled) => onToggleBlacklist(group.id, enabled)}
-                        pending={isPending}
-                      />
-                    </label>
+                      {group.canToggle ? (
+                        <Switch
+                          aria-label={group.name + '托管开关'}
+                          size="sm"
+                          checked={!group.blocked}
+                          onChange={(enabled) => onToggleBlacklist(group.id, enabled)}
+                          pending={isPending}
+                        />
+                      ) : (
+                        <span className={styles.readOnly}>仅查看</span>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
-import { DASHBOARD_ORGANIZATIONS, type DashboardCenter } from '@/types/dashboard-account';
+import { DASHBOARD_ORGANIZATIONS, type DashboardOrganization } from '@/types/dashboard-account';
 import { CenterRoute } from '@infra/server/dashboard-access/center-routes';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/scenario-registry';
@@ -15,12 +15,13 @@ export class CenterDashboardService {
     private readonly repository: CenterDashboardRepository,
   ) {}
 
-  async handle(kind: CenterRoute, request: Request, organization: DashboardCenter = 'henan') {
+  async handle(kind: CenterRoute, request: Request, organization: DashboardOrganization = 'henan') {
     const input: Record<string, unknown> = { ...request.query };
     if (kind === 'messages') input.chatId = request.params.chatId;
     if (readsOwnedChat(kind)) return this.repository.read(kind, { tenantId: organization }, input);
     const scope = await this.scopes.getScope(kind === 'group-switch', organization);
-    if (kind === 'groups') return scope.groups;
+    if (kind === 'groups')
+      return scope.groups.map((group) => ({ ...group, tenantId: organization }));
     if (kind === 'bots') return scope.bots;
     if (kind === 'blacklist') {
       const groups = await this.blacklist.getGroupBlacklistStrict();
@@ -40,13 +41,14 @@ export class CenterDashboardService {
         typeof body.id !== 'string' ||
         Object.keys(body).some((key) => !['id', 'type'].includes(key))
       )
-        throw new BadRequestException('只允许操作本中心的小组开关');
+        throw new BadRequestException('请选择本组织的托管小组');
       if (!scope.groups.some((group) => group.id === body.id))
         throw new ForbiddenException('无权操作此小组');
       await this.blacklist.setGroupBlacklisted(
         body.id,
         request.method === 'POST',
         DASHBOARD_ORGANIZATIONS[organization] + '小组开关',
+        organization,
       );
       return { message: '小组开关已保存' };
     }

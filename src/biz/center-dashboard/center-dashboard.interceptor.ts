@@ -3,10 +3,10 @@ import { from, Observable, map, tap } from 'rxjs';
 import { createSuccessResponse } from '@infra/server/response/dto/response.dto';
 import type { Request, Response } from 'express';
 import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
-import { centerRoute } from '@infra/server/dashboard-access/center-routes';
+import { centerRoute, requiresTenantScope } from '@infra/server/dashboard-access/center-routes';
 import { CenterDashboardService } from './center-dashboard.service';
 
-/** 原 URL/响应结构保持一致；中心请求进入有范围的读取分支，总部走原处理器。 */
+/** 总部跨组织查看，各组织员工的小组操作均按本组织处理。 */
 @Injectable()
 export class CenterDashboardInterceptor implements NestInterceptor {
   private readonly logger = new Logger(CenterDashboardInterceptor.name);
@@ -20,14 +20,13 @@ export class CenterDashboardInterceptor implements NestInterceptor {
     const actor = this.access.current(request);
     if (route || actor)
       context.switchToHttp().getResponse<Response>().setHeader('Cache-Control', 'no-store');
-    const organization = actor?.organization;
     const result =
-      organization &&
-      organization !== 'headquarters' &&
+      actor &&
       route &&
       route !== 'access' &&
-      route !== 'events'
-        ? from(this.center.handle(route, request, organization)).pipe(
+      route !== 'events' &&
+      requiresTenantScope(actor, route)
+        ? from(this.center.handle(route, request, actor.organization)).pipe(
             map((data) => createSuccessResponse(data)),
           )
         : next.handle();

@@ -20,7 +20,6 @@ import styles from './styles/index.module.scss';
 
 export default function Hosting() {
   const access = useDashboardAccess();
-  const restricted = Boolean(access?.centerId);
   const henanMarker = access?.henanGroupMarker ?? DEFAULT_HENAN_GROUP_MARKER;
   // 数据 hooks
   const blacklist = useBlacklist();
@@ -34,7 +33,7 @@ export default function Hosting() {
     groupList.data ?? [],
     blacklist.data?.groupIds ?? [],
     henanMarker,
-    restricted ? access?.name : undefined,
+    access,
   );
 
   // 切换黑名单状态

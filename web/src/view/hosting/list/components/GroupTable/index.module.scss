@@ -173,7 +173,11 @@
   align-items: center;
   gap: $spacing-sm;
   flex-shrink: 0;
-  cursor: pointer;
+}
+
+.readOnly {
+  color: $text-secondary;
+  font-size: $font-size-xs;
 }
 
 .active,
