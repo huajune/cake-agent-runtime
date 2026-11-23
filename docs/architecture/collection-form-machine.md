@@ -159,7 +159,7 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 
 - **记忆→表单预填**（archiveFacts）：只填空槽、只在本表首次见到该槽时生效，并经过与
   公证写入一致的字段答案词表门，无法适配当岗契约的旧值不 seed；
-  **作用域＝同一托管账号**（候选人信息不跨账号共享，跨账号视为首次接触）；
+  **作用域为同一组织、同一托管账号**，换组织后重新收资；
   预填值使 ready 表单进入条件式 recap，候选人本轮明确值始终优先。
 - **表单→记忆回写**：办结后身份字段以 `confidence:'high'/source:'candidate_quote'` 写
   sessionFacts 并 `writeFromBooking` 入长期画像（带 jobId/workOrderId 血缘）——这是 Memory
@@ -168,10 +168,12 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 
 ## 8. 存储与观测
 
-- Redis 快照 `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`，
+- Redis 快照和两个定位指针都放在 `tenant:{tenantId}:` 下。快照键为 `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`，
   `botUserId` 取稳定企微 `wecomUserId`；整实体读写，回合租约（90s 心跳）单写者，无 CAS；
   `collection-form-primary:*` 固定主候选人默认入口，`collection-form-current:*` 只表示刚通过
   precheck、供同轮 booking 消费的活动表单；additional 表单可切换活动指针，但不得覆盖主指针。
+  Bot 跨组织后新组织从空表开始。原预约的后台补写按动作发生时的组织条件更新原表。
+  首次启用前缺少组织标识的旧缓存按原 TTL 到期。
   列入「丢了算事故」key 清单。契约快照与 slots 同实体原子落盘；旧表单没有
   `contractSnapshot` 时，同次 validate 先刷新并原子持久化快照，再按快照校验；已有快照遇契约漂移须 query 刷新。表单实体与 primary/current
   指针每次写入都按 7 天 TTL 续期（`COLLECTION_FORM_TTL_SECONDS`），与会话状态同档，但不读

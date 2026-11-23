@@ -36,6 +36,7 @@ BEGIN
   INSERT INTO guardrail_review_records(trace_id,first_reply,first_decision,final_decision)
     VALUES('qa-dec-trace','fixture','pass','pass');
   PERFORM save_processing_snapshot(jsonb_build_object('message_id','qa-dec-trace','chat_id',session,
+    'batch_id','qa-dec-trace','scenario','reengagement:opening_no_reply',
     'received_at',at_supplier,'source_occurred_at',at_henan,'status','success','bot_im_id',bot),'{"fixture":true}');
   INSERT INTO agent_execution_events(trace_id,event_type) VALUES('qa-dec-trace','end');
   PERFORM save_processing_snapshot(jsonb_build_object('message_id','qa-dec-trace','chat_id',session,
@@ -46,9 +47,13 @@ BEGIN
     OR (SELECT tenant_id FROM message_processing_records WHERE message_id='qa-dec-trace') IS DISTINCT FROM 'henan'
     THEN RAISE EXCEPTION 'processing retry, invocation or out-of-order child has incorrect owner'; END IF;
 
-  INSERT INTO reengagement_touch_records(touch_key,session_id,scenario_code,anchor_at,created_at,status,bot_im_id)
-    VALUES('qa-dec-touch',session,'fixture',at_henan,at_supplier,'sent',bot);
+  INSERT INTO reengagement_touch_records(touch_key,session_id,scenario_code,anchor_at,created_at,status,bot_im_id,batch_id)
+    VALUES('qa-dec-touch',session,'opening_no_reply',at_henan,at_supplier,'sent',bot,'qa-dec-trace');
   UPDATE reengagement_touch_records SET anchor_at=at_supplier WHERE touch_key='qa-dec-touch';
+  IF NOT EXISTS (SELECT FROM reengagement_touch_records t JOIN message_processing_records p ON p.message_id=t.batch_id
+    WHERE t.touch_key='qa-dec-touch' AND p.tenant_id=t.tenant_id AND p.source_occurred_at=t.anchor_at
+      AND p.received_at>t.anchor_at)
+    THEN RAISE EXCEPTION 'proactive turn must inherit the trigger event time even when processed after a handover'; END IF;
   INSERT INTO handoff_events(chat_id,corp_id,reason_code,idempotency_key,created_at,bot_im_id)
     VALUES(session,corp,'other','qa-dec-handoff',at_supplier,bot);
   IF (SELECT tenant_id FROM handoff_events WHERE idempotency_key='qa-dec-handoff') IS DISTINCT FROM supplier

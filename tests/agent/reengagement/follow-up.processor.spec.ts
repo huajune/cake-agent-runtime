@@ -63,6 +63,7 @@ describe('FollowUpProcessor', () => {
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
   let messageTracking: { recordProactiveTurn: jest.Mock };
+  let tenants: { resolve: jest.Mock; historicalBot: jest.Mock };
   let chatSession: { getChatHistory: jest.Mock; getLatestCandidateMessage: jest.Mock };
   let messageProcessing: { getLatestReceivedAtByChatId: jest.Mock };
   let sponge: {
@@ -94,6 +95,10 @@ describe('FollowUpProcessor', () => {
 
   beforeEach(() => {
     jest.useRealTimers();
+    tenants = {
+      resolve: jest.fn().mockResolvedValue(['qa-tenant', 'qa-tenant']),
+      historicalBot: jest.fn().mockResolvedValue('qa-bot'),
+    };
     actionPermit = { evaluate: jest.fn().mockResolvedValue({ allowed: true }) };
     candidateProgress = { read: jest.fn().mockResolvedValue({ active: 'unknown' }) };
     hostingRecovery = {
@@ -236,10 +241,7 @@ describe('FollowUpProcessor', () => {
       actionPermit as never,
       candidateProgress as never,
       recovery as never,
-      {
-        resolve: async () => ['qa-tenant', 'qa-tenant'],
-        historicalBot: async () => 'qa-bot',
-      } as never,
+      tenants as never,
       withDelivery ? (delivery as never) : undefined,
       requestContext as never,
     );
@@ -2281,7 +2283,10 @@ describe('FollowUpProcessor', () => {
       });
       delivery.deliver.mockRejectedValue(new Error('gateway timeout'));
 
-      await expect(buildProcessor().process(makeJob())).rejects.toThrow('gateway timeout');
+      const job: Job<FollowUpJob> = makeJob();
+      job.data.anchorAt = Date.now() - 60_000;
+      job.data.channelIdentity = { botImId: 'scheduled-bot' };
+      await expect(buildProcessor().process(job)).rejects.toThrow('gateway timeout');
 
       expect(tracking.trackDeliveryUnknown).toHaveBeenCalledWith(
         expectedIdentity,
@@ -2291,7 +2296,14 @@ describe('FollowUpProcessor', () => {
       expect(tracking.trackSent).not.toHaveBeenCalled();
       // 投递状态不明也落流水（failure），排障时能看到该回合的完整生成轨迹
       expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
-        expect.objectContaining({ chatId: 'sess-1', status: 'failure', error: 'gateway timeout' }),
+        expect.objectContaining({
+          chatId: 'sess-1',
+          status: 'failure',
+          error: 'gateway timeout',
+          botImId: 'scheduled-bot',
+          sourceOccurredAt: job.data.anchorAt,
+          receivedAt: Date.now(),
+        }),
       );
     });
 
@@ -2323,24 +2335,43 @@ describe('FollowUpProcessor', () => {
       });
     });
 
-    it('resolves identity from chat history when the job payload has none', async () => {
+    it('用锚点核定的 Bot 和来源时间记录流水，保留实际处理时间', async () => {
+      const receivedAt = Date.now();
+      const anchorAt = receivedAt - 60_000;
       tracking.resolveChannelIdentity.mockResolvedValue({
         candidateName: '张三',
         managerName: 'bot-user-1',
-        botImId: 'wxid-bot-1',
+        botImId: 'qa-bot',
       });
 
-      await buildProcessor().process(makeJob());
+      const job: Job<FollowUpJob> = makeJob();
+      job.data.anchorAt = anchorAt;
+      await buildProcessor().process(job);
 
-      expect(tracking.resolveChannelIdentity).toHaveBeenCalledWith('sess-1');
+      expect(tenants.historicalBot).toHaveBeenCalledWith('sess-1', anchorAt);
+      expect(tracking.resolveChannelIdentity).toHaveBeenCalledWith('sess-1', 'qa-bot');
       expect(tracking.trackShadow).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: 'sess-1',
           candidateName: '张三',
           managerName: 'bot-user-1',
-          botImId: 'wxid-bot-1',
+          botImId: 'qa-bot',
         }),
         expect.anything(),
+      );
+      expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          botImId: 'qa-bot',
+          sourceOccurredAt: anchorAt,
+          receivedAt,
+          agentInvocation: expect.objectContaining({
+            request: expect.objectContaining({
+              imBotId: 'qa-bot',
+              sourceOccurredAt: anchorAt,
+              acceptedAt: receivedAt,
+            }),
+          }),
+        }),
       );
     });
 
@@ -2387,7 +2418,7 @@ describe('FollowUpProcessor', () => {
         }),
       );
 
-      expect(tracking.resolveChannelIdentity).toHaveBeenCalledWith('sess-1');
+      expect(tracking.resolveChannelIdentity).toHaveBeenCalledWith('sess-1', 'event-bot');
       expect(reengagementAgent.compose).toHaveBeenCalledWith(
         expect.objectContaining({
           jobData: expect.objectContaining({ channelIdentity: { botImId: 'event-bot' } }),
@@ -2399,7 +2430,7 @@ describe('FollowUpProcessor', () => {
       );
     });
 
-    it('still records the touch with null identity when the fallback lookup fails', async () => {
+    it('昵称补全失败时仍使用锚点已核实的 Bot 记录触达和流水', async () => {
       tracking.resolveChannelIdentity.mockRejectedValue(new Error('db down'));
 
       await buildProcessor().process(makeJob());
@@ -2410,7 +2441,29 @@ describe('FollowUpProcessor', () => {
       );
       const identityArg = tracking.trackShadow.mock.calls[0][0] as Record<string, unknown>;
       expect(identityArg.candidateName).toBeUndefined();
-      expect(identityArg.botImId).toBeUndefined();
+      expect(identityArg.botImId).toBe('qa-bot');
+      expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ botImId: 'qa-bot' }),
+      );
+    });
+
+    it.each([
+      [null, 'new-org'],
+      ['old-org', 'new-org'],
+    ])('锚点归属为 %s、当前为 %s 时不处理旧任务', async (owner, current) => {
+      tenants.resolve.mockResolvedValue([owner, current]);
+      await buildProcessor().process(makeJob());
+      expect(messageTracking.recordProactiveTurn).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
+    });
+
+    it('缺少触发时间的旧任务不以当前时间补组织', async () => {
+      const job: Job<FollowUpJob> = makeJob();
+      job.data.anchorAt = Number.NaN;
+      await buildProcessor().process(job);
+      expect(tenants.historicalBot).not.toHaveBeenCalled();
+      expect(messageTracking.recordProactiveTurn).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
     });
   });
 
@@ -2488,7 +2541,7 @@ describe('FollowUpProcessor', () => {
               sessionRef,
               workOrderId: 555,
               signUpAt: Date.UTC(2026, 5, 24, 2, 0, 0),
-              channelIdentity: undefined,
+              channelIdentity: { botImId: 'qa-bot' },
             });
           } else {
             expect(scheduler.scheduleInterviewSlotCheck).not.toHaveBeenCalled();
@@ -2608,7 +2661,7 @@ describe('FollowUpProcessor', () => {
 
       await buildProcessor().process(bookingJob());
 
-      expect(sponge.getWorkOrderById).toHaveBeenCalledWith(555);
+      expect(sponge.getWorkOrderById).toHaveBeenCalledWith(555, { botImId: 'qa-bot' });
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.objectContaining({ scenarioCode: 'interview_reminder' }),
         'work_order_not_active:约面取消',
