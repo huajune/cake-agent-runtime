@@ -18,7 +18,7 @@
 
 ### v11.18.0 的读写约定
 
-六份数据库治理迁移定义了下列读写接口。各字段的启用条件和回退方法见[专项验收](../todo/runtime-data-model-execution-plan.md#8-2026-年-11-月-19-日候选版本验收)。交付版本见 [v11.18.0 发布说明](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.18.0)。
+六份数据库治理迁移定义了下列读写接口。各字段的启用条件和回退方法见[专项验收](../technical/runtime-data-model-acceptance-2026-11-19.md#8-2026-年-11-月-19-日候选版本验收)，生产进度见[数据库治理待办](../todo/database-followup.md)。[v11.18.0 发布说明](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.18.0)
 
 | 数据 | 写入与查询 |
 | --- | --- |
@@ -28,7 +28,7 @@
 | 转人工 | 调用 `record_handoff` 写事件、处理明细及日报投影。恢复托管通过 `resolve_hosting_handoffs` 按原暂停作用域关闭对应明细。 |
 | 动作回执、人工裁定 | 现行 RPC 按原派发尝试保存采信回执。`action_record_json` 返回完整动作，`action_terminal_evidence` 识别同一次尝试的冲突证据。`agent_action_reviews` 对服务角色仅支持直接查询，裁定使用 `review_agent_action`。 |
 
-`system_config` 中 `runtime_storage_writes` 的 `response_tools`、`steps`、`chat_text`、`test_text`、`action_body` 各自控制合格新写。仅 JSON 布尔值 `true` 开启相应格式，初始均关闭。停写后仍可通过完整投影读取已有记录。每次还原显式指定至多 100 个业务键。[按键还原脚本](../../scripts/restore-runtime-storage.sql)
+`system_config` 中 `runtime_storage_writes` 的 `response_tools`、`steps`、`chat_text`、`test_text`、`action_body` 各自控制合格新写。仅 JSON 布尔值 `true` 开启相应格式，初始均关闭。2026 年 11 月 23 日只读核对生产库，五项均已开启。停写后仍可通过完整投影读取已有记录。每次还原显式指定至多 100 个业务键。[按键还原脚本](../../scripts/restore-runtime-storage.sql)
 
 ## 目录
 
