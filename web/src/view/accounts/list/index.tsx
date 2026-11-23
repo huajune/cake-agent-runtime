@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, UserPlus } from 'lucide-react';
-import { loadAccounts, loadHostingDirectory, syncHostingDirectory } from '@/api/dashboard-accounts';
+import {
+  loadAccounts,
+  loadHostingDirectory,
+  syncHostingDirectory,
+  TENANT_ROLE_LABELS,
+} from '@/api/dashboard-accounts';
 import { ACCOUNT_ONBOARDING_SOP_URL } from '@/constants';
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import AccountDialog, { type AccountAction } from './components/AccountDialog';
@@ -99,6 +104,7 @@ export default function Accounts() {
                   <th>登录账号</th>
                   <th>所属组织</th>
                   <th>负责小组</th>
+                  <th>角色</th>
                   <th>状态</th>
                   <th>操作</th>
                 </tr>
@@ -113,6 +119,13 @@ export default function Accounts() {
                       {account.hostingGroupId
                         ? (groupNames.get(account.hostingGroupId) ?? account.hostingGroupId)
                         : '—'}
+                    </td>
+                    <td>
+                      {account.loginName
+                        ? '系统管理员'
+                        : account.tenantRole
+                          ? TENANT_ROLE_LABELS[account.tenantRole]
+                          : '—'}
                     </td>
                     <td>
                       <span

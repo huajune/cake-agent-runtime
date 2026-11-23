@@ -5,6 +5,17 @@ export interface Tenant {
   name: string;
 }
 
+export const TenantRole = {
+  GroupLeader: 'group_leader',
+  TenantAdmin: 'tenant_admin',
+} as const;
+export type TenantRole = (typeof TenantRole)[keyof typeof TenantRole];
+
+export const TENANT_ROLE_LABELS: Record<TenantRole, string> = {
+  [TenantRole.GroupLeader]: '组长',
+  [TenantRole.TenantAdmin]: '租户管理员',
+};
+
 export const DASHBOARD_ADMIN_LOGIN = 'cakeadmin';
 // A non-deliverable Auth identity. Operators enter only the login name in the dashboard.
 export const DASHBOARD_ADMIN_EMAIL = 'cakeadmin@dashboard.cake.invalid';
@@ -45,6 +56,7 @@ export interface DashboardAccount {
   userId: string | null;
   name: string;
   organization: string;
+  tenantRole: TenantRole | null;
   tenant?: Pick<Tenant, 'name'> & { readsAllTenants?: boolean };
   hostingGroupId?: string | null;
   phone: string | null;

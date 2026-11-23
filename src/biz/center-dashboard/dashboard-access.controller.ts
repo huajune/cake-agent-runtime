@@ -26,6 +26,7 @@ export class DashboardAccessController {
       userId: account.userId,
       displayName: account.name,
       isAdministrator: isDashboardAdministrator(account),
+      tenantRole: account.tenantRole,
       organization: account.organization,
       centerId,
       name: account.tenant?.name ?? account.organization,

@@ -3,12 +3,14 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { matchPath, Navigate, useLocation } from 'react-router-dom';
 import { api } from '@/api/client';
 import { dashboardAuth } from '@/api/dashboard-session';
+import type { TenantRole } from '@/api/dashboard-accounts';
 import Login from '@/view/login/list';
 
 interface DashboardAccess {
   userId: string;
   displayName: string;
   isAdministrator: boolean;
+  tenantRole: TenantRole | null;
   organization: string;
   centerId: string | null;
   name: string;

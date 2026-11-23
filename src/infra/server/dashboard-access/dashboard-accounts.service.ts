@@ -14,6 +14,7 @@ import {
   DashboardAccount,
   DashboardAccountPage,
   Tenant,
+  TenantRole,
   isConfirmedDashboardAdminUser,
   isDashboardAdministrator,
 } from '@/types/dashboard-account';
@@ -21,7 +22,7 @@ import {
 import type { HostingGroupSelection } from '@/types/hosting-binding';
 
 const ACCOUNT_COLUMNS =
-  'memberId:id,userId:user_id,loginName:login_name,name,organization,tenant:tenants!dashboard_accounts_tenant_fk!inner(name,readsAllTenants:reads_all_tenants),phone,disabled,hostingGroupId:hosting_group_id';
+  'memberId:id,userId:user_id,loginName:login_name,name,organization,tenantRole:tenant_role,tenant:tenants!dashboard_accounts_tenant_fk!inner(name,readsAllTenants:reads_all_tenants),phone,disabled,hostingGroupId:hosting_group_id';
 const TABLE = 'dashboard_accounts';
 
 @Injectable()
@@ -91,6 +92,7 @@ export class DashboardAccountsService {
       name: string;
       phone: string;
       organization: string;
+      tenantRole?: TenantRole;
       password: string;
       memberId?: string;
       hostingBinding?: HostingGroupSelection;
@@ -127,6 +129,7 @@ export class DashboardAccountsService {
         cake_dashboard_account: {
           name: input.name,
           organization: input.organization,
+          ...(input.tenantRole && { tenant_role: input.tenantRole }),
           ...(input.memberId && { member_id: input.memberId }),
           ...(input.hostingBinding && { hosting_binding: { ...input.hostingBinding, actor } }),
         },
@@ -135,7 +138,8 @@ export class DashboardAccountsService {
     if (error && input.hostingBinding && error.code === 'unexpected_failure')
       throw new ConflictException('开户未完成，请同步 Stride 并核对组织和小组负责人后重试');
     if (error) this.throwAdminError(error);
-    if (!data.user || !(await this.find('user_id', data.user.id)))
+    const opened = data.user && (await this.find('user_id', data.user.id));
+    if (!opened || (input.tenantRole && opened.tenantRole !== input.tenantRole))
       throw new ServiceUnavailableException('账号绑定未完成，请核对后台账号迁移');
     this.logger.log(
       `开通后台账号 actor=${actor} user=${data.user.id} organization=${input.organization}`,

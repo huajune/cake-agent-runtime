@@ -1,7 +1,11 @@
 import { DashboardAccountsService } from '@infra/server/dashboard-access/dashboard-accounts.service';
 import type { SupabaseService } from '@infra/supabase/supabase.service';
 import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
-import { dashboardLoginIdentity, normalizeDashboardPhone } from '@/types/dashboard-account';
+import {
+  dashboardLoginIdentity,
+  normalizeDashboardPhone,
+  TenantRole,
+} from '@/types/dashboard-account';
 import type { Request } from 'express';
 
 describe('staff accounts and organization authority', () => {
@@ -117,6 +121,27 @@ describe('staff accounts and organization authority', () => {
       app_metadata: { cake_dashboard_account: { name: row.name, organization: 'henan' } },
     });
   });
+  it.each(Object.values(TenantRole))(
+    'binds the selected %s role with the Auth identity',
+    async (tenantRole) => {
+      single
+        .mockResolvedValueOnce({ data: null })
+        .mockResolvedValueOnce({ data: { ...row, tenantRole } });
+      admin.createUser.mockResolvedValue({ data: { user: authUser } });
+      await service.create({ ...row, tenantRole, password: 'fixture-pass' }, 'admin');
+      expect(admin.createUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_metadata: {
+            cake_dashboard_account: {
+              name: row.name,
+              organization: row.organization,
+              tenant_role: tenantRole,
+            },
+          },
+        }),
+      );
+    },
+  );
   it('blocks duplicate and conflicting roster entries before contacting Auth', async () => {
     const input = {
       name: row.name,

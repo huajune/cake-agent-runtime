@@ -1,4 +1,5 @@
 import { parseHenanRoster, parseStaffRoster } from '../../src/cli/dashboard-roster';
+import { TenantRole } from '../../src/types/dashboard-account';
 
 describe('河南后台负责人名单', () => {
   const first = { name: '成员一', phone: '13800000001', groupId: 'g1' };
@@ -45,6 +46,14 @@ it('retains a configured owner without a phone and rejects duplicate cross-organ
   expect(parseStaffRoster({ members: [{ ...member, dulidayToken: 'fixture' }, member] })).toEqual([
     member,
   ]);
+  const admin = { ...member, tenantRole: TenantRole.TenantAdmin };
+  expect(parseStaffRoster({ members: [admin, member] })).toEqual([admin]);
+  expect(() =>
+    parseStaffRoster({ members: [admin, { ...member, tenantRole: TenantRole.GroupLeader }] }),
+  ).toThrow();
+  expect(() =>
+    parseStaffRoster({ members: [{ ...member, tenantRole: 'system_admin' }] }),
+  ).toThrow();
   expect(() =>
     parseStaffRoster({
       members: [member, { ...member, groupId: 'hq-b', organization: 'headquarters' }],

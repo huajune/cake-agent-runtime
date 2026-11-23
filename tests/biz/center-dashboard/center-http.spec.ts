@@ -6,6 +6,7 @@ import request = require('supertest');
 import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 import { DashboardAccountsService } from '@infra/server/dashboard-access/dashboard-accounts.service';
+import { TenantRole } from '@/types/dashboard-account';
 import { UnauthorizedException } from '@nestjs/common';
 import { DashboardAccountsController } from '@infra/server/dashboard-access/dashboard-accounts.controller';
 import { CenterDashboardInterceptor } from '@biz/center-dashboard/center-dashboard.interceptor';
@@ -81,6 +82,12 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
                 tenant: { name: token, readsAllTenants: ['hq', 'admin'].includes(token) },
                 name: token === 'hq' ? 'cakeadmin' : '测试',
                 loginName: token === 'admin' ? 'cakeadmin' : null,
+                tenantRole:
+                  token === 'admin'
+                    ? null
+                    : token === 'henan-one'
+                      ? TenantRole.TenantAdmin
+                      : TenantRole.GroupLeader,
                 organization: ['hq', 'admin'].includes(token)
                   ? 'headquarters'
                   : token === 'shanghai'
@@ -242,6 +249,22 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       { ...account, phone: '+8613900000000' },
       'admin',
     );
+    for (const tenantRole of Object.values(TenantRole)) {
+      await api
+        .post(base)
+        .set('Authorization', administrator)
+        .send({ ...account, tenantRole })
+        .expect(201);
+      expect(operations.create).toHaveBeenLastCalledWith(
+        { ...account, phone: '+8613900000000', tenantRole },
+        'admin',
+      );
+    }
+    await api
+      .post(base)
+      .set('Authorization', administrator)
+      .send({ ...account, tenantRole: 'system_admin' })
+      .expect(400);
     await api
       .post(base + '/' + staffId + '/password')
       .set('Authorization', administrator)

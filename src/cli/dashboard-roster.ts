@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { link, readFile, unlink, writeFile } from 'node:fs/promises';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { normalizeDashboardPhone } from '../types/dashboard-account';
+import { normalizeDashboardPhone, TenantRole } from '../types/dashboard-account';
 
 export interface RosterMember {
   name: string;
@@ -68,6 +68,7 @@ export interface StaffMember {
   name: string;
   phone: string | null;
   organization: string;
+  tenantRole?: TenantRole;
   groupId: string;
   feishuOpenId: string | null;
 }
@@ -80,6 +81,7 @@ const staffSchema = z.object({
         phone: z.string().trim().min(1).nullable(),
         groupId: z.string().trim().min(1),
         organization: z.string().trim().min(1),
+        tenantRole: z.enum(TenantRole).optional(),
         feishuOpenId: z.string().trim().min(1).nullish(),
       }),
     )
@@ -101,6 +103,7 @@ export function parseStaffRoster(source: unknown): StaffMember[] {
       existing &&
       (existing.name !== row.name ||
         existing.organization !== row.organization ||
+        (existing.tenantRole && row.tenantRole && existing.tenantRole !== row.tenantRole) ||
         (existing.phone && phone && existing.phone !== phone) ||
         (existing.feishuOpenId && row.feishuOpenId && existing.feishuOpenId !== row.feishuOpenId))
     )
@@ -110,9 +113,11 @@ export function parseStaffRoster(source: unknown): StaffMember[] {
         throw new Error('同一成员对应多个小组');
       identities.set(identity, row.groupId);
     }
+    const tenantRole = row.tenantRole ?? existing?.tenantRole;
     groups.set(row.groupId, {
       name: row.name,
       organization: row.organization,
+      ...(tenantRole && { tenantRole }),
       groupId: row.groupId,
       phone: phone ?? existing?.phone ?? null,
       feishuOpenId: row.feishuOpenId ?? existing?.feishuOpenId ?? null,
@@ -132,6 +137,7 @@ export async function importStaffRoster(
       name: m.name,
       phone: m.phone,
       organization: m.organization,
+      ...(m.tenantRole && { tenant_role: m.tenantRole }),
       hosting_group_id: m.groupId,
       feishu_open_id: m.feishuOpenId,
     })),

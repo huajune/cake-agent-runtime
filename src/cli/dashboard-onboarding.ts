@@ -21,7 +21,7 @@ import {
   type StaffMember,
 } from './dashboard-roster';
 
-const columns = 'phone,name,organization,user_id,disabled,hosting_group_id';
+const columns = 'phone,name,organization,tenant_role,user_id,disabled,hosting_group_id';
 const workFile = 'credentials.work.json';
 const stateSchema = z.object({
   fingerprint: z.string(),
@@ -128,6 +128,7 @@ async function getMember(client: SupabaseClient, member: StaffMember) {
     !data ||
     data.organization !== member.organization ||
     data.name !== member.name ||
+    (!data.disabled && member.tenantRole && data.tenant_role !== member.tenantRole) ||
     (!data.disabled && data.hosting_group_id !== member.groupId)
   )
     throw new Error('成员归属发生变化，请核对');
@@ -165,6 +166,7 @@ export async function activateStaffAccounts(
           cake_dashboard_account: {
             name: member.name,
             organization: member.organization,
+            ...(member.tenantRole && { tenant_role: member.tenantRole }),
             initialization_id: state.batchId,
           },
         },

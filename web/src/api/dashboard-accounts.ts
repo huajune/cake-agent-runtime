@@ -8,10 +8,16 @@ export type {
   HostingGroupSelection,
   ManagedHostingGroup,
 } from '../../../src/types/hosting-binding';
-import type { DashboardAccountPage, Tenant } from '../../../src/types/dashboard-account';
+import type {
+  DashboardAccountPage,
+  Tenant,
+  TenantRole,
+} from '../../../src/types/dashboard-account';
 export {
   dashboardLoginIdentity,
   normalizeDashboardPhone,
+  TENANT_ROLE_LABELS,
+  TenantRole,
 } from '../../../src/types/dashboard-account';
 export type { DashboardAccount, Tenant } from '../../../src/types/dashboard-account';
 
@@ -27,6 +33,7 @@ export const openAccount = (input: {
   name: string;
   phone: string;
   organization: string;
+  tenantRole: TenantRole;
   password: string;
 }) => api.post('/dashboard/accounts', input);
 export const resetAccountPassword = (id: string, password: string) =>

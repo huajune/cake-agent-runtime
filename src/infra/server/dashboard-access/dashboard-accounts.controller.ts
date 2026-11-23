@@ -16,7 +16,7 @@ import {
 import type { Request } from 'express';
 import { z } from 'zod';
 import { hostingSelection, readHostingSelection } from './hosting-binding.schema';
-import { normalizeDashboardPhone } from '@/types/dashboard-account';
+import { normalizeDashboardPhone, TenantRole } from '@/types/dashboard-account';
 import { DashboardAccessService } from './dashboard-access.service';
 import { DashboardAccountsService } from './dashboard-accounts.service';
 import { DashboardAdminOnly } from '../guards/api-token.guard';
@@ -31,6 +31,7 @@ const createSchema = z
     name: z.string().trim().min(1).max(80),
     phone: z.string().transform(normalizeDashboardPhone).refine(Boolean),
     organization: organizationSchema,
+    tenantRole: z.enum(TenantRole).optional(),
     memberId: z.uuid().optional(),
     password: passwordSchema,
     hostingBinding: hostingSelection.transform(readHostingSelection).optional(),
@@ -70,15 +71,17 @@ export class DashboardAccountsController {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success || !parsed.data.phone)
       throw new BadRequestException(
-        '请检查姓名、手机号、组织及密码（至少 8 个字符，最多 72 字节）',
+        '请检查姓名、手机号、组织、租户角色及密码（至少 8 个字符，最多 72 字节）',
       );
-    const { name, phone, password, organization, memberId, hostingBinding } = parsed.data;
+    const { name, phone, password, organization, tenantRole, memberId, hostingBinding } =
+      parsed.data;
     await this.accounts.create(
       {
         name,
         phone,
         password,
         organization,
+        ...(tenantRole && { tenantRole }),
         ...(memberId && { memberId }),
         ...(hostingBinding && { hostingBinding }),
       },

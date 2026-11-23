@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { activateStaffAccounts } from '../../src/cli/dashboard-onboarding';
+import { TenantRole } from '../../src/types/dashboard-account';
 
 it('开户中断后沿用已开户成员的密码，只向总部交付本批新账号', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'dashboard-onboarding-'));
@@ -11,6 +12,7 @@ it('开户中断后沿用已开户成员的密码，只向总部交付本批新�
     phone: '+12025550' + suffix,
     groupId: 'group-' + suffix,
     organization: 'henan' as const,
+    ...(suffix === '001' && { tenantRole: TenantRole.TenantAdmin }),
     feishuOpenId: null,
   }));
   const rows = new Map(
@@ -20,6 +22,7 @@ it('开户中断后沿用已开户成员的密码，只向总部交付本批新�
         ...member,
         hosting_group_id: member.groupId,
         organization: 'henan',
+        tenant_role: member.tenantRole ?? TenantRole.GroupLeader,
         disabled: index === 3,
         user_id: index === 2 ? 'existing' : null,
       },
@@ -74,6 +77,9 @@ it('开户中断后沿用已开户成员的密码，只向总部交付本批新�
       })),
     );
     expect(new Set(result.members.map((member) => member.password)).size).toBe(2);
+    expect(createUser.mock.calls[0][0].app_metadata.cake_dashboard_account.tenant_role).toBe(
+      TenantRole.TenantAdmin,
+    );
     expect(createUser.mock.calls.map(([input]) => input.phone)).toEqual([
       members[0].phone,
       members[1].phone,

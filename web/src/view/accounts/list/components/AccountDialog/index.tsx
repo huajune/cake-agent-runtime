@@ -8,6 +8,8 @@ import {
   openAccount,
   resetAccountPassword,
   registerTenant,
+  TENANT_ROLE_LABELS,
+  TenantRole,
   type DashboardAccount,
   type Tenant,
 } from '@/api/dashboard-accounts';
@@ -79,11 +81,16 @@ export default function AccountDialog({
         case 'open': {
           const phone = normalizeDashboardPhone(String(data.get('phone') || ''));
           if (!phone) throw new Error('请输入有效的手机号');
+          const tenantRole = Object.values(TenantRole).find(
+            (role) => role === data.get('tenantRole'),
+          );
+          if (!tenantRole) throw new Error('请选择租户角色');
           await openAccount({
             ...(account?.memberId && { memberId: account.memberId }),
             name: String(data.get('name') || '').trim(),
             phone,
             organization,
+            tenantRole,
             password,
             ...(binding && { hostingBinding: binding }),
           });
@@ -177,6 +184,26 @@ export default function AccountDialog({
             </select>
           </label>
         )}
+        {action.type === 'open' && (
+          <label>
+            租户角色
+            <select
+              name="tenantRole"
+              aria-label="租户角色"
+              defaultValue={account?.tenantRole ?? TenantRole.GroupLeader}
+              required
+            >
+              {Object.values(TenantRole).map((role) => (
+                <option value={role} key={role}>
+                  {TENANT_ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {action.type === 'move' &&
+          account?.tenantRole === TenantRole.TenantAdmin &&
+          organization !== account.organization && <p>调入新组织后，角色为组长。</p>}
         {(action.type === 'open' || action.type === 'bind') && (
           <>
             {action.type === 'bind' && (
