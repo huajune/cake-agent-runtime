@@ -1,6 +1,7 @@
 import { MessagePipelineService } from '@wecom/message/application/pipeline.service';
 import { AcceptInboundMessageService } from '@wecom/message/application/accept-inbound-message.service';
 import { ReplyWorkflowService } from '@wecom/message/application/reply-workflow.service';
+import { PendingHostingSourceService } from '@wecom/message/application/pending-hosting-source.service';
 import {
   ContactType,
   EnterpriseMessageCallbackDto,
@@ -45,9 +46,15 @@ describe('MessagePipelineService', () => {
   };
 
   let service: MessagePipelineService;
+  const directory = { resolve: jest.fn() };
+  const pending = { restore: jest.fn() };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    directory.resolve.mockImplementation(async (sources: unknown[]) =>
+      sources.map(() => 'qa-tenant'),
+    );
+    pending.restore.mockResolvedValue(false);
     mockAcceptInboundMessage.execute.mockResolvedValue({
       shouldDispatch: true,
       response: { success: true, message: 'Message received' },
@@ -59,7 +66,8 @@ describe('MessagePipelineService', () => {
     service = new MessagePipelineService(
       mockAcceptInboundMessage as unknown as AcceptInboundMessageService,
       mockReplyWorkflow as unknown as ReplyWorkflowService,
-      { resolve: async (sources: unknown[]) => sources.map(() => 'qa-tenant') } as never,
+      directory as never,
+      pending as unknown as PendingHostingSourceService,
     );
   });
 
@@ -81,7 +89,10 @@ describe('MessagePipelineService', () => {
 
     await service.processSingleMessage(message);
 
-    expect(mockReplyWorkflow.processSingleMessage).toHaveBeenCalledWith(message);
+    expect(mockReplyWorkflow.processSingleMessage).toHaveBeenCalledWith(
+      message,
+      expect.any(Function),
+    );
   });
 
   it('should forward merged-message processing to ReplyWorkflowService', async () => {
@@ -94,6 +105,27 @@ describe('MessagePipelineService', () => {
       messages,
       'batch_1',
       owned,
+      expect.any(Function),
     );
+  });
+
+  it('delivers a verified queued message accepted by the previous worker after first binding', async () => {
+    const message = createEnterpriseMessage();
+    directory.resolve
+      .mockResolvedValueOnce([null, 'first-tenant'])
+      .mockResolvedValueOnce(['first-tenant', 'first-tenant']);
+    pending.restore.mockResolvedValue(true);
+    await service.processMergedMessages([message], 'across-cutover');
+    expect(pending.restore).toHaveBeenCalledWith(message);
+    expect(mockReplyWorkflow.processMergedMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves a conflicting source and never sends the former tenant’s queued message to the new tenant', async () => {
+    directory.resolve
+      .mockResolvedValueOnce([null, 'new-tenant'])
+      .mockResolvedValueOnce(['old-tenant', 'new-tenant']);
+    pending.restore.mockResolvedValue(true);
+    await service.processMergedMessages([createEnterpriseMessage()], 'after-transfer');
+    expect(mockReplyWorkflow.processMergedMessages).not.toHaveBeenCalled();
   });
 });

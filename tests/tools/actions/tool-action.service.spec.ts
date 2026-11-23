@@ -1,10 +1,12 @@
 import { ToolActionService } from '@tools/actions/tool-action.service';
+import { businessTenant, runForTenant, tenantMemoryKey } from '@infra/supabase/business-tenant';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
 import type {
   ActionCallbacks,
   ActionExecution,
   ActionIntent,
   ActionMode,
+  ActionRecord,
 } from '@biz/action-execution/action-execution.types';
 import { createToolContext } from '../../helpers/tool-context.fixture';
 import {
@@ -49,6 +51,7 @@ describe('ToolActionService actual external boundary', () => {
   let mode: ActionMode;
   let savedIntent: ActionIntent;
   const sponge = { fetchSignupWorkOrders: jest.fn(), invalidateWorkOrderCache: jest.fn() };
+  const tenants = { resolve: jest.fn() };
   const longTerm = {
     setActiveBooking: jest.fn(),
     clearActiveBooking: jest.fn(),
@@ -107,6 +110,7 @@ describe('ToolActionService actual external boundary', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mode = 'execute';
+    tenants.resolve.mockResolvedValue(['original-organization']);
     permits.evaluate.mockResolvedValue({ allowed: true });
     actionOpsEvents.sync.mockResolvedValue(undefined);
     registry = new ActionRecoveryRegistry();
@@ -141,6 +145,7 @@ describe('ToolActionService actual external boundary', () => {
       snapshots as never,
       permits as never,
       actionOpsEvents as never,
+      tenants as never,
     );
     service.onModuleInit();
   });
@@ -243,6 +248,50 @@ describe('ToolActionService actual external boundary', () => {
       strict: true,
       occurredAt: context.session.inputOccurredAt,
     });
+  });
+
+  it.each(['sponge.booking', 'sponge.modify', 'sponge.cancel'])(
+    'repairs %s under the organization at the original input time after a Bot transfer',
+    async (kind) => {
+      const intent = { ...toolActionIntent(context, input), kind };
+      const record = { intent, result: booking } as ActionRecord;
+      if (kind === 'sponge.cancel')
+        sponge.fetchSignupWorkOrders.mockResolvedValue({
+          workOrders: [{ workOrderId: 42, currentStatus: '已取消' }],
+        });
+      const owners: Array<string | null | undefined> = [];
+      actionOpsEvents.sync.mockImplementation(async () => {
+        owners.push(businessTenant());
+      });
+      const write =
+        kind === 'sponge.cancel' ? longTerm.clearActiveBooking : longTerm.setActiveBooking;
+      write.mockImplementation(async () => {
+        owners.push(businessTenant());
+      });
+      snapshots.invalidate.mockImplementation(async () => {
+        expect(tenantMemoryKey('booking')).toBe('tenant:original-organization:booking');
+      });
+      await runForTenant('current-organization', async () => {
+        await registry.get(kind)!.sync!(record);
+        expect(businessTenant()).toBe('current-organization');
+      });
+      expect(tenants.resolve).toHaveBeenCalledWith([
+        { botId: intent.accountId, at: Date.parse(intent.occurredAt) },
+      ]);
+      expect(owners).toEqual(['original-organization', 'original-organization']);
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps recovery pending when the original tenant is unresolved or its lookup fails', async () => {
+    const record = { intent: toolActionIntent(context, input), result: booking } as ActionRecord;
+    const handler = registry.get(input.kind)!;
+    tenants.resolve.mockResolvedValueOnce([null]).mockRejectedValueOnce(new Error('offline'));
+    await expect(handler.sync!(record)).rejects.toThrow('组织待核实');
+    await expect(handler.sync!(record)).rejects.toThrow('offline');
+    expect(actionOpsEvents.sync).not.toHaveBeenCalled();
+    expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+    expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
   });
 
   it('old booking repair sees cancellation and never resurrects active booking or submitted identity', async () => {

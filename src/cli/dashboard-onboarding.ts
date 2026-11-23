@@ -208,8 +208,10 @@ export async function activateStaffAccounts(
 
 async function main(): Promise<void> {
   const [action, directory, source] = process.argv.slice(2);
-  if (!directory || !['prepare', 'check', 'apply'].includes(action))
-    throw new Error('请选择 prepare <私有目录> <名单>、check <私有目录> 或 apply <私有目录>');
+  if (!directory || !['prepare', 'check', 'bind-directory', 'apply'].includes(action))
+    throw new Error(
+      '请选择 prepare <私有目录> <名单>，或对私有目录执行 check、bind-directory、apply',
+    );
   const project = new URL(required('NEXT_PUBLIC_SUPABASE_URL')).origin;
   if (action === 'prepare') {
     if (!source) throw new Error('缺少原始成员名单');
@@ -260,24 +262,33 @@ async function main(): Promise<void> {
     }
   }
   await preflight(client, staffComplete ? [] : members, project);
-  if (!directoryReady) {
+  if (action !== 'apply' && (await exists(join(directory, workFile)))) {
+    await readBatchState(
+      join(directory, workFile),
+      fingerprint,
+      members.filter((m) => m.phone),
+    );
+  }
+  // Recheck Stride on a retried first cutover, even if an earlier attempt bound the directory.
+  if (!directoryReady || action === 'bind-directory') {
     const { error } = await client.rpc('register_hosting_directory', {
       p_connection_id: STRIDE_PRIMARY_CONNECTION,
       p_groups: await readConfirmedDirectory(members),
       p_check_only: action === 'check',
     });
     if (error) throw new Error('托管小组或 Bot 的租户绑定无法确认，请核对归属与交接时间');
-    if (action === 'apply') await writePrivateOnce(ownershipReceipt, expectedOwnership);
+    if (action === 'bind-directory' && source === '--wait-pending') {
+      const { waitForPrebindingMessages } = await import('./wait-for-prebinding-messages');
+      await waitForPrebindingMessages();
+    }
+    if (action !== 'check') await writePrivateOnce(ownershipReceipt, expectedOwnership);
   }
-  if (action === 'check') {
-    const working = join(directory, workFile);
-    if (await exists(working))
-      await readBatchState(
-        working,
-        fingerprint,
-        members.filter((m) => m.phone),
-      );
-    process.stdout.write(`开户预检通过，共 ${members.length} 位成员。\n`);
+  if (action !== 'apply') {
+    process.stdout.write(
+      action === 'check'
+        ? `开户预检通过，共 ${members.length} 位成员。\n`
+        : '托管归属已登记，可切换服务。\n',
+    );
     return;
   }
   await initializeDashboardAdministrator(client, directory, project);

@@ -8,7 +8,10 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { timingSafeEqual } from 'crypto';
+import {
+  hasEnterpriseCallbackCredential,
+  verifyGroupCallback,
+} from './credentials/verified-hosting-route';
 import { GroupRouteCredentialsService } from './credentials/group-route-credentials.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { SimpleMergeService } from './runtime/simple-merge.service';
@@ -86,7 +89,12 @@ export class MessageService implements OnModuleInit {
     )
       return this.handleGroupMessage(messageData, managed);
     // Managed evidence must be durable before ACK; a storage error asks the provider to retry.
-    if (this.hasTrustedCallbackCredential(messageData)) {
+    if (
+      hasEnterpriseCallbackCredential(
+        messageData,
+        this.config?.get<string>('STRIDE_ENTERPRISE_TOKEN'),
+      )
+    ) {
       messageData[VERIFIED_HOSTING_ROUTE] = {
         connectionId: STRIDE_PRIMARY_CONNECTION,
         groupId: messageData.groupId,
@@ -127,13 +135,7 @@ export class MessageService implements OnModuleInit {
   }
 
   private async verifyGroupRoute(message: EnterpriseMessageCallbackDto) {
-    const verified = await this.groupCredentials?.verifyCallback({
-      token: message.token,
-      accountId: message.imBotId,
-      corpId: message.orgId,
-      groupId: message.groupId,
-      botId: message.botId,
-    });
+    const verified = await verifyGroupCallback(message, this.groupCredentials);
     // This callback contains no original group. A current directory group can differ from
     // the group at dispatch time, so persist only the verified connection and look up the dated binding.
     if (verified)
@@ -165,19 +167,6 @@ export class MessageService implements OnModuleInit {
       if (matched) break;
     }
     return this.acceptMessageAsync(message);
-  }
-
-  private hasTrustedCallbackCredential(messageData: EnterpriseMessageCallbackDto): boolean {
-    // This endpoint is public. Body identity alone is not authoritative evidence.
-    if (messageData._apiType === WECOM_API_TYPE.GROUP) return false;
-    const expected = this.config?.get<string>('STRIDE_ENTERPRISE_TOKEN');
-    const supplied = messageData.token;
-    if (!expected || typeof supplied !== 'string' || !supplied) return false;
-    const expectedBytes = Buffer.from(expected);
-    const suppliedBytes = Buffer.from(supplied);
-    return (
-      expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes)
-    );
   }
 
   private acceptMessageAsync(messageData: EnterpriseMessageCallbackDto, verifyGroup = false) {

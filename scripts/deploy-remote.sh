@@ -176,8 +176,10 @@ verify_image_runtime() {
 }
 
 run_staff_onboarding() {
-  local action="$1" mount_mode=ro owner project_url
-  if [[ -f "${STAFF_ROSTER_DIR}/complete.json" && -f "${STAFF_ROSTER_DIR}/cakeadmin.ready.json" \
+  local action="$1" owner project_url
+  shift
+  if [[ -f "${STAFF_ROSTER_DIR}/tenant-directory.ready.json" \
+    && -f "${STAFF_ROSTER_DIR}/complete.json" && -f "${STAFF_ROSTER_DIR}/cakeadmin.ready.json" \
     && ! -f "${STAFF_ROSTER_DIR}/credentials.work.json" && ! -f "${STAFF_ROSTER_DIR}/cakeadmin.work.json" ]]; then
     return 0
   fi
@@ -189,13 +191,12 @@ run_staff_onboarding() {
     fi
     return 0
   fi
-  [[ "$action" == apply ]] && mount_mode=rw
   owner="$(stat -c '%u:%g' "$STAFF_ROSTER_DIR")" || return 1
   (
     flock -x 9 || exit 1
-    docker run --rm --user "$owner" --env-file "$RUNTIME_ENV_FILE" \
-      -v "${STAFF_ROSTER_DIR}:/onboarding:${mount_mode}" --entrypoint node \
-      "${IMAGE_NAME}:${IMAGE_TAG}" dist/cli/dashboard-onboarding.js "$action" /onboarding
+    docker run --rm --user "$owner" --env-file "$RUNTIME_ENV_FILE" --env NODE_ENV=production \
+      -v "${STAFF_ROSTER_DIR}:/onboarding:rw" --entrypoint node \
+      "${IMAGE_NAME}:${IMAGE_TAG}" dist/cli/dashboard-onboarding.js "$action" /onboarding "$@"
   ) 9>>"${STAFF_ROSTER_DIR}/.initialize.lock"
 }
 
@@ -303,9 +304,9 @@ if ! verify_image_runtime; then
   exit 1
 fi
 
-if ! run_staff_onboarding check; then
+if ! run_staff_onboarding bind-directory --wait-pending; then
   [[ ! -f "$COMPOSE_BACKUP_FILE" ]] || cp "$COMPOSE_BACKUP_FILE" "$COMPOSE_FILE"
-  echo "后台开户预检失败，请核对迁移、Phone 登录及待开通名单。" >&2
+  echo "首次切换尚未就绪，请核对托管归属登记结果及旧服务的待回复消息。" >&2
   exit 1
 fi
 
