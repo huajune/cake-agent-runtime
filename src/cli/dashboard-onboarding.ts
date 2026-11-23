@@ -13,7 +13,6 @@ import {
   readDashboardAdministrator,
 } from './dashboard-administrator';
 import { DASHBOARD_ADMIN_LOGIN, normalizeDashboardPhone } from '../types/dashboard-account';
-import { DEFAULT_HENAN_GROUP_MARKER, hostingGroupOrganization } from '../types/hosting-group';
 import {
   importStaffRoster,
   parseStaffRoster,
@@ -82,12 +81,9 @@ async function readConfirmedDirectory(members: StaffMember[]) {
     if (!response.ok) throw new Error('Stride 小组目录读取失败');
     return response.json();
   });
-  const marker = (process.env.HENAN_GROUP_DESCRIPTION_MARKER ?? DEFAULT_HENAN_GROUP_MARKER).trim();
-  const organizations = new Map(
-    groups.map((group) => [group.id, hostingGroupOrganization(group.description, marker)]),
-  );
-  if (members.some((member) => organizations.get(member.groupId) !== member.organization))
-    throw new Error('负责小组的当前组织与开户名单不一致，请核对 Stride 归属');
+  const groupIds = new Set(groups.map((group) => group.id));
+  if (members.some((member) => !groupIds.has(member.groupId)))
+    throw new Error('开户名单中的托管小组已离开 Stride 目录');
   const url = new URL(base + '/api/v1/bot/getGroupBots');
   url.searchParams.set('token', token);
   const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000) });

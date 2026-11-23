@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
+import { VERIFIED_HOSTING_ROUTE } from '@/types/hosting-route';
 import { AcceptInboundMessageService } from './accept-inbound-message.service';
 import { ReplyWorkflowService } from './reply-workflow.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
@@ -17,6 +19,7 @@ export class MessagePipelineService {
   constructor(
     private readonly acceptInboundMessage: AcceptInboundMessageService,
     private readonly replyWorkflow: ReplyWorkflowService,
+    private readonly tenants: BusinessTenantResolver,
   ) {}
 
   // ========================================
@@ -35,11 +38,17 @@ export class MessagePipelineService {
     response: { success: boolean; message: string };
     content?: string;
   }> {
-    return this.acceptInboundMessage.execute(messageData);
+    const [tenantId] = await this.tenants.resolve([this.source(messageData)]);
+    return runForTenant(tenantId, () => this.acceptInboundMessage.execute(messageData));
   }
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
-    return this.replyWorkflow.processSingleMessage(messageData);
+    const [original, current] = await this.tenants.resolve([
+      this.source(messageData),
+      { botId: messageData.imBotId, at: Date.now() },
+    ]);
+    if (original && original === current)
+      await runForTenant(original, () => this.replyWorkflow.processSingleMessage(messageData));
   }
 
   async processMergedMessages(
@@ -47,6 +56,27 @@ export class MessagePipelineService {
     batchId: string,
     assertOwned?: () => Promise<void>,
   ): Promise<'deferred' | void> {
-    return this.replyWorkflow.processMergedMessages(messages, batchId, assertOwned);
+    if (!messages.length) return;
+    const botId = messages[messages.length - 1].imBotId;
+    const owners = await this.tenants.resolve([
+      ...messages.map((m) => this.source(m)),
+      { botId, at: Date.now() },
+    ]);
+    const current = owners.pop();
+    if (!current) return;
+    const owned = messages.filter((m, i) => m.imBotId === botId && owners[i] === current);
+    if (owned.length)
+      return runForTenant(current, () =>
+        this.replyWorkflow.processMergedMessages(owned, batchId, assertOwned),
+      );
+  }
+
+  private source(message: EnterpriseMessageCallbackDto) {
+    return {
+      botId: message.imBotId,
+      at: Number(message.timestamp),
+      messageId: message.messageId,
+      groupId: message[VERIFIED_HOSTING_ROUTE]?.groupId,
+    };
   }
 }

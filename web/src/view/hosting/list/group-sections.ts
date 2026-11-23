@@ -1,18 +1,8 @@
 import type { GroupInfo } from '../../../api/types/monitoring.types';
-import {
-  DASHBOARD_ORGANIZATIONS,
-  isDashboardOrganization,
-  type DashboardOrganization,
-} from '../../../../../src/types/dashboard-account';
-import {
-  groupDescriptionLines,
-  hostingGroupMarker,
-  SHANGHAI_GROUP_NAMES,
-} from '../../../../../src/types/hosting-group';
-
 const UNASSIGNED = '归属待确认';
 
 interface GroupSection {
+  id: string | null;
   name: string;
   blocked: number;
   groups: { id: string; name: string; note: string; blocked: boolean; canToggle: boolean }[];
@@ -21,34 +11,22 @@ interface GroupSection {
 export function summarizeHostingGroups(
   groups: GroupInfo[],
   blockedIds: string[],
-  henanMarker: string,
-  access?: { organization: DashboardOrganization; isAdministrator: boolean } | null,
+  access?: { organization: string; name?: string; isAdministrator: boolean } | null,
 ) {
-  const centerName =
-    access && access.organization !== 'headquarters'
-      ? DASHBOARD_ORGANIZATIONS[access.organization]
-      : undefined;
-  // 展示分组仅整理服务端已授权返回的小组。上海的两种备注分别代表不同团队。
-  const namesByMarker = new Map([
-    ...SHANGHAI_GROUP_NAMES,
-    [henanMarker, DASHBOARD_ORGANIZATIONS.henan],
-  ]);
-  const byName = new Map<string, GroupSection>();
+  const byId = new Map<string | null, GroupSection>();
   const blacklist = new Set(blockedIds);
   let blockedCount = 0;
   for (const group of groups) {
-    const lines = groupDescriptionLines(group.description);
-    const marker = hostingGroupMarker(lines, henanMarker) ?? '';
-    const registered = isDashboardOrganization(group.tenantId)
-      ? DASHBOARD_ORGANIZATIONS[group.tenantId]
-      : UNASSIGNED;
-    const name =
-      centerName ??
-      (group.tenantId === undefined ? (namesByMarker.get(marker) ?? UNASSIGNED) : registered);
-    let section = byName.get(name);
+    const id = group.tenantId ?? null;
+    let section = byId.get(id);
     if (!section) {
-      section = { name, blocked: 0, groups: [] };
-      byName.set(name, section);
+      const name =
+        group.tenantName ??
+        (id && id === access?.organization ? access.name : null) ??
+        id ??
+        UNASSIGNED;
+      section = { id, name, blocked: 0, groups: [] };
+      byId.set(id, section);
     }
     const blocked = blacklist.has(group.id);
     if (blocked) {
@@ -58,15 +36,13 @@ export function summarizeHostingGroups(
     section.groups.push({
       id: group.id,
       name: group.name,
-      note: lines.filter((line) => line !== marker).join('\n'),
+      note: group.description?.trim() ?? '',
       blocked,
       canToggle: Boolean(
         access && (access.isAdministrator || group.tenantId === access.organization),
       ),
     });
   }
-  const sections = [...byName.values()].sort(
-    (a, b) => Number(a.name === UNASSIGNED) - Number(b.name === UNASSIGNED),
-  );
+  const sections = [...byId.values()].sort((a, b) => Number(a.id === null) - Number(b.id === null));
   return { sections, total: groups.length, blockedCount };
 }

@@ -2,11 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { link, readFile, unlink, writeFile } from 'node:fs/promises';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import {
-  isDashboardOrganization,
-  normalizeDashboardPhone,
-  type DashboardOrganization,
-} from '../types/dashboard-account';
+import { normalizeDashboardPhone } from '../types/dashboard-account';
 
 export interface RosterMember {
   name: string;
@@ -71,7 +67,7 @@ export async function importHenanRoster(
 export interface StaffMember {
   name: string;
   phone: string | null;
-  organization: DashboardOrganization;
+  organization: string;
   groupId: string;
   feishuOpenId: string | null;
 }
@@ -83,7 +79,7 @@ const staffSchema = z.object({
         name: z.string().trim().min(1).max(80),
         phone: z.string().trim().min(1).nullable(),
         groupId: z.string().trim().min(1),
-        organization: z.custom<DashboardOrganization>(isDashboardOrganization),
+        organization: z.string().trim().min(1),
         feishuOpenId: z.string().trim().min(1).nullish(),
       }),
     )

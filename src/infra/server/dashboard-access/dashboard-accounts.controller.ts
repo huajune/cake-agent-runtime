@@ -16,11 +16,7 @@ import {
 import type { Request } from 'express';
 import { z } from 'zod';
 import { hostingSelection, readHostingSelection } from './hosting-binding.schema';
-import {
-  DashboardOrganization,
-  isDashboardOrganization,
-  normalizeDashboardPhone,
-} from '@/types/dashboard-account';
+import { normalizeDashboardPhone } from '@/types/dashboard-account';
 import { DashboardAccessService } from './dashboard-access.service';
 import { DashboardAccountsService } from './dashboard-accounts.service';
 import { DashboardAdminOnly } from '../guards/api-token.guard';
@@ -29,7 +25,7 @@ const passwordSchema = z
   .string()
   .min(8)
   .refine((value) => Buffer.byteLength(value, 'utf8') <= 72);
-const organizationSchema = z.custom<DashboardOrganization>(isDashboardOrganization);
+const organizationSchema = z.string().trim().min(1);
 const createSchema = z
   .object({
     name: z.string().trim().min(1).max(80),
@@ -56,6 +52,16 @@ export class DashboardAccountsController {
   list(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number) {
     if (page < 1 || page > 100000) throw new BadRequestException('页码无效');
     return this.accounts.list(page);
+  }
+
+  @Post('organizations')
+  async registerOrganization(@Req() req: Request, @Body() body: unknown) {
+    const parsed = z
+      .object({ name: z.string().trim().min(1).max(100) })
+      .strict()
+      .safeParse(body);
+    if (!parsed.success) throw new BadRequestException('请输入 1 至 100 个字符的组织名称');
+    return this.accounts.registerTenant(parsed.data.name, this.access.requireAccount(req).userId);
   }
 
   @Post()

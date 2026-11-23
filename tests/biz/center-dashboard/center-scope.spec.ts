@@ -1,4 +1,3 @@
-import { ConfigService } from '@nestjs/config';
 import { CenterScopeService } from '@biz/center-dashboard/center-scope.service';
 
 import type { HostingBindingsRepository } from '@biz/center-dashboard/hosting-bindings.repository';
@@ -29,30 +28,25 @@ describe('Center scope from registered ownership', () => {
       groups: { a: 'henan', b: 'henan' },
       bots: { one: 'a', two: 'b' },
     });
-    service = new CenterScopeService(directory, accounts, new ConfigService(), bindings);
+    service = new CenterScopeService(directory, accounts, bindings);
   });
   it('intersects confirmed tenancies, current Stride accounts and registered membership', async () => {
-    const scope = await service.getScope();
+    const scope = await service.getScope(false, 'henan');
     expect(scope.groups.map((group) => group.id)).toEqual(['a', 'b']);
     expect(scope.botIds).toEqual(['one', 'two']);
     expect(accounts.getConfiguredBotList).toHaveBeenCalledWith(true);
-    await service.getScope();
+    await service.getScope(false, 'henan');
     expect(directory.getAllGroups).toHaveBeenCalledTimes(1);
   });
   it('ignores stale remarks when registered ownership differs', async () => {
-    service = new CenterScopeService(
-      directory,
-      accounts,
-      new ConfigService({ HENAN_GROUP_DESCRIPTION_MARKER: '  河南中心专用  ' }),
-      bindings,
-    );
     directory.getAllGroups.mockResolvedValue([
       { id: 'a', name: '旧备注', description: '河南自招团队成员' },
       { id: 'b', name: '新备注', description: '值班说明\r\n河南中心专用' },
     ]);
-    registered.scope.mockResolvedValue({ groups: { b: 'henan' }, bots: {} });
-    expect(service.henanGroupMarker).toBe('河南中心专用');
-    expect((await service.getScope()).groups.map((group) => group.id)).toEqual(['b']);
+    registered.scope.mockResolvedValue({ groups: { b: 'new-supplier' }, bots: {} });
+    expect((await service.getScope(false, 'new-supplier')).groups.map((group) => group.id)).toEqual(
+      ['b'],
+    );
   });
   it('keeps Shanghai recruitment isolated when both centers share a cached directory', async () => {
     directory.getAllGroups.mockResolvedValue([
@@ -66,7 +60,7 @@ describe('Center scope from registered ownership', () => {
       bots: { one: 'a', two: 'b' },
     });
     const [henan, shanghai] = await Promise.all([
-      service.getScope(),
+      service.getScope(false, 'henan'),
       service.getScope(false, 'shanghai_recruitment'),
     ]);
     expect(henan.botIds).toEqual(['one']);
@@ -77,7 +71,7 @@ describe('Center scope from registered ownership', () => {
     expect(directory.getAllGroups).toHaveBeenCalledTimes(1);
   });
   it('refreshes ownership before a write; moved and pending bots lose access even while the live directory is cached', async () => {
-    await service.getScope();
+    await service.getScope(false, 'henan');
     directory.getAllGroups.mockResolvedValue([
       { id: 'b', name: '新组', description: '河南自招团队成员' },
     ]);
@@ -86,16 +80,16 @@ describe('Center scope from registered ownership', () => {
       { wxid: 'new-bot', groupId: 'b' },
     ]);
     registered.scope.mockResolvedValue({ groups: { b: 'henan' }, bots: { 'new-bot': 'b' } });
-    expect((await service.getScope(true)).botIds).toEqual(['new-bot']);
+    expect((await service.getScope(true, 'henan')).botIds).toEqual(['new-bot']);
     registered.scope.mockResolvedValue({ groups: { b: 'henan' }, bots: {} });
-    expect((await service.getScope()).botIds).toEqual([]);
+    expect((await service.getScope(false, 'henan')).botIds).toEqual([]);
   });
   it('empty matches give an empty scope, while metadata failures never reuse stale permissions', async () => {
     directory.getAllGroups.mockResolvedValue([]);
-    expect((await service.getScope()).botIds).toEqual([]);
+    expect((await service.getScope(false, 'henan')).botIds).toEqual([]);
     directory.getAllGroups.mockRejectedValue(new Error('upstream down'));
-    await expect(service.getScope(true)).rejects.toThrow('无法确认');
-    await expect(service.getScope()).rejects.toThrow('无法确认');
+    await expect(service.getScope(true, 'henan')).rejects.toThrow('无法确认');
+    await expect(service.getScope(false, 'henan')).rejects.toThrow('无法确认');
   });
   it('does not let an older concurrent refresh overwrite a newer directory result', async () => {
     let release: (value: unknown[]) => void;
@@ -104,11 +98,11 @@ describe('Center scope from registered ownership', () => {
         release = resolve;
       }),
     );
-    const old = service.getScope();
+    const old = service.getScope(false, 'henan');
     directory.getAllGroups.mockResolvedValue([]);
-    await service.getScope(true);
+    await service.getScope(true, 'henan');
     release([{ id: 'a', name: 'old', description: '河南自招团队成员' }]);
     await old;
-    expect((await service.getScope()).groups).toEqual([]);
+    expect((await service.getScope(false, 'henan')).groups).toEqual([]);
   });
 });

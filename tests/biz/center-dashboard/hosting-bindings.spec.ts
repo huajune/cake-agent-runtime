@@ -58,6 +58,7 @@ describe('Daily Stride directory synchronization', () => {
     expect(cron.run).toHaveBeenCalledTimes(1);
     expect(db.call.mock.calls.map((c) => c[0])).toEqual([
       'reconcile_hosting_handover',
+      'reconcile_business_handover',
       'sync_hosting_directory',
     ]);
     await make({ NODE_ENV: 'development' }).scheduledSync();

@@ -1,11 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
-import { DASHBOARD_ORGANIZATIONS, type DashboardOrganization } from '@/types/dashboard-account';
 import { CenterRoute } from '@infra/server/dashboard-access/center-routes';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/scenario-registry';
 import { CenterScopeService } from './center-scope.service';
-import { CenterDashboardRepository, readsOwnedChat } from './center-dashboard.repository';
+import { CenterDashboardRepository } from './center-dashboard.repository';
 
 @Injectable()
 export class CenterDashboardService {
@@ -15,10 +14,26 @@ export class CenterDashboardService {
     private readonly repository: CenterDashboardRepository,
   ) {}
 
-  async handle(kind: CenterRoute, request: Request, organization: DashboardOrganization = 'henan') {
+  async handle(kind: CenterRoute, request: Request, organization: string) {
     const input: Record<string, unknown> = { ...request.query };
     if (kind === 'messages') input.chatId = request.params.chatId;
-    if (readsOwnedChat(kind)) return this.repository.read(kind, { tenantId: organization }, input);
+    if (kind === 'scenarios')
+      return FOLLOW_UP_SCENARIOS.map((scenario) => ({
+        code: scenario.code,
+        phase: scenario.phase,
+        displayName: scenario.displayName,
+        anchorEvent: scenario.anchorEvent,
+        anchorLabel: scenario.anchorLabel,
+        delayLabel: scenario.delayLabel,
+        delayMode: scenario.delayMode,
+        defaultDelayMinutes: scenario.defaultDelayMinutes,
+        objective: scenario.objective,
+        generationPolicy: scenario.generationPolicy,
+        defaultRolloutEnabled: scenario.defaultRolloutEnabled,
+      }));
+    if (kind === 'processing-detail') input.id = request.params.messageId;
+    if (!['groups', 'bots', 'blacklist', 'group-switch'].includes(kind))
+      return this.repository.read(kind, organization, input);
     const scope = await this.scopes.getScope(kind === 'group-switch', organization);
     if (kind === 'groups')
       return scope.groups.map((group) => ({ ...group, tenantId: organization }));
@@ -47,26 +62,11 @@ export class CenterDashboardService {
       await this.blacklist.setGroupBlacklisted(
         body.id,
         request.method === 'POST',
-        DASHBOARD_ORGANIZATIONS[organization] + '小组开关',
+        organization + ' 小组开关',
         organization,
       );
       return { message: '小组开关已保存' };
     }
-    if (kind === 'scenarios')
-      return FOLLOW_UP_SCENARIOS.map((scenario) => ({
-        code: scenario.code,
-        phase: scenario.phase,
-        displayName: scenario.displayName,
-        anchorEvent: scenario.anchorEvent,
-        anchorLabel: scenario.anchorLabel,
-        delayLabel: scenario.delayLabel,
-        delayMode: scenario.delayMode,
-        defaultDelayMinutes: scenario.defaultDelayMinutes,
-        objective: scenario.objective,
-        generationPolicy: scenario.generationPolicy,
-        defaultRolloutEnabled: scenario.defaultRolloutEnabled,
-      }));
-    if (kind === 'processing-detail') input.id = request.params.messageId;
-    return this.repository.read(kind, scope.botIds, input);
+    throw new BadRequestException('未知的托管操作');
   }
 }

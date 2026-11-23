@@ -1,3 +1,4 @@
+import { tenantMemoryKey } from '@infra/supabase/business-tenant';
 import type { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 export interface CachedChatHistoryMessage {
@@ -17,7 +18,7 @@ export interface CachedChatHistoryMessage {
 const CHAT_HISTORY_CACHE_PREFIX = 'memory:short_term:chat';
 
 export function buildChatHistoryCacheKey(chatId: string): string {
-  return `${CHAT_HISTORY_CACHE_PREFIX}:${chatId}`;
+  return tenantMemoryKey(`${CHAT_HISTORY_CACHE_PREFIX}:${chatId}`);
 }
 
 /** 只依赖 `eval`，让 biz 侧 append 与 memory 侧 rebuild 共用同一套脚本而不引入 RedisService 类型。 */

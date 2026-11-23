@@ -11,9 +11,11 @@ describe('staff accounts and organization authority', () => {
     phone: '+12025550127',
     name: '同事',
     organization: 'henan',
+    tenant: { name: '河南自招中心' },
     disabled: false,
   };
   const single = jest.fn();
+  const tenantSingle = jest.fn();
   const updateSingle = jest.fn();
   const update = jest.fn(() => ({ eq: () => ({ select: () => ({ maybeSingle: updateSingle }) }) }));
   const getUser = jest.fn();
@@ -21,11 +23,17 @@ describe('staff accounts and organization authority', () => {
   const service = new DashboardAccountsService({
     getSupabaseClient: () => ({
       auth: { getUser, admin },
-      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: single }) }), update }),
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({ maybeSingle: table === 'tenants' ? tenantSingle : single }),
+        }),
+        update,
+      }),
     }),
   } as unknown as SupabaseService);
   beforeEach(() => {
     jest.clearAllMocks();
+    tenantSingle.mockResolvedValue({ data: { id: 'henan' } });
     getUser.mockResolvedValue({ data: { user: authUser }, error: null });
     single.mockResolvedValue({ data: row, error: null });
   });
@@ -41,13 +49,24 @@ describe('staff accounts and organization authority', () => {
     });
     expect(access.requireAccount(first)).toEqual(row);
   });
-  it.each([null, { ...row, phone: '+12025550129' }, { ...row, organization: 'unknown' }])(
-    'denies unmapped accounts',
-    async (entry) => {
-      single.mockResolvedValue({ data: entry });
-      await expect(service.identify('session')).rejects.toMatchObject({ status: 403 });
-    },
-  );
+  it.each([
+    null,
+    { ...row, phone: '+12025550129' },
+    { ...row, organization: 'unknown', tenant: null },
+  ])('denies unmapped accounts', async (entry) => {
+    single.mockResolvedValue({ data: entry });
+    await expect(service.identify('session')).rejects.toMatchObject({ status: 403 });
+  });
+  it('accepts a newly registered supplier and rejects a missing organization before provisioning', async () => {
+    const supplier = { ...row, organization: 'supplier-4', tenant: { name: '新供应商' } };
+    single.mockResolvedValue({ data: supplier });
+    await expect(service.identify('session')).resolves.toEqual(supplier);
+    tenantSingle.mockResolvedValue({ data: null });
+    await expect(
+      service.create({ ...supplier, password: 'fixture-pass' }, 'hq'),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(admin.createUser).not.toHaveBeenCalled();
+  });
   it('accepts the dedicated confirmed Auth identity only with its bound account row', async () => {
     const identity = {
       id: 'admin-uuid',

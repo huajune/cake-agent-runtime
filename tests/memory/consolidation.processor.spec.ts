@@ -34,6 +34,7 @@ describe('ConsolidationProcessor', () => {
       consolidation as never,
       scheduler as never,
       incidents as never,
+      { resolve: async () => ['qa-tenant'], historicalBot: async () => 'qa-bot' } as never,
     );
   });
 
@@ -93,6 +94,7 @@ describe('ConsolidationProcessor', () => {
       consolidation as never,
       scheduler as never,
       reporter,
+      { resolve: async () => ['qa-tenant'], historicalBot: async () => 'qa-bot' } as never,
     );
     consolidation.consolidateIdleSession.mockRejectedValue(
       new Error('memory_consolidation_summary_empty:session-1'),

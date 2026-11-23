@@ -1,3 +1,4 @@
+import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
 import { isHumanHandledHistoryReason } from '@enums/message-filter.enum';
 import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
@@ -178,6 +179,7 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly actionPermit: ActionPermitService,
     private readonly candidateProgress: CandidateProgressService,
     private readonly hostingRecovery: ReengagementHostingRecoveryService,
+    private readonly tenants: BusinessTenantResolver,
     @Optional()
     @Inject(REENGAGEMENT_DELIVERY_PORT)
     private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
@@ -193,6 +195,18 @@ export class FollowUpProcessor implements OnModuleInit {
   }
 
   async process(job: Job<FollowUpJob>): Promise<void> {
+    const botId =
+      job.data.channelIdentity?.botImId ||
+      (await this.tenants.historicalBot(job.data.sessionRef.sessionId, job.data.anchorAt));
+    if (!botId) return;
+    const [owner, current] = await this.tenants.resolve([
+      { botId, at: job.data.anchorAt },
+      { botId, at: Date.now() },
+    ]);
+    if (owner && owner === current) await runForTenant(owner, () => this.processOwned(job));
+  }
+
+  private async processOwned(job: Job<FollowUpJob>): Promise<void> {
     const { sessionRef, scenarioCode, anchorAt, anchorEventId } = job.data;
     const scenario = getScenario(scenarioCode);
     if (!scenario) {

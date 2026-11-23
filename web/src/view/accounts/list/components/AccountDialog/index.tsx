@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  DASHBOARD_ORGANIZATIONS,
   bindHostingGroup,
   type ManagedHostingGroup,
   disableAccount,
@@ -8,16 +7,19 @@ import {
   normalizeDashboardPhone,
   openAccount,
   resetAccountPassword,
+  registerTenant,
   type DashboardAccount,
-  type DashboardOrganization,
+  type Tenant,
 } from '@/api/dashboard-accounts';
 import HostingGroupPicker from '../HostingGroupPicker';
 import styles from '../../styles/index.module.scss';
 
 export type AccountAction =
+  | { type: 'register'; account?: undefined }
   | { type: 'open'; account?: DashboardAccount }
   | { type: 'reset' | 'move' | 'disable' | 'bind'; account: DashboardAccount };
 const titles = {
+  register: '登记组织',
   bind: '绑定托管小组',
   open: '开通账号',
   reset: '重置密码',
@@ -28,11 +30,13 @@ const titles = {
 export default function AccountDialog({
   action,
   groups,
+  tenants,
   onClose,
   onSaved,
 }: {
   action: AccountAction;
   groups: ManagedHostingGroup[];
+  tenants: Tenant[];
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -60,13 +64,14 @@ export default function AccountDialog({
     if (busy) return;
     const data = new FormData(event.currentTarget);
     const password = String(data.get('password') || '');
-    const organization = String(
-      data.get('organization') || account?.organization || '',
-    ) as DashboardOrganization;
+    const organization = String(data.get('organization') || account?.organization || '');
     setBusy(true);
     setError('');
     try {
       switch (action.type) {
+        case 'register':
+          await registerTenant(String(data.get('name') ?? '').trim());
+          break;
         case 'bind':
           if (!binding || !account?.memberId) throw new Error('请选择托管小组');
           await bindHostingGroup(account.memberId, account.organization, binding);
@@ -112,7 +117,13 @@ export default function AccountDialog({
     >
       <form onSubmit={submit}>
         <h2 id="account-action-title">{titles[action.type]}</h2>
-        {action.type !== 'open' && (
+        {action.type === 'register' && (
+          <label>
+            组织名称
+            <input name="name" required maxLength={100} autoFocus />
+          </label>
+        )}
+        {account && action.type !== 'open' && (
           <p>
             {account?.name} · {account?.loginName ?? account?.phone}
           </p>
@@ -157,7 +168,7 @@ export default function AccountDialog({
               <option value="" disabled>
                 请选择组织
               </option>
-              {Object.entries(DASHBOARD_ORGANIZATIONS).map(([id, name]) => (
+              {tenants.map(({ id, name }) => (
                 <option key={id} value={id}>
                   {name}
                 </option>
@@ -168,7 +179,7 @@ export default function AccountDialog({
         {(action.type === 'open' || action.type === 'bind') && (
           <>
             {action.type === 'bind' && (
-              <p>所属组织　{DASHBOARD_ORGANIZATIONS[account!.organization]}</p>
+              <p>所属组织　{account!.tenant?.name ?? account!.organization}</p>
             )}
             <HostingGroupPicker
               groups={groups}

@@ -22,7 +22,7 @@ export class FeishuPrivateChatChannel {
   async send(card: Record<string, unknown>, botImId?: string): Promise<boolean> {
     try {
       const channel = await this.resolveChannel(botImId);
-      return await this.webhookService.sendMessage(channel, card);
+      return channel ? await this.webhookService.sendMessage(channel, card) : false;
     } catch {
       // Boolean callers must still enqueue handoff tasks after a failed notification.
       // Never fall back to another group or log private directory/provider responses.
@@ -33,17 +33,17 @@ export class FeishuPrivateChatChannel {
 
   /** The action executor owns unknown results; never retry a timed-out webhook here. */
   async sendOnce(card: Record<string, unknown>, botImId?: string): Promise<boolean> {
-    await this.webhookService.sendMessageOrThrow(await this.resolveChannel(botImId), card);
+    const channel = await this.resolveChannel(botImId);
+    if (!channel) return false;
+    await this.webhookService.sendMessageOrThrow(channel, card);
     return true;
   }
 
-  private async resolveChannel(botImId?: string): Promise<FeishuWebhookChannel> {
-    // 不归一化 prod-sync 等测试前缀，避免镜像数据被当成真实账号发往外部群。
-    // 命中后即固定目的通道；Webhook 缺失或发送失败也不能回退到其他群。
-    if (!this.routeExternal || !botImId) return 'PRIVATE_CHAT_MONITOR';
-    const scope = await this.scopes.getScope();
-    return scope.botIds.includes(botImId.trim())
-      ? 'HENAN_PRIVATE_CHAT_MONITOR'
-      : 'PRIVATE_CHAT_MONITOR';
+  private async resolveChannel(botImId?: string): Promise<FeishuWebhookChannel | null> {
+    if (!botImId) return 'PRIVATE_CHAT_MONITOR';
+    const route = await this.scopes.feishuRoute(botImId);
+    if (route === 'internal') return 'PRIVATE_CHAT_MONITOR';
+    if (route === 'henan' && this.routeExternal) return 'HENAN_PRIVATE_CHAT_MONITOR';
+    return null;
   }
 }

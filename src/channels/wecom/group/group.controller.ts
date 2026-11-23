@@ -26,7 +26,14 @@ export class GroupController {
         groups.map((g) => g.id),
         [],
       );
-      return groups.map((group) => ({ ...group, tenantId: ownership.groups[group.id] ?? null }));
+      return groups.map((group) => {
+        const tenantId = ownership.groups[group.id] ?? null;
+        return {
+          ...group,
+          tenantId,
+          tenantName: tenantId ? ownership.tenantNames[tenantId] : null,
+        };
+      });
     }
     return this.groupService.getGroupList({
       current: current ? parseInt(current, 10) : undefined,

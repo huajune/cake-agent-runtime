@@ -236,6 +236,10 @@ describe('FollowUpProcessor', () => {
       actionPermit as never,
       candidateProgress as never,
       recovery as never,
+      {
+        resolve: async () => ['qa-tenant', 'qa-tenant'],
+        historicalBot: async () => 'qa-bot',
+      } as never,
       withDelivery ? (delivery as never) : undefined,
       requestContext as never,
     );

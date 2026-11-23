@@ -9,32 +9,31 @@ export type {
   HostingHandover,
   ManagedHostingGroup,
 } from '../../../src/types/hosting-binding';
-import type {
-  DashboardAccountPage,
-  DashboardOrganization,
-} from '../../../src/types/dashboard-account';
+import type { DashboardAccountPage, Tenant } from '../../../src/types/dashboard-account';
 export {
-  DASHBOARD_ORGANIZATIONS,
   dashboardLoginIdentity,
   normalizeDashboardPhone,
 } from '../../../src/types/dashboard-account';
-export type { DashboardAccount, DashboardOrganization } from '../../../src/types/dashboard-account';
+export type { DashboardAccount, Tenant } from '../../../src/types/dashboard-account';
 
 export const loadAccounts = async (page: number) =>
   (await api.get<DashboardAccountPage>('/dashboard/accounts', { params: { page } })).data;
+
+export const registerTenant = async (name: string) =>
+  (await api.post<Tenant>('/dashboard/accounts/organizations', { name })).data;
 
 export const openAccount = (input: {
   memberId?: string;
   hostingBinding?: HostingGroupSelection;
   name: string;
   phone: string;
-  organization: DashboardOrganization;
+  organization: string;
   password: string;
 }) => api.post('/dashboard/accounts', input);
 export const resetAccountPassword = (id: string, password: string) =>
   api.post('/dashboard/accounts/' + id + '/password', { password });
 export const disableAccount = (id: string) => api.post('/dashboard/accounts/' + id + '/disable');
-export const moveAccount = (id: string, organization: DashboardOrganization) =>
+export const moveAccount = (id: string, organization: string) =>
   api.patch('/dashboard/accounts/' + id + '/organization', { organization });
 
 const bindingsPath = '/dashboard/hosting-bindings';
@@ -44,7 +43,7 @@ export const syncHostingDirectory = async () =>
   (await api.post<HostingManagementDirectory>(bindingsPath + '/sync')).data;
 export const bindHostingGroup = (
   memberId: string,
-  organization: DashboardOrganization,
+  organization: string,
   selection: HostingGroupSelection,
 ) => api.post(bindingsPath + '/members/' + memberId, { organization, ...selection });
 export const confirmHostingHandover = (

@@ -1,6 +1,4 @@
 import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { DEFAULT_HENAN_GROUP_MARKER } from '@/types/hosting-group';
 import {
   BOT_ACCOUNT_PROVIDER,
   type BotAccountInfo,
@@ -11,7 +9,6 @@ import {
   type GroupDirectoryProvider,
   type HostingGroup,
 } from '@biz/ops-events/providers/group-directory.provider';
-import type { DashboardOrganization } from '@/types/dashboard-account';
 import { HostingBindingsRepository } from './hosting-bindings.repository';
 
 export interface CenterScope {
@@ -26,28 +23,25 @@ export class CenterScopeService {
   private cache?: { expires: number; directory: Directory };
   private loading?: Promise<Directory>;
   private generation = 0;
-  readonly henanGroupMarker: string;
   constructor(
     @Inject(GROUP_DIRECTORY_PROVIDER) private readonly directory: GroupDirectoryProvider,
     @Inject(BOT_ACCOUNT_PROVIDER) private readonly accounts: BotAccountProvider,
-    config: ConfigService,
     private readonly bindings: HostingBindingsRepository,
-  ) {
-    this.henanGroupMarker = config
-      .get<string>('HENAN_GROUP_DESCRIPTION_MARKER', DEFAULT_HENAN_GROUP_MARKER)
-      .trim();
-    if (!this.henanGroupMarker) throw new Error('河南小组说明标记不能为空');
-  }
+  ) {}
   invalidate() {
     ++this.generation;
     this.cache = undefined;
     this.loading = undefined;
   }
 
-  async getScope(
-    fresh = false,
-    organization: DashboardOrganization = 'henan',
-  ): Promise<CenterScope> {
+  feishuRoute(botId: string, at: Date = new Date()): Promise<'internal' | 'henan' | null> {
+    return this.bindings.call('hosting_feishu_route', {
+      p_bot: botId.trim(),
+      p_at: at.toISOString(),
+    });
+  }
+
+  async getScope(fresh: boolean, organization: string): Promise<CenterScope> {
     try {
       const [groups, bots] = await this.liveDirectory(fresh);
       // A cached Stride snapshot never grants access on its own after a move.

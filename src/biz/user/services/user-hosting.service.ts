@@ -392,6 +392,7 @@ export class UserHostingService {
    * 更新用户活跃记录（供监控追踪服务使用）
    */
   async upsertActivity(data: {
+    eventKey?: string;
     chatId: string;
     odId?: string;
     odName?: string;

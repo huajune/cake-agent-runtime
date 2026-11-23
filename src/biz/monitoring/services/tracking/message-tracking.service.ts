@@ -107,6 +107,7 @@ export class MessageTrackingService {
       userName,
       managerName,
       botImId: botIdentity?.imBotId,
+      sourceOccurredAt: metadata?.sourceOccurredAt,
       receivedAt: now,
       status: 'processing',
       messagePreview: messageContent ? messageContent.substring(0, 50) : undefined,
@@ -130,12 +131,13 @@ export class MessageTrackingService {
 
     // 立即写入 user_activity 表（消息接收时就记录，不等处理完成）
     this.saveUserActivity({
+      eventKey: 'intake:' + messageId,
       chatId,
       userId,
       userName,
       messageCount: 1,
       tokenUsage: 0,
-      activeAt: now,
+      activeAt: record.sourceOccurredAt ?? now,
       botUserId: botIdentity?.botUserId ?? managerName,
       imBotId: botIdentity?.imBotId,
     }).catch((err) => {
@@ -294,12 +296,14 @@ export class MessageTrackingService {
 
       if (finalRecord.tokenUsage && finalRecord.tokenUsage > 0) {
         this.saveUserActivity({
+          eventKey: 'tokens:' + finalRecord.messageId,
+          imBotId: finalRecord.botImId,
           chatId: finalRecord.chatId,
           userId: finalRecord.userId,
           userName: finalRecord.userName,
           messageCount: 0,
           tokenUsage: finalRecord.tokenUsage,
-          activeAt: finalRecord.receivedAt,
+          activeAt: finalRecord.sourceOccurredAt ?? finalRecord.receivedAt,
         }).catch((err) => {
           this.logger.warn(`更新用户 Token 消耗失败 [${params.messageId}]:`, err);
         });
@@ -393,6 +397,10 @@ export class MessageTrackingService {
         this.asString(request?.imBotId) ??
         params.existingRecord?.botImId,
       receivedAt,
+      sourceOccurredAt: this.firstNumber(
+        this.asNumber(request?.sourceOccurredAt),
+        params.existingRecord?.sourceOccurredAt,
+      ),
       messagePreview: requestContent
         ? requestContent.substring(0, 50)
         : params.existingRecord?.messagePreview,
@@ -537,6 +545,7 @@ export class MessageTrackingService {
    * 保存用户活跃记录到 user_activity 表
    */
   private async saveUserActivity(data: {
+    eventKey: string;
     chatId: string;
     userId?: string;
     userName?: string;
@@ -548,6 +557,7 @@ export class MessageTrackingService {
   }): Promise<void> {
     await this.withRetry(() =>
       this.userHostingService.upsertActivity({
+        eventKey: data.eventKey,
         chatId: data.chatId,
         odId: data.userId,
         odName: data.userName,

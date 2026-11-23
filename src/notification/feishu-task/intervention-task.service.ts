@@ -1,4 +1,9 @@
 import { CenterScopeService } from '@biz/center-dashboard/center-scope.service';
+import {
+  BusinessTenantResolver,
+  businessTenant,
+  runForTenant,
+} from '@infra/supabase/business-tenant';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { CRITICAL_WRITE_JOB_OPTIONS } from '@infra/queue/queue-policy';
@@ -128,6 +133,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     private readonly moduleRef: ModuleRef,
     @InjectQueue(INTERVENTION_TASK_QUEUE) private readonly taskQueue: Queue<InterventionTaskJob>,
     private readonly centerScope: CenterScopeService,
+    private readonly tenants: BusinessTenantResolver,
   ) {
     this.tasklistGuid = (this.configService.get<string>('FEISHU_TASK_TASKLIST_GUID') ?? '').trim();
     this.henanTasklistGuid = (
@@ -161,10 +167,12 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     try {
       if (this.isTestSession(payload.corpId, payload.chatId)) return;
       if (!(await this.isEnabled())) return;
+      const tenantId = businessTenant();
+      if (tenantId === null) return;
       const clientToken = randomUUID();
       await this.taskQueue.add(
         'create',
-        { payload, clientToken, triggeredAt: new Date().toISOString() },
+        { payload, clientToken, triggeredAt: new Date().toISOString(), tenantId },
         { ...CRITICAL_WRITE_JOB_OPTIONS, jobId: clientToken },
       );
     } catch (error) {
@@ -380,15 +388,20 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     const botImId = job.payload.botImId?.trim();
     // 复用中心归属；查询失败就停止，不能把河南任务回退到总部。
     if (!botImId) throw new Error('创建任务缺少托管账号，无法确认清单归属');
-    const scope = await this.centerScope.getScope();
-    const isHenan = scope.botIds.includes(botImId);
+    const triggeredAt = new Date(job.triggeredAt);
+    const [owner, current] = await this.tenants.resolve([
+      { botId: botImId, at: triggeredAt.getTime() },
+      { botId: botImId, at: Date.now() },
+    ]);
+    // The recipient and external account follow the current Bot binding.
+    if (!owner || owner !== current || (job.tenantId && job.tenantId !== owner)) return null;
+    const route = await this.centerScope.feishuRoute(botImId, triggeredAt);
+    if (!route) return null;
+    const isHenan = route === 'henan';
     const tasklistGuid = isHenan ? this.henanTasklistGuid : this.tasklistGuid;
     if (!tasklistGuid) throw new Error('目标任务清单尚未配置');
-    const draft = await this.buildDraft(
-      job.payload,
-      new Date(job.triggeredAt),
-      job.clientToken,
-      isHenan,
+    const draft = await runForTenant(owner, () =>
+      this.buildDraft(job.payload, triggeredAt, job.clientToken, isHenan),
     );
     const customFields = await this.buildCustomFields(draft, tasklistGuid);
     const sectionGuid = await this.client.resolveSectionGuid(

@@ -1,12 +1,9 @@
 import type { User } from '@supabase/supabase-js';
 
-export const DASHBOARD_ORGANIZATIONS = {
-  headquarters: '总部',
-  henan: '河南自招中心',
-  shanghai_recruitment: '上海自招团队',
-} as const;
-export type DashboardOrganization = keyof typeof DASHBOARD_ORGANIZATIONS;
-export type DashboardCenter = Exclude<DashboardOrganization, 'headquarters'>;
+export interface Tenant {
+  id: string;
+  name: string;
+}
 
 export const DASHBOARD_ADMIN_LOGIN = 'cakeadmin';
 // A non-deliverable Auth identity. Operators enter only the login name in the dashboard.
@@ -35,13 +32,6 @@ export function isConfirmedDashboardAdminUser(user: User): boolean {
   );
 }
 
-export function isDashboardOrganization(value: unknown): value is DashboardOrganization {
-  return (
-    typeof value === 'string' &&
-    Object.prototype.hasOwnProperty.call(DASHBOARD_ORGANIZATIONS, value)
-  );
-}
-
 /** Mainland local numbers and explicitly international E.164 numbers are accepted. */
 export function normalizeDashboardPhone(input: string): string | null {
   const phone = input.trim();
@@ -54,7 +44,8 @@ export interface DashboardAccount {
   loginName?: typeof DASHBOARD_ADMIN_LOGIN | null;
   userId: string | null;
   name: string;
-  organization: DashboardOrganization;
+  organization: string;
+  tenant?: Pick<Tenant, 'name'> & { readsAllTenants?: boolean };
   hostingGroupId?: string | null;
   phone: string | null;
   disabled: boolean;

@@ -13,16 +13,15 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import {
   DashboardAccount,
   DashboardAccountPage,
-  DashboardOrganization,
+  Tenant,
   isConfirmedDashboardAdminUser,
   isDashboardAdministrator,
-  isDashboardOrganization,
 } from '@/types/dashboard-account';
 
 import type { HostingGroupSelection } from '@/types/hosting-binding';
 
 const ACCOUNT_COLUMNS =
-  'memberId:id,userId:user_id,loginName:login_name,name,organization,phone,disabled,hostingGroupId:hosting_group_id';
+  'memberId:id,userId:user_id,loginName:login_name,name,organization,tenant:tenants!dashboard_accounts_tenant_fk!inner(name,readsAllTenants:reads_all_tenants),phone,disabled,hostingGroupId:hosting_group_id';
 const TABLE = 'dashboard_accounts';
 
 @Injectable()
@@ -45,8 +44,8 @@ export class DashboardAccountsService {
     const account = await this.find('user_id', user.id);
     if (
       !account ||
+      !account.tenant?.name ||
       account.disabled ||
-      !isDashboardOrganization(account.organization) ||
       !(isDashboardAdministrator(account)
         ? isConfirmedDashboardAdminUser(user)
         : !account.loginName &&
@@ -70,22 +69,41 @@ export class DashboardAccountsService {
       .order('organization')
       .order('name')
       .order('phone')
-      .range(offset, offset + 49);
+      .range(offset, offset + 49)
+      .returns<DashboardAccount[]>();
     if (error) throw new ServiceUnavailableException('暂时无法读取账号名单');
-    return { accounts: data as DashboardAccount[], total: count ?? 0 };
+    return { accounts: data, total: count ?? 0 };
+  }
+
+  async registerTenant(name: string, actor: string): Promise<Tenant> {
+    const { data, error } = await this.client
+      .from('tenants')
+      .insert({ name })
+      .select('id,name')
+      .single<Tenant>();
+    if (error) throw new ServiceUnavailableException('暂时无法登记组织');
+    this.logger.log(`登记组织 actor=${actor} organization=${data.id}`);
+    return data;
   }
 
   async create(
     input: {
       name: string;
       phone: string;
-      organization: DashboardOrganization;
+      organization: string;
       password: string;
       memberId?: string;
       hostingBinding?: HostingGroupSelection;
     },
     actor: string,
   ): Promise<void> {
+    const tenant = await this.client
+      .from('tenants')
+      .select('id')
+      .eq('id', input.organization)
+      .maybeSingle();
+    if (tenant.error) throw new ServiceUnavailableException('暂时无法核对组织');
+    if (!tenant.data) throw new BadRequestException('组织不存在，请刷新后选择');
     const existing = input.memberId
       ? await this.find('id', input.memberId)
       : await this.find('phone', input.phone);
@@ -135,7 +153,7 @@ export class DashboardAccountsService {
 
   async update(
     userId: string,
-    changes: { organization: DashboardOrganization } | { disabled: true },
+    changes: { organization: string } | { disabled: true },
     actor: string,
   ): Promise<void> {
     if (userId === actor) throw new ConflictException('管理员账号固定归属总部并保持启用');
@@ -158,6 +176,7 @@ export class DashboardAccountsService {
         .eq('disabled', false)
         .select('user_id')
         .maybeSingle();
+      if (error?.code === '23503') throw new BadRequestException('组织不存在，请刷新后选择');
       if (error) throw new ServiceUnavailableException('暂时无法调整所属组织');
       if (!data) throw new NotFoundException('找不到已启用的后台账号');
     }
@@ -174,9 +193,9 @@ export class DashboardAccountsService {
       .from(TABLE)
       .select(ACCOUNT_COLUMNS)
       .eq(column, value)
-      .maybeSingle();
+      .maybeSingle<DashboardAccount>();
     if (error) throw new ServiceUnavailableException('暂时无法确认后台账号权限');
-    return data as DashboardAccount | null;
+    return data;
   }
 
   private throwAdminError(error: AuthError): never {

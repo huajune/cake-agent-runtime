@@ -1,5 +1,4 @@
 import { ForbiddenException, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import type { DashboardOrganization } from '@/types/dashboard-account';
 import { STRIDE_PRIMARY_CONNECTION } from '@/types/hosting-route';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
@@ -25,7 +24,7 @@ export class GroupBlacklistRepository extends BaseRepository {
     groupId: string,
     blacklisted: boolean,
     reason?: string,
-    tenantId?: DashboardOrganization,
+    tenantId?: string,
   ): Promise<GroupBlacklistItem[]> {
     if (!this.isAvailable()) throw new ServiceUnavailableException('托管开关暂不可用');
     const params = { p_group_id: groupId, p_blacklisted: blacklisted, p_reason: reason ?? null };

@@ -55,7 +55,10 @@ describe('API authentication', () => {
     await expect(guard().canActivate(ctx('Bearer personal'))).rejects.toMatchObject({
       status: 403,
     });
-    authenticate.mockResolvedValue({ organization: 'headquarters' });
+    authenticate.mockResolvedValue({
+      organization: 'headquarters',
+      tenant: { name: '总部', readsAllTenants: true },
+    });
     await expect(guard().canActivate(ctx('Bearer personal'))).resolves.toBe(true);
   });
   it('requires the bound administrator on admin-only handlers even when another access flag is set', async () => {
@@ -63,9 +66,17 @@ describe('API authentication', () => {
     await expect(guard('machine').canActivate(ctx('Bearer machine'))).rejects.toMatchObject({
       status: 403,
     });
-    authenticate.mockResolvedValue({ organization: 'headquarters', name: 'cakeadmin' });
+    authenticate.mockResolvedValue({
+      organization: 'headquarters',
+      tenant: { name: '总部', readsAllTenants: true },
+      name: 'cakeadmin',
+    });
     await expect(guard().canActivate(ctx('Bearer staff'))).rejects.toMatchObject({ status: 403 });
-    authenticate.mockResolvedValue({ organization: 'headquarters', loginName: 'cakeadmin' });
+    authenticate.mockResolvedValue({
+      organization: 'headquarters',
+      tenant: { name: '总部', readsAllTenants: true },
+      loginName: 'cakeadmin',
+    });
     await expect(guard().canActivate(ctx('Bearer administrator'))).resolves.toBe(true);
   });
 });

@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
   confirmHostingHandover,
-  DASHBOARD_ORGANIZATIONS,
   type HostingManagementDirectory,
   type HostingHandover,
 } from '@/api/dashboard-accounts';
@@ -24,9 +23,7 @@ function ReviewRow({
   const label = (id: string | null) => {
     const group = directory.groups.find((g) => g.id === id);
     if (!group) return id || '已离开 Stride 小组';
-    const tenant = Object.entries(DASHBOARD_ORGANIZATIONS).find(
-      ([key]) => key === group.tenantId,
-    )?.[1];
+    const tenant = directory.tenants.find(({ id }) => id === group.tenantId)?.name;
     return group.name + '（' + (tenant || '待绑定组织') + '）';
   };
   async function submit(event: FormEvent<HTMLFormElement>) {

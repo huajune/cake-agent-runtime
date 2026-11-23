@@ -4,7 +4,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-10-23
+**最后更新**　2026-11-23
 
 ---
 
@@ -110,6 +110,7 @@
 ## 📋 产品 (product/)
 
 - **[产品定义](product/product-definition.md)** — 定位、用户角色、核心功能
+- **[租户、成员和业务账号](product/organization-members-and-business-accounts.md)** — 登记组织、员工开户、小组绑定、业务归属和跨组织交接。
 - **[复聊功能产品说明](product/reengagement.md)** — 主动跟进的场景、触发/停止规则、内容规范、灰度、指标与验收口径
 - **[Agent 运营手册（理解系统+日常操作）](product/agent-for-operations.md)** ⭐ — 运营向：消息旅程、记忆、工具清单、剧本、可调项、排查（原 product-view + agent-workflow 合并）
 - **[敏感信息与安全护栏全景（运营版）](product/sensitive-info-guardrails-for-operations.md)** — 公平性/诚信/隐私保护与运营处置指引（技术侧见 [security-guardrails.md](architecture/security-guardrails.md)）
@@ -153,7 +154,7 @@
 > 已落地方案删除并留在 Git 历史，不在 todo 中长期保存执行记录。
 
 - [运行时与业务数据模型改造执行计划](todo/runtime-data-model-execution-plan.md) — 27 张业务表的去留、读写与页面迁移、恢复验收和切换条件。
-- [业务数据补齐组织 ID](todo/business-data-tenant-id.md) — 聊天归属的发版验收、其他业务数据的组织隔离和历史回填。
+- [业务数据补齐组织 ID](todo/business-data-tenant-id.md) — 测试库验收完成，待正式启用、存量回填及混合记忆核对。
 
 ---
 

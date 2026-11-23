@@ -1,3 +1,4 @@
+import { businessTenant, tenantMemoryKey } from '@infra/supabase/business-tenant';
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RedisService } from '@infra/redis/redis.service';
@@ -313,8 +314,11 @@ export class SupabaseStore implements MemoryStore {
     if (Object.keys(profileFactsJson).length === 0 && !metadata && !hasPreferences) return;
 
     const request = client.rpc(
-      options?.strict ? 'upsert_booking_profile_facts' : 'upsert_long_term_profile_facts',
+      this.rpcName(
+        options?.strict ? 'upsert_booking_profile_facts' : 'upsert_long_term_profile_facts',
+      ),
       {
+        ...this.tenantParams(),
         p_corp_id: corpId,
         p_user_id: userId,
         p_bot_user_id: botUserId,
@@ -390,7 +394,8 @@ export class SupabaseStore implements MemoryStore {
       throw new Error('memory_summary_store_unavailable');
     }
 
-    const { error } = await client.rpc('append_long_term_summary_atomic', {
+    const { error } = await client.rpc(this.rpcName('append_long_term_summary_atomic'), {
+      ...this.tenantParams(),
       p_corp_id: corpId,
       p_user_id: userId,
       p_bot_user_id: botUserId,
@@ -418,7 +423,8 @@ export class SupabaseStore implements MemoryStore {
     const client = this.supabase.getSupabaseClient();
     if (!client) throw new Error('memory_watermark_store_unavailable');
 
-    const { error } = await client.rpc('mark_long_term_settled_boundary', {
+    const { error } = await client.rpc(this.rpcName('mark_long_term_settled_boundary'), {
+      ...this.tenantParams(),
       p_corp_id: corpId,
       p_user_id: userId,
       p_bot_user_id: botUserId,
@@ -496,7 +502,8 @@ export class SupabaseStore implements MemoryStore {
     // protects against a request completing after its caller lost the conversation lease.
     await options?.assertOwned?.();
     const { data, error } = await client
-      .rpc('apply_active_booking_projection', {
+      .rpc(this.rpcName('apply_active_booking_projection'), {
+        ...this.tenantParams(),
         p_corp_id: corpId,
         p_user_id: userId,
         p_operation: operation,
@@ -507,8 +514,10 @@ export class SupabaseStore implements MemoryStore {
       })
       .abortSignal(AbortSignal.timeout(5000));
     if (error) throw error;
-    if (options?.strict) await this.redis.del(`active-booking:${corpId}:${userId}`);
-    else await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
+    if (options?.strict)
+      await this.redis.del(tenantMemoryKey(`active-booking:${corpId}:${userId}`));
+    else
+      await this.redis.del(tenantMemoryKey(`active-booking:${corpId}:${userId}`)).catch(() => {});
     if (!data || typeof (data as { superseded?: unknown }).superseded !== 'boolean')
       throw new Error('active_booking_projection_result_unavailable');
     return (data as { superseded: boolean }).superseded === false;
@@ -544,7 +553,7 @@ export class SupabaseStore implements MemoryStore {
 
   async del(key: string): Promise<boolean> {
     const { corpId, userId, botUserId } = this.parseProfileKey(key);
-    if (!botUserId) return false;
+    if (!botUserId || businessTenant() === null) return false;
     await this.invalidateCache(corpId, userId, botUserId);
 
     const client = this.supabase.getSupabaseClient();
@@ -553,6 +562,7 @@ export class SupabaseStore implements MemoryStore {
     const { error } = await client
       .from(TABLE)
       .delete()
+      .filter('tenant_id', businessTenant() ? 'eq' : 'is', businessTenant() || null)
       .eq('corp_id', corpId)
       .eq('user_id', userId)
       .eq('bot_user_id', botUserId);
@@ -585,6 +595,7 @@ export class SupabaseStore implements MemoryStore {
     const { data, error } = await client
       .from(TABLE)
       .select('*')
+      .filter('tenant_id', businessTenant() ? 'eq' : 'is', businessTenant() || null)
       .eq('corp_id', corpId)
       .eq('user_id', userId)
       .eq('bot_user_id', botUserId)
@@ -617,15 +628,17 @@ export class SupabaseStore implements MemoryStore {
       return;
     }
 
+    if (businessTenant() === null) throw new Error('业务归属待核实');
     const { error } = await client.from(TABLE).upsert(
       {
+        tenant_id: businessTenant() ?? null,
         corp_id: corpId,
         user_id: userId,
         bot_user_id: botUserId,
         ...fields,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: 'corp_id,user_id,bot_user_id' },
+      { onConflict: 'tenant_id,corp_id,user_id,bot_user_id' },
     );
 
     if (error) {
@@ -645,7 +658,7 @@ export class SupabaseStore implements MemoryStore {
     userId: string,
     options?: { bypassCache?: boolean; strict?: boolean },
   ): Promise<AgentLongTermMemoryRow | null> {
-    const cacheKey = `active-booking:${corpId}:${userId}`;
+    const cacheKey = tenantMemoryKey(`active-booking:${corpId}:${userId}`);
     const cached =
       options?.bypassCache || options?.strict
         ? null
@@ -657,6 +670,7 @@ export class SupabaseStore implements MemoryStore {
     const request = client
       .from(TABLE)
       .select('*')
+      .filter('tenant_id', businessTenant() ? 'eq' : 'is', businessTenant() || null)
       .eq('corp_id', corpId)
       .eq('user_id', userId)
       .is('bot_user_id', null);
@@ -675,12 +689,22 @@ export class SupabaseStore implements MemoryStore {
     return row;
   }
 
+  private rpcName(name: string): string {
+    if (businessTenant() === null) throw new Error('业务归属待核实');
+    return businessTenant() ? 'tenant_' + name : name;
+  }
+
+  private tenantParams(): { p_tenant_id?: string } {
+    const tenantId = businessTenant();
+    return tenantId ? { p_tenant_id: tenantId } : {};
+  }
+
   private async invalidateCache(corpId: string, userId: string, botUserId: string): Promise<void> {
     await this.redis.del(this.cacheKey(corpId, userId, botUserId)).catch(() => {});
   }
 
   private cacheKey(corpId: string, userId: string, botUserId: string): string {
-    return `long-term:${corpId}:${userId}:${botUserId}`;
+    return tenantMemoryKey(`long-term:${corpId}:${userId}:${botUserId}`);
   }
 
   private buildProfileFactsFromPlain(

@@ -14,6 +14,7 @@ export interface WorkerConcurrencyResponse {
 
 export interface GroupInfo {
   tenantId?: string | null;
+  tenantName?: string | null;
   id: string;
   name: string;
   description?: string | null;

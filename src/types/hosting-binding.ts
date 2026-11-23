@@ -1,4 +1,4 @@
-import type { DashboardOrganization } from './dashboard-account';
+import type { Tenant } from './dashboard-account';
 
 export interface HostingGroupSelection {
   groupId: string;
@@ -27,12 +27,14 @@ export interface HostingHandover {
 }
 
 export interface HostingManagementDirectory {
+  tenants: Tenant[];
   checkedAt: string | null;
   groups: ManagedHostingGroup[];
   handovers: HostingHandover[];
 }
 
 export interface HostingScopeBindings {
-  groups: Record<string, DashboardOrganization>;
+  tenantNames: Record<string, string>;
+  groups: Record<string, string>;
   bots: Record<string, string>;
 }

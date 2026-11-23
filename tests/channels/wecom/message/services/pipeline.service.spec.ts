@@ -1,3 +1,4 @@
+import { BusinessTenantResolver } from '@infra/supabase/business-tenant';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -207,6 +208,10 @@ describe('MessagePipelineService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessagePipelineService,
+        {
+          provide: BusinessTenantResolver,
+          useValue: { resolve: async (sources: unknown[]) => sources.map(() => 'qa-tenant') },
+        },
         AcceptInboundMessageService,
         {
           provide: ReengagementCommandService,

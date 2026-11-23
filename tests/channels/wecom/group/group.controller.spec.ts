@@ -19,7 +19,13 @@ describe('GroupController', () => {
         {
           provide: HostingBindingsRepository,
           useValue: {
-            scope: jest.fn().mockResolvedValue({ groups: { 'g-1': 'henan' }, bots: {} }),
+            scope: jest
+              .fn()
+              .mockResolvedValue({
+                tenantNames: { henan: '新显示名' },
+                groups: { 'g-1': 'henan' },
+                bots: {},
+              }),
           },
         },
         {
@@ -43,7 +49,7 @@ describe('GroupController', () => {
       const groups = [{ id: 'g-1', name: '一组', description: '河南自招团队成员' }];
       mockGroupService.getAllGroups.mockResolvedValue(groups);
       await expect(controller.getGroupList(undefined, undefined, 'true')).resolves.toEqual([
-        { ...groups[0], tenantId: 'henan' },
+        { ...groups[0], tenantId: 'henan', tenantName: '新显示名' },
       ]);
       expect(mockGroupService.getGroupList).not.toHaveBeenCalled();
     });

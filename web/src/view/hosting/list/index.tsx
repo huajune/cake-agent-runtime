@@ -6,7 +6,6 @@ import {
   useToggleAiReply,
 } from '@/hooks/config/useSystemConfig';
 import { useGroupList } from '@/hooks/config/useWorker';
-import { DEFAULT_HENAN_GROUP_MARKER } from '../../../../../src/types/hosting-group';
 
 // 组件导入
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
@@ -20,7 +19,6 @@ import styles from './styles/index.module.scss';
 
 export default function Hosting() {
   const access = useDashboardAccess();
-  const henanMarker = access?.henanGroupMarker ?? DEFAULT_HENAN_GROUP_MARKER;
   // 数据 hooks
   const blacklist = useBlacklist();
   const groupList = useGroupList();
@@ -32,7 +30,6 @@ export default function Hosting() {
   const summary = summarizeHostingGroups(
     groupList.data ?? [],
     blacklist.data?.groupIds ?? [],
-    henanMarker,
     access,
   );
 

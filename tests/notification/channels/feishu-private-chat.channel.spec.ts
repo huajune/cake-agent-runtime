@@ -4,12 +4,16 @@ import { ConfigService } from '@nestjs/config';
 import { FeishuPrivateChatChannel } from '@notification/channels/feishu-private-chat.channel';
 
 describe('FeishuPrivateChatChannel', () => {
-  const scopes = { getScope: jest.fn() };
+  const scopes = { feishuRoute: jest.fn() };
   let channel: FeishuPrivateChatChannel;
   let webhookService: jest.Mocked<FeishuWebhookService>;
 
   beforeEach(() => {
-    scopes.getScope.mockReset().mockResolvedValue({ botIds: ['center-bot'] });
+    scopes.feishuRoute
+      .mockReset()
+      .mockImplementation(async (id: string) =>
+        id === 'center-bot' ? 'henan' : id === 'other-bot' ? 'internal' : null,
+      );
     webhookService = {
       sendMessage: jest.fn(),
       sendMessageOrThrow: jest.fn(),
@@ -52,13 +56,10 @@ describe('FeishuPrivateChatChannel', () => {
     );
   });
 
-  it.each([undefined, '', 'other-bot', 'prod-sync:center-bot'])(
-    'keeps %s out of the external group',
-    async (botId) => {
-      await channel.send({}, botId);
-      expect(webhookService.sendMessage).toHaveBeenCalledWith('PRIVATE_CHAT_MONITOR', {});
-    },
-  );
+  it.each([undefined, '', 'other-bot'])('keeps %s out of the external group', async (botId) => {
+    await channel.send({}, botId);
+    expect(webhookService.sendMessage).toHaveBeenCalledWith('PRIVATE_CHAT_MONITOR', {});
+  });
 
   it('does not reroute an external-group failure to the internal group', async () => {
     webhookService.sendMessage.mockResolvedValue(false);
@@ -69,22 +70,28 @@ describe('FeishuPrivateChatChannel', () => {
     expect(webhookService.sendMessageOrThrow).toHaveBeenCalledTimes(1);
   });
 
-  it('retains the original destination when no account routing is configured', async () => {
+  it('skips notifications when the tenant destination has no webhook', async () => {
     channel = new FeishuPrivateChatChannel(
       webhookService,
       new ConfigService(),
       scopes as unknown as CenterScopeService,
     );
-    await channel.send({}, 'center-bot');
-    expect(webhookService.sendMessage).toHaveBeenCalledWith('PRIVATE_CHAT_MONITOR', {});
+    expect(await channel.send({}, 'center-bot')).toBe(false);
+    expect(webhookService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('skips suppliers without a connector', async () => {
+    expect(await channel.send({}, 'supplier-bot')).toBe(false);
+    expect(await channel.sendOnce({}, 'supplier-bot')).toBe(false);
+    expect(webhookService.sendMessage).not.toHaveBeenCalled();
   });
 
   it('follows changed group membership and does not send when membership cannot be read', async () => {
-    scopes.getScope.mockResolvedValueOnce({ botIds: [] });
+    scopes.feishuRoute.mockResolvedValueOnce('internal');
     await channel.send({}, 'center-bot');
     expect(webhookService.sendMessage).toHaveBeenCalledWith('PRIVATE_CHAT_MONITOR', {});
     webhookService.sendMessage.mockClear();
-    scopes.getScope.mockRejectedValue(new Error('directory unavailable'));
+    scopes.feishuRoute.mockRejectedValue(new Error('directory unavailable'));
     await expect(channel.send({}, 'center-bot')).resolves.toBe(false);
     await expect(channel.sendOnce({}, 'center-bot')).rejects.toThrow('directory unavailable');
     expect(webhookService.sendMessage).not.toHaveBeenCalled();

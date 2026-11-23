@@ -3,17 +3,15 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { matchPath, Navigate, useLocation } from 'react-router-dom';
 import { api } from '@/api/client';
 import { dashboardAuth } from '@/api/dashboard-session';
-import type { DashboardOrganization } from '@/api/dashboard-accounts';
 import Login from '@/view/login/list';
 
 interface DashboardAccess {
   userId: string;
   displayName: string;
   isAdministrator: boolean;
-  organization: DashboardOrganization;
+  organization: string;
   centerId: string | null;
   name: string;
-  henanGroupMarker?: string;
   scopeKey: string;
 }
 const AccessContext = createContext<DashboardAccess | null>(null);

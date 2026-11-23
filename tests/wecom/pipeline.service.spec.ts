@@ -59,6 +59,7 @@ describe('MessagePipelineService', () => {
     service = new MessagePipelineService(
       mockAcceptInboundMessage as unknown as AcceptInboundMessageService,
       mockReplyWorkflow as unknown as ReplyWorkflowService,
+      { resolve: async (sources: unknown[]) => sources.map(() => 'qa-tenant') } as never,
     );
   });
 

@@ -18,7 +18,6 @@ import {
   type GroupDirectoryProvider,
 } from '@biz/ops-events/providers/group-directory.provider';
 import type { HostingGroupSelection } from '@/types/hosting-binding';
-import type { DashboardOrganization } from '@/types/dashboard-account';
 import { HostingBindingsRepository } from './hosting-bindings.repository';
 import { CenterScopeService } from './center-scope.service';
 
@@ -45,6 +44,8 @@ export class HostingBindingsService {
         await budget.checkpoint();
         budget.recordProcessed(await this.repository.call<number>('reconcile_hosting_handover'));
         await budget.checkpoint();
+        budget.recordProcessed(await this.repository.call<number>('reconcile_business_handover'));
+        await budget.checkpoint();
         budget.recordProcessed(await this.sync());
       },
     );
@@ -57,12 +58,7 @@ export class HostingBindingsService {
     }));
   }
 
-  async bind(
-    memberId: string,
-    tenant: DashboardOrganization,
-    binding: HostingGroupSelection,
-    actor: string,
-  ) {
+  async bind(memberId: string, tenant: string, binding: HostingGroupSelection, actor: string) {
     await this.sync();
     await this.repository.call('bind_dashboard_hosting_group', {
       p_member_id: memberId,
@@ -87,8 +83,9 @@ export class HostingBindingsService {
     // Confirmation is durable. The scheduled worker resumes from its cursor if this first batch fails.
     try {
       await this.repository.call('reconcile_hosting_handover');
+      await this.repository.call('reconcile_business_handover');
     } catch {
-      this.logger.warn('托管号交接已确认，聊天归属核对将在下次同步时重试');
+      this.logger.warn('托管号交接已确认，业务归属核对将在下次同步时重试');
     }
   }
 

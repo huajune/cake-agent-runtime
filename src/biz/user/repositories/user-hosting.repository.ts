@@ -375,6 +375,7 @@ export class UserHostingRepository extends BaseRepository {
    * 更新用户活跃记录（通过 RPC upsert_user_activity）
    */
   async upsertUserActivity(data: {
+    eventKey?: string;
     chatId: string;
     odId?: string;
     odName?: string;
@@ -389,7 +390,8 @@ export class UserHostingRepository extends BaseRepository {
     }
 
     try {
-      await this.rpc('upsert_user_activity', {
+      await this.rpc(data.eventKey ? 'record_user_activity' : 'upsert_user_activity', {
+        ...(data.eventKey && { p_event_key: data.eventKey }),
         p_chat_id: data.chatId,
         p_od_id: data.odId || null,
         p_od_name: data.odName || null,

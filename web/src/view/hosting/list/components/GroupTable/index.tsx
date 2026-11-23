@@ -49,7 +49,7 @@ export default function GroupTable({
         <div className={styles.organizations}>
           {sections.map((section) => (
             <details
-              key={section.name}
+              key={section.id === null ? 'unassigned' : 'tenant-' + section.id}
               className={styles.organization}
               open={sections.length === 1}
             >

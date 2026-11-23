@@ -97,6 +97,7 @@ export class MessageProcessingRepository extends BaseRepository {
   // Dashboard 业务趋势只需要时间、用户和预约工具调用结果，避免为图表拉取大块快照字段。
   private readonly businessTrendSelectedColumns = [
     'message_id',
+    'source_occurred_at',
     'received_at',
     'user_id',
     'tool_calls',
@@ -1095,6 +1096,9 @@ export class MessageProcessingRepository extends BaseRepository {
       user_name: record.userName,
       manager_name: record.managerName,
       bot_im_id: record.botImId,
+      ...(Number.isFinite(record.sourceOccurredAt) && {
+        source_occurred_at: new Date(record.sourceOccurredAt).toISOString(),
+      }),
       received_at: new Date(record.receivedAt).toISOString(),
       message_preview: record.messagePreview,
       reply_preview: record.replyPreview,
@@ -1136,6 +1140,9 @@ export class MessageProcessingRepository extends BaseRepository {
       userName: record.user_name,
       managerName: record.manager_name,
       botImId: record.bot_im_id,
+      sourceOccurredAt: record.source_occurred_at
+        ? Date.parse(record.source_occurred_at)
+        : undefined,
       receivedAt: new Date(record.received_at).getTime(),
       messagePreview: record.message_preview,
       replyPreview: record.reply_preview,

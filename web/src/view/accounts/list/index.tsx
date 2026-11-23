@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, UserPlus } from 'lucide-react';
-import {
-  DASHBOARD_ORGANIZATIONS,
-  loadAccounts,
-  loadHostingDirectory,
-  syncHostingDirectory,
-} from '@/api/dashboard-accounts';
+import { loadAccounts, loadHostingDirectory, syncHostingDirectory } from '@/api/dashboard-accounts';
 import { ACCOUNT_ONBOARDING_SOP_URL } from '@/constants';
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import HandoverReview from './components/HandoverReview';
@@ -68,6 +63,7 @@ export default function Accounts() {
             <ExternalLink size={14} aria-hidden="true" />
           </a>
         </div>
+        <button onClick={() => setAction({ type: 'register' })}>登记组织</button>
         <button className={styles.primary} onClick={() => setAction({ type: 'open' })}>
           <UserPlus size={17} />
           开通账号
@@ -120,7 +116,7 @@ export default function Accounts() {
                   <tr key={account.memberId ?? account.phone}>
                     <td>{account.name}</td>
                     <td>{account.loginName ?? account.phone ?? '待补手机号'}</td>
-                    <td>{DASHBOARD_ORGANIZATIONS[account.organization]}</td>
+                    <td>{account.tenant?.name ?? account.organization}</td>
                     <td>
                       {account.hostingGroupId
                         ? (groupNames.get(account.hostingGroupId) ?? account.hostingGroupId)
@@ -185,6 +181,7 @@ export default function Accounts() {
         <AccountDialog
           action={action}
           groups={groups}
+          tenants={directory.data?.tenants ?? []}
           onClose={() => setAction(null)}
           onSaved={(message) => {
             setAction(null);

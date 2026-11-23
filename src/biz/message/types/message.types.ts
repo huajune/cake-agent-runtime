@@ -100,6 +100,7 @@ export interface MessageProcessingRecordInput {
   managerName?: string;
   /** 托管账号系统 wxid（= bot_im_id），取自 botIdentity.imBotId */
   botImId?: string;
+  sourceOccurredAt?: number;
   receivedAt: number;
   messagePreview?: string;
   replyPreview?: string;

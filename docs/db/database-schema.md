@@ -2,13 +2,19 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**：2026-11-19（补充候选版本读写约定）
+**最后更新**　2026-11-23
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
 **项目环境**：prod `resexopnhpthuoxfwydx` / test `gaovfitvetoojkvtalxy`
 
 ---
+
+### 组织归属（测试库已验收，正式发布待执行）
+
+组织登记在 `tenants`，成员的 `dashboard_accounts.organization` 通过外键引用组织。小组与组织、Bot 与小组分别在 `hosting_group_ownership`、`hosting_bot_memberships` 记录生效时间。聊天、流水、调用明细、执行和审查记录、复聊、人工介入、运营事件、日报、用户活动及长期记忆使用同一组织主键。历史记录缺少时间或渠道证据时保留空归属。权限、登记操作与回填条件见[租户、成员和业务账号](../product/organization-members-and-business-accounts.md)。
+
+中心员工的服务端查询以当前成员档案确定组织。消息处理的 `source_occurred_at` 与处理接收时间分别保存。幂等活动事件写入 `user_activity_events`，同一天、同一 Bot 的日报可以按组织分别聚合。已确认的交接按实际生效时段校正可验证的历史事件。[可回滚的测试库验收](../../tests/supabase/business-tenant-ownership.sql)
 
 ### v11.18.0 的读写约定
 
@@ -320,7 +326,7 @@
 
 ### 5. agent_long_term_memories - 用户长期记忆
 
-**用途**：按 `(corp_id, user_id, bot_user_id)` 存储候选人与托管账号之间的长期关系档。
+按组织、企微企业、候选人与托管账号存储长期关系档。组织隔离版的唯一键为 `(tenant_id, corp_id, user_id, bot_user_id)`。
 `bot_user_id` 必须使用稳定的企微 `wecomUserId`，不可使用会轮换的 `imBotId`。
 
 **代码位置**：
@@ -394,9 +400,8 @@
 
 **约束与兼容行**：
 
-- 生产关系行唯一约束：`(corp_id, user_id, bot_user_id)`；
-- `bot_user_id IS NULL` 的旧行保留且不参与长期召回；
-- NULL 行由部分唯一索引约束为每个 `(corp_id, user_id)` 至多一行，用于兼容 `active_booking`。
+- 组织迁移前的关系行使用 `(corp_id, user_id, bot_user_id)` 去重。
+- 迁移后组合唯一键采用 `NULLS NOT DISTINCT`。每个组织内的同一企业和候选人最多保留一行 `bot_user_id IS NULL` 的预约指针，长期召回使用有稳定托管账号的关系行。
 
 **触发器**：`trigger_agent_long_term_memories_updated_at`
 
@@ -406,7 +411,7 @@
 - `append_long_term_summary_atomic`：原子追加单层摘要数组，最多保留 20 段
 - `mark_long_term_settled_boundary`：兼容名称；原子更新摘要与独立 `consolidation_watermarks`
 
-**Redis 缓存 key**：`long-term:{corpId}:{userId}:{botUserId}`，TTL 2 小时。
+长期档案缓存时长为两小时。已经确认组织的运行时请求给长期档案、会话和预约快照的 Redis 键加上 `tenant:{tenantId}:` 前缀。
 
 ---
 
@@ -437,11 +442,11 @@
 | `created_at`      | timestamptz | now()    | -                    |
 | `updated_at`      | timestamptz | now()    | -                    |
 
-**唯一约束**：`(chat_id, activity_date)`
+组织隔离版按 `(tenant_id, chat_id, activity_date)` 唯一。原有按会话和日期累计的数据须基于事件证据核实归属。
 
 **操作说明**：
 
-- **写入**：RPC `upsert_user_activity()` — 消息接收时自动累加
+- **写入**　消息接收和 Token 用量分别以事件键调用 `record_user_activity`，首次写入事件才累计活动。
 - **读取**：RPC `get_active_users_by_range()` / `get_daily_user_stats_by_range()`
 - **清理**：不清理，永久保留（托管趋势数据源）
 

@@ -3,15 +3,11 @@ import { timer, map } from 'rxjs';
 import { RawResponse } from '@infra/server/response/decorators/api-response.decorator';
 import type { Request } from 'express';
 import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
-import { DASHBOARD_ORGANIZATIONS, isDashboardAdministrator } from '@/types/dashboard-account';
-import { CenterScopeService } from './center-scope.service';
+import { isDashboardAdministrator } from '@/types/dashboard-account';
 
 @Controller('dashboard')
 export class DashboardAccessController {
-  constructor(
-    private readonly access: DashboardAccessService,
-    private readonly scopes: CenterScopeService,
-  ) {}
+  constructor(private readonly access: DashboardAccessService) {}
 
   @Sse('events')
   @RawResponse()
@@ -25,19 +21,15 @@ export class DashboardAccessController {
   @Header('Cache-Control', 'no-store')
   async getAccess(@Req() request: Request) {
     const account = this.access.requireAccount(request);
-    const centerId = account.organization === 'headquarters' ? null : account.organization;
-    const scope = centerId ? await this.scopes.getScope(false, centerId) : null;
+    const centerId = account.tenant?.readsAllTenants ? null : account.organization;
     return {
       userId: account.userId,
       displayName: account.name,
       isAdministrator: isDashboardAdministrator(account),
       organization: account.organization,
       centerId,
-      name: DASHBOARD_ORGANIZATIONS[account.organization],
-      henanGroupMarker: this.scopes.henanGroupMarker,
-      scopeKey: scope
-        ? [...scope.groups.map((g) => g.id), ...scope.botIds].sort().join(',')
-        : 'headquarters',
+      name: account.tenant?.name ?? account.organization,
+      scopeKey: account.organization,
     };
   }
 }

@@ -31,7 +31,7 @@ export type CenterRoute =
   | 'group-switch';
 export function requiresTenantScope(account: DashboardAccount, route: CenterRoute | undefined) {
   return (
-    account.organization !== 'headquarters' ||
+    account.tenant?.readsAllTenants !== true ||
     (route === 'group-switch' && !isDashboardAdministrator(account))
   );
 }

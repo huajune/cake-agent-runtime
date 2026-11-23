@@ -1,3 +1,4 @@
+import { businessTenant } from '@infra/supabase/business-tenant';
 import { ReengagementCommandService } from '@agent/reengagement/reengagement-command.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
@@ -123,6 +124,13 @@ export class AcceptInboundMessageService {
       };
     }
 
+    if (businessTenant() === null) {
+      await this.recordUserMessageToHistory(messageData, filterResult.content);
+      return {
+        shouldDispatch: false,
+        response: { success: true, message: '托管归属待核实，消息已归档' },
+      };
+    }
     // 候选人入站事件（非 self、过滤通过、非重复、非群聊）：friend.added（首次插入时开户长期记忆）
     // + candidate.message_received + 原子检测首条破冰（candidate.engaged）。
     // 微信「加好友纯默认招呼语」不计候选人消息/破冰。活跃时间等待可靠写入，统计事件异步写。

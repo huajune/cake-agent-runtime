@@ -18,12 +18,11 @@ import {
   hostingSelection,
   readHostingSelection,
 } from '@infra/server/dashboard-access/hosting-binding.schema';
-import { type DashboardOrganization, isDashboardOrganization } from '@/types/dashboard-account';
 import { HostingBindingsService } from './hosting-bindings.service';
 import { HostingBindingsRepository } from './hosting-bindings.repository';
 
 const bindingRequest = hostingSelection.extend({
-  organization: z.custom<DashboardOrganization>(isDashboardOrganization),
+  organization: z.string().trim().min(1),
 });
 const handoverRequest = z
   .object({

@@ -78,6 +78,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
                 throw new UnauthorizedException();
               return {
                 userId: token,
+                tenant: { name: token, readsAllTenants: ['hq', 'admin'].includes(token) },
                 name: token === 'hq' ? 'cakeadmin' : '测试',
                 loginName: token === 'admin' ? 'cakeadmin' : null,
                 organization: ['hq', 'admin'].includes(token)
