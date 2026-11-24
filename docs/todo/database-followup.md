@@ -10,4 +10,6 @@
 | 原文、摘要与消息标识 | 后端、数据负责人 | 逐个核对聊天原文、候选人姓名、日报摘要的页面权限与导出去向。飞书运营日报使用摘要，其他导出核对必要字段。确认消息分段与逻辑消息的关联、群回调外部 ID 及两个时间字段的读者后，决定是否需调整存储。 |
 | 转人工数据质量 | 后端、运营 | 按原因核对兜底码、阶段及岗位和工单 ID 的缺失，区分业务上没有与写入遗漏。重点复核改约、预约冲突的工单关联，以及 `other` 的原因说明。 |
 
+总部流水详情切换到快照子表前，先按消息 ID 搬迁旧快照，核对原始内容与时间。切换应用后，用总部账号复查同一条历史流水，再随 #1562 退役旧列和旧清理任务。快照到期后，总部仍可打开保留期内的流水，查看基本信息。[快照迁移](../../supabase/migrations/20261124032723_migrate_legacy_processing_snapshots.sql) · [旧列清理 PR](https://github.com/huajune/cake-agent-runtime/pull/1562)
+
 生产旧列清理单独安排。原始审计问题和字段明细保存在[保留策略核查清单](https://github.com/huajune/cake-agent-runtime/blob/v11.18.0/docs/todo/data-retention-policy-unification.md)。组织 ID 的正式迁移与历史回填在[组织归属待办](business-data-tenant-id.md)跟踪。

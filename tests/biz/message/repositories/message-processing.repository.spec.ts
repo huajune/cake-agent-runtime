@@ -153,7 +153,6 @@ describe('MessageProcessingRepository', () => {
           token_usage: 100,
           is_fallback: false,
           fallback_success: null,
-          agent_invocation: null,
           batch_id: null,
         },
       ];
@@ -322,7 +321,6 @@ describe('MessageProcessingRepository', () => {
         token_usage: 80,
         is_fallback: false,
         fallback_success: null,
-        agent_invocation: null,
         batch_id: null,
       };
 
@@ -411,6 +409,30 @@ describe('MessageProcessingRepository', () => {
   // ==================== getMessageProcessingRecordById ====================
 
   describe('getMessageProcessingRecordById', () => {
+    it('reads first-token latency from the migrated snapshot when the timing column is empty', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      const invocation = { response: { timings: { durations: { requestToFirstTextDeltaMs: 34 } } } };
+      mockSupabaseClient.from.mockReturnValue(
+        makeQueryMock({
+          data: [
+            {
+              message_id: 'historical',
+              chat_id: 'chat',
+              status: 'success',
+              received_at: '2026-11-19T00:00:00Z',
+              message_processing_invocations: { agent_invocation: invocation },
+            },
+          ],
+        }),
+      );
+
+      expect(await repository.getMessageProcessingRecordById('historical')).toMatchObject({
+        messageId: 'historical',
+        agentInvocation: invocation,
+        ttftMs: 34,
+      });
+    });
+
     it('should return null when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
@@ -457,7 +479,6 @@ describe('MessageProcessingRepository', () => {
         token_usage: 100,
         is_fallback: false,
         fallback_success: null,
-        agent_invocation: null,
         batch_id: 'batch_001',
       };
 
@@ -473,41 +494,49 @@ describe('MessageProcessingRepository', () => {
       expect(result?.batchId).toBe('batch_001');
     });
 
-    it('prefers the embedded child-table invocation over the legacy column', async () => {
+    const detailRow = {
+      message_id: 'detail',
+      chat_id: 'chat',
+      received_at: '2026-11-24T01:00:00Z',
+      status: 'success',
+    };
+
+    it.each([
+      { embedded: { agent_invocation: { fromChild: true } } },
+      { embedded: [{ agent_invocation: { fromChild: true } }] },
+    ])('reads the child snapshot with either embed shape', async ({ embedded }) => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const dbRow = {
-        message_id: 'msg_002',
-        chat_id: 'chat_001',
-        user_id: 'user_001',
-        received_at: new Date().toISOString(),
-        status: 'success',
-        agent_invocation: { legacy: true },
-        message_processing_invocations: [{ agent_invocation: { fromChild: true } }],
-      };
-      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [dbRow], error: null }));
+      const query = makeQueryMock({
+        data: [{ ...detailRow, message_processing_invocations: embedded }],
+      });
+      mockSupabaseClient.from.mockReturnValue(query);
 
-      const result = await repository.getMessageProcessingRecordById('msg_002');
+      const result = await repository.getMessageProcessingRecordById('detail');
 
+      const projection = query.select.mock.calls[0][0].split(',');
+      expect(projection).toContain(
+        'message_processing_invocations(agent_invocation:processing_read_invocation)',
+      );
+      expect(projection).not.toContain('agent_invocation');
+      expect(projection).not.toContain('invocation_version');
       expect(result?.agentInvocation).toEqual({ fromChild: true });
     });
 
-    it('falls back to the legacy agent_invocation column for rows written before the split', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const dbRow = {
-        message_id: 'msg_003',
-        chat_id: 'chat_001',
-        user_id: 'user_001',
-        received_at: new Date().toISOString(),
-        status: 'success',
-        agent_invocation: { legacy: true },
-        message_processing_invocations: [],
-      };
-      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [dbRow], error: null }));
+    it.each([[], null, [{ agent_invocation: null }]].map((embed) => ({ embed })))(
+      'omits unavailable or superseded snapshots',
+      async ({ embed }) => {
+        mockSupabaseService.isClientInitialized.mockReturnValue(true);
+        mockSupabaseClient.from.mockReturnValue(
+          makeQueryMock({
+            data: [{ ...detailRow, message_processing_invocations: embed }],
+          }),
+        );
 
-      const result = await repository.getMessageProcessingRecordById('msg_003');
+        const result = await repository.getMessageProcessingRecordById('detail');
 
-      expect(result?.agentInvocation).toEqual({ legacy: true });
-    });
+        expect(result?.agentInvocation).toBeUndefined();
+      },
+    );
   });
 
   // ==================== getMessageStats ====================
@@ -713,7 +742,6 @@ describe('MessageProcessingRepository', () => {
         token_usage: 80,
         is_fallback: false,
         fallback_success: null,
-        agent_invocation: null,
         batch_id: null,
       };
 

@@ -88,11 +88,8 @@ export class MessageProcessingRepository extends BaseRepository {
     'batch_id',
   ].join(',');
 
-  // 详情接口投影：在列表列基础上多带 agent_invocation，前端详情抽屉的时延分解、
-  // 工具执行、Trace、Delivery、Fallback 等富字段全部依赖该 jsonb。
-  // 详情投影：主表列 + 子表 embed。agent_invocation 已拆到 message_processing_invocations（1:0..1）；
-  // 主表同名列仅存量兼容（7d 置空任务耗尽后可删），读时两处取其一。
-  private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation,invocation_version,message_processing_invocations(agent_invocation:processing_read_invocation)`;
+  // 详情抽屉按需读取子表的完整请求与响应，数据库会还原工具引用并屏蔽已替代快照。
+  private readonly detailSelectedColumns = `${this.listSelectedColumns},message_processing_invocations(agent_invocation:processing_read_invocation)`;
 
   // Dashboard 业务趋势只需要时间、用户和预约工具调用结果，避免为图表拉取大块快照字段。
   private readonly businessTrendSelectedColumns = [
@@ -1160,7 +1157,7 @@ export class MessageProcessingRepository extends BaseRepository {
       tokenUsage: record.token_usage,
       isFallback: record.is_fallback,
       fallbackSuccess: record.fallback_success,
-      agentInvocation: this.pickInvocation(record),
+      agentInvocation: this.readInvocation(record),
       batchId: record.batch_id,
       toolCalls: record.tool_calls as MessageProcessingRecordInput['toolCalls'],
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
@@ -1178,21 +1175,13 @@ export class MessageProcessingRepository extends BaseRepository {
     if (fromColumn !== undefined) return fromColumn;
 
     // 兼容存量未回填 ttft_ms 的记录：详情查询带 agent_invocation 时仍可现场提取
-    return this.extractTtftFromInvocation(this.pickInvocation(record));
+    return this.extractTtftFromInvocation(this.readInvocation(record));
   }
 
-  /** 详情行：优先子表 embed，其次主表存量列。 */
-  private pickInvocation(record: MessageProcessingDbRecord): unknown {
-    const embedded = (record as { message_processing_invocations?: unknown })
-      .message_processing_invocations;
-    if (Array.isArray(embedded)) {
-      const first = embedded[0] as { agent_invocation?: unknown } | undefined;
-      if (first?.agent_invocation != null) return first.agent_invocation;
-    } else if (embedded && typeof embedded === 'object') {
-      const single = embedded as { agent_invocation?: unknown };
-      if (single.agent_invocation != null) return single.agent_invocation;
-    }
-    return record.invocation_version ? undefined : (record.agent_invocation ?? undefined);
+  private readInvocation(record: MessageProcessingDbRecord): unknown {
+    const embedded = record.message_processing_invocations;
+    const child = Array.isArray(embedded) ? embedded[0] : embedded;
+    return child?.agent_invocation ?? undefined;
   }
 
   private extractTtftFromInvocation(invocation: unknown): number | undefined {
