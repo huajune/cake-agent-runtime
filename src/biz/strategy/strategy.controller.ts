@@ -79,12 +79,4 @@ export class StrategyController {
   async getVersionHistory(@Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number) {
     return this.strategyConfigService.getVersionHistory(limit);
   }
-
-  /**
-   * 变更历史（兼容旧接口）
-   */
-  @Get('changelog')
-  async getChangelog(@Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number) {
-    return this.strategyConfigService.getChangelog(limit);
-  }
 }

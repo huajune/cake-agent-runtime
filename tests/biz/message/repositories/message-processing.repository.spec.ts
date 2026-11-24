@@ -798,63 +798,46 @@ describe('MessageProcessingRepository', () => {
     });
   });
 
-  // ==================== nullAgentInvocations ====================
-
-  describe('nullAgentInvocations', () => {
-    it('should return 0 when supabase is not available', async () => {
+  describe('deleteExpiredAgentInvocations', () => {
+    it('skips cleanup when Supabase is unavailable', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
-
-      const result = await repository.nullAgentInvocations(7);
-
-      expect(result).toBe(0);
+      expect(await repository.deleteExpiredAgentInvocations()).toBe(0);
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
     });
 
-    it('should return updated count from RPC (legacy row-set shape)', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
+    it('retains 90 days by default and counts an RPC row-set result', async () => {
       mockSupabaseClient.rpc.mockResolvedValue({
-        data: [{ null_agent_invocation: '20' }],
+        data: [{ delete_expired_agent_invocations: '20' }],
         error: null,
       });
-
-      const result = await repository.nullAgentInvocations(7);
-
-      expect(result).toBe(20);
-    });
-
-    it('should loop batches until a batch returns less than the limit', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      // 两条并行清理：子表 delete_expired_agent_invocations 分批删，主表 null_agent_invocation 置空存量。
-      // returns integer 的函数 supabase-js 返回裸数字；按函数名分别计数。
-      const calls: Record<string, number> = {};
-      mockSupabaseClient.rpc.mockImplementation((fn: string) => {
-        calls[fn] = (calls[fn] ?? 0) + 1;
-        if (fn === 'delete_expired_agent_invocations') {
-          return Promise.resolve({ data: calls[fn] <= 2 ? 200 : 35, error: null });
-        }
-        return Promise.resolve({ data: calls[fn] === 1 ? 20 : 0, error: null });
-      });
-
-      const result = await repository.nullAgentInvocations(7);
-
-      // 子表 200+200+35 = 435（第 3 批 < limit 停止），主表 20（< limit 停止）
-      expect(result).toBe(455);
-      expect(calls['delete_expired_agent_invocations']).toBe(3);
-      expect(calls['null_agent_invocation']).toBe(1);
-    });
-
-    it('should use default daysOld of 7 and pass batch limit', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      mockSupabaseClient.rpc.mockResolvedValue({ data: 0, error: null });
-
-      await repository.nullAgentInvocations();
-
-      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('null_agent_invocation', {
-        p_days_old: 7,
+      expect(await repository.deleteExpiredAgentInvocations()).toBe(20);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(1);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('delete_expired_agent_invocations', {
+        p_days_old: 90,
         p_limit: 200,
       });
+    });
+
+    it('stops at the first partial batch and honors explicit retention', async () => {
+      mockSupabaseClient.rpc
+        .mockResolvedValueOnce({ data: 200, error: null })
+        .mockResolvedValueOnce({ data: 35, error: null });
+      expect(await repository.deleteExpiredAgentInvocations(7)).toBe(235);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(2);
+      expect(mockSupabaseClient.rpc).toHaveBeenNthCalledWith(
+        2,
+        'delete_expired_agent_invocations',
+        {
+          p_days_old: 7,
+          p_limit: 200,
+        },
+      );
+    });
+
+    it('stops at the batch cap when there is a backlog', async () => {
+      mockSupabaseClient.rpc.mockResolvedValue({ data: 2, error: null });
+      expect(await repository.deleteExpiredAgentInvocations(90, 2)).toBe(200);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(100);
     });
   });
 

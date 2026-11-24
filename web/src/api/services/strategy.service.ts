@@ -1,6 +1,5 @@
 import type {
   StrategyConfigRecord,
-  StrategyChangelogRecord,
   StrategyRoleSetting,
   StrategyPersona,
   StrategyStageGoals,
@@ -41,11 +40,6 @@ export async function publishStrategy(versionNote?: string) {
 export async function getReleasedConfig() {
   const { data } = await api.get('/strategy', { params: { status: 'released' } });
   return unwrapResponse<StrategyConfigRecord>(data);
-}
-
-export async function getChangelog(limit = 20) {
-  const { data } = await api.get('/strategy/changelog', { params: { limit } });
-  return unwrapResponse<StrategyChangelogRecord[]>(data);
 }
 
 export async function rollbackConfig(

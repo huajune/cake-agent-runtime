@@ -677,55 +677,28 @@ export class MessageProcessingRepository extends BaseRepository {
     }
   }
 
-  /**
-   * 将过期的 agent_invocation 置为 NULL（释放 TOAST 空间）
-   *
-   * 仅清理 agent_invocation 一列（20260706171000）：agent_steps/tool_calls 有处理链窗口
-   * 消费方（get_dashboard_tool_stats RPC、badcase 分析证据），随消息处理行删除一并清理。
-   * 分批执行：PostgREST 连接角色 authenticator 有 statement_timeout=8s，
-   * 单次全量 UPDATE 数千行 TOAST 大字段必然超时（生产曾因此积压数周未清理）。
-   * 每批 p_limit 行，循环到一批不满即清完；maxBatches 防御 RPC 异常时死循环。
-   *
-   * @param daysOld 超过多少天的记录将被清理
-   * @returns 更新的记录数
-   */
-  async nullAgentInvocations(daysOld: number = 7, batchLimit: number = 200): Promise<number> {
-    if (!this.isAvailable()) {
-      return 0;
-    }
+  /** 分批删除到期的子表快照，限制单次 RPC 和每轮任务的工作量。 */
+  async deleteExpiredAgentInvocations(daysOld = 90, batchLimit = 200): Promise<number> {
+    if (!this.isAvailable()) return 0;
 
     const maxBatches = 100;
     let total = 0;
-    let lastBatchCount = 0;
     try {
-      // 新表：按 created_at 删整行
       for (let batch = 0; batch < maxBatches; batch += 1) {
-        const deleted = await this.rpc<number>('delete_expired_agent_invocations', {
+        const result = await this.rpc<number>('delete_expired_agent_invocations', {
           p_days_old: daysOld,
           p_limit: batchLimit,
         });
-        const n = this.asRpcCount(deleted, 'delete_expired_agent_invocations');
-        total += n;
-        if (n < batchLimit) break;
+        const count = this.asRpcCount(result, 'delete_expired_agent_invocations');
+        total += count;
+        if (count < batchLimit) return total;
       }
-      // 主表存量列：继续置空直到耗尽
-      for (let batch = 0; batch < maxBatches; batch += 1) {
-        const result = await this.rpc<number>('null_agent_invocation', {
-          p_days_old: daysOld,
-          p_limit: batchLimit,
-        });
-        lastBatchCount = this.asRpcCount(result, 'null_agent_invocation');
-        total += lastBatchCount;
-        if (lastBatchCount < batchLimit) break;
-      }
-      if (lastBatchCount === batchLimit) {
-        this.logger.warn(
-          `[消息处理记录] NULL agent_invocation 达到分批上限 ${maxBatches}×${batchLimit}，可能仍有积压，待下次清理继续`,
-        );
-      }
+      this.logger.warn(
+        `[消息处理记录] 快照清理达到分批上限 ${maxBatches}×${batchLimit}，待下次清理继续`,
+      );
       return total;
     } catch (error) {
-      this.logger.error(`[消息处理记录] NULL agent_invocation 失败 (已清理 ${total} 条):`, error);
+      this.logger.error(`[消息处理记录] 快照清理失败 (已清理 ${total} 条):`, error);
       throw error;
     }
   }

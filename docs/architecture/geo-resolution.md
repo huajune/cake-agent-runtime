@@ -287,7 +287,7 @@ interface GeoQueryMeta {
 
 ⚠️ `anchor.source` 实现只产出 `'geocode' | 'model_supplied' | null`——`'session_fact'` / `'user_location_share'` 是定稿期预留档，**从未接线也从未产出过，勿按这两个值写查询**。
 
-**落点**：随工具执行结果落 `message_processing_records`（`agent_invocation`），与 `agent_execution_events` 同 `trace_id` 可 join；fallback 触发、area guard 拒绝等关键事件经 AgentTracer 记 `agent_execution_events`。日志仅辅助定位，**禁止包含用户完整原消息、手机号或精确住址**。
+**落点**：随工具执行结果落调用快照子表 `message_processing_invocations`，与 `agent_execution_events` 同 `trace_id` 可 join；fallback 触发、area guard 拒绝等关键事件经 AgentTracer 记 `agent_execution_events`。日志仅辅助定位，**禁止包含用户完整原消息、手机号或精确住址**。
 
 **可回答的问题**：解析状态与证据分布 / 县级市映射的应用次数与去向 / fallback 触发率与原因 / area guard 过滤前后数量差 / 0 结果查询中行政区映射是否生效 / 区级锚点查询占比 / 信号冲突频次与澄清率。
 
