@@ -15,6 +15,7 @@ export interface TodayUserData {
   firstActiveAt: number;
   lastActiveAt: number;
   isPaused: boolean;
+  canToggleHosting?: boolean;
 }
 
 export interface PausedUserData {

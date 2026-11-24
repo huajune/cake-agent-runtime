@@ -157,6 +157,14 @@ export class UserHostingService {
 
   // ==================== 暂停 / 恢复 ====================
 
+  /** 归属校验和托管写入在同一事务内完成。提交后让运行时读取同一份暂停状态。 */
+  async setTenantHosting(tenantId: string, chatId: string, enabled: boolean): Promise<void> {
+    const expiresAt = new Date(resolveTemporaryPauseExpiresAt(Date.now())).toISOString();
+    const changed = await this.repository.setTenantHosting(tenantId, chatId, enabled, expiresAt);
+    await this.refreshCache();
+    if (changed && enabled) await this.onUserResumed(chatId);
+  }
+
   /**
    * 暂停用户托管
    *
@@ -228,10 +236,12 @@ export class UserHostingService {
       this.logger.error(`恢复用户 ${userId} 托管失败`, error);
     }
 
-    // 转人工闭环：恢复托管即视为人工处理结束，回填 handoff_events.outcome（userId 即 chatId）
-    await this.markHandoffResolved(userId, 'resumed');
-
     await this.persistSharedCache();
+    await this.onUserResumed(userId);
+  }
+
+  private async onUserResumed(userId: string): Promise<void> {
+    await this.markHandoffResolved(userId, 'resumed');
 
     // 手动恢复即时对账等副作用由监听方自理（fire-and-forget，任何失败不影响恢复本身）。
     // 到期恢复不经过本函数，由下一回合与补偿扫描兜底（PRD R2）。

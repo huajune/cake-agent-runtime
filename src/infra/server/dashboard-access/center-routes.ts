@@ -28,11 +28,12 @@ export type CenterRoute =
   | (typeof CENTER_READ_ROUTES)[keyof typeof CENTER_READ_ROUTES]
   | 'messages'
   | 'processing-detail'
+  | 'user-switch'
   | 'group-switch';
 export function requiresTenantScope(account: DashboardAccount, route: CenterRoute | undefined) {
   return (
     account.tenant?.readsAllTenants !== true ||
-    (route === 'group-switch' && !isDashboardAdministrator(account))
+    ((route === 'group-switch' || route === 'user-switch') && !isDashboardAdministrator(account))
   );
 }
 
@@ -48,4 +49,5 @@ export function centerRoute(request: Request): CenterRoute | undefined {
   }
   if (['POST', 'DELETE'].includes(request.method) && path === '/config/blacklist')
     return 'group-switch';
+  if (request.method === 'POST' && path === '/user/users/:chatId/hosting') return 'user-switch';
 }

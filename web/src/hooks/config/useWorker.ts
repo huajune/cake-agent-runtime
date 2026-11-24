@@ -27,10 +27,11 @@ export function useWorkerStatus(autoRefresh = true) {
 /**
  * 获取小组列表
  */
-export function useGroupList() {
+export function useGroupList(enabled = true) {
   return useQuery({
     queryKey: ['group-list'],
     queryFn: () => monitoringService.getGroupList(),
+    enabled,
     staleTime: 60000,
   });
 }

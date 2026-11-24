@@ -6,7 +6,7 @@ import type { CenterRoute } from './center-routes';
 export function authorizeCenterRequest(request: Request, route: CenterRoute | undefined): void {
   if (route && request.method === 'GET') return;
   if (
-    route === 'group-switch' &&
+    (route === 'group-switch' || route === 'user-switch') &&
     request.is('application/json') &&
     request.headers['x-center-action'] === 'hosting'
   ) {

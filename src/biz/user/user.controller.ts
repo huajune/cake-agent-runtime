@@ -1,4 +1,17 @@
-import { Controller, Get, Post, HttpCode, Logger, Body, Param } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Post,
+  HttpCode,
+  Logger,
+  Body,
+  Param,
+  Req,
+} from '@nestjs/common';
+import type { Request } from 'express';
+import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
+import { isDashboardAdministrator } from '@/types/dashboard-account';
 import { UserHostingService } from './services/user-hosting.service';
 
 /**
@@ -9,7 +22,10 @@ import { UserHostingService } from './services/user-hosting.service';
 export class UserController {
   private readonly logger = new Logger(UserController.name);
 
-  constructor(private readonly userHostingService: UserHostingService) {}
+  constructor(
+    private readonly userHostingService: UserHostingService,
+    private readonly access: DashboardAccessService,
+  ) {}
 
   @Post('users/:userId/pause')
   @HttpCode(200)
@@ -62,14 +78,28 @@ export class UserController {
 
   @Post('users/:chatId/hosting')
   @HttpCode(200)
-  async toggleUserHosting(@Param('chatId') chatId: string, @Body('enabled') enabled: boolean) {
-    this.logger.log(`切换用户托管状态: ${chatId}, enabled=${enabled}`);
-    if (enabled) {
+  async toggleUserHosting(
+    @Param('chatId') chatId: string,
+    @Body('enabled') enabled: unknown,
+    @Req() request: Request,
+  ) {
+    const actor = this.access.requireAccount(request);
+    if (typeof enabled !== 'boolean' || !chatId.trim() || chatId.length > 100)
+      throw new BadRequestException('请选择有效的会话和托管状态');
+    if (!isDashboardAdministrator(actor)) {
+      await this.userHostingService.setTenantHosting(actor.organization, chatId, enabled);
+    } else if (enabled) {
       await this.userHostingService.resumeUser(chatId);
-      return { chatId, hostingEnabled: true, message: `用户 ${chatId} 的托管已启用` };
     } else {
       await this.userHostingService.pauseUser(chatId, { source: 'manual' });
-      return { chatId, hostingEnabled: false, message: `用户 ${chatId} 的托管已暂停` };
     }
+    this.logger.log(
+      `用户托管开关 actor=${actor.userId} organization=${actor.organization} chat=${JSON.stringify(chatId)} enabled=${enabled}`,
+    );
+    return {
+      chatId,
+      hostingEnabled: enabled,
+      message: `用户 ${chatId} 的托管已${enabled ? '启用' : '暂停'}`,
+    };
   }
 }

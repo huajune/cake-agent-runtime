@@ -16,7 +16,8 @@ export default function InfoCard() {
           <strong>小组开关</strong>在展开的小组列表中操作，只影响对应的小组。
         </li>
         <li>
-          <strong>单个用户的托管</strong>可由总部在「托管用户」页面暂停。
+          <strong>单个用户的托管</strong>
+          可由租户管理员和组长在「托管用户」页面暂停或恢复，操作范围为本租户。
         </li>
         <li>
           <strong>组织归属</strong>由管理员在「账号管理」绑定托管小组。组内新加入的企微号会随 Stride

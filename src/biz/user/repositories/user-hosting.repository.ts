@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { formatLocalDate } from '@infra/utils/date.util';
@@ -29,6 +29,26 @@ export class UserHostingRepository extends BaseRepository {
   }
 
   // ==================== user_hosting_status 操作 ====================
+
+  async setTenantHosting(
+    tenantId: string,
+    chatId: string,
+    enabled: boolean,
+    expiresAt: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.getClient()
+      .rpc('set_tenant_user_hosting', {
+        p_tenant_id: tenantId,
+        p_chat_id: chatId,
+        p_enabled: enabled,
+        p_pause_expires_at: expiresAt,
+      })
+      .abortSignal(AbortSignal.timeout(5000));
+    if (error?.code === '42501') throw new ForbiddenException('无权操作此会话');
+    if (error || typeof data !== 'boolean')
+      throw new ServiceUnavailableException('托管状态保存失败，请稍后重试');
+    return data;
+  }
 
   /**
    * 查询所有生效中的暂停用户 ID、暂停时间、解禁时间与永久标记
@@ -86,6 +106,7 @@ export class UserHostingRepository extends BaseRepository {
     await this.upsert(
       {
         user_id: userId,
+        tenant_id: null,
         is_paused: true,
         paused_at: params.pausedAt,
         pause_expires_at: params.pauseExpiresAt,

@@ -71,9 +71,11 @@ export async function getUsers() {
 }
 
 export async function toggleUserHosting(chatId: string, enabled: boolean) {
-  const { data } = await api.post(`/user/users/${encodeURIComponent(chatId)}/hosting`, {
-    enabled,
-  });
+  const { data } = await api.post(
+    `/user/users/${encodeURIComponent(chatId)}/hosting`,
+    { enabled },
+    { headers: { 'X-Center-Action': 'hosting' } },
+  );
   return unwrapResponse(data);
 }
 

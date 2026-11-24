@@ -14,6 +14,7 @@ interface PermanentPauseProps {
   pendingChatId?: string;
   onAdd: (params: { userId: string; reason: string; operator?: string }) => void;
   onResume: (chatId: string) => void;
+  canToggleHosting: (user: UserData) => boolean;
   /** 把托管账号 wxid 解析为配置的展示名（未配置别名时返回原始值） */
   resolveBotLabel?: (ids: Pick<UserData, 'botUserId' | 'imBotId'>) => string;
 }
@@ -25,6 +26,7 @@ export default function PermanentPause({
   pendingChatId,
   onAdd,
   onResume,
+  canToggleHosting,
   resolveBotLabel,
 }: PermanentPauseProps) {
   const [targetId, setTargetId] = useState('');
@@ -148,7 +150,7 @@ export default function PermanentPause({
                       <button
                         type="button"
                         className={styles.removeButton}
-                        disabled={pendingChatId === user.chatId}
+                        disabled={!canToggleHosting(user) || pendingChatId === user.chatId}
                         onClick={() => handleResume(user)}
                       >
                         {pendingChatId === user.chatId ? '恢复中…' : '恢复托管'}

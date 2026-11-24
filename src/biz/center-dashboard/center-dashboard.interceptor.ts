@@ -25,6 +25,7 @@ export class CenterDashboardInterceptor implements NestInterceptor {
       route &&
       route !== 'access' &&
       route !== 'events' &&
+      route !== 'user-switch' &&
       requiresTenantScope(actor, route)
         ? from(this.center.handle(route, request, actor.organization)).pipe(
             map((data) => createSuccessResponse(data)),

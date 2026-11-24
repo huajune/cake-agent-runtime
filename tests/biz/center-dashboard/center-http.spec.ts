@@ -19,6 +19,8 @@ import { HostingBindingsService } from '@biz/center-dashboard/hosting-bindings.s
 import { HostingBindingsRepository } from '@biz/center-dashboard/hosting-bindings.repository';
 import { HostingConfigController } from '@biz/hosting-config/hosting-config.controller';
 import { HostingConfigFacadeService } from '@biz/hosting-config/services/hosting-config-facade.service';
+import { UserController } from '@biz/user/user.controller';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 let legacyCalls = 0;
 @Controller()
@@ -40,6 +42,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
   const globalToggle = jest.fn().mockResolvedValue({ enabled: false });
   const adminGroupSwitch = jest.fn().mockResolvedValue({ message: '小组开关已保存' });
   const hosting = { sync: jest.fn(), bind: jest.fn() };
+  const users = { setTenantHosting: jest.fn(), pauseUser: jest.fn(), resumeUser: jest.fn() };
   const hostingDirectory = {
     directory: jest.fn().mockResolvedValue({ groups: [], tenants: [], checkedAt: null }),
   };
@@ -54,11 +57,13 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
     const module = await Test.createTestingModule({
       controllers: [
         LegacyController,
+        UserController,
         HostingConfigController,
         DashboardAccountsController,
         HostingBindingsController,
       ],
       providers: [
+        { provide: UserHostingService, useValue: users },
         { provide: HostingBindingsService, useValue: hosting },
         { provide: HostingBindingsRepository, useValue: hostingDirectory },
         {
@@ -337,6 +342,40 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       .send({ enabled: false })
       .expect(200);
     expect(globalToggle).toHaveBeenCalledWith(false);
+  });
+  it('routes each staff switch with the tenant from the session and retains the platform administrator path', async () => {
+    const api = request(app.getHttpServer());
+    const toggle = (token: string, enabled: unknown, origin = 'https://cake.test') =>
+      api
+        .post('/user/users/qa%3Achat/hosting')
+        .set('Authorization', 'Bearer ' + token)
+        .set('Host', 'cake.test')
+        .set('Origin', origin)
+        .set('X-Center-Action', 'hosting')
+        .send({ enabled, tenantId: 'ignored-client-value' });
+    for (const [token, tenant] of [
+      ['henan-one', 'henan'],
+      ['henan-two', 'henan'],
+      ['shanghai', 'shanghai_recruitment'],
+      ['hq', 'headquarters'],
+    ]) {
+      for (const enabled of [false, true]) {
+        const result = await toggle(token, enabled).expect(200);
+        expect(result.body.data).toMatchObject({ chatId: 'qa:chat', hostingEnabled: enabled });
+        expect(users.setTenantHosting).toHaveBeenLastCalledWith(tenant, 'qa:chat', enabled);
+      }
+    }
+    await toggle('henan-one', 'false').expect(400);
+    await toggle('henan-two', false, 'https://elsewhere.test').expect(403);
+    await api
+      .post('/user/users/qa%3Achat/resume')
+      .set('Authorization', 'Bearer henan-one')
+      .expect(403);
+    expect(users.setTenantHosting).toHaveBeenCalledTimes(8);
+    expect(users.pauseUser).not.toHaveBeenCalled();
+    expect(users.resumeUser).not.toHaveBeenCalled();
+    await toggle('admin', true).expect(200);
+    expect(users.resumeUser).toHaveBeenCalledWith('qa:chat');
   });
   it('blocks global switch reads/writes and cross-origin mutations', async () => {
     await request(app.getHttpServer())
