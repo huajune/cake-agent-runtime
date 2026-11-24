@@ -9,6 +9,7 @@ import Login from '@/view/login/list';
 interface DashboardAccess {
   userId: string;
   displayName: string;
+  loginLabel: string | null;
   isAdministrator: boolean;
   tenantRole: TenantRole | null;
   organization: string;

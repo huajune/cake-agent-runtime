@@ -25,6 +25,8 @@ export class DashboardAccessController {
     return {
       userId: account.userId,
       displayName: account.name,
+      loginLabel:
+        account.loginName ?? (account.phone ? `手机号尾号 ${account.phone.slice(-4)}` : null),
       isAdministrator: isDashboardAdministrator(account),
       tenantRole: account.tenantRole,
       organization: account.organization,

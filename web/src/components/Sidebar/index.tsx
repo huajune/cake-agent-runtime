@@ -1,5 +1,6 @@
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import { dashboardAuth } from '@/api/dashboard-session';
+import { TENANT_ROLE_LABELS } from '@/api/dashboard-accounts';
 import toast from 'react-hot-toast';
 import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
@@ -9,6 +10,7 @@ import {
   BellRing,
   Bug,
   ClipboardCheck,
+  CircleUserRound,
   Layers,
   LayoutDashboard,
   ContactRound,
@@ -41,6 +43,9 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
   const access = useDashboardAccess();
   const restricted = Boolean(access?.centerId);
+  const role = access?.isAdministrator
+    ? '系统管理员'
+    : access?.tenantRole && TENANT_ROLE_LABELS[access.tenantRole];
   const location = useLocation();
 
   const shouldInterceptNavigation = (event: MouseEvent<HTMLAnchorElement>) =>
@@ -310,25 +315,50 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             {!isCollapsed && <span className="nav-text">系统监控</span>}
           </NavLink>
         )}
-        <button
-          type="button"
-          className="nav-item dashboard-logout"
-          title="退出登录"
-          onClick={async () => {
-            try {
-              const result = await dashboardAuth?.signOut({ scope: 'local' });
-              if (result?.error) throw result.error;
-            } catch {
-              toast.error('退出失败，请重试');
-            }
-          }}
-        >
-          <span className="nav-icon">
-            <LogOut size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          </span>
-          {!isCollapsed && <span className="nav-text">退出登录 · {access?.displayName}</span>}
-        </button>
       </div>
+      {access && (
+        <section className="sidebar-account" aria-label="当前登录账号">
+          {isCollapsed ? (
+            <button
+              type="button"
+              className="sidebar-account-button"
+              aria-label="展开当前登录账号信息"
+              title={[access.displayName, access.loginLabel, access.name, role]
+                .filter(Boolean)
+                .join(' · ')}
+              onClick={onToggle}
+            >
+              <CircleUserRound size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </button>
+          ) : (
+            <div className="sidebar-account-identity">
+              <strong title={access.displayName}>{access.displayName}</strong>
+              {access.loginLabel && <span>{access.loginLabel}</span>}
+            </div>
+          )}
+          <button
+            type="button"
+            className="sidebar-account-button"
+            aria-label="退出登录"
+            title="退出登录"
+            onClick={async () => {
+              try {
+                const result = await dashboardAuth?.signOut({ scope: 'local' });
+                if (result?.error) throw result.error;
+              } catch {
+                toast.error('退出失败，请重试');
+              }
+            }}
+          >
+            <LogOut size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+          </button>
+          {!isCollapsed && (
+            <span className="sidebar-account-scope">
+              {[access.name, role].filter(Boolean).join(' · ')}
+            </span>
+          )}
+        </section>
+      )}
     </aside>
   );
 }

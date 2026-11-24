@@ -195,9 +195,61 @@
   }
 }
 
-.sidebar-footer {
-  margin-top: auto;
-  padding-top: 20px;
+.sidebar-account {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 4px 0;
+  border-top: 1px solid $primary-15;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.45;
+  flex-shrink: 0;
+
+  .collapsed & {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding-inline: 0;
+  }
+}
+
+.sidebar-account-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: $text-primary;
+    font-size: 14px;
+  }
+}
+
+.sidebar-account-scope {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.sidebar-account-button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: $text-secondary;
+  cursor: pointer;
+
+  &:hover, &:focus-visible {
+    background: $primary-08;
+    color: $primary;
+  }
 }
 
 // ========== 内容区 ==========

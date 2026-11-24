@@ -37,8 +37,10 @@
 ## 登录后如何确定数据和菜单
 
 1. 员工用手机号和密码登录 Supabase Auth，浏览器将会话的 access token 放进请求的 Bearer 头。Nest 向 Auth 核实 token，根据返回的用户 ID 查 `tenant_members.user_id` 和所属 `tenants`，核对启停、员工已确认手机号或平台专用身份。每个受保护请求都查当前档案。
-2. `GET /dashboard/access` 返回当前组织、租户角色、跨租户范围派生的 `centerId` 和平台管理标记。React 用这些值过滤侧栏、守卫路由，切换身份或范围时重建业务查询缓存。河南管理员和组长均可进入用户、托管、聊天、消息流水、主动复聊五个页面。
+2. 侧栏底部显示当前成员的姓名、手机号尾号、所属组织和角色。专用管理员显示登录名 `cakeadmin` 和「系统管理员」。信息来自 `GET /dashboard/access`。React 根据该接口返回的 `centerId` 和平台管理标记过滤菜单、守卫路由，切换身份或范围时重建业务查询缓存。河南管理员和组长均可进入用户、托管、聊天、消息流水、主动复聊五个页面。
 3. Nest 独立检查允许的接口，从已验证身份取组织传给租户查询。SQL 用原业务记录的租户筛选列表、详情与聚合。两种租户角色均可管理本组织的小组和候选人托管。普通总部成员可以跨租户查看。账号管理与全局 AI 回复开关的 API 只对 `cakeadmin` 开放。成员表启用行级安全，浏览器的公开角色没有直接读取成员档案的表权限。
+
+仓库配置的 access token 有效期为 1 小时。浏览器的 Supabase 客户端会在临近到期时使用 refresh token 换取新的会话凭据。续期授权失效时，员工需重新登录。停用成员后，服务端从下一次受保护请求起拒绝访问。已打开的后台每 30 秒以及回到窗口时重新核对权限。[项目认证配置](../../supabase/config.toml) · [会话续期说明](https://supabase.com/docs/guides/auth/sessions)
 
 [认证与档案查询](../../src/infra/server/dashboard-access/dashboard-accounts.service.ts) · [接口授权](../../src/infra/server/guards/api-token.guard.ts) · [前端路由](../../web/src/hooks/useDashboardAccess.tsx) · [数据库表与字段](../db/tenant-schema.md)
 
@@ -120,7 +122,9 @@
 
 ## 现有配置如何迁入
 
-成员已登记在 `tenant_members`。当前 `hosting_member_config` 是 `system_config.value` 里的一份 JSON，读取条件为 `key=hosting_member_config`。它按 `members[botImId]` 保存可选的海绵 token、飞书接收人 open ID 和显示名、企微昵称及人设。配置顶层另有运营接收人和任务派单。飞书 open ID 用于标识收件人，与飞书应用认证凭据用途不同。后续接供应商时，可将海绵业务账号凭据按租户授权、把个人接收人关联成员、按 Bot 保留对外身份。这几项列入后续迁移。[当前读取实现](../../src/biz/hosting-config/repositories/hosting-member-config.repository.ts) · [配置字段](../../src/biz/hosting-config/types/hosting-member-config.types.ts)
+成员已登记在 `tenant_members`。本版上线后，运行时继续读取 `system_config` 中 `key=hosting_member_config` 的 JSON。它按 `members[botImId]` 保存可选的海绵 token、飞书接收人 open ID 和显示名、企微昵称及人设。顶层可配置运营接收人和任务派单。海绵 token 由业务方更新。蛋糕将配置缓存 5 分钟，到期后在下次使用时重新读取。上游凭据失效时需更新配置。飞书 open ID 用于标识收件人，应用调用凭据由服务端按飞书返回的有效期重新获取。[托管配置实现](../../src/biz/hosting-config/services/hosting-member-config.service.ts) · [飞书应用认证](../../src/infra/feishu/services/api.service.ts)
+
+后续将海绵授权归到租户的业务账号，把个人接收人关联成员，运营接收人和派单规则按组织登记，企微昵称和人设保留在 Bot 上。等报名、预约、通知和 Bot 身份全部从新来源读取并验收后，才能删除这行配置。[配置字段](../../src/biz/hosting-config/types/hosting-member-config.types.ts) · [配置键盘点](../db/database-schema.md#11-system_config---系统配置)
 
 1. 登记三个内部租户。核对全部在用同事、渠道连接、Stride 小组 ID、负责人与已知手机号。每人一个档案，每位组长负责一个小组，组内可以有多个 Bot。手机号待补的同事先建档，身份有冲突的交负责人确认。
 2. 为新业务记录写入租户。历史记录按下表分批处理，同时核对外部账号的绑定时间。迁移前后逐租户对账聊天、工单和报表数量，检查重试中的任务。

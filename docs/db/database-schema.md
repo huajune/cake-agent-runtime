@@ -590,12 +590,29 @@
 | `description`               | text         | -        | 配置描述 |
 | `created_at` / `updated_at` | timestamptz  | now()    | -        |
 
-**常用配置键**：
+2026-11-24 逐键核对了正式库的 11 项和测试库的 7 项。下表记录各项的实际用途。
 
-- `group_blacklist` — 群消息黑名单
-- `ai_reply_enabled` — AI 回复全局开关
-- `message_merge_enabled` — 聚合开关
-- `agent_reply_config` — Agent 回复配置（模型/延迟/阈值）
+| 配置键 | 用途 | 已配置的环境 |
+| --- | --- | --- |
+| `ai_reply_enabled` | 平台 AI 回复总开关 | 正式、测试 |
+| `group_blacklist` | 关闭 AI 托管的小组名单 | 正式、测试 |
+| `message_merge_enabled` | 连续消息聚合开关 | 正式、测试 |
+| `agent_reply_config` | 回复模型、分段与节奏、监控阈值 | 正式、测试 |
+| `hosting_member_config` | 按 Bot 读取海绵凭据、飞书接收人、企微昵称和人设，另支持运营接收人和任务派单 | 正式、测试 |
+| `group_task_config` | 群任务通知开关和试运行模式 | 正式、测试 |
+| `conversion_bot_identity_aliases` | 转化分析归并历史 Bot 身份 | 正式、测试 |
+| `feishu_task_config` | 人工介入时创建飞书任务的开关 | 正式 |
+| `oob_reconcile_scan_config` | 带外工单对账扫描开关及每次扫描上限 | 正式 |
+| `runtime_storage_writes` | 数据库触发器按项控制消息、执行步骤、工具回复和评测内容的写入 | 正式 |
+| `system_config` | 消息处理 Worker 的并发数 `workerConcurrency` | 正式 |
+
+`agent_reply_config` 有三种需要区分的情况。
+
+- 测试库保留了 `reviewModelId`、`outputGuardrailLlmEnabled`、`outputGuardrailSemanticShadowEnabled`。当前前后端均无读取入口，正式库没有这三个字段，可从测试配置清理。
+- 两个库都保存了 `alertThrottleWindowMs` 和 `alertThrottleMaxCount`。配置接口接受这两个值，飞书告警发送端目前按去重键限流，同一键 5 分钟内最多发送 3 次。要让这两项可调，需要接通发送端。[告警节流实现](../../src/notification/services/alert-notifier.service.ts)
+- `typingDelayPerCharMs` 是旧字段，消息运行时仍有兼容读取逻辑。[回复速度的计算](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts)
+
+成员开户使用 `tenant_members`。托管凭据和通知仍从 `hosting_member_config` 读取，迁移范围见[组织、成员和业务账号](../product/organization-members-and-business-accounts.md#现有配置如何迁入)。
 
 ---
 

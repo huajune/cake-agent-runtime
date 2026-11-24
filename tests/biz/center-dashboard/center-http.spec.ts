@@ -11,6 +11,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { DashboardAccountsController } from '@infra/server/dashboard-access/dashboard-accounts.controller';
 import { CenterDashboardInterceptor } from '@biz/center-dashboard/center-dashboard.interceptor';
 import { CenterDashboardService } from '@biz/center-dashboard/center-dashboard.service';
+import { DashboardAccessController } from '@biz/center-dashboard/dashboard-access.controller';
 import { ResponseInterceptor } from '@infra/server/response/interceptors/response.interceptor';
 import type { INestApplication } from '@nestjs/common';
 
@@ -59,6 +60,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
         LegacyController,
         UserController,
         HostingConfigController,
+        DashboardAccessController,
         DashboardAccountsController,
         HostingBindingsController,
       ],
@@ -88,6 +90,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
                 tenant: { name: token, readsAllTenants: ['hq', 'admin'].includes(token) },
                 name: token === 'hq' ? 'cakeadmin' : '测试',
                 loginName: token === 'admin' ? 'cakeadmin' : null,
+                phone: token === 'admin' ? null : '+12025550118',
                 tenantRole:
                   token === 'admin'
                     ? null
@@ -124,6 +127,19 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
   beforeEach(() => {
     legacyCalls = 0;
     center.handle.mockReset().mockResolvedValue([{ id: 'own' }]);
+  });
+  it.each([
+    ['henan-one', '手机号尾号 0118', TenantRole.TenantAdmin],
+    ['henan-two', '手机号尾号 0118', TenantRole.GroupLeader],
+    ['admin', 'cakeadmin', null],
+  ])('shows the signed-in account for %s', async (token, loginLabel, tenantRole) => {
+    const result = await request(app.getHttpServer())
+      .get('/dashboard/access')
+      .set('Authorization', 'Bearer ' + token)
+      .expect(200);
+    expect(result.body.data).toMatchObject({ userId: token, loginLabel, tenantRole });
+    expect(result.text).not.toContain('+12025550118');
+    expect(result.headers['cache-control']).toBe('no-store');
   });
   it('same URL returns scoped center rows and unchanged HQ rows', async () => {
     const own = await request(app.getHttpServer())
