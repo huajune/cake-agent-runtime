@@ -5,7 +5,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
-import { StrategyChangelogRepository } from '../repositories/strategy-changelog.repository';
 import {
   StrategyConfigRecord,
   StrategyConfigStatus,
@@ -39,10 +38,7 @@ export class StrategyConfigService {
   // L1: 按 status 分别缓存
   private cache = new Map<StrategyConfigStatus, { config: StrategyConfigRecord; expiry: number }>();
 
-  constructor(
-    private readonly strategyConfigRepository: StrategyConfigRepository,
-    private readonly changelogRepository: StrategyChangelogRepository,
-  ) {}
+  constructor(private readonly strategyConfigRepository: StrategyConfigRepository) {}
 
   // ==================== 读取 ====================
 
@@ -180,13 +176,6 @@ export class StrategyConfigService {
 
   async getVersionHistory(limit = 20): Promise<StrategyConfigRecord[]> {
     return this.strategyConfigRepository.findVersionHistory(limit);
-  }
-
-  // ==================== 变更历史（兼容旧接口） ====================
-
-  async getChangelog(limit = 20) {
-    const config = await this.getReleasedConfig();
-    return this.changelogRepository.findByConfigId(config.id, limit);
   }
 
   // ==================== 缓存管理 ====================

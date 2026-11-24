@@ -49,7 +49,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        Supabase 事实表 (SoT)                                 │
 │                                                                             │
-│   ├── message_processing_records  每条请求生命周期 + agent_invocation        │
+│   ├── message_processing_records  每条请求的处理流水                        │
 │   ├── monitoring_error_logs       失败快照                                   │
 │   └── user_activity               用户活跃 / Token 消耗                       │
 │                                                                             │
@@ -100,7 +100,7 @@
 1. **可靠性**：监控数据不能因为进程重启归零，运维看板需要长期趋势。
 2. **多实例一致性**：Supabase 作为 SoT + Redis 计数器天然支持水平扩展。
 3. **查询能力**：SQL/RPC 直接支持分位数、窗口切片、JSONB 聚合，比自己维护 Map 更灵活。
-4. **TOAST 成本**：`agent_invocation` JSONB 体积大，通过 **置 NULL 释放 TOAST + 行级保留** 的分层清理策略把读放大控制住。
+4. 模型调用快照在 `message_processing_invocations` 单独存储，详情按需读取。列表和统计使用主流水的小字段。
 
 ### Redis Key 清单
 
@@ -172,14 +172,13 @@ AnalyticsMaintenanceService.aggregateDailyStats()
     │
     ▼
 DataCleanupService.cleanupExpiredData()
-    ├── timeoutStuckProcessingRecords(30 min)   — 兜底把卡住的 processing 标记为 timeout
-    ├── nullAgentInvocations(7 d)                — 释放 TOAST 空间，保留行
-    ├── cleanupChatMessages(60 d)                — DELETE
-    ├── cleanupMessageProcessingRecords(14 d)    — DELETE（已聚合到 monitoring_hourly_stats）
-    ├── cleanupErrorLogs(30 d)                   — DELETE
-    └── cleanupUserActivity(365 d)               — DELETE
-
-monitoring_hourly_stats / monitoring_daily_stats → 永久保留
+    ├── deleteExpiredAgentInvocations           删除到期的子表快照（默认 90 天）
+    ├── cleanupGuardrailReviewRecords           清理守卫审查档案
+    ├── cleanupAgentExecutionEvents             清理执行事件
+    ├── cleanupMessageProcessingRecords         删除到期流水，级联删除关联快照
+    ├── cleanupErrorLogs / cleanupMonitoringStats
+    ├── cleanupHandoffEvents
+    └── cleanupReengagementTouches              30 天清文本，90 天清触达记录
 ```
 
 ### 4. 读取路径
@@ -491,17 +490,17 @@ CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat
 | AnalyticsMaintenanceService | `5 * * * *` | Asia/Shanghai | 小时统计聚合（startup 回填 3h / cron 回填 14d） |
 | AnalyticsMaintenanceService | `10 0 * * *` | Asia/Shanghai | 日统计聚合（startup 回填 7d / cron 回填 30d） |
 | AnalyticsAlertService | `*/5 * * * *` | 默认 | 业务指标告警评估（成功率 / 平均耗时 / 队列 / 错误率） |
-| DataCleanupService | `0 3 * * *` | 默认 | 分层清理 + stuck processing → timeout（>30min） |
+| DataCleanupService | `0 3 * * *` | Asia/Shanghai | 分层清理 |
 
 环境变量（保留天数）：
 
 | 变量 | 默认值 | 动作 |
 |------|--------|------|
-| `DATA_CLEANUP_AGENT_INVOCATION_DAYS` | 7 | NULL `agent_invocation` |
-| `DATA_CLEANUP_PROCESSING_DAYS` | 14 | DELETE `message_processing_records` |
-| `DATA_CLEANUP_CHAT_DAYS` | 60 | DELETE `chat_messages` |
-| `DATA_CLEANUP_USER_ACTIVITY_DAYS` | 365 | DELETE `user_activity` |
-| `DATA_CLEANUP_ERROR_LOGS_DAYS` | 30 | DELETE `monitoring_error_logs` |
+| `DATA_CLEANUP_PROCESSING_DAYS` | 90 | 删除过期处理流水 |
+| `DATA_CLEANUP_AGENT_INVOCATION_DAYS` | 跟随处理流水 | 按创建时间删除子表中的调用快照 |
+| `DATA_CLEANUP_ERROR_LOGS_DAYS` | 跟随处理流水 | 删除过期错误日志 |
+
+聊天消息和用户活动永久保留。
 
 ---
 
@@ -541,13 +540,12 @@ CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat
 
 | 对象 | 行数 | 平均大小 | 30 天占用 |
 |------|------|----------|-----------|
-| `message_processing_records` | ~300/天 × 14 天 = 4,200 | 2–8 KB (含 `agent_invocation`) | ~25 MB |
 | `monitoring_error_logs` | 波动 | 1 KB | <1 MB |
 | `monitoring_hourly_stats` | 8,760/年 | ~500 B | ~4.3 MB/年（永久） |
 | `monitoring_daily_stats` | 365/年 | ~500 B | ~180 KB/年（永久） |
 | `user_activity` | 波动 | <1 KB | <5 MB |
 
-TOAST 压力主要来源是 `agent_invocation` JSONB，因此每天凌晨把 >7 天的行置为 NULL。
+调用快照的绝大部分字节来自 JSONB 大字段。2026 年 11 月 17 日至 24 日连续七天的 4,860 条快照中，正文与版本相关字段共 455 MiB。[生产核实记录](../technical/runtime-storage-followup-2026-11-24.md)
 
 ⚠️ **不要从 `agent_invocation` 里现算指标**：从该 JSONB 提取字段会逐行解压 TOAST，月级统计 RPC 实测曾达 52.6s。首字延迟已固化为独立列 `ttft_ms`（迁移 `20260612032136_add_ttft_ms_column.sql`），读取一律走该列。同理，按时间过滤 `message_processing_records` 要用 **`received_at`**（`created_at` 无索引），大范围聚合走 MATERIALIZED 两段式。
 
@@ -564,8 +562,7 @@ TOAST 压力主要来源是 `agent_invocation` JSONB，因此每天凌晨把 >7 
 ### 优化建议
 
 1. **热路径预聚合**：`today` 仍对 `message_processing_records` 直查，若 TPS 升高可启用分钟聚合（`get_dashboard_minute_trend` 已准备好）。
-2. **TOAST 治理**：缩短 `DATA_CLEANUP_AGENT_INVOCATION_DAYS` 可更快释放存储；也可评估把 `agent_invocation` 拆到独立表做冷热分离。
-3. **投影窗口**：启动回填上限可配置（目前硬编码），生产环境如果长时间离线建议上调 cron 上限（14d/30d）再人工触发。
+2. **投影窗口**：启动回填上限可配置（目前硬编码），生产环境如果长时间离线建议上调 cron 上限（14d/30d）再人工触发。
 
 ---
 

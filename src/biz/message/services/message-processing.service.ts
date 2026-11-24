@@ -227,10 +227,10 @@ export class MessageProcessingService {
   }
 
   /**
-   * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间，分批执行）
+   * 分批删除到期的调用快照。
    */
-  async nullAgentInvocations(daysOld: number): Promise<number> {
-    return this.messageProcessingRepository.nullAgentInvocations(daysOld);
+  async deleteExpiredAgentInvocations(daysOld: number): Promise<number> {
+    return this.messageProcessingRepository.deleteExpiredAgentInvocations(daysOld);
   }
 
   /**

@@ -47,16 +47,6 @@ export interface StrategyIndustrySkills {
   skills: unknown[];
 }
 
-export interface StrategyChangelogRecord {
-  id: string;
-  config_id: string;
-  field: 'role_setting' | 'persona' | 'stage_goals' | 'red_lines';
-  old_value: unknown;
-  new_value: unknown;
-  changed_at: string;
-  changed_by?: string;
-}
-
 export type StrategyConfigStatus = 'testing' | 'released' | 'archived';
 
 export interface StrategyConfigRecord {

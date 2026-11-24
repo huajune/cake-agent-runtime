@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import request = require('supertest');
 import { StrategyController } from '@biz/strategy/strategy.controller';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 
 describe('StrategyController', () => {
+  let module: TestingModule;
   let controller: StrategyController;
   let strategyConfigService: StrategyConfigService;
 
@@ -16,11 +18,10 @@ describe('StrategyController', () => {
     updateRedLines: jest.fn(),
     publish: jest.fn(),
     getVersionHistory: jest.fn(),
-    getChangelog: jest.fn(),
   };
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       controllers: [StrategyController],
       providers: [
         {
@@ -33,6 +34,20 @@ describe('StrategyController', () => {
     controller = module.get<StrategyController>(StrategyController);
     strategyConfigService = module.get<StrategyConfigService>(StrategyConfigService);
     jest.clearAllMocks();
+  });
+
+  it('serves version history after retiring the per-field changelog endpoint', async () => {
+    const app = module.createNestApplication();
+    await app.listen(0, '127.0.0.1');
+    try {
+      const versions = [{ version: 2 }];
+      mockStrategyConfigService.getVersionHistory.mockResolvedValue(versions);
+      await request(app.getHttpServer()).get('/strategy/versions?limit=3').expect(200, versions);
+      expect(mockStrategyConfigService.getVersionHistory).toHaveBeenCalledWith(3);
+      await request(app.getHttpServer()).get('/strategy/changelog').expect(404);
+    } finally {
+      await app.close();
+    }
   });
 
   it('should be defined', () => {
