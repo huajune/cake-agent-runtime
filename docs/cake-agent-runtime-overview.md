@@ -337,7 +337,7 @@ Agent 产出 TurnOutcome + TurnFinalizer
 - 重启不丢数据
 - 多实例共享真相
 - SQL/RPC 直接支持分位数 / 窗口切片
-- TOAST 治理：>7 天的 `agent_invocation` JSONB 置 NULL，行级保留
+- 模型请求与响应快照单独存表，默认与处理流水一同保留 90 天，详情按需读取。
 
 **热路径分流**：`today` 走原始表直查 + Redis；`week / month` 走小时/日投影表。
 

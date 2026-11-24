@@ -23,7 +23,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * 裁定：业务 / 不可再生数据永久（chat_messages、user_activity 等不清理），Agent 观测数据统一 ≤ 90 天。
  *
  * 清理顺序（每日 03:00 上海时区）:
- * 1. agent_invocation（>N 天）：删 message_processing_invocations 子表行 + 置空存量主表列；
+ * 1. agent_invocation（>N 天）：删除 message_processing_invocations 子表行；
  *    agent_steps/tool_calls 不提前 NULL（工具统计兜底 RPC + badcase 证据需要处理链窗口），
  *    随消息处理行删除统一回收
  * 2. DELETE guardrail_review_records（>N 天）— message_processing_records 的 trace 附属证据
@@ -36,8 +36,8 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  *    — 审计底账保留期比原始流水长
  *
  * 保留天数通过环境变量配置（Layer 2，有默认值）：
- * - DATA_CLEANUP_AGENT_INVOCATION_DAYS (默认 7)
  * - DATA_CLEANUP_PROCESSING_DAYS       (默认 90)
+ * - DATA_CLEANUP_AGENT_INVOCATION_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
  * - DATA_CLEANUP_GUARDRAIL_REVIEW_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
  * - DATA_CLEANUP_AGENT_EXECUTION_EVENTS_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
  * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
@@ -77,13 +77,15 @@ export class DataCleanupService implements OnModuleInit {
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {
-    this.agentInvocationRetentionDays = parseInt(
-      this.configService.get('DATA_CLEANUP_AGENT_INVOCATION_DAYS', '7'),
-      10,
-    );
-    // 观测数据统一 90 天（2026-09-02 裁定）：流水 / 执行事件 / 守卫档案 / 错误日志 / 小时日聚合 / 转人工底账
     this.processingRetentionDays = parseInt(
       this.configService.get('DATA_CLEANUP_PROCESSING_DAYS', '90'),
+      10,
+    );
+    this.agentInvocationRetentionDays = parseInt(
+      this.configService.get(
+        'DATA_CLEANUP_AGENT_INVOCATION_DAYS',
+        String(this.processingRetentionDays),
+      ),
       10,
     );
     this.guardrailReviewRetentionDays = parseInt(
@@ -141,7 +143,7 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     this.logger.log(
-      `✅ 数据清理服务已启动 (agent_invocation ${this.agentInvocationRetentionDays}天NULL, ` +
+      `✅ 数据清理服务已启动 (调用快照保留 ${this.agentInvocationRetentionDays} 天, ` +
         `处理记录 ${this.processingRetentionDays}天DELETE, ` +
         `小时聚合永久保留)`,
     );
@@ -168,27 +170,14 @@ export class DataCleanupService implements OnModuleInit {
       return;
     }
 
-    // 1. NULL agent_invocation（>7 天）— 释放 TOAST 空间
-    //    agent_steps/tool_calls 随消息处理行删除回收（处理链窗口消费方依赖）
-    await this.nullAgentInvocations();
-
-    // 3. 清理过期守卫审查档案（处理链附属证据，先删附属再删主流水）
+    // 先清理到期的调用快照和附属证据，再删除主流水。工具调用及步骤随主流水回收。
+    await this.deleteExpiredAgentInvocations();
     await this.cleanupGuardrailReviewRecords();
-
-    // 4. 清理过期 Agent 执行事件（处理链附属证据，先删附属再删主流水）
     await this.cleanupAgentExecutionEvents();
-
-    // 5. 清理过期消息处理记录（默认 >60 天）
     await this.cleanupMessageProcessingRecords();
-
-    // 6. 清理过期错误日志（>30 天）
     await this.cleanupErrorLogs();
-
-    // 7. 观测聚合表（小时 / 日）与转人工底账：观测数据统一 90 天
     await this.cleanupMonitoringStats();
     await this.cleanupHandoffEvents();
-
-    // 8. 二次触发触达底账：NULL generated_text（>30 天）+ DELETE 整行（>90 天）
     await this.cleanupReengagementTouches();
   }
 
@@ -211,24 +200,28 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
-   * 将过期 agent_invocation 置为 NULL（释放 TOAST 空间）。
+   * 删除到期的子表快照。
    * agent_steps/tool_calls 不在此提前清理：工具统计兜底 RPC（get_dashboard_tool_stats）
    * 与 badcase 分析需要完整处理链窗口，随行删除统一回收。
    */
-  private async nullAgentInvocations(): Promise<void> {
+  private async deleteExpiredAgentInvocations(): Promise<void> {
     try {
-      const updatedCount = await this.messageProcessingService.nullAgentInvocations(
+      const deletedCount = await this.messageProcessingService.deleteExpiredAgentInvocations(
         this.agentInvocationRetentionDays,
       );
-      if (updatedCount > 0) {
+      if (deletedCount > 0) {
         this.logger.log(
-          `[数据清理] 已清理 ${updatedCount} 条 agent_invocation (${this.agentInvocationRetentionDays} 天前)`,
+          `[数据清理] 已清理 ${deletedCount} 条 agent_invocation (${this.agentInvocationRetentionDays} 天前)`,
         );
       }
     } catch (error: unknown) {
       const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理 agent_invocation 失败: ${message}`);
-      this.notifyCleanupFailure('null-agent-invocations', '清理 agent_invocation 失败', error);
+      this.notifyCleanupFailure(
+        'delete-expired-agent-invocations',
+        '清理 agent_invocation 失败',
+        error,
+      );
     }
   }
 
@@ -525,7 +518,7 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     try {
-      agentInvocations = await this.messageProcessingService.nullAgentInvocations(
+      agentInvocations = await this.messageProcessingService.deleteExpiredAgentInvocations(
         this.agentInvocationRetentionDays,
       );
     } catch (error: unknown) {

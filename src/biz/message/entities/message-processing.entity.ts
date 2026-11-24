@@ -1,3 +1,5 @@
+type InvocationProjection = { agent_invocation: unknown };
+
 /**
  * 消息处理记录数据库格式
  * @table message_processing_records
@@ -27,8 +29,7 @@ export interface MessageProcessingDbRecord {
   token_usage?: number;
   is_fallback?: boolean;
   fallback_success?: boolean;
-  agent_invocation?: unknown;
-  invocation_version?: string | null;
+  message_processing_invocations?: InvocationProjection | InvocationProjection[] | null;
   batch_id?: string;
   /** 工具调用详情 JSONB */
   tool_calls?: unknown;
