@@ -542,10 +542,19 @@ LlmExecutorService
 3. `AGENT_{ROLE}_MODEL` 环境变量。
 
 调用方显式 fallbacks > Dashboard fallback chain > `AGENT_{ROLE}_FALLBACKS` >
-`AGENT_DEFAULT_FALLBACKS`；`disableFallbacks=true` 会清空降级链。每个候选模型先做 vision 能力和
-provider 注册检查。企微主聊每次 HTTP 请求独立计时 120 秒。遇到模型服务超时、限流或 5xx 时，跳过同一供应商，带上已完成的工具步骤切到另一家。主聊从 Qwen 切到 DeepSeek V4.1 Flash 后，空回复补答、重新规划和出站修复沿用 Flash。每次请求均有完整的 120 秒，整轮超过 180 秒仅在执行事件中标记慢回合。两家都不可用时结束本次生成。
+`AGENT_DEFAULT_FALLBACKS`。Qwen 主聊也遵循这条优先级；没有配置降级链时才使用内置的
+DeepSeek Flash 保底。调用方显式 `fallbacks: []` 或 `disableFallbacks=true` 会禁止降级，
+不会被保底规则覆盖。配置回源失败时保留最近一次成功读取的配置，30 秒后重新尝试；
+冷启动没有缓存时使用默认配置，再回退环境变量链和主聊保底。数据库读取失败与记录不存在
+分开处理，故障时不把默认配置写回数据库或共享缓存。
 
-Registry 根据各自的 API key 注册 Qwen（DashScope 的 OpenAI 兼容接口）和 DeepSeek（官方 SDK）。Qwen 主聊和图片轮使用 DeepSeek V4.1 Flash 作为备用。
+每个候选模型先做 vision 能力和 provider 注册检查。企微主聊每次 HTTP 请求独立计时
+120 秒。遇到模型服务超时、限流或 5xx 时，跳过同一供应商，带上已完成的工具步骤切到另一家。
+主聊切到所选备用模型后，空回复补答、重新规划和出站修复沿用该模型；下一轮重新从主模型开始。
+每次请求均有完整的 120 秒，整轮超过 180 秒仅在执行事件中标记慢回合。两家都不可用时结束本次生成。
+
+Registry 根据各自的 API key 注册 Qwen（DashScope 的 OpenAI 兼容接口）和 DeepSeek（官方 SDK）。
+Dashboard 可按顺序选择备用模型；图片理解专属链只接受多模态模型，主聊图片轮也会跳过不支持图片的候选模型。
 
 Provider 专属 `providerOptions` 当前只承载 thinking / reasoning 配置；不承载显式 Prompt 缓存断点。
 
