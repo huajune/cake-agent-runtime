@@ -374,6 +374,8 @@ describe('MessageProcessingRepository', () => {
       expect(queryMock.select).toHaveBeenCalledTimes(1);
       const [selectedColumns] = queryMock.select.mock.calls[0];
       expect(selectedColumns).toContain('message_id');
+      expect(selectedColumns).toContain('message_preview:processing_list_message_preview');
+      expect(selectedColumns).toContain('reply_preview:processing_list_reply_preview');
       expect(selectedColumns).not.toContain('tool_calls');
       expect(selectedColumns).not.toContain('agent_steps');
       expect(selectedColumns).not.toContain('memory_snapshot');
