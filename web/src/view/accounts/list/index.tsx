@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, UserPlus } from 'lucide-react';
 import {
-  loadAccounts,
+  loadAccountTenants,
   loadHostingDirectory,
   syncHostingDirectory,
-  TENANT_ROLE_LABELS,
 } from '@/api/dashboard-accounts';
 import { ACCOUNT_ONBOARDING_SOP_URL } from '@/constants';
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import AccountDialog, { type AccountAction } from './components/AccountDialog';
+import TenantAccounts from './components/TenantAccounts';
+import AccountPagination from './components/AccountPagination';
 import styles from './styles/index.module.scss';
 
 export default function Accounts() {
@@ -46,17 +47,15 @@ export default function Accounts() {
     }
   };
   const result = useQuery({
-    queryKey: ['dashboard-accounts', page],
-    queryFn: () => loadAccounts(page),
+    queryKey: ['dashboard-accounts', 'organizations', page],
+    queryFn: () => loadAccountTenants(page),
   });
   return (
     <section className={styles.page} aria-labelledby="accounts-title">
       <header>
         <div>
           <h1 id="accounts-title">账号管理</h1>
-          <p>
-            每人负责一个小组和组内所有托管号。总部可查看全部租户，其他员工可查看本租户的全部小组。
-          </p>
+          <p>租户管理员负责整个组织。组长可绑定一个托管小组，管理组内的托管号。</p>
           <a
             className={styles.guideLink}
             href={ACCOUNT_ONBOARDING_SOP_URL}
@@ -95,110 +94,31 @@ export default function Accounts() {
           {result.error.message} <button onClick={() => void result.refetch()}>重试</button>
         </p>
       ) : (
-        <div className={styles.panel}>
-          <div className={styles.scroll}>
-            <table>
-              <thead>
-                <tr>
-                  <th>姓名</th>
-                  <th>登录账号</th>
-                  <th>所属组织</th>
-                  <th>负责小组</th>
-                  <th>角色</th>
-                  <th>状态</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.data?.accounts.map((account) => (
-                  <tr key={account.memberId ?? account.phone}>
-                    <td>{account.name}</td>
-                    <td>{account.loginName ?? account.phone ?? '待补手机号'}</td>
-                    <td>{account.tenant?.name ?? account.organization}</td>
-                    <td>
-                      {account.hostingGroupId
-                        ? (groupNames.get(account.hostingGroupId) ?? account.hostingGroupId)
-                        : '—'}
-                    </td>
-                    <td>
-                      {account.loginName
-                        ? '系统管理员'
-                        : account.tenantRole
-                          ? TENANT_ROLE_LABELS[account.tenantRole]
-                          : '—'}
-                    </td>
-                    <td>
-                      <span
-                        className={
-                          account.disabled
-                            ? styles.disabled
-                            : account.userId
-                              ? styles.active
-                              : styles.pending
-                        }
-                      >
-                        {account.disabled ? '已停用' : account.userId ? '已开通' : '待开通'}
-                      </span>
-                    </td>
-                    <td>
-                      {!account.disabled && !account.loginName && account.memberId && (
-                        <button onClick={() => setAction({ type: 'bind', account })}>
-                          绑定托管小组
-                        </button>
-                      )}
-                      {account.disabled ? (
-                        '—'
-                      ) : !account.userId ? (
-                        <button onClick={() => setAction({ type: 'open', account })}>开通</button>
-                      ) : (
-                        <>
-                          <button onClick={() => setAction({ type: 'reset', account })}>
-                            重置密码
-                          </button>
-                          {account.userId !== me?.userId && (
-                            <>
-                              <button onClick={() => setAction({ type: 'move', account })}>
-                                调整组织
-                              </button>
-                              <button
-                                className={styles.danger}
-                                onClick={() => setAction({ type: 'disable', account })}
-                              >
-                                停用
-                              </button>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {!result.data?.accounts.length && <p>暂无账号，可从右上角开通。</p>}
-          <footer>
-            <span>共 {result.data?.total ?? 0} 个账号</span>
-            <nav aria-label="账号分页">
-              <button disabled={page === 1} onClick={() => setPage(page - 1)}>
-                上一页
-              </button>
-              <span>第 {page} 页</span>
-              <button
-                disabled={page * 50 >= (result.data?.total ?? 0)}
-                onClick={() => setPage(page + 1)}
-              >
-                下一页
-              </button>
-            </nav>
-          </footer>
+        <div className={styles.organizations}>
+          {result.data?.tenants.map((tenant, index) => (
+            <TenantAccounts
+              key={tenant.id}
+              tenant={tenant}
+              initiallyExpanded={index === 0}
+              groupNames={groupNames}
+              administratorId={me?.userId}
+              onAction={setAction}
+            />
+          ))}
+          {!result.data?.tenants.length && <p>暂无组织，可从右上角登记。</p>}
+          <AccountPagination
+            label="组织分页"
+            page={page}
+            total={result.data?.total ?? 0}
+            onChange={setPage}
+          />
         </div>
       )}
       {action && (
         <AccountDialog
           action={action}
           groups={groups}
-          tenants={directory.data?.tenants ?? []}
+          tenants={directory.data?.tenants ?? result.data?.tenants ?? []}
           onClose={() => setAction(null)}
           onSaved={(message) => {
             setAction(null);

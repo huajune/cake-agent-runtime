@@ -66,3 +66,14 @@ export interface DashboardAccountPage {
   accounts: DashboardAccount[];
   total: number;
 }
+
+export const DASHBOARD_ACCOUNT_PAGE_SIZE = 50;
+
+export interface TenantAccountSummary extends Tenant {
+  accountCount: number;
+}
+
+export interface TenantAccountPage {
+  tenants: TenantAccountSummary[];
+  total: number;
+}

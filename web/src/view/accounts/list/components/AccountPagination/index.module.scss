@@ -1,0 +1,14 @@
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+
+  button {
+    min-height: 36px;
+  }
+}

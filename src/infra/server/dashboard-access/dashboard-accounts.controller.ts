@@ -50,9 +50,21 @@ export class DashboardAccountsController {
 
   @Get()
   @Header('Cache-Control', 'no-store')
-  list(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number) {
+  list(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('organization') organization?: string,
+  ) {
     if (page < 1 || page > 100000) throw new BadRequestException('页码无效');
-    return this.accounts.list(page);
+    const tenant = organizationSchema.optional().safeParse(organization);
+    if (!tenant.success) throw new BadRequestException('请选择有效组织');
+    return this.accounts.list(page, tenant.data);
+  }
+
+  @Get('organizations')
+  @Header('Cache-Control', 'no-store')
+  listTenants(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number) {
+    if (page < 1 || page > 100000) throw new BadRequestException('页码无效');
+    return this.accounts.listTenants(page);
   }
 
   @Post('organizations')

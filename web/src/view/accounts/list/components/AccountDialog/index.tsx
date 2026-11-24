@@ -47,8 +47,13 @@ export default function AccountDialog({
   const [busy, setBusy] = useState(false);
   const account = action.account;
   const [organization, setOrganization] = useState<string>(account?.organization ?? '');
+  const [tenantRole, setTenantRole] = useState<TenantRole>(
+    account?.tenantRole ?? TenantRole.GroupLeader,
+  );
   const [groupId, setGroupId] = useState(account?.hostingGroupId ?? '');
-  const selected = groups.find((group) => group.id === groupId);
+  const showGroupPicker =
+    action.type === 'bind' || (action.type === 'open' && tenantRole === TenantRole.GroupLeader);
+  const selected = showGroupPicker ? groups.find((group) => group.id === groupId) : undefined;
   const binding = selected
     ? {
         groupId: selected.id,
@@ -81,10 +86,6 @@ export default function AccountDialog({
         case 'open': {
           const phone = normalizeDashboardPhone(String(data.get('phone') || ''));
           if (!phone) throw new Error('请输入有效的手机号');
-          const tenantRole = Object.values(TenantRole).find(
-            (role) => role === data.get('tenantRole'),
-          );
-          if (!tenantRole) throw new Error('请选择租户角色');
           await openAccount({
             ...(account?.memberId && { memberId: account.memberId }),
             name: String(data.get('name') || '').trim(),
@@ -190,7 +191,11 @@ export default function AccountDialog({
             <select
               name="tenantRole"
               aria-label="租户角色"
-              defaultValue={account?.tenantRole ?? TenantRole.GroupLeader}
+              value={tenantRole}
+              onChange={(event) => {
+                setTenantRole(event.target.value as TenantRole);
+                setGroupId(account?.hostingGroupId ?? '');
+              }}
               required
             >
               {Object.values(TenantRole).map((role) => (
@@ -204,7 +209,7 @@ export default function AccountDialog({
         {action.type === 'move' &&
           account?.tenantRole === TenantRole.TenantAdmin &&
           organization !== account.organization && <p>调入新组织后，角色为组长。</p>}
-        {(action.type === 'open' || action.type === 'bind') && (
+        {showGroupPicker && (
           <>
             {action.type === 'bind' && (
               <p>所属组织　{account!.tenant?.name ?? account!.organization}</p>

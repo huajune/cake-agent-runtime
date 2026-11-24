@@ -106,117 +106,11 @@ $action-danger: color.mix($text-primary, $danger-text, 38%);
     min-height: 32px;
   }
 }
-.panel {
-  overflow: hidden;
-  background: $bg-card;
-  border: 1px solid $border;
-  border-radius: $radius-xl;
-  box-shadow: $shadow-sm;
-  > p {
-    padding: 16px;
-  }
-  footer,
-  nav {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-  }
-  footer {
-    justify-content: space-between;
-    padding: 10px 16px;
-    border-top: 1px solid $border;
-    font-size: $font-size-sm;
-    color: $text-secondary;
-  }
-  nav button {
-    min-height: 32px;
-  }
-}
-.scroll {
-  overflow-x: auto;
-}
-.panel table {
-  font-size: $font-size-base;
-  th,
-  td {
-    padding: 12px 14px;
-    text-align: left;
-  }
-  th {
-    background: $bg-secondary;
-    color: $text-secondary;
-    font-size: $font-size-sm;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  td {
-    border-top: 1px solid $border;
-    color: $text-body;
-    vertical-align: middle;
-  }
-  tr:hover td {
-    background: $primary-02;
-  }
-  td:first-child {
-    font-weight: 600;
-    color: $text-primary;
-    min-width: 5em;
-  }
-  td:nth-child(2) {
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-  td:nth-child(3),
-  td:nth-child(4) {
-    min-width: 6.5em;
-    max-width: 17em;
-    overflow-wrap: anywhere;
-  }
-  td:last-child {
-    padding-block: 6px;
-  }
-  td button {
-    min-height: 34px;
-    padding-inline: 6px;
-    white-space: nowrap;
-    font-size: $font-size-sm;
-  }
-  td .danger:hover {
-    background: $danger-bg;
-  }
-}
-.active,
-.pending,
-.disabled {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  border-radius: $radius-full;
-  padding: 3px 9px;
-  font-size: $font-size-xs;
-  font-weight: 600;
-  line-height: 1.5;
-  &::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-}
-.active {
-  color: color.mix($text-primary, $success-text, 52%);
-  background: $success-bg;
-}
-.pending {
-  color: color.mix($text-primary, $warning-text, 46%);
-  background: $warning-bg;
-}
-.disabled {
-  color: $text-secondary;
-  background: $bg-secondary;
+.organizations {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: $spacing-sm;
 }
 
 .dialog {
@@ -291,12 +185,6 @@ $action-danger: color.mix($text-primary, $danger-text, 38%);
   .headerActions button {
     min-height: 44px;
     padding-inline: 12px;
-  }
-  .panel table {
-    min-width: 650px;
-  }
-  .panel footer {
-    padding: 8px 12px;
   }
 }
 @media (max-width: 480px) {

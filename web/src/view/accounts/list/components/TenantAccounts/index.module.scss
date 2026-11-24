@@ -1,0 +1,164 @@
+@use 'sass:color';
+
+.panel {
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid $border;
+  border-radius: $radius-xl;
+  background: $bg-card;
+  box-shadow: $shadow-sm;
+  h2 {
+    margin: 0;
+  }
+  > div > p {
+    padding: 14px 18px;
+    font-size: $font-size-sm;
+  }
+  nav {
+    border-top: 1px solid $border;
+  }
+  .heading {
+    display: flex;
+    width: 100%;
+    min-height: 54px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 0;
+    color: $text-primary;
+    text-align: left;
+    font-size: $font-size-lg;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    svg {
+      flex: none;
+      color: $primary-dark;
+    }
+    &[aria-expanded='true'] svg {
+      transform: rotate(90deg);
+    }
+    small {
+      margin-inline-start: auto;
+      color: $text-secondary;
+      font-size: $font-size-sm;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+    &:focus-visible {
+      outline-offset: -3px;
+    }
+  }
+  > div:not([hidden]) {
+    border-top: 1px solid $border;
+  }
+}
+.scroll {
+  overflow-x: auto;
+}
+.panel table {
+  width: 100%;
+  min-width: 700px;
+  table-layout: fixed;
+  font-size: $font-size-base;
+  th,
+  td {
+    padding: 12px 14px;
+    text-align: left;
+  }
+  th {
+    background: $bg-secondary;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  th:nth-child(1),
+  th:nth-child(5) {
+    width: 12%;
+  }
+  th:nth-child(2) {
+    width: 18%;
+  }
+  th:nth-child(3) {
+    width: 16%;
+  }
+  th:nth-child(4) {
+    width: 13%;
+  }
+  td {
+    border-top: 1px solid $border;
+    color: $text-body;
+    vertical-align: middle;
+  }
+  tr:hover td {
+    background: $primary-02;
+  }
+  td:first-child {
+    font-weight: 600;
+    color: $text-primary;
+    overflow-wrap: anywhere;
+  }
+  td:nth-child(2) {
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+  }
+  td:nth-child(3) {
+    overflow-wrap: anywhere;
+  }
+  td:nth-child(4) {
+    white-space: nowrap;
+  }
+  td:last-child {
+    padding-block: 6px;
+  }
+  td button {
+    min-height: 34px;
+    padding-inline: 6px;
+    white-space: nowrap;
+    font-size: $font-size-sm;
+  }
+  td .danger {
+    color: color.mix($text-primary, $danger-text, 38%);
+  }
+  td .danger:hover {
+    background: $danger-bg;
+  }
+}
+.active,
+.pending,
+.disabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: $radius-full;
+  padding: 3px 9px;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  line-height: 1.5;
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}
+.active {
+  color: color.mix($text-primary, $success-text, 52%);
+  background: $success-bg;
+}
+.pending {
+  color: color.mix($text-primary, $warning-text, 46%);
+  background: $warning-bg;
+}
+.disabled {
+  color: $text-secondary;
+  background: $bg-secondary;
+}
+
+@media (max-width: $breakpoint-sm) {
+  .panel table :is(th, td) {
+    padding-inline: 10px;
+  }
+}

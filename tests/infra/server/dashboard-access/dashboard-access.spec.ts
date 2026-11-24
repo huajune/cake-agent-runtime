@@ -7,6 +7,7 @@ import {
   TenantRole,
 } from '@/types/dashboard-account';
 import type { Request } from 'express';
+import { createClient } from '@supabase/supabase-js';
 
 describe('staff accounts and organization authority', () => {
   const authUser = { id: 'employee', phone: '12025550127', phone_confirmed_at: 'today' };
@@ -40,6 +41,44 @@ describe('staff accounts and organization authority', () => {
     tenantSingle.mockResolvedValue({ data: { id: 'henan' } });
     getUser.mockResolvedValue({ data: { user: authUser }, error: null });
     single.mockResolvedValue({ data: row, error: null });
+  });
+  it('counts all accounts per registered tenant and pages members within the selected tenant', async () => {
+    const urls: URL[] = [];
+    const client = createClient('https://accounts.example.invalid', 'test-key', {
+      global: {
+        fetch: async (input) => {
+          const url = new URL(input.toString());
+          urls.push(url);
+          const tenants = url.pathname.endsWith('/tenants');
+          const body = tenants
+            ? [
+                { id: 'new-team', name: '同名组织', members: [{ count: 51 }] },
+                { id: 'empty-team', name: '同名组织', members: [{ count: 0 }] },
+              ]
+            : [{ ...row, organization: 'new-team' }];
+          return new Response(JSON.stringify(body), {
+            headers: { 'Content-Range': tenants ? '0-1/2' : '50-50/51' },
+          });
+        },
+      },
+    });
+    const roster = new DashboardAccountsService({
+      getSupabaseClient: () => client,
+    } as SupabaseService);
+    await expect(roster.listTenants(1)).resolves.toEqual({
+      total: 2,
+      tenants: [
+        { id: 'new-team', name: '同名组织', accountCount: 51 },
+        { id: 'empty-team', name: '同名组织', accountCount: 0 },
+      ],
+    });
+    await expect(roster.list(2, 'new-team')).resolves.toMatchObject({ total: 51 });
+    expect(urls[0].searchParams.get('select')).toContain('dashboard_accounts_tenant_fk(count)');
+    const filter = urls[1].searchParams;
+    expect(filter.get('organization')).toBe('eq.new-team');
+    expect(filter.get('offset')).toBe('50');
+    expect(filter.get('limit')).toBe('50');
+    expect(filter.get('order')).toMatch(/,id\.asc$/);
   });
   it('checks account status anew for each request, only reuses the identity within one request', async () => {
     const access = new DashboardAccessService(service);
@@ -122,13 +161,17 @@ describe('staff accounts and organization authority', () => {
     });
   });
   it.each(Object.values(TenantRole))(
-    'binds the selected %s role with the Auth identity',
+    'provisions %s and only binds a selected group for group leaders',
     async (tenantRole) => {
+      const hostingBinding = { groupId: 'group-1', previousGroupId: null, previousOwnerId: null };
       single
         .mockResolvedValueOnce({ data: null })
         .mockResolvedValueOnce({ data: { ...row, tenantRole } });
       admin.createUser.mockResolvedValue({ data: { user: authUser } });
-      await service.create({ ...row, tenantRole, password: 'fixture-pass' }, 'admin');
+      await service.create(
+        { ...row, tenantRole, hostingBinding, password: 'fixture-pass' },
+        'admin',
+      );
       expect(admin.createUser).toHaveBeenCalledWith(
         expect.objectContaining({
           app_metadata: {
@@ -136,12 +179,41 @@ describe('staff accounts and organization authority', () => {
               name: row.name,
               organization: row.organization,
               tenant_role: tenantRole,
+              ...(tenantRole === TenantRole.GroupLeader && {
+                hosting_binding: { ...hostingBinding, actor: 'admin' },
+              }),
             },
           },
         }),
       );
     },
   );
+  it('preserves the hosting assignment of a pending administrator when an older caller omits the role', async () => {
+    const pending = {
+      ...row,
+      userId: null,
+      tenantRole: TenantRole.TenantAdmin,
+      hostingGroupId: 'existing',
+    };
+    single
+      .mockResolvedValueOnce({ data: pending })
+      .mockResolvedValueOnce({ data: { ...pending, userId: authUser.id } });
+    admin.createUser.mockResolvedValue({ data: { user: authUser } });
+    await service.create(
+      {
+        ...row,
+        password: 'fixture-pass',
+        memberId: 'member',
+        hostingBinding: { groupId: 'new', previousGroupId: 'existing', previousOwnerId: null },
+      },
+      'admin',
+    );
+    expect(admin.createUser.mock.calls[0][0].app_metadata.cake_dashboard_account).toEqual({
+      name: row.name,
+      organization: row.organization,
+      member_id: 'member',
+    });
+  });
   it('blocks duplicate and conflicting roster entries before contacting Auth', async () => {
     const input = {
       name: row.name,

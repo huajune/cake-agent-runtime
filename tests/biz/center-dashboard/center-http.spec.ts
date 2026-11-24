@@ -45,6 +45,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
   };
   const operations = {
     list: jest.fn(),
+    listTenants: jest.fn(),
     create: jest.fn(),
     resetPassword: jest.fn(),
     update: jest.fn(),
@@ -226,6 +227,8 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
     for (const token of ['henan-one', 'shanghai', 'hq']) {
       for (const req of [
         api.get(base),
+        api.get(base + '/organizations'),
+        api.get(base).query({ organization: 'henan' }),
         api.post(base).send(account),
         api.post(base + '/' + staffId + '/password').send(reset),
         api.post(base + '/' + staffId + '/disable'),
@@ -238,7 +241,20 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
     operations.list.mockResolvedValue({ total: 0, accounts: [] });
     const administrator = 'Bearer admin';
     await api.get(base).set('Authorization', administrator).expect(200);
-    expect(operations.list).toHaveBeenCalledWith(1);
+    expect(operations.list).toHaveBeenCalledWith(1, undefined);
+    operations.listTenants.mockResolvedValue({ total: 1, tenants: [] });
+    await api
+      .get(base + '/organizations')
+      .set('Authorization', administrator)
+      .expect(200);
+    expect(operations.listTenants).toHaveBeenCalledWith(1);
+    await api
+      .get(base)
+      .query({ organization: 'henan', page: 2 })
+      .set('Authorization', administrator)
+      .expect(200);
+    expect(operations.list).toHaveBeenLastCalledWith(2, 'henan');
+    await api.get(base).query({ organization: '' }).set('Authorization', administrator).expect(400);
     await api
       .post(base)
       .set('Authorization', administrator)

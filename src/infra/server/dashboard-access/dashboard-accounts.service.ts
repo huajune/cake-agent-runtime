@@ -11,9 +11,11 @@ import {
 import type { AuthError, SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import {
+  DASHBOARD_ACCOUNT_PAGE_SIZE,
   DashboardAccount,
   DashboardAccountPage,
   Tenant,
+  TenantAccountPage,
   TenantRole,
   isConfirmedDashboardAdminUser,
   isDashboardAdministrator,
@@ -62,15 +64,34 @@ export class DashboardAccountsService {
     return account;
   }
 
-  async list(page: number): Promise<DashboardAccountPage> {
-    const offset = (page - 1) * 50;
+  async listTenants(page: number): Promise<TenantAccountPage> {
+    const offset = (page - 1) * DASHBOARD_ACCOUNT_PAGE_SIZE;
     const { data, error, count } = await this.client
-      .from(TABLE)
-      .select(ACCOUNT_COLUMNS, { count: 'exact' })
+      .from('tenants')
+      .select('id,name,members:dashboard_accounts!dashboard_accounts_tenant_fk(count)', {
+        count: 'exact',
+      })
+      .order('created_at')
+      .order('id')
+      .range(offset, offset + DASHBOARD_ACCOUNT_PAGE_SIZE - 1)
+      .returns<Array<Tenant & { members: [{ count: number }] }>>();
+    if (error) throw new ServiceUnavailableException('暂时无法读取组织名单');
+    return {
+      tenants: data.map(({ id, name, members }) => ({ id, name, accountCount: members[0].count })),
+      total: count ?? 0,
+    };
+  }
+
+  async list(page: number, organization?: string): Promise<DashboardAccountPage> {
+    const offset = (page - 1) * DASHBOARD_ACCOUNT_PAGE_SIZE;
+    const query = this.client.from(TABLE).select(ACCOUNT_COLUMNS, { count: 'exact' });
+    if (organization !== undefined) query.eq('organization', organization);
+    const { data, error, count } = await query
       .order('organization')
       .order('name')
       .order('phone')
-      .range(offset, offset + 49)
+      .order('id')
+      .range(offset, offset + DASHBOARD_ACCOUNT_PAGE_SIZE - 1)
       .returns<DashboardAccount[]>();
     if (error) throw new ServiceUnavailableException('暂时无法读取账号名单');
     return { accounts: data, total: count ?? 0 };
@@ -121,6 +142,10 @@ export class DashboardAccountsService {
       (existing.userId || existing.disabled || existing.organization !== input.organization)
     )
       throw new ConflictException('该手机号已有账号或所属组织与待开通名单不一致');
+    const hostingBinding =
+      (input.tenantRole ?? existing?.tenantRole) === TenantRole.TenantAdmin
+        ? undefined
+        : input.hostingBinding;
     const { data, error } = await this.client.auth.admin.createUser({
       phone: input.phone,
       password: input.password,
@@ -131,11 +156,11 @@ export class DashboardAccountsService {
           organization: input.organization,
           ...(input.tenantRole && { tenant_role: input.tenantRole }),
           ...(input.memberId && { member_id: input.memberId }),
-          ...(input.hostingBinding && { hosting_binding: { ...input.hostingBinding, actor } }),
+          ...(hostingBinding && { hosting_binding: { ...hostingBinding, actor } }),
         },
       },
     });
-    if (error && input.hostingBinding && error.code === 'unexpected_failure')
+    if (error && hostingBinding && error.code === 'unexpected_failure')
       throw new ConflictException('开户未完成，请同步 Stride 并核对组织和小组负责人后重试');
     if (error) this.throwAdminError(error);
     const opened = data.user && (await this.find('user_id', data.user.id));

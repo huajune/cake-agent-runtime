@@ -11,18 +11,29 @@ export type {
 import type {
   DashboardAccountPage,
   Tenant,
+  TenantAccountPage,
   TenantRole,
 } from '../../../src/types/dashboard-account';
 export {
+  DASHBOARD_ACCOUNT_PAGE_SIZE,
   dashboardLoginIdentity,
   normalizeDashboardPhone,
   TENANT_ROLE_LABELS,
   TenantRole,
 } from '../../../src/types/dashboard-account';
-export type { DashboardAccount, Tenant } from '../../../src/types/dashboard-account';
+export type {
+  DashboardAccount,
+  Tenant,
+  TenantAccountSummary,
+} from '../../../src/types/dashboard-account';
 
-export const loadAccounts = async (page: number) =>
-  (await api.get<DashboardAccountPage>('/dashboard/accounts', { params: { page } })).data;
+export const loadAccountTenants = async (page: number) =>
+  (await api.get<TenantAccountPage>('/dashboard/accounts/organizations', { params: { page } }))
+    .data;
+
+export const loadAccounts = async (organization: string, page: number) =>
+  (await api.get<DashboardAccountPage>('/dashboard/accounts', { params: { organization, page } }))
+    .data;
 
 export const registerTenant = async (name: string) =>
   (await api.post<Tenant>('/dashboard/accounts/organizations', { name })).data;
