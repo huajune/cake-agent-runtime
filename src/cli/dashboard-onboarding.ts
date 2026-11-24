@@ -119,7 +119,7 @@ async function preflight(
 }
 async function getMember(client: SupabaseClient, member: StaffMember) {
   const { data, error } = await client
-    .from('dashboard_accounts')
+    .from('tenant_members')
     .select(columns)
     .eq('phone', member.phone)
     .single();

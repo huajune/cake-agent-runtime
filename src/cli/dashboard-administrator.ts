@@ -15,7 +15,7 @@ const batchSchema = z.object({ project: z.string(), id: z.uuid(), password: z.st
 
 export async function readDashboardAdministrator(client: SupabaseClient): Promise<User | null> {
   const { data: row, error } = await client
-    .from('dashboard_accounts')
+    .from('tenant_members')
     .select('user_id,disabled,organization')
     .eq('login_name', DASHBOARD_ADMIN_LOGIN)
     .maybeSingle();

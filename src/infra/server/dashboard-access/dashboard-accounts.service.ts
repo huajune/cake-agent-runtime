@@ -24,8 +24,8 @@ import {
 import type { HostingGroupSelection } from '@/types/hosting-binding';
 
 const ACCOUNT_COLUMNS =
-  'memberId:id,userId:user_id,loginName:login_name,name,organization,tenantRole:tenant_role,tenant:tenants!dashboard_accounts_tenant_fk!inner(name,readsAllTenants:reads_all_tenants),phone,disabled,hostingGroupId:hosting_group_id';
-const TABLE = 'dashboard_accounts';
+  'memberId:id,userId:user_id,loginName:login_name,name,organization,tenantRole:tenant_role,tenant:tenants!tenant_members_tenant_fk!inner(name,readsAllTenants:reads_all_tenants),phone,disabled,hostingGroupId:hosting_group_id';
+const TABLE = 'tenant_members';
 
 @Injectable()
 export class DashboardAccountsService {
@@ -68,7 +68,7 @@ export class DashboardAccountsService {
     const offset = (page - 1) * DASHBOARD_ACCOUNT_PAGE_SIZE;
     const { data, error, count } = await this.client
       .from('tenants')
-      .select('id,name,members:dashboard_accounts!dashboard_accounts_tenant_fk(count)', {
+      .select('id,name,members:tenant_members!tenant_members_tenant_fk(count)', {
         count: 'exact',
       })
       .order('created_at')

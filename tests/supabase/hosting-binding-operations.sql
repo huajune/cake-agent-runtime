@@ -14,8 +14,8 @@ BEGIN
     THEN RAISE EXCEPTION 'private permissions missing'; END IF;
   INSERT INTO auth.users(id,email,raw_app_meta_data) VALUES(admin_id,'cakeadmin@dashboard.cake.invalid',
     '{"cake_dashboard_account":{"login_name":"cakeadmin","organization":"headquarters"}}');
-  INSERT INTO dashboard_accounts(name,organization,phone) VALUES('旧负责人','henan','+12025550111') RETURNING id INTO member;
-  INSERT INTO dashboard_accounts(name,organization,phone) VALUES('新负责人','henan','+12025550112') RETURNING id INTO second_member;
+  INSERT INTO tenant_members(name,organization,phone) VALUES('旧负责人','henan','+12025550111') RETURNING id INTO member;
+  INSERT INTO tenant_members(name,organization,phone) VALUES('新负责人','henan','+12025550112') RETURNING id INTO second_member;
   INSERT INTO hosting_group_ownership VALUES(conn,'dest',clock_timestamp()-interval '1 year','shanghai_recruitment'),
     (conn,'peer',clock_timestamp()-interval '1 year','henan');
   PERFORM pg_sleep(0.006);
@@ -35,19 +35,19 @@ BEGIN
     RAISE EXCEPTION 'cross-tenant group claimed';
   EXCEPTION WHEN check_violation THEN NULL; END;
   PERFORM bind_dashboard_hosting_group(conn,second_member,'henan','source',NULL,member,admin_id);
-  IF (SELECT hosting_group_id FROM dashboard_accounts WHERE id=member) IS NOT NULL OR
-     (SELECT hosting_group_id FROM dashboard_accounts WHERE id=second_member) IS DISTINCT FROM 'source'
+  IF (SELECT hosting_group_id FROM tenant_members WHERE id=member) IS NOT NULL OR
+     (SELECT hosting_group_id FROM tenant_members WHERE id=second_member) IS DISTINCT FROM 'source'
     THEN RAISE EXCEPTION 'same-tenant owner handoff was not atomic'; END IF;
   opened:=jsonb_build_object('cake_dashboard_account',jsonb_build_object('organization','headquarters','name','新同事',
     'hosting_binding',jsonb_build_object('groupId','empty','previousGroupId',NULL,'previousOwnerId',NULL,'actor',admin_id)));
   INSERT INTO auth.users(id,phone,raw_app_meta_data) VALUES(auth_id,'12025550113',opened);
-  IF NOT EXISTS(SELECT FROM dashboard_accounts WHERE user_id=auth_id AND hosting_group_id='empty')
+  IF NOT EXISTS(SELECT FROM tenant_members WHERE user_id=auth_id AND hosting_group_id='empty')
     THEN RAISE EXCEPTION 'opening did not bind an empty group'; END IF;
   BEGIN
     INSERT INTO auth.users(id,phone,raw_app_meta_data) VALUES(blocked_id,'12025550114',opened);
     RAISE EXCEPTION 'opening despite conflicting selection';
   EXCEPTION WHEN check_violation THEN NULL; END;
-  IF EXISTS(SELECT FROM auth.users WHERE id=blocked_id) OR EXISTS(SELECT FROM dashboard_accounts WHERE phone='+12025550114')
+  IF EXISTS(SELECT FROM auth.users WHERE id=blocked_id) OR EXISTS(SELECT FROM tenant_members WHERE phone='+12025550114')
     THEN RAISE EXCEPTION 'failed combined operation left an identity'; END IF;
 
   PERFORM pg_sleep(0.006);

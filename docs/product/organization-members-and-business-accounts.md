@@ -24,7 +24,7 @@
 | 托管小组和 Bot | 一个组织有多个小组，每位组长负责一个小组，组内可有多个企微号。每个企微号固定属于一个组织 | 同事在 Stride 扫码归组，管理员在蛋糕绑定小组。组内新增企微号随目录同步，同组织换负责人或调整小组时，业务数据仍归该组织。 |
 | 外部业务账号和通知 | 按租户登记实际启用的外部服务。海绵业务账号有稳定本地 ID 并绑定承办成员。飞书按用途绑定应用、群、任务清单及需要的人员授权 | 同一租户内，多个 Bot 可引用已确认的同一业务账号。供应商可按实际业务接入其他服务。 |
 
-后台统一显示「所属组织」。数据库的 `tenants` 是这份组织名单，`id` 是稳定主键，`name` 是显示名称，`created_at` 记录创建时间。现有三个组织沿用已有 ID。员工档案的 `organization` 外键和聊天记录的 `tenant_id` 外键都指向 `tenants.id`。接入新供应商时，`cakeadmin` 在「账号管理 → 登记组织」填写名称。蛋糕生成稳定 ID，新组织随即进入开户、调岗与小组绑定的选择范围。组织改名只改显示名称。
+后台统一显示「所属组织」。数据库的 `tenants` 是这份组织名单，`id` 是稳定主键，`name` 是显示名称，`created_at` 记录创建时间。现有三个组织沿用已有 ID。`tenant_members` 的 `organization` 外键和聊天记录的 `tenant_id` 外键都指向 `tenants.id`。接入新供应商时，`cakeadmin` 在「账号管理 → 登记组织」填写名称。蛋糕生成稳定 ID，新组织随即进入开户、调岗与小组绑定的选择范围。组织改名只改显示名称。
 
 ### 租户管理员与组长的查看范围
 
@@ -33,6 +33,23 @@
 本版两种角色都按上表的租户范围查看数据。河南的组长和租户管理员都能看整个河南中心，也都可以在「托管用户」里暂停或恢复河南任一候选人会话的 AI 回复。临时暂停到次日零点自动恢复。将来启用组级查看时，租户管理员查看本租户全部业务，组长查看本人负责的小组内所有 Bot 的业务。总部跨租户查看和 `cakeadmin` 的平台管理权限各自独立。
 
 业务明细应能追溯到业务发生时的租户和托管小组。有原始小组 ID 时保留它，也可以用渠道连接、Bot ID 和业务发生时间查当时的入组记录。派生流水可沿原始业务记录追溯。将来的组长视图先按租户和负责小组筛选明细，再展示详情或计算报表。能确认租户、暂时无法确认小组的记录留在租户级视图。
+
+## 登录后如何确定数据和菜单
+
+1. 员工用手机号和密码登录 Supabase Auth，浏览器将会话的 access token 放进请求的 Bearer 头。Nest 向 Auth 核实 token，根据返回的用户 ID 查 `tenant_members.user_id` 和所属 `tenants`，核对启停、员工已确认手机号或平台专用身份。每个受保护请求都查当前档案。
+2. `GET /dashboard/access` 返回当前组织、租户角色、跨租户范围派生的 `centerId` 和平台管理标记。React 用这些值过滤侧栏、守卫路由，切换身份或范围时重建业务查询缓存。河南管理员和组长均可进入用户、托管、聊天、消息流水、主动复聊五个页面。
+3. Nest 独立检查允许的接口，从已验证身份取组织传给租户查询。SQL 用原业务记录的租户筛选列表、详情与聚合。两种租户角色均可管理本组织的小组和候选人托管。普通总部成员可以跨租户查看。账号管理与全局 AI 回复开关的 API 只对 `cakeadmin` 开放。成员表启用行级安全，浏览器的公开角色没有直接读取成员档案的表权限。
+
+[认证与档案查询](../../src/infra/server/dashboard-access/dashboard-accounts.service.ts) · [接口授权](../../src/infra/server/guards/api-token.guard.ts) · [前端路由](../../web/src/hooks/useDashboardAccess.tsx) · [数据库表与字段](../db/tenant-schema.md)
+
+## 开户时选组的事务
+
+以给一位河南组长开户为例，蛋糕把成员 ID（已有档案时）、组织、角色和所选小组写进一次服务端 `auth.admin.createUser` 请求的 `app_metadata.cake_dashboard_account`。Auth 写入 `auth.users` 或设置管理元数据时，同一 PostgreSQL 事务中的两个触发器依次执行。
+
+1. `bind_dashboard_auth_user` 认领原有档案或建立成员，并把新 Auth 用户 ID 填进 `tenant_members.user_id`。
+2. 有选组时，`dashboard_hosting_on_open` 调用 `bind_dashboard_hosting_group`，核对办理人、最近的目录、组织与原负责人。成功后写成员负责小组、负责人变更记录和目录归属。小组已被其他人认领会报错，Auth 新身份和本次成员变更一起回滚。原有待开通档案保留原状态。
+
+租户管理员的开户请求省略小组。Stride 扫码和拉取目录在开户之前独立完成，事务使用蛋糕已同步的那份目录。提交成功后才私下交付密码。[开户请求](../../src/infra/server/dashboard-access/dashboard-accounts.service.ts) · [当前触发器函数](../../supabase/migrations/20261124070000_tenant_members.sql) · [成功与冲突回滚用例](../../tests/supabase/hosting-binding-operations.sql)
 
 ## 一条消息的归属与权限
 
@@ -103,7 +120,7 @@
 
 ## 现有配置如何迁入
 
-当前分支的账号表设计为 `dashboard_accounts`，托管配置 `hosting_member_config` 按 `botImId` 查找现有海绵与飞书绑定。迁移时把两者接到同一份租户及成员档案。
+成员已登记在 `tenant_members`。当前 `hosting_member_config` 是 `system_config.value` 里的一份 JSON，读取条件为 `key=hosting_member_config`。它按 `members[botImId]` 保存可选的海绵 token、飞书接收人 open ID 和显示名、企微昵称及人设。配置顶层另有运营接收人和任务派单。飞书 open ID 用于标识收件人，与飞书应用认证凭据用途不同。后续接供应商时，可将海绵业务账号凭据按租户授权、把个人接收人关联成员、按 Bot 保留对外身份。这几项列入后续迁移。[当前读取实现](../../src/biz/hosting-config/repositories/hosting-member-config.repository.ts) · [配置字段](../../src/biz/hosting-config/types/hosting-member-config.types.ts)
 
 1. 登记三个内部租户。核对全部在用同事、渠道连接、Stride 小组 ID、负责人与已知手机号。每人一个档案，每位组长负责一个小组，组内可以有多个 Bot。手机号待补的同事先建档，身份有冲突的交负责人确认。
 2. 为新业务记录写入租户。历史记录按下表分批处理，同时核对外部账号的绑定时间。迁移前后逐租户对账聊天、工单和报表数量，检查重试中的任务。

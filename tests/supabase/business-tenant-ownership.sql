@@ -16,7 +16,7 @@ BEGIN
   INSERT INTO tenants(name) VALUES('验收供应商') RETURNING id INTO supplier;
   PERFORM import_dashboard_staff_roster(jsonb_build_array(jsonb_build_object('name','测试同事',
     'organization',supplier,'hosting_group_id',group_b)),false);
-  IF NOT EXISTS (SELECT FROM dashboard_accounts WHERE organization=supplier AND hosting_group_id=group_b)
+  IF NOT EXISTS (SELECT FROM tenant_members WHERE organization=supplier AND hosting_group_id=group_b)
     OR NOT (hosting_management_directory('stride-primary')->'tenants' @> jsonb_build_array(jsonb_build_object('id',supplier,'name','验收供应商')))
     THEN RAISE EXCEPTION 'new tenant unavailable for onboarding'; END IF;
   INSERT INTO hosting_group_ownership(connection_id,group_id,effective_from,tenant_id)

@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**　2026-11-23
+**最后更新**　2026-11-24
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
@@ -12,7 +12,9 @@
 
 ### 组织归属（测试库已验收，正式发布待执行）
 
-组织登记在 `tenants`，成员的 `dashboard_accounts.organization` 通过外键引用组织。小组与组织、Bot 与小组分别在 `hosting_group_ownership`、`hosting_bot_memberships` 记录生效时间。聊天、流水、调用明细、执行和审查记录、复聊、人工介入、运营事件、日报、用户活动及长期记忆使用同一组织主键。历史记录缺少时间或渠道证据时保留空归属。权限、登记操作与回填条件见[租户、成员和业务账号](../product/organization-members-and-business-accounts.md)。
+测试库 `public` 共 33 张实体表，其中 14 张有 `tenant_id`。本期净增 7 张。新增表的字段类型、默认值、主键及其余 26 张表的完整字段和归属见[租户数据表与字段](tenant-schema.md)。
+
+组织登记在 `tenants`，成员的 `tenant_members.organization` 通过外键引用组织。小组与组织、Bot 与小组分别在 `hosting_group_ownership`、`hosting_bot_memberships` 记录生效时间。聊天、流水、调用明细、执行和审查记录、复聊、人工介入、运营事件、日报、用户活动及长期记忆使用同一组织主键。历史记录缺少时间或渠道证据时保留空归属。权限、登记操作与回填条件见[租户、成员和业务账号](../product/organization-members-and-business-accounts.md)。
 
 中心员工的服务端查询以当前成员档案确定组织。消息处理的 `source_occurred_at` 与处理接收时间分别保存。幂等活动事件写入 `user_activity_events`，业务报表按 Bot 所属组织汇总，同一活动重放只计一次。[可回滚的测试库验收](../../tests/supabase/business-tenant-ownership.sql)
 
@@ -77,7 +79,7 @@
 | 10    | `monitoring_error_logs`                   | 监控   | insert              | select       | 90 天                               |
 | 11    | `system_config`                           | 配置   | upsert              | select       | 永久                                |
 | 12    | `strategy_config`                         | 配置   | insert / update     | select       | 永久（多版本）                      |
-| 13    | `strategy_config_changelog`               | 配置   | insert              | select       | 永久                                |
+| 13    | `strategy_archive.strategy_config_changelog` | 平台策略历史 | 归档 | 运维查阅 | 已由上期迁移移出 public |
 | 14    | `test_batches`                            | 测试   | insert / update     | select       | 永久                                |
 | 15    | `test_executions`                         | 测试   | insert / update     | select       | 永久                                |
 | 16    | `test_conversation_snapshots`             | 测试   | insert / update     | select       | 永久                                |
@@ -634,17 +636,12 @@
 
 ### 13. strategy_config_changelog - 策略变更日志
 
-**用途**：审计 strategy_config 每次字段变更
-
-**代码位置**：
-
-- Repository: [src/biz/strategy/repositories/strategy-changelog.repository.ts](../../src/biz/strategy/repositories/strategy-changelog.repository.ts)
-- Entity: [src/biz/strategy/entities/strategy-changelog.entity.ts](../../src/biz/strategy/entities/strategy-changelog.entity.ts)
+平台策略变更历史已归档至 `strategy_archive.strategy_config_changelog`。该表共 7 列，保留原快照，业务服务没有读写权限。[归档迁移](../../supabase/migrations/20261124024135_archive_strategy_config_changelog.sql)
 
 | 字段                      | 类型        | 默认值               | 说明                                        |
 | ------------------------- | ----------- | -------------------- | ------------------------------------------- |
 | `id`                      | uuid        | gen_random_uuid()    | 主键                                        |
-| `config_id`               | uuid        | FK → strategy_config | 关联策略（ON DELETE CASCADE）               |
+| `config_id`               | uuid        | NOT NULL             | 原策略 ID，归档后独立保留                   |
 | `field`                   | text        | NOT NULL             | 变更字段：persona/stage_goals/red_lines/... |
 | `old_value` / `new_value` | jsonb       | - / NOT NULL         | 前后值                                      |
 | `changed_at`              | timestamptz | now()                | 变更时间                                    |

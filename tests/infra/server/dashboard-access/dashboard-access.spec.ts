@@ -73,7 +73,8 @@ describe('staff accounts and organization authority', () => {
       ],
     });
     await expect(roster.list(2, 'new-team')).resolves.toMatchObject({ total: 51 });
-    expect(urls[0].searchParams.get('select')).toContain('dashboard_accounts_tenant_fk(count)');
+    expect(urls[0].searchParams.get('select')).toContain('members:tenant_members!tenant_members_tenant_fk(count)');
+    expect(urls[1].pathname).toBe('/rest/v1/tenant_members');
     const filter = urls[1].searchParams;
     expect(filter.get('organization')).toBe('eq.new-team');
     expect(filter.get('offset')).toBe('50');

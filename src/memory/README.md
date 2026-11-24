@@ -2,6 +2,8 @@
 
 本文只描述当前实现。记忆模块按作用域分为两层：`short-term` 与 `long-term`；`turnHints` 是本轮 sidecar，不是第三层记忆。
 
+下文以业务后缀描述 Redis 键。租户会话的实际键以 `{env}:tenant:{encodedTenantId}:` 开头，预约指针、快照和收资表的完整模板及有效期见 [Redis 键说明](../../docs/db/redis-schema.md#租户业务键)。
+
 ## 作用域与三个时间数
 
 | 作用域              | 当前内容                          | 生命周期 / 边界   | 存储                              |

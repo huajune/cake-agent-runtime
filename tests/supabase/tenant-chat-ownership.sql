@@ -9,9 +9,9 @@ BEGIN
     OR has_function_privilege('anon','public.backfill_chat_tenants(text,text[],boolean)','EXECUTE')
     THEN RAISE EXCEPTION 'tenant registry or access is incorrect'; END IF;
   INSERT INTO public.tenants (id,name) VALUES ('qa-supplier','供应商示例');
-  INSERT INTO public.dashboard_accounts (phone,name,organization) VALUES ('+12025550198','测试供应商成员','qa-supplier');
+  INSERT INTO public.tenant_members (phone,name,organization) VALUES ('+12025550198','测试供应商成员','qa-supplier');
   BEGIN
-    INSERT INTO public.dashboard_accounts (phone,name,organization) VALUES ('+12025550199','测试成员','qa-absent');
+    INSERT INTO public.tenant_members (phone,name,organization) VALUES ('+12025550199','测试成员','qa-absent');
     RAISE EXCEPTION 'account accepted an unknown tenant';
   EXCEPTION WHEN foreign_key_violation THEN NULL; END;
   PERFORM public.register_hosting_directory('qa-new',sample,true);
