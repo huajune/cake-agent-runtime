@@ -153,7 +153,6 @@ describe('MessageProcessingRepository', () => {
           token_usage: 100,
           is_fallback: false,
           fallback_success: null,
-          agent_invocation: null,
           batch_id: null,
         },
       ];
@@ -322,7 +321,6 @@ describe('MessageProcessingRepository', () => {
         token_usage: 80,
         is_fallback: false,
         fallback_success: null,
-        agent_invocation: null,
         batch_id: null,
       };
 
@@ -457,7 +455,6 @@ describe('MessageProcessingRepository', () => {
         token_usage: 100,
         is_fallback: false,
         fallback_success: null,
-        agent_invocation: null,
         batch_id: 'batch_001',
       };
 
@@ -473,41 +470,49 @@ describe('MessageProcessingRepository', () => {
       expect(result?.batchId).toBe('batch_001');
     });
 
-    it('prefers the embedded child-table invocation over the legacy column', async () => {
+    const detailRow = {
+      message_id: 'detail',
+      chat_id: 'chat',
+      received_at: '2026-11-24T01:00:00Z',
+      status: 'success',
+    };
+
+    it.each([
+      { embedded: { agent_invocation: { fromChild: true } } },
+      { embedded: [{ agent_invocation: { fromChild: true } }] },
+    ])('reads the child snapshot with either embed shape', async ({ embedded }) => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const dbRow = {
-        message_id: 'msg_002',
-        chat_id: 'chat_001',
-        user_id: 'user_001',
-        received_at: new Date().toISOString(),
-        status: 'success',
-        agent_invocation: { legacy: true },
-        message_processing_invocations: [{ agent_invocation: { fromChild: true } }],
-      };
-      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [dbRow], error: null }));
+      const query = makeQueryMock({
+        data: [{ ...detailRow, message_processing_invocations: embedded }],
+      });
+      mockSupabaseClient.from.mockReturnValue(query);
 
-      const result = await repository.getMessageProcessingRecordById('msg_002');
+      const result = await repository.getMessageProcessingRecordById('detail');
 
+      const projection = query.select.mock.calls[0][0].split(',');
+      expect(projection).toContain(
+        'message_processing_invocations(agent_invocation:processing_read_invocation)',
+      );
+      expect(projection).not.toContain('agent_invocation');
+      expect(projection).not.toContain('invocation_version');
       expect(result?.agentInvocation).toEqual({ fromChild: true });
     });
 
-    it('falls back to the legacy agent_invocation column for rows written before the split', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const dbRow = {
-        message_id: 'msg_003',
-        chat_id: 'chat_001',
-        user_id: 'user_001',
-        received_at: new Date().toISOString(),
-        status: 'success',
-        agent_invocation: { legacy: true },
-        message_processing_invocations: [],
-      };
-      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [dbRow], error: null }));
+    it.each([[], null, [{ agent_invocation: null }]].map((embed) => ({ embed })))(
+      'omits unavailable or superseded snapshots',
+      async ({ embed }) => {
+        mockSupabaseService.isClientInitialized.mockReturnValue(true);
+        mockSupabaseClient.from.mockReturnValue(
+          makeQueryMock({
+            data: [{ ...detailRow, message_processing_invocations: embed }],
+          }),
+        );
 
-      const result = await repository.getMessageProcessingRecordById('msg_003');
+        const result = await repository.getMessageProcessingRecordById('detail');
 
-      expect(result?.agentInvocation).toEqual({ legacy: true });
-    });
+        expect(result?.agentInvocation).toBeUndefined();
+      },
+    );
   });
 
   // ==================== getMessageStats ====================
@@ -713,7 +718,6 @@ describe('MessageProcessingRepository', () => {
         token_usage: 80,
         is_fallback: false,
         fallback_success: null,
-        agent_invocation: null,
         batch_id: null,
       };
 
@@ -770,63 +774,46 @@ describe('MessageProcessingRepository', () => {
     });
   });
 
-  // ==================== nullAgentInvocations ====================
-
-  describe('nullAgentInvocations', () => {
-    it('should return 0 when supabase is not available', async () => {
+  describe('deleteExpiredAgentInvocations', () => {
+    it('skips cleanup when Supabase is unavailable', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
-
-      const result = await repository.nullAgentInvocations(7);
-
-      expect(result).toBe(0);
+      expect(await repository.deleteExpiredAgentInvocations()).toBe(0);
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
     });
 
-    it('should return updated count from RPC (legacy row-set shape)', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
+    it('retains 90 days by default and counts an RPC row-set result', async () => {
       mockSupabaseClient.rpc.mockResolvedValue({
-        data: [{ null_agent_invocation: '20' }],
+        data: [{ delete_expired_agent_invocations: '20' }],
         error: null,
       });
-
-      const result = await repository.nullAgentInvocations(7);
-
-      expect(result).toBe(20);
-    });
-
-    it('should loop batches until a batch returns less than the limit', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      // 两条并行清理：子表 delete_expired_agent_invocations 分批删，主表 null_agent_invocation 置空存量。
-      // returns integer 的函数 supabase-js 返回裸数字；按函数名分别计数。
-      const calls: Record<string, number> = {};
-      mockSupabaseClient.rpc.mockImplementation((fn: string) => {
-        calls[fn] = (calls[fn] ?? 0) + 1;
-        if (fn === 'delete_expired_agent_invocations') {
-          return Promise.resolve({ data: calls[fn] <= 2 ? 200 : 35, error: null });
-        }
-        return Promise.resolve({ data: calls[fn] === 1 ? 20 : 0, error: null });
-      });
-
-      const result = await repository.nullAgentInvocations(7);
-
-      // 子表 200+200+35 = 435（第 3 批 < limit 停止），主表 20（< limit 停止）
-      expect(result).toBe(455);
-      expect(calls['delete_expired_agent_invocations']).toBe(3);
-      expect(calls['null_agent_invocation']).toBe(1);
-    });
-
-    it('should use default daysOld of 7 and pass batch limit', async () => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      mockSupabaseClient.rpc.mockResolvedValue({ data: 0, error: null });
-
-      await repository.nullAgentInvocations();
-
-      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('null_agent_invocation', {
-        p_days_old: 7,
+      expect(await repository.deleteExpiredAgentInvocations()).toBe(20);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(1);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('delete_expired_agent_invocations', {
+        p_days_old: 90,
         p_limit: 200,
       });
+    });
+
+    it('stops at the first partial batch and honors explicit retention', async () => {
+      mockSupabaseClient.rpc
+        .mockResolvedValueOnce({ data: 200, error: null })
+        .mockResolvedValueOnce({ data: 35, error: null });
+      expect(await repository.deleteExpiredAgentInvocations(7)).toBe(235);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(2);
+      expect(mockSupabaseClient.rpc).toHaveBeenNthCalledWith(
+        2,
+        'delete_expired_agent_invocations',
+        {
+          p_days_old: 7,
+          p_limit: 200,
+        },
+      );
+    });
+
+    it('stops at the batch cap when there is a backlog', async () => {
+      mockSupabaseClient.rpc.mockResolvedValue({ data: 2, error: null });
+      expect(await repository.deleteExpiredAgentInvocations(90, 2)).toBe(200);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(100);
     });
   });
 

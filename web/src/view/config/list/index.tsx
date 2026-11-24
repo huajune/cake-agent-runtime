@@ -22,8 +22,15 @@ import ControlBar from './components/ControlBar';
 import { formatConfigValue } from './components/ConfigCard';
 import WorkerPanel from './components/WorkerPanel';
 import GroupTaskPanel from './components/GroupTaskPanel';
+import { FallbackChainSelector } from './components/FallbackChainSelector';
 
 import styles from './styles/index.module.scss';
+
+function configValuesEqual(left: unknown, right: unknown): boolean {
+  return Array.isArray(left) && Array.isArray(right)
+    ? left.length === right.length && left.every((value, index) => value === right[index])
+    : left === right;
+}
 
 type NumberConfigKey = 'initialMergeWindowMs' | 'typingSpeedCharsPerSec' | 'paragraphGapMs';
 
@@ -205,7 +212,7 @@ export default function Config() {
     setEditingConfig((prev) => ({ ...prev, [key]: value }));
     setDirtyFields((prev) => {
       const persistedValue = agentConfigData?.config[key as keyof AgentReplyConfig];
-      if (value === persistedValue) return prev.filter((field) => field !== key);
+      if (configValuesEqual(value, persistedValue)) return prev.filter((field) => field !== key);
       return prev.includes(key) ? prev : [...prev, key];
     });
   };
@@ -238,7 +245,7 @@ export default function Config() {
     editingConfig[key] ?? agentConfigData?.defaults[key];
 
   const isModified = <K extends keyof AgentReplyConfig>(key: K) =>
-    getCurrentValue(key) !== getDefaultValue(key);
+    !configValuesEqual(getCurrentValue(key), getDefaultValue(key));
 
   const pendingChangeCount = dirtyFields.length;
   const hasChanges = pendingChangeCount > 0;
@@ -409,7 +416,7 @@ export default function Config() {
     getDefaultValue('wecomCallbackThinkingEffort') ?? 'high',
   ) as AgentReplyThinkingEffort;
   const currentMergeWindow = Number(getCurrentValue('initialMergeWindowMs') ?? 0);
-  // env 降级链快照：只读展示，来源 AGENT_DEFAULT_FALLBACKS / AGENT_{ROLE}_FALLBACKS
+  // 保存后的降级链快照；未配置覆盖时继承环境变量中的默认链。
   const fallbackChains = agentConfigData?.fallbackChains;
   const hardRuleOverrides = agentConfigData?.config.hardRuleOverrides ?? {};
   // 主动复聊开关同守卫开关：直接读服务端最新值，切换即保存
@@ -685,30 +692,20 @@ export default function Config() {
                       </span>
                     </div>
                     <p className={styles.settingDescription}>
-                      主聊的 Qwen 超时会直接切到 DeepSeek V4.1
-                      Flash。其他角色按配置顺序切换供应商，留空使用环境变量。
+                      主聊和其他角色均按从上到下的顺序切换供应商。清空恢复默认；
+                      未配置降级链时，Qwen 主聊以 DeepSeek Flash 保底。
                     </p>
                     <div className={styles.settingMeta}>
                       <span>当前生效: {fallbackChains.default.chain.join(' → ') || '未配置'}</span>
                     </div>
                   </div>
                   <div className={styles.controlBlock}>
-                    <input
-                      type="text"
-                      className={styles.selectInput}
-                      placeholder="留空走 env，如 deepseek/deepseek-flash, qwen/qwen3.7-plus"
-                      value={((getCurrentValue('defaultFallbackModelIds') as string[]) ?? []).join(
-                        ', ',
-                      )}
-                      onChange={(e) =>
-                        handleConfigChange(
-                          'defaultFallbackModelIds',
-                          e.target.value
-                            .split(',')
-                            .map((id) => id.trim())
-                            .filter(Boolean),
-                        )
-                      }
+                    <FallbackChainSelector
+                      label="默认降级链"
+                      value={getCurrentValue('defaultFallbackModelIds') ?? []}
+                      options={modelOptions}
+                      onChange={(next) => handleConfigChange('defaultFallbackModelIds', next)}
+                      disabled={isLoadingModels || updateConfig.isPending}
                     />
                   </div>
                 </div>
@@ -720,38 +717,32 @@ export default function Config() {
                     <div className={styles.settingHeading}>
                       <span className={styles.settingLabel}>图片理解降级链</span>
                       <span className={styles.modifiedBadge}>
-                        {fallbackChains.roleOverrides.vision?.source === 'db_override'
+                        {(fallbackChains.roleOverrides.vision ?? fallbackChains.default).source ===
+                        'db_override'
                           ? 'Dashboard 配置'
                           : 'env 默认'}
                       </span>
                     </div>
                     <p className={styles.settingDescription}>
-                      识图角色专属，优先于默认链，建议跨厂商。
+                      识图角色专属，优先于默认链。仅可选择支持图片的模型，建议跨厂商。
                     </p>
                     <div className={styles.settingMeta}>
                       <span>
                         当前生效:{' '}
-                        {fallbackChains.roleOverrides.vision?.chain.join(' → ') || '未配置'}
+                        {(fallbackChains.roleOverrides.vision?.chain ?? fallbackChains.default.chain)
+                          .join(' → ') || '未配置'}
                       </span>
                     </div>
                   </div>
                   <div className={styles.controlBlock}>
-                    <input
-                      type="text"
-                      className={styles.selectInput}
-                      placeholder="留空走 env，如 deepseek/deepseek-flash"
-                      value={((getCurrentValue('visionFallbackModelIds') as string[]) ?? []).join(
-                        ', ',
+                    <FallbackChainSelector
+                      label="图片理解降级链"
+                      value={getCurrentValue('visionFallbackModelIds') ?? []}
+                      options={modelOptions.filter((model) =>
+                        model.capabilities.includes('multimodal'),
                       )}
-                      onChange={(e) =>
-                        handleConfigChange(
-                          'visionFallbackModelIds',
-                          e.target.value
-                            .split(',')
-                            .map((id) => id.trim())
-                            .filter(Boolean),
-                        )
-                      }
+                      onChange={(next) => handleConfigChange('visionFallbackModelIds', next)}
+                      disabled={isLoadingModels || updateConfig.isPending}
                     />
                   </div>
                 </div>

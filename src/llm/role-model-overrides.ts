@@ -3,7 +3,8 @@
  *
  * llm 层只定义契约，不依赖配置存储：实现方（biz/hosting-config 的
  * SystemConfigService 适配器）通过全局模块以 {@link ROLE_MODEL_OVERRIDES} token
- * 注入 LlmExecutorService。未提供实现时执行器行为不变（纯环境变量角色路由）。
+ * 注入 LlmExecutorService。未提供实现时走环境变量角色路由；Qwen 主聊未配降级链时
+ * 仍由执行器提供 Flash 保底。
  *
  * 优先级契约：调用方显式 modelId > 本覆盖（Dashboard 运行时配置）> AGENT_{ROLE}_MODEL。
  */
