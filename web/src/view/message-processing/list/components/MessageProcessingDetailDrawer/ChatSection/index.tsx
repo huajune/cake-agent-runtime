@@ -157,7 +157,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
           </div>
         </div>
 
-        <ToolExecutionPanel toolCalls={toolCalls} />
+        <ToolExecutionPanel toolCalls={toolCalls} message={message} />
 
         {message.isFallback && hasFallbackDetails && (
           <div className={styles.fallbackBox}>
