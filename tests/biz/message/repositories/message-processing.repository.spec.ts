@@ -593,6 +593,59 @@ describe('MessageProcessingRepository', () => {
         avgTtft: 120,
       });
     });
+
+    it('counts every filtered page and averages positive timings across the whole range', async () => {
+      const firstRows = Array.from({ length: 1000 }, (_, index) => ({
+        message_id: String(index).padStart(4, '0'),
+        status: 'timeout',
+        total_duration: index === 0 ? 2000 : null,
+        ttft_ms: index === 0 ? 200 : null,
+      }));
+      const first = makeQueryMock({ data: firstRows });
+      const last = makeQueryMock({
+        data: [
+          { message_id: '1000', status: 'processing', total_duration: null, ttft_ms: null },
+          { message_id: '1001', status: 'failure', total_duration: 100, ttft_ms: 10 },
+          { message_id: '1002', status: 'success', total_duration: 300, ttft_ms: 30 },
+        ],
+      });
+      mockSupabaseClient.from.mockReturnValueOnce(first).mockReturnValueOnce(last);
+
+      const result = await repository.getMessageStats(0, 10000, { managerNames: ['Alice', 'Bob'] });
+
+      expect(result).toEqual({
+        total: 1003,
+        success: 1,
+        failed: 1001,
+        avgDuration: 800,
+        avgTtft: 80,
+      });
+      for (const page of [first, last]) {
+        expect(page.order).toHaveBeenCalledWith('message_id', { ascending: true });
+        expect(page.or).toHaveBeenCalledWith('manager_name.ilike.%Alice%,manager_name.ilike.%Bob%');
+      }
+      expect(first.gt).not.toHaveBeenCalled();
+      expect(last.gt).toHaveBeenCalledWith('message_id', '0999');
+    });
+
+    it('discards partial stats if a later page cannot be read', async () => {
+      const first = makeQueryMock({
+        data: Array.from({ length: 1000 }, (_, index) => ({
+          message_id: String(index),
+          status: 'failure',
+        })),
+      });
+      const error = makeQueryMock({ data: null, error: { code: '42501', message: 'Read failed' } });
+      mockSupabaseClient.from.mockReturnValueOnce(first).mockReturnValueOnce(error);
+
+      await expect(repository.getMessageStats(0, 10000, { userName: 'Alice' })).resolves.toEqual({
+        total: 0,
+        success: 0,
+        failed: 0,
+        avgDuration: 0,
+        avgTtft: 0,
+      });
+    });
   });
 
   // ==================== getActiveUsers ====================
