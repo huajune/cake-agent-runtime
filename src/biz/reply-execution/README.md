@@ -27,15 +27,17 @@ sequenceDiagram
 
 ### A、B 合并回复，发完第一段时宕机
 
-假设「地址」已经发出，「班次」还没发，原进程宕机。后台每分钟查数据库。即使 Redis 待处理列表已过期，后台也能找到待恢复的 R，无需企微再次推送 B。
+假设「地址」已经发出，「班次」还没发，原进程宕机。图中的**服务内定时任务**由 Cake 的企微消息模块注册，与接收企微消息的接口运行在同一个 Node.js 进程。所有 Cake 实例都停机时，检查也暂停。实例重新启动后，定时任务会在下一轮检查已到期的回合，无需企微再次推送 B。[企微消息模块](../../channels/wecom/message/message.module.ts) · [每分钟的恢复任务](../../channels/wecom/message/delivery/reply-recovery.service.ts)
+
+每分钟的查询从 `agent_reply_turns` 取 `mode = execute`、带主聊输入上下文（`recovery.primary`）且 `next_check_at` 已到的回合，按检查时间从早到晚最多取 25 条。任务取得 Redis 会话锁后，结合回合的 `status`、已保存的分段和数据库执行权，决定续发、补本地确认或通知人工。即使 Redis 待处理列表已过期，任务也能用这次查询找到 R。[到期回合的查询条件](reply-turns.repository.ts) · [会话锁](reply-recovery-lease.service.ts)
 
 ```mermaid
 sequenceDiagram
     participant W as 企微
-    participant S as 恢复进程
+    participant S as 服务内定时任务
     participant Q as Redis
     participant D as 数据库
-    S->>D: 查询到期回合，找到 R
+    S->>D: 每分钟按 next_check_at 找到到期的 R
     S->>Q: 取得同一聊天的会话锁
     S->>D: 接管 R，读原文并核对第一段的发送记录
     alt 第一段已有受理凭证
@@ -48,11 +50,11 @@ sequenceDiagram
     end
 ```
 
-待发原文来自 `agent_reply_turns`。每段的发送状态在 `agent_action_records`，原请求的回执在 `agent_action_evidence`。恢复进程沿用原文，跳过模型生成和预约工具。企微发送接口返回 `errcode=0` 表示渠道已受理，候选人是否已读仍是未知。[到期回合查询](reply-turns.repository.ts) · [逐段核对与续发](../../channels/wecom/message/delivery/durable-reply-delivery.service.ts) · [读取发送动作](../action-execution/action-executor.service.ts) · [重启用例](../../../tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts)
+待发原文来自 `agent_reply_turns`。每段的发送状态在 `agent_action_records`，原请求的回执在 `agent_action_evidence`。恢复任务沿用原文，跳过模型生成和预约工具。企微发送接口返回 `errcode=0` 表示渠道已受理，候选人是否已读仍是未知。[逐段核对与续发](../../channels/wecom/message/delivery/durable-reply-delivery.service.ts) · [读取发送动作](../action-execution/action-executor.service.ts) · [重启用例](../../../tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts)
 
 ### 恢复边界
 
-- **宕机时有一段还在途。** 回合尚未结案、该段结果未知时，恢复进程等待与原请求匹配的可信回执，确认受理后再发后段。已经记为失败或未知并结案的回合保留原结局。连接建立前的明确失败可以有限重试。
+- **宕机时有一段还在途。** 回合尚未结案、该段结果未知时，恢复任务等待与原请求匹配的可信回执，确认受理后再发后段。已经记为失败或未知并结案的回合保留原结局。连接建立前的明确失败可以有限重试。
 - **正文尚未写入或等待过久。** 自动续发要求回合仍在 `preparing` 或 `planned` 且已有最终分段。写入前宕机、工具结果又无法确认时，保留输入归属，交人工核实。从原输入时间算起，超过 24 小时仍待恢复的发送也转人工。运营撤回托管权限后停止发送剩余段。
 - **两段都已受理，只差本地收尾。** 系统在回合中保存受理段数和总段数，移除待发原文，记为 `settled`。按原消息 ID 确认输入后，记为 `acked`。若回复承诺由人工跟进，系统先用原工单幂等键提交跟进意图，再确认输入、清掉临时数据。若只有 Redis 输入确认失败，重试仅使用原消息 ID。
 
@@ -84,7 +86,7 @@ Redis 会话锁和回合里的 `owner`、`fence` 也各有作用。锁按**聊�
 
 ## 主聊业务补账
 
-报名、取消、改约由各自的动作记录保存结果。报名成功后的面试排程、取消终态、群邀请后的复聊停止命令，各自保留办理所需的工单结果和业务身份。排程入队失败时，系统用已有工单结果补办入队。若同一回合另有已经保存的待发分段，恢复进程完成业务补账后，再按原投递进度处理回复。
+报名、取消、改约由各自的动作记录保存结果。报名成功后的面试排程、取消终态、群邀请后的复聊停止命令，各自保留办理所需的工单结果和业务身份。排程入队失败时，系统用已有工单结果补办入队。若同一回合另有已经保存的待发分段，恢复任务完成业务补账后，再按原投递进度处理回复。
 
 群任务、复聊使用各自原有任务链，不创建本模块的回合、计划或动作记录，不受主聊 cutover 约束。主聊报名成功后的提醒入队仍属于主聊本地收尾；入队后的到期执行由复聊独立负责。
 
