@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { formatDuration, formatJson, formatToolResult } from '@/utils/format';
+import { formatDuration, formatJson } from '@/utils/format';
 import type { MessageRecordToolCallStatus } from '@/api/types/chat.types';
 import type { ToolCallInfo } from '../utils';
 import styles from './index.module.scss';
@@ -42,13 +42,13 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
         </span>
         <span className={styles.toolMeta}>
           {toolCall.durationMs !== undefined ? (
-            <span>{formatDuration(toolCall.durationMs)}</span>
+            <span title={`${toolCall.durationMs} ms`}>{formatDuration(toolCall.durationMs)}</span>
           ) : null}
           {toolCall.resultCount !== undefined ? <span>{toolCall.resultCount} 条</span> : null}
           {toolCall.errorType ? <span>{toolCall.errorType}</span> : null}
           {toolCall.apiCode !== undefined ? <span>apiCode={toolCall.apiCode}</span> : null}
           <span className={`${styles.statusBadge} ${getStatusClass(toolCall.status)}`}>
-            {STATUS_LABELS[toolCall.status]}
+            {STATUS_LABELS[toolCall.status] ?? toolCall.status}
           </span>
         </span>
       </button>
@@ -63,7 +63,11 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
           {toolCall.output !== undefined ? (
             <div>
               <div className={styles.detailLabel}>返回结果</div>
-              <pre>{formatToolResult(toolCall.output)}</pre>
+              <pre>
+                {typeof toolCall.output === 'string'
+                  ? toolCall.output
+                  : formatJson(toolCall.output)}
+              </pre>
             </div>
           ) : null}
         </div>

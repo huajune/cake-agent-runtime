@@ -89,6 +89,7 @@ interface ToolInvocationProps {
   args: unknown;
   state: 'call' | 'success' | 'error';
   result?: unknown;
+  showDetails?: boolean;
   defaultExpanded?: boolean;
 }
 
@@ -97,6 +98,7 @@ function ToolInvocation({
   args,
   state,
   result,
+  showDetails = true,
   defaultExpanded = false,
 }: ToolInvocationProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -105,8 +107,9 @@ function ToolInvocation({
   const isCompleted = !isCalling;
 
   const hasContent =
-    (args !== undefined && args !== null) ||
-    (isCompleted && result !== undefined && result !== null);
+    showDetails &&
+    ((args !== undefined && args !== null) ||
+      (isCompleted && result !== undefined && result !== null));
 
   return (
     <div
@@ -147,7 +150,7 @@ function ToolInvocation({
           )}
         </div>
       </div>
-      {isExpanded && (
+      {hasContent && isExpanded && (
         <div className={styles.toolBody}>
           {args !== undefined && args !== null && (
             <div className={styles.toolSection}>
@@ -268,6 +271,7 @@ function buildSegments(parts: UIMessage['parts']): Segment[] {
 interface MessagePartsAdapterProps {
   message: UIMessage;
   isStreaming?: boolean;
+  showToolDetails?: boolean;
   expandToolsByDefault?: boolean;
   expandReasoningByDefault?: boolean;
   renderTextAsMarkdown?: boolean;
@@ -277,6 +281,7 @@ interface MessagePartsAdapterProps {
 function MessagePartsAdapterComponent({
   message,
   isStreaming,
+  showToolDetails = true,
   expandToolsByDefault = false,
   expandReasoningByDefault = true,
   renderTextAsMarkdown = false,
@@ -360,6 +365,7 @@ function MessagePartsAdapterComponent({
             args={seg.tool.args}
             state={seg.tool.state}
             result={seg.tool.result}
+            showDetails={showToolDetails}
             defaultExpanded={expandToolsByDefault}
           />
         );
