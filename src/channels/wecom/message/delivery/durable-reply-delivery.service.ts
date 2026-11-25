@@ -11,7 +11,11 @@ import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.re
 import type { ActionIntent } from '@biz/action-execution/action-execution.types';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { REPLY_DELIVERY_OUTCOME } from '@biz/reply-execution/reply-execution.constants';
-import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import {
+  ReplyDeferredError,
+  ReplyDeliveryDeferredError,
+  type ReplyTurn,
+} from '@biz/reply-execution/reply-execution.types';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
@@ -68,7 +72,8 @@ export class DurableReplyDeliveryService implements OnModuleInit {
       try {
         await this.sendOrdinarySegment(turn, context, segment, accepted);
       } catch (error) {
-        if (!(error instanceof ReplySendError) || error.unknownResult) throw error;
+        if (!(error instanceof ReplySendError) || error.unknownResult)
+          throw new ReplyDeliveryDeferredError(error, accepted);
         await context.assertOwned?.();
         return this.turns.settle(turn, {
           outcome:

@@ -1,10 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
-import {
-  extractPresentedJobs,
-  resolveAssistantAnchoredFocusJob,
-  resolveCurrentFocusJob,
-} from '@resolution/job';
+import { selectAssistantJobs, type ReplyJobProjection } from './assistant-job-projection';
 import { MemoryConfig } from '../memory.config';
 import { RedisStore } from '../stores/redis.store';
 import { SessionFactsService } from './facts.service';
@@ -202,36 +198,55 @@ export class SessionWorkbenchService {
 
     const state = await this.facts.getSessionState(corpId, userId, sessionId);
 
-    // 第一步：根据 assistantText 识别“这轮真正展示过哪些岗位”。
-    const presentedJobs = extractPresentedJobs(assistantText, state.lastCandidatePool ?? []);
+    const { presented: presentedJobs, focus } = selectAssistantJobs(
+      userText,
+      assistantText,
+      state.presentedJobs ?? [],
+      state.lastCandidatePool ?? [],
+    );
     if (presentedJobs.length > 0) {
       await this.savePresentedJobs(corpId, userId, sessionId, presentedJobs);
     }
 
-    // 第二步：结合 userText + 已展示岗位 + 候选池，判断用户当前锁定的是哪个岗位。
-    // 这里允许“不确定”，宁可不锁，也不要在多候选场景下猜错。
-    const focusJob = resolveCurrentFocusJob(
-      userText,
-      state.presentedJobs ?? [],
-      presentedJobs,
-      state.lastCandidatePool ?? [],
-    );
+    if (focus !== undefined) await this.saveCurrentFocusJob(corpId, userId, sessionId, focus);
+  }
 
-    if (focusJob !== undefined) {
-      await this.saveCurrentFocusJob(corpId, userId, sessionId, focusJob);
-      return;
-    }
-
-    const assistantAnchoredFocusJob = resolveAssistantAnchoredFocusJob(
-      assistantText,
-      state.presentedJobs ?? [],
-      presentedJobs,
-      state.lastCandidatePool ?? [],
-    );
-
-    if (assistantAnchoredFocusJob) {
-      await this.saveCurrentFocusJob(corpId, userId, sessionId, assistantAnchoredFocusJob);
-    }
+  /** Reapplying a receipt after a crash must not increment the presentation count again. */
+  async applyReplyJobProjection(
+    corpId: string,
+    userId: string,
+    chatId: string,
+    plan: ReplyJobProjection,
+    accepted: number,
+  ) {
+    if (accepted === 0) return;
+    const prefix = plan.prefixes[accepted - 1];
+    if (!prefix) throw new Error('Invalid accepted reply prefix');
+    const jobFor = (id: number) => {
+      const job = plan.jobs.find((item) => item.jobId === id);
+      if (!job) throw new Error('Missing job in reply projection');
+      return job;
+    };
+    if (!prefix.presented.length && prefix.focus === undefined) return;
+    const state = await this.facts.getSessionState(corpId, userId, chatId);
+    const presented = prefix.presented.map(jobFor);
+    await this.facts.patchSessionState(corpId, userId, chatId, {
+      ...(presented.length
+        ? {
+            presentedJobs: [
+              ...presented,
+              ...(state.presentedJobs ?? []).filter((job) => !prefix.presented.includes(job.jobId)),
+            ].slice(0, 10),
+            storePresentationRounds: Math.max(
+              state.storePresentationRounds ?? 0,
+              plan.presentationRound,
+            ),
+          }
+        : {}),
+      ...(prefix.focus !== undefined
+        ? { currentFocusJob: prefix.focus === null ? null : jobFor(prefix.focus) }
+        : {}),
+    });
   }
 
   private buildStageKey(corpId: string, userId: string, sessionId: string): string {

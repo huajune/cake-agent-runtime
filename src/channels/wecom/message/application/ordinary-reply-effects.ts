@@ -2,7 +2,11 @@ import { z } from 'zod';
 import type { TurnSideEffectIntent } from '@agent/runner/turn-side-effect.types';
 import { readTurnSideEffectIntent } from '@agent/runner/turn-outcome';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
-import type { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import {
+  deliveredReplyAnchorsSchema,
+  type AnchorContext,
+} from '@agent/reengagement/anchor.service';
+import { replyJobProjectionSchema } from '@memory/short-term/assistant-job-projection';
 
 /** Business follow-up obligations survive even when ordinary reply text is abandoned. */
 const TOOL_EFFECT_NAMES = [
@@ -12,7 +16,15 @@ const TOOL_EFFECT_NAMES = [
   'invite_to_group',
 ] as const;
 
+export const deliveredReplySchema = z.object({
+  anchors: deliveredReplyAnchorsSchema.optional(),
+  jobs: replyJobProjectionSchema.optional(),
+  lastInputAt: z.string().datetime({ offset: true }).optional(),
+});
+export type DeliveredReplyEffects = z.infer<typeof deliveredReplySchema>;
+
 const effectsSchema = z.object({
+  deliveredReply: deliveredReplySchema.optional(),
   afterReply: z
     .array(z.custom<TurnSideEffectIntent>((item) => readTurnSideEffectIntent(item) !== null))
     .optional(),
@@ -47,8 +59,6 @@ const effectsSchema = z.object({
       .optional(),
   }),
 });
-
-type AnchorContext = Parameters<ReengagementAnchorService['handleToolAnchors']>[1];
 
 export function ordinaryReplyEffects(
   calls: AgentToolCall[] | undefined,
@@ -102,6 +112,7 @@ export function readOrdinaryReplyEffects(value: unknown): {
   toolCalls: AgentToolCall[];
   context: AnchorContext;
   afterReply?: TurnSideEffectIntent[];
+  deliveredReply?: DeliveredReplyEffects;
 } {
   return effectsSchema.parse(value);
 }

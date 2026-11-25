@@ -8,6 +8,7 @@ create or replace function public.transition_agent_reply_turn(p_operation text,p
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
 declare r public.agent_reply_turns; v_corp text:=p_input->>'corpId'; v_account text:=p_input->>'accountId';
   v_chat text:=p_input->>'chatId'; v_ids text[]; v_id text; v_mode text:=p_input->>'mode';
+  v_accepted integer; v_total integer;
 begin
   if coalesce(v_corp,'')='' or coalesce(v_account,'')='' or coalesce(v_chat,'')='' then raise exception 'missing reply scope'; end if;
   perform pg_advisory_xact_lock(hashtextextended(v_corp||':'||v_account||':'||v_chat,0));
@@ -138,8 +139,27 @@ begin
         return jsonb_build_object('conflict','reply_delivery_takeover_unavailable');
       end if;
       if r.input_occurred_at+interval '24 hours'<=now() then
-        update public.agent_reply_turns set status='settled',delivery_result=jsonb_build_object('outcome','interrupted'),
-          review_required=true,review_reason='recovery_deadline',next_check_at=now(),updated_at=now()
+        -- Expiry revokes dispatch. Already accepted segments still earn their local
+        -- effects. Look up each segment via the existing (corp_id, resource_hash)
+        -- index, using actionDigest([corpId, target]) from action-records.repository.
+        v_total:=jsonb_array_length(r.recovery->'replySegments');
+        select coalesce(min(s.ord-1),v_total)::integer into v_accepted
+          from jsonb_array_elements_text(r.recovery->'replySegments') with ordinality as s(body,ord)
+          where not exists (
+            select from public.agent_action_records a
+            where a.corp_id=r.corp_id and a.resource_hash=encode(sha256(convert_to(
+              '['||to_json(r.corp_id)::text||','||to_json('chat:'||r.chat_id||':reply:'||r.logical_turn_id||':segment:'||(s.ord-1))::text||']','UTF8')),'hex')
+              and a.account_id=r.account_id and a.chat_id=r.chat_id and a.logical_turn_id=r.logical_turn_id
+              and a.kind='wecom.reply_segment' and a.mode='execute' and a.status='succeeded'
+              and a.intent->>'intentId'=r.logical_turn_id||':reply:v1:'||(s.ord-1)
+              and a.intent->'parameters'->>'text'=s.body
+          );
+        update public.agent_reply_turns set status='settled',
+          delivery_result=jsonb_build_object('outcome',case when v_accepted=v_total then 'complete' else 'interrupted' end,
+            'accepted',v_accepted,'total',v_total),
+          recovery=case when v_accepted=v_total then recovery-'replySegments' else recovery end,
+          review_required=(v_accepted<v_total),review_reason=case when v_accepted<v_total then 'recovery_deadline' end,
+          next_check_at=now(),updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       else
         update public.agent_reply_turns set status='planned',owner=p_input->>'newOwner',fence=fence+1,
@@ -177,7 +197,10 @@ begin
         if r.recovery->'effects' ? 'afterReply' and p_input->'afterReplyHandled' is distinct from 'true'::jsonb then
           return jsonb_build_object('conflict','reply_handoff_pending');
         end if;
-        update public.agent_reply_turns set status='acked',recovery=recovery#-'{effects,afterReply}',next_check_at=case when review_required and review_reason is not null
+        if r.recovery->'effects' ? 'deliveredReply' and p_input->'deliveredReplyHandled' is distinct from 'true'::jsonb then
+          return jsonb_build_object('conflict','delivered_reply_effects_pending');
+        end if;
+        update public.agent_reply_turns set status='acked',recovery=(recovery#-'{effects,afterReply}')#-'{effects,deliveredReply}',next_check_at=case when review_required and review_reason is not null
           and review_notified_at is null then now() end,updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       end if;

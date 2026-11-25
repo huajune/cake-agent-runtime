@@ -49,3 +49,13 @@ export class ReplyDeferredError extends Error {
     this.name = 'ReplyDeferredError';
   }
 }
+
+/** The sending worker has receipts for this prefix, while the remaining segments are pending. */
+export class ReplyDeliveryDeferredError extends ReplyDeferredError {
+  constructor(
+    error: unknown,
+    public readonly accepted: number,
+  ) {
+    super(error instanceof ReplyDeferredError ? error.reason : 'reply_delivery_pending', error);
+  }
+}

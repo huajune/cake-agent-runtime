@@ -1,7 +1,17 @@
-import { ordinaryReplyEffects, readOrdinaryReplyEffects } from './ordinary-reply-effects';
+import {
+  deliveredReplySchema,
+  ordinaryReplyEffects,
+  readOrdinaryReplyEffects,
+  type DeliveredReplyEffects,
+} from './ordinary-reply-effects';
 import { timingSafeEqual } from 'node:crypto';
+import { planReplyJobProjection } from '@memory/short-term/assistant-job-projection';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
-import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import {
+  ReplyDeferredError,
+  ReplyDeliveryDeferredError,
+  type ReplyTurn,
+} from '@biz/reply-execution/reply-execution.types';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import { hasReplayEvidence, attachReplayEvidence } from '@infra/utils/action-receipt.util';
 import type { ToolReplayEvidence } from '@shared-types/tool-replay.types';
@@ -24,6 +34,7 @@ import {
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import {
   ReengagementAnchorService,
+  type AnchorContext,
   isBookingSucceededCall,
 } from '@agent/reengagement/anchor.service';
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
@@ -421,6 +432,7 @@ export class ReplyWorkflowService {
     let deliveryResult: DeliveryResult | undefined;
     let businessEffects: Record<string, unknown> | undefined;
     let replySegments: string[] | undefined;
+    let deliveredWork: DeliveredReplyEffects | undefined;
     const toolCallCounts = new Map<string, number>();
     try {
       agentResult = await this.callAgentWithVisualCompatibilityFallback(
@@ -605,13 +617,45 @@ export class ReplyWorkflowService {
       if (durableTurn) {
         const declared =
           agentResult.outcome?.kind === 'reply' ? agentResult.outcome.sideEffects : undefined;
+        // A failure to read session memory must still leave a recoverable record of completed tools.
         businessEffects = ordinaryReplyEffects(
           agentResult.toolCalls,
           toolAnchorContext,
           declared?.length ? { intents: declared, userMessage: content } : undefined,
         );
-        if (agentResult.outcome?.kind === 'reply')
-          replySegments = this.deliveryService.prepareSegments(agentResult.reply.content);
+        if (agentResult.outcome?.kind === 'reply') {
+          const segments = this.deliveryService.prepareSegments(agentResult.reply.content);
+          const state = await this.session.getSessionState(
+            toolAnchorContext.corpId,
+            toolAnchorContext.userId,
+            chatId,
+          );
+          const anchors = toolAnchorContext.isGroupChat
+            ? undefined
+            : await this.reengagementAnchors.planDeliveredReplyAnchors(
+                agentResult,
+                async () => state.lastCandidatePool ?? [],
+              );
+          const latestInput = this.latestCandidateTimestamp(allMessages);
+          deliveredWork = deliveredReplySchema.parse({
+            anchors: anchors && {
+              ...anchors,
+              previousPresentationRounds: state.storePresentationRounds ?? 0,
+            },
+            jobs: planReplyJobProjection(
+              segments,
+              content,
+              state,
+              agentResult.outcome.getReplyJobContext?.(),
+            ),
+            lastInputAt:
+              !toolAnchorContext.isGroupChat && latestInput > 0
+                ? new Date(latestInput).toISOString()
+                : undefined,
+          });
+          businessEffects = { ...businessEffects, deliveredReply: deliveredWork };
+          replySegments = segments;
+        }
         await params.assertOwned?.();
         durableTurn = await this.replyTurns!.saveEffects(
           durableTurn,
@@ -746,39 +790,20 @@ export class ReplyWorkflowService {
       }
 
       // Agent 回复真实投递 → agent.replied（仅个人单聊；锚点读取必须先于回合 settle）。
-      if (replyDelivered) {
-        const reengagementAnchorContext = {
-          assertOwned: params.assertOwned,
-          traceId: durableTurn?.logicalTurnId ?? traceId,
-          ...{
-            logicalTurnId: durableTurn?.logicalTurnId,
-            inputOccurredAt: durableTurn?.inputOccurredAt,
-          },
-          chatId,
-          userId: agentCallParams.userId,
-          corpId: agentCallParams.corpId,
-          isGroupChat: Boolean(params.primaryMessage.imRoomId),
-          channelIdentity: this.buildReengagementChannelIdentity(
-            parsed,
-            params.primaryMessage,
-            stableBotUserId,
-          ),
-        };
+      if (replyDelivered && !deliveredWork) {
         // 先确认这是不是本会话首条开场回复。开场本身即使询问了位置，也只排
         // opening_no_reply；不能同时排 address_missing，否则候选人持续沉默时会被连追两次。
         await params.assertOwned?.();
         const replyKind = await this.recordAgentReplied(
-          params.primaryMessage,
-          parsed,
-          durableTurn?.logicalTurnId ?? traceId,
-          stableBotUserId,
-          durableTurn ? { turn: durableTurn, assertOwned: params.assertOwned } : undefined,
+          toolAnchorContext,
+          durableTurn,
+          params.primaryMessage.botUserId,
         );
         // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
         // storePresentationRounds，否则第一轮可能被误判为升档。
         await this.reengagementAnchors
           .handleDeliveredReplyAnchors(agentResult, {
-            ...reengagementAnchorContext,
+            ...toolAnchorContext,
             suppressAddressMissing: replyKind !== 'reply',
           })
           .catch((error: unknown) => {
@@ -798,7 +823,10 @@ export class ReplyWorkflowService {
             ? Boolean(deliveryResult.acceptedText)
             : replyDelivered,
         acceptedText: deliveryResult.acceptedText,
+        ...(deliveredWork ? { durableJobProjection: true } : {}),
       });
+      // Finish candidate-pool writes and invalidations before updating those same Redis job fields.
+      if (deliveredWork?.jobs) await agentResult.turnFinalizer?.whenSettled();
 
       const successMetadata = await this.buildSuccessMetadata(
         traceId,
@@ -810,12 +838,13 @@ export class ReplyWorkflowService {
 
       this.monitoringService.recordSuccess(traceId, successMetadata);
       await params.assertOwned?.();
-      await this.advanceProcessedCandidateWatermark(
-        params.primaryMessage,
-        agentCallParams,
-        allMessages,
-        Boolean(durableTurn),
-      );
+      if (!deliveredWork)
+        await this.advanceProcessedCandidateWatermark(
+          params.primaryMessage,
+          agentCallParams,
+          allMessages,
+          Boolean(durableTurn),
+        );
       if (durableTurn && this.replyTurns)
         await this.settleAndAckTurn(durableTurn, params.assertOwned);
       else {
@@ -831,10 +860,20 @@ export class ReplyWorkflowService {
       // 否则候选人已提供的姓名/手机号/意向在重试外的路径上永久丢失。只记用户侧，不投影助手轮次。
       // settle 幂等：若前面已按投递结局触发过，这里是 no-op。
       const deliveryFailure = error instanceof DeliveryFailureError ? error.result : deliveryResult;
+      const acceptedText =
+        error instanceof ReplyDeliveryDeferredError
+          ? replySegments?.slice(0, error.accepted).join('\n\n')
+          : deliveryFailure?.acceptedText;
       agentResult.turnFinalizer?.settle({
-        delivered: Boolean(deliveryFailure?.acceptedText),
-        acceptedText: deliveryFailure?.acceptedText,
+        delivered: Boolean(acceptedText),
+        acceptedText,
+        ...(deliveredWork ? { durableJobProjection: true } : {}),
       });
+      // Finish candidate-pool writes and invalidations before updating those same Redis job fields.
+      if (deliveredWork?.jobs) await agentResult.turnFinalizer?.whenSettled();
+      if (durableTurn && error instanceof ReplyDeliveryDeferredError && error.accepted) {
+        await this.projectConfirmedPrefix(durableTurn, error.accepted, params.assertOwned);
+      }
       if (durableTurn) {
         // 只重试同一份最小业务结果，绝不重跑工具。仍写不进去则保留原输入待核实。
         if (durableTurn.recovery.replySegments && !(error instanceof DeliveryFailureError))
@@ -931,20 +970,26 @@ export class ReplyWorkflowService {
     await assertOwned();
     const primary = this.durablePrimary(turn);
     await this.completePendingEffects(turn, assertOwned);
-    return this.deliveryService.resumeDelivery(turn, {
-      groupId: primary.groupId,
-      resolveToken: async () => (await this.resolveDurableRoute(turn)).token,
-      replyTurn: turn,
-      chatId: turn.chatId,
-      imBotId: turn.accountId,
-      imContactId: primary.imContactId ?? '',
-      imRoomId: primary.imRoomId ?? '',
-      _apiType: primary._apiType,
-      contactName: '客户',
-      assertOwned,
-      messageId:
-        typeof turn.recovery.traceId === 'string' ? turn.recovery.traceId : turn.inputIds[0],
-    });
+    try {
+      return await this.deliveryService.resumeDelivery(turn, {
+        groupId: primary.groupId,
+        resolveToken: async () => (await this.resolveDurableRoute(turn)).token,
+        replyTurn: turn,
+        chatId: turn.chatId,
+        imBotId: turn.accountId,
+        imContactId: primary.imContactId ?? '',
+        imRoomId: primary.imRoomId ?? '',
+        _apiType: primary._apiType,
+        contactName: '客户',
+        assertOwned,
+        messageId:
+          typeof turn.recovery.traceId === 'string' ? turn.recovery.traceId : turn.inputIds[0],
+      });
+    } catch (error) {
+      if (error instanceof ReplyDeliveryDeferredError && error.accepted)
+        await this.projectConfirmedPrefix(turn, error.accepted, assertOwned);
+      throw error;
+    }
   }
 
   /** A settled turn only repairs its original input and local effects. */
@@ -1034,13 +1079,74 @@ export class ReplyWorkflowService {
     await this.replyTurns!.completeProjection(turn);
   }
 
+  private async projectConfirmedPrefix(
+    turn: ReplyTurn,
+    accepted: number,
+    assertOwned?: () => Promise<void>,
+  ): Promise<void> {
+    if (
+      !accepted ||
+      !(turn.recovery.effects as { deliveredReply?: unknown } | undefined)?.deliveredReply
+    )
+      return;
+    try {
+      const { context, deliveredReply } = readOrdinaryReplyEffects(turn.recovery.effects);
+      if (!deliveredReply?.jobs) return;
+      await assertOwned?.();
+      await this.session.applyReplyJobProjection(
+        context.corpId,
+        context.userId,
+        context.chatId,
+        deliveredReply.jobs,
+        accepted,
+      );
+    } catch (error) {
+      throw new ReplyDeferredError('accepted_reply_projection_pending', error);
+    }
+  }
+
   private async ackDurableTurn(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<void> {
     try {
       await assertOwned?.();
       if (turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE)
         throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
       await this.completePendingEffects(turn, assertOwned);
-      const stored = turn.recovery.effects as { afterReply?: unknown } | undefined;
+      const stored = turn.recovery.effects as
+        | { afterReply?: unknown; deliveredReply?: unknown }
+        | undefined;
+      if (stored?.deliveredReply) {
+        const { context, deliveredReply } = readOrdinaryReplyEffects(stored);
+        const accepted = turn.deliveryResult?.accepted ?? 0;
+        if (
+          deliveredReply?.anchors &&
+          accepted > 0 &&
+          turn.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.COMPLETE
+        ) {
+          await assertOwned?.();
+          const ownedContext = { ...context, assertOwned };
+          const kind = await this.recordAgentReplied(ownedContext, turn);
+          await this.reengagementAnchors.applyDeliveredReplyAnchors(deliveredReply.anchors, {
+            ...ownedContext,
+            suppressAddressMissing: kind !== 'reply',
+          });
+        }
+        await this.projectConfirmedPrefix(turn, accepted, assertOwned);
+        // Match the original watermark semantics: an incomplete or unknown reply did not finish processing.
+        if (
+          deliveredReply?.lastInputAt &&
+          !context.isGroupChat &&
+          (turn.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.COMPLETE ||
+            turn.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.SKIPPED)
+        ) {
+          await assertOwned?.();
+          await this.session.recordCandidateMessagesProcessed(
+            context.corpId,
+            context.userId,
+            context.chatId,
+            new Date(deliveredReply.lastInputAt),
+          );
+        }
+      }
       if (stored?.afterReply) {
         const { context, afterReply } = readOrdinaryReplyEffects(stored);
         await assertOwned?.();
@@ -1071,7 +1177,11 @@ export class ReplyWorkflowService {
         await this.deduplicationService.markMessageAsProcessedAsync(id);
       }
       await assertOwned?.();
-      await this.replyTurns?.acked(turn, Boolean(stored?.afterReply));
+      await this.replyTurns?.acked(
+        turn,
+        Boolean(stored?.afterReply),
+        Boolean(stored?.deliveredReply),
+      );
     } catch {
       throw new ReplyDeferredError('ack_repair_pending');
     }
@@ -1565,10 +1675,7 @@ export class ReplyWorkflowService {
     strict = false,
   ): Promise<void> {
     if (primaryMessage.imRoomId) return;
-    const maxTimestamp = allMessages.reduce((max, message) => {
-      const timestamp = Number(message.timestamp);
-      return Number.isFinite(timestamp) && timestamp > max ? timestamp : max;
-    }, 0);
+    const maxTimestamp = this.latestCandidateTimestamp(allMessages);
     if (maxTimestamp <= 0) return;
     await this.session
       .recordCandidateMessagesProcessed(
@@ -1585,6 +1692,13 @@ export class ReplyWorkflowService {
           )}`,
         );
       });
+  }
+
+  private latestCandidateTimestamp(messages: EnterpriseMessageCallbackDto[]): number {
+    return messages.reduce((max, message) => {
+      const timestamp = Number(message.timestamp);
+      return Number.isFinite(timestamp) && timestamp > max ? timestamp : max;
+    }, 0);
   }
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
@@ -1611,36 +1725,31 @@ export class ReplyWorkflowService {
    * 兼容路径保留旧 trace 幂等与非阻断行为。
    */
   private async recordAgentReplied(
-    primaryMessage: EnterpriseMessageCallbackDto,
-    parsed: ReturnType<typeof MessageParser.parse>,
-    traceId: string,
-    stableBotUserId?: string,
-    durable?: { turn: ReplyTurn; assertOwned?: () => Promise<void> },
+    context: AnchorContext,
+    turn?: ReplyTurn,
+    managerName = context.channelIdentity?.managerName,
   ): Promise<'opening' | 'reply' | 'unknown'> {
-    if (primaryMessage.imRoomId) return 'unknown'; // 群聊不计入候选人漏斗
-    const botImId = primaryMessage.imBotId;
-    const corpId = this.resolveCorpId(primaryMessage);
-    const userId = this.resolveAgentUserId(primaryMessage, parsed);
-    const chatId = parsed.chatId;
-
+    if (context.isGroupChat) return 'unknown';
+    const { corpId, userId, chatId, traceId, channelIdentity, assertOwned } = context;
+    const botImId = turn?.accountId ?? channelIdentity?.botImId;
     try {
       const openingInput = {
         corpId,
         eventName: 'agent.opening_sent' as const,
         idempotencyKey: `${chatId}:opening`,
         botImId,
-        managerName: primaryMessage.botUserId,
+        managerName,
         sourceChannel: 'unknown',
         userId,
         chatId,
-        ...(durable ? { occurredAt: durable.turn.inputOccurredAt } : {}),
+        ...(turn ? { occurredAt: turn.inputOccurredAt } : {}),
       };
-      const owned = durable?.assertOwned ? { assertOwned: durable.assertOwned } : undefined;
-      await durable?.assertOwned?.();
-      const openingResult = durable
+      const owned = assertOwned ? { assertOwned } : undefined;
+      await assertOwned?.();
+      const openingResult = turn
         ? (await this.opsEventsRecorder.recordOpeningDurably(
             openingInput,
-            durable.turn.logicalTurnId,
+            turn.logicalTurnId,
             owned,
           ))
           ? 'inserted'
@@ -1662,19 +1771,15 @@ export class ReplyWorkflowService {
         // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
         // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态
         // 做 shouldStop——候选人已回则丢弃）。fire-and-forget，失败不影响主漏斗。
-        await durable?.assertOwned?.();
+        await assertOwned?.();
         const scheduled = this.followUpScheduler.scheduleFollowUp({
           sessionRef: { corpId, userId, sessionId: chatId },
           scenarioCode: 'opening_no_reply',
           anchorEventId: 'opening',
-          anchorAt: durable ? Date.parse(durable.turn.inputOccurredAt) : Date.now(),
-          channelIdentity: this.buildReengagementChannelIdentity(
-            parsed,
-            primaryMessage,
-            stableBotUserId,
-          ),
+          anchorAt: turn ? Date.parse(turn.inputOccurredAt) : Date.now(),
+          channelIdentity,
         });
-        if (durable) {
+        if (turn) {
           const result = await scheduled;
           if (result?.reason === 'enqueue_error') throw new Error('Opening schedule not persisted');
         } else
@@ -1692,20 +1797,20 @@ export class ReplyWorkflowService {
         eventName: 'agent.replied' as const,
         idempotencyKey: `${traceId}:replied`,
         botImId,
-        managerName: primaryMessage.botUserId,
+        managerName,
         sourceChannel: 'unknown',
         userId,
         chatId,
-        ...(durable ? { occurredAt: durable.turn.inputOccurredAt } : {}),
+        ...(turn ? { occurredAt: turn.inputOccurredAt } : {}),
       };
-      await durable?.assertOwned?.();
-      if (durable) await this.opsEventsRecorder.recordEventDurably(repliedInput, owned);
+      await assertOwned?.();
+      if (turn) await this.opsEventsRecorder.recordEventDurably(repliedInput, owned);
       else await this.opsEventsRecorder.recordEvent(repliedInput);
       return 'reply';
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);
-      if (durable) throw error;
+      if (turn) throw error;
       return 'unknown';
     }
   }

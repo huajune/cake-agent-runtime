@@ -380,9 +380,11 @@ export function classifyReviewedOutcome(
       })
     : undefined;
 
+  const jobs = result.turnLedger?.jobs;
   return {
     kind: 'reply',
     reply: { text },
+    ...(jobs ? { getReplyJobContext: () => jobs } : {}),
     toolCalls,
     runTurnEnd,
     ...metadata,

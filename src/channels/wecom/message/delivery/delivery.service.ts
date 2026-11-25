@@ -3,7 +3,11 @@ import {
   REPLY_TURN_STATUS,
 } from '@biz/reply-execution/reply-execution.constants';
 import { ReplySendError, classifyReplySendError } from './reply-send-error';
-import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import {
+  ReplyDeferredError,
+  ReplyDeliveryDeferredError,
+  type ReplyTurn,
+} from '@biz/reply-execution/reply-execution.types';
 import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -256,7 +260,11 @@ export class MessageDeliveryService implements OnModuleInit {
       // 段间打字延迟 + 段间 paragraph gap 加起来可达数秒，运营在分段过程中点
       // 关托管时必须立刻止损，避免循环把后续段一段段发出。每段发送前复查
       // isUserPaused，命中则截断（已发出的段保留）。
-      const denied = await this.deniedActionReason(context);
+      const denied = await this.deniedActionReason(context).catch((error: unknown) => {
+        if (context.replyTurn?.recovery.replySegments)
+          throw new ReplyDeliveryDeferredError(error, accepted.length);
+        throw error;
+      });
       if (denied) {
         pauseInterrupted = denied;
         this.logger.warn(
@@ -287,7 +295,7 @@ export class MessageDeliveryService implements OnModuleInit {
         }
       } catch (error) {
         if (error instanceof ReplyDeferredError && context.replyTurn?.recovery.replySegments)
-          throw error;
+          throw new ReplyDeliveryDeferredError(error, accepted.length);
         failedCount++;
         unknownSegments += error instanceof ReplySendError && error.unknownResult ? 1 : 0;
         failureReason = error instanceof ReplySendError ? error.failureReason : undefined;

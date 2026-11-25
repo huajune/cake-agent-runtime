@@ -140,6 +140,7 @@ begin
   assert r->>'conflict'='invalid_reply_segments';
   r:=public.transition_agent_reply_turn('save_reply',base||plan||'{"effects":null}');
   assert r->>'conflict'='reply_effects_scope_mismatch';
+  plan:=jsonb_set(plan,'{effects,deliveredReply}','{}');
   plan:=jsonb_set(plan,'{effects,afterReply}','[{"kind":"general_handoff","idempotencyKey":"original-promise"}]');
   r:=public.transition_agent_reply_turn('save_reply',base||plan);
   assert r#>'{turn,recovery,replySegments}'=plan->'segments';
@@ -173,7 +174,9 @@ begin
   r:=public.transition_agent_reply_turn('ack',next_owner);
   assert r->>'conflict'='reply_handoff_pending','old app cannot discard the promised handoff';
   r:=public.transition_agent_reply_turn('ack',next_owner||'{"afterReplyHandled":true}');
-  assert r#>>'{turn,status}'='acked' and r#>'{turn,recovery,effects,afterReply}' is null;
+  assert r->>'conflict'='delivered_reply_effects_pending','do not discard uncommitted job memory or follow-up on rollback';
+  r:=public.transition_agent_reply_turn('ack',next_owner||'{"afterReplyHandled":true,"deliveredReplyHandled":true}');
+  assert r#>>'{turn,status}'='acked' and r#>'{turn,recovery,effects,afterReply}' is null and r#>'{turn,recovery,effects,deliveredReply}' is null;
   base:=base||jsonb_build_object('inputOccurredAt',now()-interval '25 hours','inputIds',jsonb_build_array('m3'),'logicalTurnId','expired');
   perform public.transition_agent_reply_turn('open',base);
   perform public.transition_agent_reply_turn('save_reply',base||jsonb_set(plan,'{effects,context,logicalTurnId}','"expired"'));

@@ -178,8 +178,15 @@ export class ReplyTurnsService {
   async settle(turn: ReplyTurn, deliveryResult?: ReplyDeliverySummary): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.SETTLE, { deliveryResult });
   }
-  async acked(turn: ReplyTurn, afterReplyHandled = false): Promise<ReplyTurn> {
-    return this.update(turn, REPLY_TURN_OPERATION.ACK, { afterReplyHandled });
+  async acked(
+    turn: ReplyTurn,
+    afterReplyHandled = false,
+    deliveredReplyHandled = false,
+  ): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.ACK, {
+      afterReplyHandled,
+      deliveredReplyHandled,
+    });
   }
   async defer(turn: ReplyTurn): Promise<void> {
     await this.update(turn, REPLY_TURN_OPERATION.DEFER);

@@ -23,7 +23,7 @@
 | `save_reply` | 渠道按当时的配置切分通过守卫的最终文本。`saveEffects(turn, effects, segments)` 在同一事务写入 `recovery.replySegments` 与 `recovery.effects`，重复提交须与已存值相同。仅有业务结果时使用 `save_effects`。 |
 | `start_delivery`、`check_delivery` | `start_delivery` 从 `preparing` 转为 `planned`。每段派发前，`check_delivery` 复核状态、`owner`、`fence` 和租约，动作执行器同时检查当前托管权限。 |
 | `settle` | 正常结算时写 `delivery_result` 的 `outcome`、`accepted` 和 `total`，移除 `replySegments` 并置 `settled`。尚待人工核实的超期分段由 `resume_delivery` 保留，供核对原文。 |
-| `ack` | 本地业务结果完成补账后，`ackDurableTurn()` 处理已保存的人工跟进意图，按 `input_ids` 确认 Redis 原消息，再置 `acked` 并清理临时跟进资料。 |
+| `ack` | 本地业务结果完成补账后，`ackDurableTurn()` 依据分段结果写入岗位记忆、开场或普通回复事件、复聊排程，并提交已保存的人工跟进意图。再按 `input_ids` 确认 Redis 原消息，再置 `acked` 并清理临时跟进资料。 |
 
 分段的动作类型为 `wecom.reply_segment`，`intentId` 由原回合 ID 和段序号生成。`DurableReplyDeliveryService.sendOrdinarySegment()` 通过 `ActionExecutorService` 复用已登记的动作，发送时携带原 `externalRequestId`。发送 API 返回 `errcode=0` 可直接采信。经验证的自发回调通过 `append_agent_reply_callback` 匹配原请求，留存回执。每次派发的凭证与动作当前采信的结果分别保存在 `agent_action_evidence` 和 `agent_action_records`。[分段准备与发送](../../channels/wecom/message/delivery/delivery.service.ts) · [分段动作](../../channels/wecom/message/delivery/durable-reply-delivery.service.ts) · [动作执行器](../action-execution/action-executor.service.ts) · [回调匹配](../../channels/wecom/message/message.service.ts)
 
@@ -33,6 +33,12 @@
 - 每个回合先由 `ReplyRecoveryLeaseService.run(chatId)` 取得与线上聚合任务共用的 Redis 租约。对 `preparing/planned` 且已经保存最终分段的回合，`resume_delivery` 再在数据库内校验原 `owner`、`fence` 和租约到期时间。接管时更换 `owner`、递增 `fence`，新租约最长 90 秒，且截止于原输入时间后 24 小时。[会话租约](reply-recovery-lease.service.ts) · [接管条件](../../../supabase/migrations/20261125080000_resume_ordinary_replies.sql)
 - `resumeDelivery()` 先补待处理的本地业务结果，再沿原路由、原段序号恢复投递。`resumeSegments()` 跳过已受理段，在途或结果未知的段等待可信回执，尚未派发的段按原文发送。明确的连接前失败可有限重试。权限撤回后停止剩余派发，超出恢复期限转人工。已经结案的回合只处理原结局和本地收尾。[回合收尾](../../channels/wecom/message/application/reply-workflow.service.ts) · [逐段恢复](../../channels/wecom/message/delivery/durable-reply-delivery.service.ts)
 - `ackPendingMessageIds()` 用 Lua 匹配待处理列表中的消息 ID，响应丢失时用同一组 ID 有界重试。各模式都按本轮实际接纳的输入确认。未固定回合的 replay 路径重新读取当前列表，按消息 ID 排除已知输入。无法解析或缺少身份的项保留并记错。[Redis 确认实现](../../channels/wecom/message/runtime/simple-merge.service.ts)
+
+### 已受理分段的收尾
+
+`save_reply` 把 `effects.deliveredReply` 和待发原文一并保存。岗位部分按「前几段得到受理」记录应展示的岗位 ID、焦点及本轮展示次数，同一岗位摘要只存一份。派发暂缓和最终结算都按实际受理段数应用，重复执行沿用原展示次数。成功确认输入后，RPC 删除这份临时资料。旧记录沿用已有的收尾信息。[岗位选择](../../memory/short-term/assistant-job-projection.ts) · [会话状态写入](../../memory/short-term/workbench.service.ts)
+
+完整私聊回复走同一个收尾入口。首次开场事件绑定原回合，再用原输入时间和稳定的 `opening` 锚点提交 `opening_no_reply`。其他回复按原文符合的条件提交推店、收资或缺定位跟进。首次开场询问位置时只排开场跟进。运营事件、排程或输入确认失败时，下一次检查按原身份重试。[渠道收尾](../../channels/wecom/message/application/reply-workflow.service.ts) · [复聊判定](../../agent/reengagement/anchor.service.ts) · [排程去重](../../agent/reengagement/follow-up-scheduler.service.ts)
 
 ## 人工核实与业务补账
 
