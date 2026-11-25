@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { describeHttpFailure, readHttpFailureCodes } from '@infra/client-http/http-request-error';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { REPLY_SEGMENT_PRECHECK_PENDING, type ReplySegmentFence } from './action-execution.types';
 import { ActionRecordsRepository } from './action-records.repository';
 import { identifyAction } from './action-identity';
 import { ActionRepairQueue } from './action-repair.queue';
@@ -58,7 +59,10 @@ export class ActionExecutorService {
     intent: ActionIntent,
     callbacks: ActionCallbacks<T>,
     /** Only inherit execute from an already persisted parent input; never from input. */
-    options?: { persistedMode: typeof ACTION_MODE.EXECUTE },
+    options?: {
+      persistedMode: typeof ACTION_MODE.EXECUTE;
+      replySegment?: { turn: ReplySegmentFence; beforeDispatch: () => Promise<void> };
+    },
   ): Promise<ActionExecution<T>> {
     const mode = options?.persistedMode ?? this.mode;
     let identity: ReturnType<typeof identifyAction>;
@@ -89,11 +93,16 @@ export class ActionExecutorService {
     if (mode === ACTION_MODE.EXECUTE && (!intent.identityReliable || occurredAt < this.cutoverAt!))
       return blocked('input_before_cutover_or_identity_not_persisted');
 
+    const segment = options?.replySegment;
+    const replyClaim = segment && { turn: segment.turn, owner: randomUUID() };
     let record: ActionRecord | null = null;
     try {
-      const prepared = await this.records.prepare(intent, mode);
+      const prepared = replyClaim
+        ? await this.records.prepare(intent, mode, replyClaim)
+        : await this.records.prepare(intent, mode);
       record = prepared.record;
       if (prepared.conflict) {
+        if (segment) return blocked(prepared.conflict);
         if (
           prepared.conflict === 'identity_payload_mismatch' &&
           mode === ACTION_MODE.OBSERVE &&
@@ -120,7 +129,8 @@ export class ActionExecutorService {
     const enforce = record?.mode === ACTION_MODE.EXECUTE || mode === ACTION_MODE.EXECUTE;
     if (enforce && record?.mode !== ACTION_MODE.EXECUTE)
       return blocked('observation_record_requires_cutover_review');
-    if (!record) return this.untracked(intent, callbacks);
+    if (!record)
+      return segment ? blocked('reply_claim_unconfirmed') : this.untracked(intent, callbacks);
     if (enforce && !intent.identityReliable) return blocked('identity_not_persisted');
 
     if (record.status === ACTION_STATE.SUCCEEDED) {
@@ -130,8 +140,10 @@ export class ActionExecutorService {
       }
       return this.synchronize(record, callbacks, false);
     }
+    const claimedHere =
+      replyClaim && record.owner === replyClaim.owner && record.status === ACTION_STATE.EXECUTING;
     if (
-      record.status === ACTION_STATE.EXECUTING ||
+      (record.status === ACTION_STATE.EXECUTING && !claimedHere) ||
       record.status === ACTION_STATE.UNKNOWN ||
       record.status === ACTION_STATE.CANCELLED ||
       (record.status === ACTION_STATE.FAILED && !record.retryable)
@@ -142,30 +154,41 @@ export class ActionExecutorService {
       }
       return this.existing<T>(record, false);
     }
-    if (!(await this.authorized(callbacks))) {
-      const cancelled = await this.records.cancel(record).catch(() => false);
-      return {
-        ...blocked('permission_or_freshness_changed'),
-        ...(cancelled
-          ? {
-              evidence: {
-                kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
-                requestTerminated: true,
-                detail: 'registered_action_cancelled',
-              },
-            }
-          : {}),
-      };
-    }
+    let claimed: ActionRecord | null = record;
+    if (segment) {
+      if (!claimedHere) return blocked('dispatch_owned_elsewhere');
+      try {
+        // Credentials and the Redis lease must be checked before the final SQL fence.
+        await segment.beforeDispatch();
+      } catch {
+        await this.recordUnsentReply(claimed);
+        return blocked(REPLY_SEGMENT_PRECHECK_PENDING);
+      }
+    } else {
+      if (!(await this.authorized(callbacks))) {
+        const cancelled = await this.records.cancel(record).catch(() => false);
+        return {
+          ...blocked('permission_or_freshness_changed'),
+          ...(cancelled
+            ? {
+                evidence: {
+                  kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+                  requestTerminated: true,
+                  detail: 'registered_action_cancelled',
+                },
+              }
+            : {}),
+        };
+      }
 
-    let claimed: ActionRecord | null;
-    try {
-      claimed = await this.records.claim(record, randomUUID());
-    } catch {
-      return enforce ? blocked('claim_not_confirmed') : this.untracked(intent, callbacks);
+      try {
+        claimed = await this.records.claim(record, randomUUID());
+      } catch {
+        return enforce ? blocked('claim_not_confirmed') : this.untracked(intent, callbacks);
+      }
+      if (!claimed)
+        return enforce ? blocked('dispatch_owned_elsewhere') : this.untracked(intent, callbacks);
     }
-    if (!claimed)
-      return enforce ? blocked('dispatch_owned_elsewhere') : this.untracked(intent, callbacks);
     // Authorization may have changed while waiting for the database claim.
     if (!(await this.authorized(callbacks))) {
       const completion: ActionCompletion<T> = {
@@ -182,9 +205,12 @@ export class ActionExecutorService {
     }
 
     try {
-      if (!(await this.records.validateClaim(claimed)))
+      if (!(await this.records.validateClaim(claimed, segment?.turn))) {
+        if (segment) await this.recordUnsentReply(claimed);
         return enforce ? blocked('dispatch_lease_expired') : this.untracked(intent, callbacks);
+      }
     } catch {
+      if (segment) await this.recordUnsentReply(claimed);
       return enforce
         ? blocked('dispatch_ownership_unconfirmed')
         : this.untracked(intent, callbacks);
@@ -213,6 +239,18 @@ export class ActionExecutorService {
       },
       true,
     );
+  }
+
+  private async recordUnsentReply(record: ActionRecord): Promise<void> {
+    await this.save(record, {
+      status: ACTION_STATE.FAILED,
+      retryable: true,
+      evidence: {
+        kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+        requestTerminated: true,
+        detail: REPLY_SEGMENT_PRECHECK_PENDING,
+      },
+    });
   }
 
   private async untracked<T>(

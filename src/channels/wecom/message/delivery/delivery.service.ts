@@ -111,7 +111,7 @@ export class MessageDeliveryService implements OnModuleInit {
         this.logger.warn(
           `[${contactName}] 投递前行动许可拒绝（${denied}），${reply.content.length} 字符回复全部丢弃 (chatId=${context.chatId})`,
         );
-        await this.finishOrdinary(turn, skippedResult);
+        await this.finishOrdinary(turn, skippedResult, context.onSettled);
         return skippedResult;
       }
 
@@ -130,7 +130,7 @@ export class MessageDeliveryService implements OnModuleInit {
         `[${contactName}] 消息发送完成，耗时 ${totalTime}ms，发送 ${result.segmentCount} 个片段`,
       );
 
-      await this.finishOrdinary(turn, result);
+      await this.finishOrdinary(turn, result, context.onSettled);
       return { ...result, totalTime };
     } catch (error) {
       if (error instanceof ReplyDeferredError && turn?.recovery.replySegments) throw error;
@@ -158,7 +158,7 @@ export class MessageDeliveryService implements OnModuleInit {
       }
 
       try {
-        await this.finishOrdinary(turn, failureResult);
+        await this.finishOrdinary(turn, failureResult, context.onSettled);
       } catch (settleError) {
         // Preserve accepted text even if its terminal summary still needs local acknowledgement repair.
         throw new DeliveryFailureError(toErrorMessage(settleError), failureResult);
@@ -424,9 +424,13 @@ export class MessageDeliveryService implements OnModuleInit {
     throw lastError;
   }
 
-  private async finishOrdinary(turn: ReplyTurn | undefined, result: DeliveryResult): Promise<void> {
+  private async finishOrdinary(
+    turn: ReplyTurn | undefined,
+    result: DeliveryResult,
+    onSettled?: DeliveryContext['onSettled'],
+  ): Promise<void> {
     if (!turn || !this.durable) return;
-    await this.durable.turns.settle(turn, {
+    const settled = await this.durable.turns.settle(turn, {
       outcome: result.unknownSegments
         ? REPLY_DELIVERY_OUTCOME.UNKNOWN
         : !result.success
@@ -437,6 +441,7 @@ export class MessageDeliveryService implements OnModuleInit {
       accepted: result.deliveredSegments ?? 0,
       total: result.segmentCount,
     });
+    onSettled?.(settled);
   }
 
   /** 同一段重试复用同一 externalRequestId；多段则用稳定段序号避免渠道幂等误吞后续段。 */

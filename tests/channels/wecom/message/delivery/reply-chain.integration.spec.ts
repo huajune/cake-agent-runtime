@@ -518,6 +518,12 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     );
   }
 
+  function expireResumeWindow() {
+    client.query(
+      "UPDATE agent_reply_turns SET recovery=jsonb_set(recovery,'{resumeUntil}',to_jsonb(now()-interval '1 millisecond'));",
+    );
+  }
+
   // Stop the live workflow at a durable boundary. The restarted Nest module only
   // receives database state, current credentials and the original Redis input IDs.
   function interruptDelivery(attempted: number) {
@@ -569,9 +575,9 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   function interruptBeforeSecondAction() {
     const records = module!.get(ActionRecordsRepository);
     const prepare = records.prepare.bind(records);
-    return jest.spyOn(records, 'prepare').mockImplementation(async (intent, mode) => {
+    return jest.spyOn(records, 'prepare').mockImplementation(async (intent, mode, claim) => {
       if (intent.parameters.index === 1) throw new Error('fixture database unavailable');
-      return prepare(intent, mode);
+      return prepare(intent, mode, claim);
     });
   }
 
@@ -874,8 +880,8 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       await recoverStoredTurn();
       expect(databaseState().turn).toMatchObject({
         status: 'acked',
-        review_required: expired,
-        delivery_result: { outcome: expired ? 'interrupted' : 'skipped', accepted: 1, total: 2 },
+        review_required: false,
+        delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
       });
       expect((await sessionState()).presentedJobs?.map((job) => job.jobId)).toEqual([7101]);
       expect((await sessionState()).currentFocusJob?.jobId).toBe(7101);
@@ -1125,6 +1131,139 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     },
     30000,
   );
+
+  it('uses three database requests per new segment and settles the successful turn once', async () => {
+    await start();
+    const rpc = jest.spyOn(client, 'rpc');
+    await submitInput('enterprise');
+    assertAcceptedTurn();
+    const segmentCalls = rpc.mock.calls
+      .filter(
+        ([name, args]) =>
+          name === 'transition_agent_reply_segment' ||
+          name === 'transition_agent_action' ||
+          (name === 'transition_agent_reply_turn' && args.p_operation === 'check_delivery'),
+      )
+      .map(([name, args]) => [name, args.p_operation]);
+    const oneSegment = [
+      ['transition_agent_reply_segment', 'claim'],
+      ['transition_agent_reply_segment', 'validate_claim'],
+      ['transition_agent_action', 'settle'],
+    ];
+    expect(segmentCalls).toEqual([...oneSegment, ...oneSegment]);
+    expect(
+      rpc.mock.calls.filter(
+        ([name, args]) => name === 'transition_agent_reply_turn' && args.p_operation === 'settle',
+      ),
+    ).toHaveLength(1);
+  }, 30000);
+
+  it.each([0, 1, 2])(
+    'stops all new dispatch after five minutes with %i segments already accepted',
+    async (accepted) => {
+      await start();
+      interruptDelivery(accepted);
+      await submitInput('enterprise');
+      await restart('execute');
+      expireOwner();
+      expireResumeWindow();
+      await recoverStoredTurn();
+      await recoverStoredTurn();
+      expect(sendCalls).toHaveLength(accepted);
+      expect(databaseState().turn).toMatchObject({
+        status: 'acked',
+        review_required: false,
+        delivery_result: { outcome: accepted === 2 ? 'complete' : 'skipped', accepted, total: 2 },
+      });
+      expect(databaseState().turn.recovery).not.toHaveProperty('replySegments');
+      expect(pending).toEqual(new Set([newerInputId]));
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    },
+    30000,
+  );
+
+  it('stops when the window closes between claiming a segment and making the HTTP request', async () => {
+    await start();
+    interruptDelivery(1);
+    await submitInput('enterprise');
+    await restart('execute');
+    expireOwner();
+    const records = module!.get(ActionRecordsRepository);
+    const validate = records.validateClaim.bind(records);
+    jest.spyOn(records, 'validateClaim').mockImplementationOnce((record, turn) => {
+      expireResumeWindow();
+      return validate(record, turn);
+    });
+    await recoverStoredTurn();
+    await recoverStoredTurn();
+    expect(sendCalls).toHaveLength(1);
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      review_required: false,
+      delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
+    });
+  }, 30000);
+
+  it('counts a durable callback even when startup closes the turn before action reconciliation', async () => {
+    await start();
+    interruptDelivery(1);
+    onSend = async () => {
+      throw new Error('simulated unknown provider result');
+    };
+    await submitInput('enterprise');
+    await restart('execute');
+    await module!.get(MessageIngressController).receiveMessage(
+      incoming('enterprise', {
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        messageId: 'accepted-before-reconciliation',
+        externalRequestId: sendCalls[0].body.externalRequestId,
+        payload: { text: parts[0] },
+      }),
+    );
+    expect(databaseState().actions[0].status).toBe('unknown');
+    expireOwner();
+    expireResumeWindow();
+    await module!.get(ReplyRecoveryService).recoverOnStartup();
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      review_required: false,
+      delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
+    });
+    expect(sendCalls).toHaveLength(1);
+    expect(pending).toEqual(new Set([newerInputId]));
+  }, 30000);
+
+  it('keeps a late receipt after the cutoff without reopening the unsent suffix', async () => {
+    await start();
+    interruptDelivery(1);
+    onSend = async () => {
+      throw new Error('simulated unknown provider result');
+    };
+    await submitInput('enterprise');
+    await restart('execute');
+    expireOwner();
+    expireResumeWindow();
+    await recoverStoredTurn();
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      review_required: true,
+      delivery_result: { outcome: 'unknown', accepted: 0, total: 2 },
+    });
+    await module!.get(MessageIngressController).receiveMessage(
+      incoming('enterprise', {
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        messageId: 'late-five-minute-receipt',
+        externalRequestId: sendCalls[0].body.externalRequestId,
+        payload: { text: parts[0] },
+      }),
+    );
+    await recoverStoredTurn();
+    expect(databaseState().callbackEvidenceCount).toBe(1);
+    expect(sendCalls).toHaveLength(1);
+    expect(pending).toEqual(new Set([newerInputId]));
+  }, 30000);
 
   it('honors a hosting pause made during downtime before dispatching the suffix', async () => {
     await start();

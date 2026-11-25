@@ -8,7 +8,9 @@ create or replace function public.transition_agent_reply_turn(p_operation text,p
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
 declare r public.agent_reply_turns; v_corp text:=p_input->>'corpId'; v_account text:=p_input->>'accountId';
   v_chat text:=p_input->>'chatId'; v_ids text[]; v_id text; v_mode text:=p_input->>'mode';
-  v_accepted integer; v_total integer;
+  v_live_lease constant interval := interval '3 minutes';
+  v_resume_window constant interval := interval '5 minutes';
+  v_resume_until timestamptz; v_uncertain boolean; v_accepted integer; v_total integer;
 begin
   if coalesce(v_corp,'')='' or coalesce(v_account,'')='' or coalesce(v_chat,'')='' then raise exception 'missing reply scope'; end if;
   perform pg_advisory_xact_lock(hashtextextended(v_corp||':'||v_account||':'||v_chat,0));
@@ -29,7 +31,7 @@ begin
       end if;
     end if;
     if r.logical_turn_id is null and v_mode='execute' then
-      if p_input->'recovery' ? 'replySegments' then return jsonb_build_object('conflict','unverified_reply_segments'); end if;
+      if p_input->'recovery' ?| array['replySegments','resumeUntil'] then return jsonb_build_object('conflict','unverified_reply_segments'); end if;
       if p_input->'recovery'->'task' is not null then
         return jsonb_build_object('conflict','scheduled_reply_task_retired');
       end if;
@@ -38,7 +40,7 @@ begin
         return jsonb_build_object('conflict','primary_single_pass_required');
       end if;
       insert into public.agent_reply_turns(corp_id,account_id,chat_id,logical_turn_id,input_ids,input_occurred_at,mode,owner,generation_until,recovery,next_check_at,projection_status,delivery_policy)
-        values(v_corp,v_account,v_chat,p_input->>'logicalTurnId',v_ids,(p_input->>'inputOccurredAt')::timestamptz,v_mode,p_input->>'owner',now()+interval '10 minutes',coalesce(p_input->'recovery','{}'),now()+interval '10 minutes',
+        values(v_corp,v_account,v_chat,p_input->>'logicalTurnId',v_ids,(p_input->>'inputOccurredAt')::timestamptz,v_mode,p_input->>'owner',now()+v_live_lease,coalesce(p_input->'recovery','{}'),now()+v_live_lease,
           'none',
           'single_pass') returning * into r;
       insert into public.agent_reply_inputs(corp_id,account_id,chat_id,message_id,logical_turn_id)
@@ -56,6 +58,9 @@ begin
     select * into r from public.agent_reply_turns where corp_id=v_corp and logical_turn_id=p_input->>'logicalTurnId'
       and account_id=v_account and chat_id=v_chat for update;
     if r.logical_turn_id is null then raise exception 'reply turn missing'; end if;
+    -- Only the original sender's durable heartbeat advances the sending deadline.
+    -- A pre-window plan has no reliable last heartbeat; it can still settle its receipts.
+    v_resume_until:=coalesce((r.recovery->>'resumeUntil')::timestamptz,'-infinity'::timestamptz);
     if p_operation in ('save_effects','save_reply') then
       if r.status<>'preparing' or r.owner is distinct from p_input->>'owner'
         or r.fence is distinct from (p_input->>'fence')::integer or r.generation_until is null or r.generation_until<=now() then
@@ -83,7 +88,7 @@ begin
         end if;
       end if;
       update public.agent_reply_turns set recovery=recovery||jsonb_build_object('effects',p_input->'effects')
-          ||case when p_operation='save_reply' then jsonb_build_object('replySegments',p_input->'segments') else '{}'::jsonb end,
+          ||case when p_operation='save_reply' then jsonb_build_object('replySegments',p_input->'segments','resumeUntil',now()+v_resume_window) else '{}'::jsonb end,
         projection_status='pending',updated_at=now() where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
     elsif p_operation='save_late_effects' then
       -- The original worker may contribute evidence after expiry, never acquire a new send right.
@@ -117,54 +122,68 @@ begin
         r.owner is distinct from p_input->>'owner' or r.fence is distinct from (p_input->>'fence')::integer or r.generation_until is null or r.generation_until<=now() then
         return jsonb_build_object('conflict','ordinary_reply_fence_lost');
       end if;
-      if p_operation='renew' then
-        update public.agent_reply_turns set generation_until=now()+interval '10 minutes',next_check_at=now()+interval '10 minutes'
+      if p_operation='renew' and r.fence=1 then
+        update public.agent_reply_turns set generation_until=now()+v_live_lease,next_check_at=now()+v_live_lease,
+          recovery=case when recovery ? 'replySegments' then recovery||jsonb_build_object('resumeUntil',now()+v_resume_window) else recovery end
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       end if;
     elsif p_operation in ('start_delivery','check_delivery') then
       if r.owner is distinct from p_input->>'owner' or r.fence is distinct from (p_input->>'fence')::integer
-        or r.generation_until<=now() or r.status<>(case when p_operation='start_delivery' then 'preparing' else 'planned' end) then
+        or r.generation_until<=now() or (r.fence>1 and v_resume_until<clock_timestamp())
+        or r.status<>(case when p_operation='start_delivery' then 'preparing' else 'planned' end) then
         return jsonb_build_object('conflict','ordinary_reply_fence_lost');
       end if;
       if p_operation='start_delivery' then
-        update public.agent_reply_turns set status='planned',generation_until=now()+interval '10 minutes',next_check_at=now()+interval '10 minutes',updated_at=now()
+        update public.agent_reply_turns set status='planned',generation_until=now()+v_live_lease,next_check_at=now()+v_live_lease,
+          recovery=case when recovery ? 'replySegments' then recovery||jsonb_build_object('resumeUntil',now()+v_resume_window) else recovery end,updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       end if;
     elsif p_operation='resume_delivery' then
       if r.status in ('settled','acked') then return jsonb_build_object('turn',to_jsonb(r)); end if;
       if r.mode<>'execute' or r.status not in ('preparing','planned') or not (r.recovery ? 'replySegments')
-        or r.projection_status='none' or r.generation_until is null or r.generation_until>now()
+        or r.projection_status='none' or r.generation_until is null
+        or (r.generation_until>now() and (r.fence=1 or v_resume_until>=clock_timestamp()))
         or r.fence is distinct from (p_input->>'fence')::integer or r.owner is distinct from p_input->>'owner'
         or nullif(p_input->>'newOwner','') is null or r.owner=p_input->>'newOwner' then
         return jsonb_build_object('conflict','reply_delivery_takeover_unavailable');
       end if;
-      if r.input_occurred_at+interval '24 hours'<=now() then
+      if v_resume_until<clock_timestamp() or r.input_occurred_at+interval '24 hours'<=now() then
         -- Expiry revokes dispatch. Already accepted segments still earn their local
         -- effects. Look up each segment via the existing (corp_id, resource_hash)
         -- index, using actionDigest([corpId, target]) from action-records.repository.
         v_total:=jsonb_array_length(r.recovery->'replySegments');
-        select coalesce(min(s.ord-1),v_total)::integer into v_accepted
+        -- A callback can already be durable while action reconciliation is still queued.
+        with segments as materialized (
+          select s.ord,a.status,a.review_required,
+            case when a.status in ('executing','unknown') or a.review_required
+              then public.action_terminal_evidence(a.corp_id,a.action_id,a.dispatch_attempt_id) end as receipt
           from jsonb_array_elements_text(r.recovery->'replySegments') with ordinality as s(body,ord)
-          where not exists (
-            select from public.agent_action_records a
-            where a.corp_id=r.corp_id and a.resource_hash=encode(sha256(convert_to(
+          left join public.agent_action_records a
+            on a.corp_id=r.corp_id and a.resource_hash=encode(sha256(convert_to(
               '['||to_json(r.corp_id)::text||','||to_json('chat:'||r.chat_id||':reply:'||r.logical_turn_id||':segment:'||(s.ord-1))::text||']','UTF8')),'hex')
-              and a.account_id=r.account_id and a.chat_id=r.chat_id and a.logical_turn_id=r.logical_turn_id
-              and a.kind='wecom.reply_segment' and a.mode='execute' and a.status='succeeded'
-              and a.intent->>'intentId'=r.logical_turn_id||':reply:v1:'||(s.ord-1)
-              and a.intent->'parameters'->>'text'=s.body
-          );
+            and a.account_id=r.account_id and a.chat_id=r.chat_id and a.logical_turn_id=r.logical_turn_id
+            and a.kind='wecom.reply_segment' and a.mode='execute'
+            and a.intent->>'intentId'=r.logical_turn_id||':reply:v1:'||(s.ord-1)
+            and a.intent->'parameters'->>'text'=s.body
+        ), resolved as (
+          select ord,case when receipt->>'conflicting'='true' then 'unknown'
+                          else coalesce(receipt#>>'{completion,status}',status) end as state,
+            review_required and receipt->'completion' is null as needs_review from segments
+        )
+        select coalesce(min(ord-1) filter (where state is distinct from 'succeeded'),v_total)::integer,
+               coalesce(bool_or(state in ('executing','unknown') or needs_review),false)
+          into v_accepted,v_uncertain from resolved;
         update public.agent_reply_turns set status='settled',
-          delivery_result=jsonb_build_object('outcome',case when v_accepted=v_total then 'complete' else 'interrupted' end,
-            'accepted',v_accepted,'total',v_total),
-          recovery=case when v_accepted=v_total then recovery-'replySegments' else recovery end,
-          review_required=(v_accepted<v_total),review_reason=case when v_accepted<v_total then 'recovery_deadline' end,
+          delivery_result=jsonb_build_object('outcome',case when v_uncertain then 'unknown'
+            when v_accepted=v_total then 'complete' else 'skipped' end,'accepted',v_accepted,'total',v_total),
+          recovery=case when v_uncertain then recovery-'resumeUntil' else recovery-array['replySegments','resumeUntil'] end,
+          review_required=v_uncertain,review_reason=case when v_uncertain then 'recovery_deadline' end,
           next_check_at=now(),updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       else
         update public.agent_reply_turns set status='planned',owner=p_input->>'newOwner',fence=fence+1,
           generation_until=least(now()+interval '90 seconds',input_occurred_at+interval '24 hours'),
-          next_check_at=least(now()+interval '90 seconds',input_occurred_at+interval '24 hours'),updated_at=now()
+          next_check_at=least(now()+interval '90 seconds',v_resume_until,input_occurred_at+interval '24 hours'),updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       end if;
     elsif p_operation='interrupt' then
@@ -184,7 +203,7 @@ begin
         if r.recovery ? 'replySegments' and jsonb_typeof(p_input->'deliveryResult') is distinct from 'object' then
           return jsonb_build_object('conflict','planned_delivery_result_required');
         end if;
-        update public.agent_reply_turns set status='settled',recovery=recovery-'replySegments',
+        update public.agent_reply_turns set status='settled',recovery=recovery-array['replySegments','resumeUntil'],
           delivery_result=coalesce(nullif(p_input->'deliveryResult','null'::jsonb),jsonb_build_object('outcome','skipped','accepted',0,'total',0)),
           next_check_at=now(),updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
@@ -267,7 +286,7 @@ begin
       if r.review_required and r.status='acked' and r.projection_status='complete' and not (p_input ? 'effects')
         and r.review_reason in ('model_unavailable_before_tools','ordinary_reply_interrupted_no_resend','recovery_deadline') then
         update public.agent_reply_turns set review_required=false,next_check_at=null,updated_at=now(),
-          recovery=(recovery-'replySegments')||jsonb_build_object('verification',jsonb_build_object('by',p_input->>'verifiedBy','evidenceRef',p_input->>'evidenceRef','at',now()))
+          recovery=(recovery-array['replySegments','resumeUntil'])||jsonb_build_object('verification',jsonb_build_object('by',p_input->>'verifiedBy','evidenceRef',p_input->>'evidenceRef','at',now()))
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
         return jsonb_build_object('turn',to_jsonb(r));
       end if;
@@ -306,8 +325,9 @@ begin
       end if;
       if r.next_check_at is not null then
         update public.agent_reply_turns set recovery_attempts=least(recovery_attempts+1,6),
-          next_check_at=greatest(case when status in ('preparing','planned') then generation_until end,
-            now()+make_interval(mins=>least(30,1<<least(recovery_attempts,5)))),updated_at=now()
+          next_check_at=least(case when fence>1 and status='planned' then v_resume_until end,
+            greatest(case when status in ('preparing','planned') then generation_until end,
+              now()+make_interval(mins=>least(30,1<<least(recovery_attempts,5))))),updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       end if;
     else raise exception 'unknown reply transition'; end if;

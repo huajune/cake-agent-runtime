@@ -62,6 +62,18 @@ export interface ActionExecution<T> {
   reason?: string;
 }
 
+/** Only ordinary reply segments share a durable owner with their parent turn. */
+export interface ReplySegmentFence {
+  corpId: string;
+  accountId: string;
+  chatId: string;
+  logicalTurnId: string;
+  owner: string | null;
+  fence: number;
+}
+
+export const REPLY_SEGMENT_PRECHECK_PENDING = 'reply_pre_dispatch_check_unconfirmed';
+
 export interface ActionCallbacks<T> {
   /** Must return immediately after the external result, before local writeback. */
   dispatch: (requestId: string, mode?: ActionMode) => Promise<ActionCompletion<T>>;

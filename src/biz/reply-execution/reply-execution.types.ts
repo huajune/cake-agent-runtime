@@ -32,7 +32,7 @@ export interface ReplyTurn extends ReplyTurnScope {
   status: ReplyTurnStatus;
   owner: string | null;
   fence: number;
-  recovery: Record<string, unknown> & { replySegments?: string[] };
+  recovery: Record<string, unknown> & { replySegments?: string[]; resumeUntil?: string };
   projectionStatus?: ReplyProjectionStatus;
   reviewRequired?: boolean;
   reviewReason?: ReplyReviewReason;

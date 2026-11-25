@@ -55,6 +55,7 @@ export class RuntimePostgresClientFixture {
   rpc(name: string, input: Record<string, unknown>) {
     const parameters: Record<string, string[]> = {
       transition_agent_action: ['p_operation', 'p_input'],
+      transition_agent_reply_segment: ['p_operation', 'p_input', 'p_turn'],
       transition_agent_reply_turn: ['p_operation', 'p_input'],
       append_agent_reply_callback: ['p_input'],
       action_terminal_evidence: ['p_corp', 'p_action', 'p_attempt'],

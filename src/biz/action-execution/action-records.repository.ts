@@ -6,6 +6,7 @@ import type {
   ActionIntent,
   ActionMode,
   ActionRecord,
+  ReplySegmentFence,
 } from './action-execution.types';
 import type { ActionDbRecord } from './repository.types';
 import { actionDigest, identifyAction } from './action-identity';
@@ -28,16 +29,24 @@ export class ActionRecordsRepository extends BaseRepository {
   async prepare(
     intent: ActionIntent,
     mode: ActionMode,
+    replyClaim?: { turn: ReplySegmentFence; owner: string },
   ): Promise<{ record: ActionRecord | null; conflict?: string }> {
     const identity = identifyAction(intent);
-    return this.transition(ACTION_RECORD_OPERATION.PREPARE, {
-      ...identity,
-      corpId: intent.corpId,
-      intent,
-      mode,
-      resourceHash: actionDigest([intent.corpId, intent.target]),
-      recoveryDeadline: new Date(Date.parse(intent.occurredAt) + 24 * 60 * 60 * 1000).toISOString(),
-    });
+    return this.transition(
+      replyClaim ? ACTION_RECORD_OPERATION.CLAIM : ACTION_RECORD_OPERATION.PREPARE,
+      {
+        ...(replyClaim && { owner: replyClaim.owner }),
+        ...identity,
+        corpId: intent.corpId,
+        intent,
+        mode,
+        resourceHash: actionDigest([intent.corpId, intent.target]),
+        recoveryDeadline: new Date(
+          Date.parse(intent.occurredAt) + 24 * 60 * 60 * 1000,
+        ).toISOString(),
+      },
+      replyClaim?.turn,
+    );
   }
 
   async claim(record: ActionRecord, owner: string, recovery = false): Promise<ActionRecord | null> {
@@ -64,12 +73,14 @@ export class ActionRecordsRepository extends BaseRepository {
     return result.record;
   }
 
-  async validateClaim(record: ActionRecord): Promise<boolean> {
+  async validateClaim(record: ActionRecord, turn?: ReplySegmentFence): Promise<boolean> {
     const dispatchAttemptId = this.requireDispatchAttemptId(record);
     const result = await this.transition(
       ACTION_RECORD_OPERATION.VALIDATE_CLAIM,
       this.ownership(record),
+      turn,
     );
+    if (turn) return result.valid === true;
     return (
       result.record?.owner === record.owner &&
       result.record.dispatchAttemptId === dispatchAttemptId &&
@@ -191,10 +202,20 @@ export class ActionRecordsRepository extends BaseRepository {
   private async transition(
     operation: ActionRecordOperation,
     input: Record<string, unknown>,
-  ): Promise<{ record: ActionRecord | null; conflict?: string }> {
+    turn?: ReplySegmentFence,
+  ): Promise<{ record: ActionRecord | null; conflict?: string; valid?: boolean }> {
     if (this.circuitBlocked('action_transition')) throw new Error('Action store unavailable');
+    const scope = turn && {
+      corpId: turn.corpId,
+      accountId: turn.accountId,
+      chatId: turn.chatId,
+      logicalTurnId: turn.logicalTurnId,
+      owner: turn.owner,
+      fence: turn.fence,
+    };
     const { data, error } = await this.getClient()
-      .rpc('transition_agent_action', {
+      .rpc(turn ? 'transition_agent_reply_segment' : 'transition_agent_action', {
+        ...(scope && { p_turn: scope }),
         p_operation: operation,
         p_input: input,
       })
@@ -208,6 +229,7 @@ export class ActionRecordsRepository extends BaseRepository {
     return {
       record: data.record ? this.fromDb(data.record) : null,
       conflict: data.conflict ?? undefined,
+      valid: data.valid,
     };
   }
 

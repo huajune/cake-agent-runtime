@@ -1,7 +1,7 @@
 import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
-import { Cron } from '@nestjs/schedule';
+import { Cron, Timeout } from '@nestjs/schedule';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyWorkflowService } from '../application/reply-workflow.service';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
@@ -26,6 +26,12 @@ export class ReplyRecoveryService {
     private readonly crons: CronRunnerService,
     private readonly incidents: IncidentReporterService,
   ) {}
+
+  /** A restarted instance should not spend its remaining sending window waiting for a cron tick. */
+  @Timeout(0)
+  recoverOnStartup(): Promise<void> {
+    return this.recoverDue();
+  }
 
   @Cron('*/1 * * * *')
   async recoverDue(): Promise<void> {

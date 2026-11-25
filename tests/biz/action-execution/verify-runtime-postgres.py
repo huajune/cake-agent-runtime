@@ -173,10 +173,6 @@ apply('contract-idempotence.sql', contract)
 reply_recovery = '20261118010000_reply_lease_and_manual_review.sql'
 apply(reply_recovery, source('supabase/migrations/' + reply_recovery))
 apply('reply-recovery-idempotence.sql', source('supabase/migrations/' + reply_recovery))
-resume = source('supabase/migrations/20261125080000_resume_ordinary_replies.sql')
-apply('20261125080000_resume_ordinary_replies.sql', resume)
-apply('reply-resume-idempotence.sql', resume)
-
 
 for path in [
  'tests/biz/action-execution/action-records.postgres.sql',
@@ -185,10 +181,28 @@ for path in [
  'tests/biz/action-execution/action-retention.postgres.sql',
  'tests/biz/action-execution/booking-projection.postgres.sql',
  'tests/biz/reply-execution/reply-turns.integration.sql',
- 'tests/biz/reply-execution/ordinary-reply.integration.sql',
 ]:
     apply(Path(path).name, source(path, delivery='reply-execution' in path))
 apply('action-ops-projection.integration.sql', source('tests/biz/action-execution/action-ops-projection.integration.sql'))
+
+# The app drill also uses the production receipt RPC. Load its real switch and
+# action migrations without importing the unrelated processing/analytics schema.
+config_table = baseline[baseline.index('CREATE TABLE IF NOT EXISTS system_config'):baseline.index('-- 2.8 strategy_config')]
+apply('action-storage-config.sql', config_table)
+storage = source('supabase/migrations/20261119080000_processing_storage.sql')
+apply('action-storage-switch.sql', storage[storage.index('CREATE OR REPLACE FUNCTION public.runtime_storage_enabled'):storage.index('CREATE OR REPLACE FUNCTION public.processing_tools_digest')])
+for name in ['20261119084000_action_completion_source.sql', '20261119085000_compatible_reply_receipts.sql']:
+    apply(name, source('supabase/migrations/' + name))
+
+resume = source('supabase/migrations/20261125080000_resume_ordinary_replies.sql')
+apply('20261125080000_resume_ordinary_replies.sql', resume)
+apply('reply-resume-idempotence.sql', resume)
+apply('ordinary-reply.integration.sql', source('tests/biz/reply-execution/ordinary-reply.integration.sql', delivery=True))
+
+segment_io = source('supabase/migrations/20261125100000_ordinary_reply_segment_io.sql')
+apply('20261125100000_ordinary_reply_segment_io.sql', segment_io)
+apply('ordinary-reply-segment-io-idempotence.sql', segment_io)
+apply('ordinary-reply-segment-io.postgres.sql', source('tests/biz/reply-execution/ordinary-reply-segment-io.postgres.sql'))
 
 for path, argv in [
  ('tests/biz/action-execution/action-records-concurrency.py', [args.container, args.database]),
@@ -200,15 +214,6 @@ for path, argv in [
     result = command([sys.executable, str(script), *argv])
     script.with_suffix('.log').write_text(result)
     print(result.strip(), flush=True)
-
-# The app drill also uses the production receipt RPC. Load its real switch and
-# action migrations without importing the unrelated processing/analytics schema.
-config_table = baseline[baseline.index('CREATE TABLE IF NOT EXISTS system_config'):baseline.index('-- 2.8 strategy_config')]
-apply('action-storage-config.sql', config_table)
-storage = source('supabase/migrations/20261119080000_processing_storage.sql')
-apply('action-storage-switch.sql', storage[storage.index('CREATE OR REPLACE FUNCTION public.runtime_storage_enabled'):storage.index('CREATE OR REPLACE FUNCTION public.processing_tools_digest')])
-for name in ['20261119084000_action_completion_source.sql', '20261119085000_compatible_reply_receipts.sql']:
-    apply(name, source('supabase/migrations/' + name))
 
 (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2))
 print('PASS: cold dependency chain, runtime migrations, SQL fault/permission assertions, and real concurrent transaction checks')

@@ -30,7 +30,6 @@ export const REPLY_TURN_OPERATION = {
   SAVE_REPLY: 'save_reply',
   RESUME_DELIVERY: 'resume_delivery',
   SAVE_LATE_EFFECTS: 'save_late_effects',
-  CHECK_DELIVERY: 'check_delivery',
   CHECK_INPUT: 'check_input',
   RENEW: 'renew',
   RECORD_FAILURE: 'record_failure',

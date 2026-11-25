@@ -169,9 +169,6 @@ export class ReplyTurnsService {
   async assertInputActive(turn: ReplyTurn): Promise<void> {
     await this.update(turn, REPLY_TURN_OPERATION.CHECK_INPUT);
   }
-  async assertDeliveryActive(turn: ReplyTurn): Promise<void> {
-    await this.update(turn, REPLY_TURN_OPERATION.CHECK_DELIVERY);
-  }
   async interrupt(turn: ReplyTurn): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.INTERRUPT);
   }

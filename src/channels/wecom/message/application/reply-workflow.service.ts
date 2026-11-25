@@ -770,6 +770,9 @@ export class ReplyWorkflowService {
         logicalTurnId: durableTurn?.logicalTurnId,
         inputOccurredAt: durableTurn?.inputOccurredAt,
         replyTurn: durableTurn,
+        onSettled: (settled: ReplyTurn) => {
+          durableTurn = settled;
+        },
         assertOwned: params.assertOwned,
       };
       deliveryResult = await this.deliveryService.deliverReply(
@@ -924,13 +927,16 @@ export class ReplyWorkflowService {
           parsed,
           { scenario, traceId, processedMessageIds: durableTurn.inputIds },
         );
-        const settled = await this.replyTurns!.settle(durableTurn, {
-          outcome: deliveryFailure?.unknownSegments
-            ? REPLY_DELIVERY_OUTCOME.UNKNOWN
-            : REPLY_DELIVERY_OUTCOME.INCOMPLETE,
-          accepted: deliveryFailure?.deliveredSegments ?? 0,
-          total: deliveryFailure?.segmentCount ?? 0,
-        });
+        const settled =
+          durableTurn.status === REPLY_TURN_STATUS.SETTLED
+            ? durableTurn
+            : await this.replyTurns!.settle(durableTurn, {
+                outcome: deliveryFailure?.unknownSegments
+                  ? REPLY_DELIVERY_OUTCOME.UNKNOWN
+                  : REPLY_DELIVERY_OUTCOME.INCOMPLETE,
+                accepted: deliveryFailure?.deliveredSegments ?? 0,
+                total: deliveryFailure?.segmentCount ?? 0,
+              });
         await this.ackDurableTurn(settled, params.assertOwned);
         return;
       }
@@ -1062,7 +1068,10 @@ export class ReplyWorkflowService {
     assertOwned?: () => Promise<void>,
   ): Promise<void> {
     await assertOwned?.();
-    const settled = await this.replyTurns!.settle(turn);
+    const settled =
+      turn.status === REPLY_TURN_STATUS.SETTLED || turn.status === REPLY_TURN_STATUS.ACKED
+        ? turn
+        : await this.replyTurns!.settle(turn);
     await this.ackDurableTurn(settled, assertOwned);
   }
 

@@ -8,7 +8,10 @@ import {
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
-import type { ActionIntent } from '@biz/action-execution/action-execution.types';
+import {
+  REPLY_SEGMENT_PRECHECK_PENDING,
+  type ActionIntent,
+} from '@biz/action-execution/action-execution.types';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { REPLY_DELIVERY_OUTCOME } from '@biz/reply-execution/reply-execution.constants';
 import {
@@ -28,8 +31,6 @@ import {
   ACTION_STATE,
 } from '@shared-types/action-execution.contract';
 import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
-
-const PRE_SEND_CHECK_PENDING = 'reply_pre_dispatch_check_unconfirmed';
 
 /** Ordinary replies complete on send API acceptance, without claiming delivery/read. */
 @Injectable()
@@ -106,12 +107,12 @@ export class DurableReplyDeliveryService implements OnModuleInit {
     for (let attempt = 0; attempt <= RUNTIME_RETRY_LIMITS.deliverySegmentRetries; attempt++) {
       try {
         await context.assertOwned?.();
-        await this.turns.assertDeliveryActive(turn);
       } catch (error) {
         if (turn.recovery.replySegments)
-          throw new ReplyDeferredError(PRE_SEND_CHECK_PENDING, error);
+          throw new ReplyDeferredError(REPLY_SEGMENT_PRECHECK_PENDING, error);
         throw error;
       }
+      let token = 'token' in context ? context.token : '';
       const execution = await this.executor.execute(
         this.intent(turn, text, index),
         {
@@ -127,21 +128,15 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             ).allowed;
           },
           dispatch: async (requestId) => {
-            // The owner can change while the action is claimed. No HTTP request
-            // has left this process yet, so the new owner may reuse this action.
-            let token: string;
-            try {
-              token = 'resolveToken' in context ? await context.resolveToken() : context.token;
-              await context.assertOwned?.();
-              await this.turns.assertDeliveryActive(turn);
-            } catch {
+            // A slow final SQL response must not start a new HTTP request past the cutoff.
+            if (turn.fence > 1 && !(Date.parse(turn.recovery.resumeUntil ?? '') >= Date.now())) {
               return {
                 status: ACTION_STATE.FAILED,
-                retryable: true,
+                retryable: false,
                 evidence: {
                   kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
                   requestTerminated: true,
-                  detail: PRE_SEND_CHECK_PENDING,
+                  detail: REPLY_SEGMENT_PRECHECK_PENDING,
                 },
               };
             }
@@ -184,12 +179,21 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             }
           },
         },
-        { persistedMode: turn.mode },
+        {
+          persistedMode: turn.mode,
+          replySegment: {
+            turn,
+            beforeDispatch: async () => {
+              if ('resolveToken' in context) token = await context.resolveToken();
+              await context.assertOwned?.();
+            },
+          },
+        },
       );
       if (execution.status === ACTION_STATE.SUCCEEDED) return;
       if (
         turn.recovery.replySegments &&
-        (execution.evidence?.detail === PRE_SEND_CHECK_PENDING ||
+        (execution.evidence?.detail === REPLY_SEGMENT_PRECHECK_PENDING ||
           (execution.status === ACTION_EXECUTION_STATUS.BLOCKED &&
             execution.reason !== 'permission_or_freshness_changed'))
       ) {

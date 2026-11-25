@@ -83,6 +83,8 @@ export interface DeliveryContext {
   logicalTurnId?: string;
   inputOccurredAt?: string;
   replyTurn?: ReplyTurn;
+  /** Return the committed turn to the caller without including it in delivery telemetry. */
+  onSettled?: (turn: ReplyTurn) => void;
   /** Whitelisted task metadata only; never credentials or message history. */
   assertOwned?: () => Promise<void>;
   action?: PermittedAction;

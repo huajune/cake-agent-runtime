@@ -64,7 +64,7 @@ begin
   r:=public.transition_agent_reply_turn('renew',base||'{"owner":"stale"}');
   assert r->>'conflict'='ordinary_reply_fence_lost';
   r:=public.transition_agent_reply_turn('renew',base);
-  assert (r->'turn'->>'generation_until')::timestamptz > now()+interval '9 minutes','only live owner extends the fence';
+  assert (r->'turn'->>'generation_until')::timestamptz = now()+interval '3 minutes','only live owner extends the fence';
   update public.agent_reply_turns set generation_until=now()-interval '1 second' where corp_id='single-pass-test' and logical_turn_id='long';
   r:=public.transition_agent_reply_turn('renew',base);
   assert r->>'conflict'='ordinary_reply_fence_lost','expired owner cannot revive';
@@ -182,6 +182,6 @@ begin
   perform public.transition_agent_reply_turn('save_reply',base||jsonb_set(plan,'{effects,context,logicalTurnId}','"expired"'));
   update agent_reply_turns set generation_until=now()-interval '1 second' where corp_id='resume' and logical_turn_id='expired';
   r:=public.transition_agent_reply_turn('resume_delivery',base||'{"newOwner":"next"}');
-  assert r#>>'{turn,review_reason}'='recovery_deadline' and r#>>'{turn,status}'='settled';
+  assert r#>>'{turn,delivery_result,outcome}'='skipped' and r#>>'{turn,status}'='settled' and not (r#>>'{turn,review_required}')::boolean;
 end $$;
 rollback;
