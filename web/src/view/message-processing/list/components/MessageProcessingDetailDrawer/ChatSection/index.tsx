@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { MessageRecord } from '@/api/types/chat.types';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
 import {
-  getAssistantResponseView,
+  getAssistantRenderableMessage,
   getFallbackSummary,
   getHistoryMessages,
   getRawPayloadPanels,
@@ -67,14 +67,17 @@ function getPayloadSummary(data: unknown): string {
 export default function ChatSection({ message }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
   const toolCalls = useMemo(() => withFallback(() => getToolCalls(message), []), [message]);
-  const responseView = useMemo(
-    () => withFallback(() => getAssistantResponseView(message, toolCalls), undefined),
-    [message, toolCalls],
+  const renderableMessage = useMemo(
+    () => withFallback(() => getAssistantRenderableMessage(message), undefined),
+    [message],
   );
   const historyMessages = useMemo(
     () =>
-      withFallback(() => getHistoryMessages(message, { includeFallbackReply: !responseView }), []),
-    [message, responseView],
+      withFallback(
+        () => getHistoryMessages(message, { includeFallbackReply: !renderableMessage }),
+        [],
+      ),
+    [message, renderableMessage],
   );
   const rawPayloadPanels = useMemo(
     () => withFallback(() => getRawPayloadPanels(message, toolCalls), []),
@@ -135,12 +138,14 @@ export default function ChatSection({ message }: ChatSectionProps) {
             {toolCalls.length > 0 && (
               <span className={styles.bubbleMeta}>{toolCalls.length} 个工具调用</span>
             )}
+            {message.replySegments && (
+              <span className={styles.bubbleMeta}>{message.replySegments} 个下发分段</span>
+            )}
           </div>
           <div className={`${styles.responseBody} ${styles.agentRenderer}`}>
-            {responseView ? (
+            {renderableMessage ? (
               <MessagePartsAdapter
-                message={responseView.message}
-                showToolDetails={responseView.showInlineToolDetails}
+                message={renderableMessage}
                 expandToolsByDefault={false}
                 expandReasoningByDefault={false}
               />

@@ -1,5 +1,4 @@
 import type { UIMessage } from 'ai';
-import { replaceEqualDeep } from '@tanstack/react-query';
 import type {
   MessageRecord,
   MessageRecordMemorySnapshot,
@@ -349,7 +348,7 @@ function buildRenderablePartsFromResponseMessages(
   return parts;
 }
 
-export function getAssistantResponseView(message: MessageRecord, detailTools: ToolCallInfo[]) {
+export function getAssistantRenderableMessage(message: MessageRecord): UIMessage | undefined {
   const response = getInvocationResponse(message);
   const responseMessages = asArray<AnyRecord>(response?.messages);
   const invocationToolCalls = asArray<AnyRecord>(response?.toolCalls);
@@ -387,26 +386,11 @@ export function getAssistantResponseView(message: MessageRecord, detailTools: To
 
   if (timelineParts.length === 0) return undefined;
 
-  // 按调用顺序匹配，保留旧流水中只出现在某一步的入参或返回值。
-  const timelineTools = timelineParts.filter((part) => 'toolName' in part);
-  const toolsCovered =
-    timelineTools.length === detailTools.length &&
-    timelineTools.every((part, index) => {
-      const detail = detailTools[index];
-      return (
-        part.toolName === detail.name &&
-        replaceEqualDeep(part.input, detail.input) === part.input &&
-        replaceEqualDeep(part.output, detail.output) === part.output
-      );
-    });
   return {
-    message: {
-      id: `assistant-timeline-${message.messageId || message.chatId}`,
-      role: 'assistant',
-      parts: timelineParts as UIMessage['parts'],
-    } satisfies UIMessage,
-    showInlineToolDetails: !toolsCovered,
-  };
+    id: `assistant-timeline-${message.messageId || message.chatId}`,
+    role: 'assistant',
+    parts: timelineParts as UIMessage['parts'],
+  } as UIMessage;
 }
 
 export function getStatusLabel(status: MessageRecord['status']): string {
