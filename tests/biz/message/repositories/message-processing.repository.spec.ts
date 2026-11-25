@@ -569,6 +569,7 @@ describe('MessageProcessingRepository', () => {
           { status: 'success', total_duration: 1000, ttft_ms: '120' },
           { status: 'failure', total_duration: 500, ttft_ms: null },
           { status: 'timeout', total_duration: 0, ttft_ms: '' },
+          { status: 'processing', total_duration: null, ttft_ms: null },
         ],
         error: null,
       });
@@ -583,7 +584,7 @@ describe('MessageProcessingRepository', () => {
       expect(queryMock.or).toHaveBeenCalledWith('user_name.ilike.%Alice%,chat_id.ilike.%Alice%');
       expect(queryMock.ilike).toHaveBeenCalledWith('manager_name', '%LiHanTing%');
       expect(result).toEqual({
-        total: 3,
+        total: 4,
         success: 1,
         failed: 2,
         avgDuration: 750,

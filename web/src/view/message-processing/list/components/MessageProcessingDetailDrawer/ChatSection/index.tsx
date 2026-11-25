@@ -67,28 +67,33 @@ function getPayloadSummary(data: unknown): string {
 export default function ChatSection({ message }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
   const toolCalls = useMemo(() => withFallback(() => getToolCalls(message), []), [message]);
-  const historyMessages = useMemo(
-    () => withFallback(() => getHistoryMessages(message), []),
+  const renderableMessage = useMemo(
+    () => withFallback(() => getAssistantRenderableMessage(message), undefined),
     [message],
   );
+  const historyMessages = useMemo(
+    () =>
+      withFallback(
+        () => getHistoryMessages(message, { includeFallbackReply: !renderableMessage }),
+        [],
+      ),
+    [message, renderableMessage],
+  );
   const rawPayloadPanels = useMemo(
-    () => withFallback(() => getRawPayloadPanels(message), []),
-    [message],
+    () => withFallback(() => getRawPayloadPanels(message, toolCalls), []),
+    [message, toolCalls],
   );
   const fallbackSummary = useMemo(
     () => withFallback(() => getFallbackSummary(message), undefined),
     [message],
   );
-  const renderableMessage = useMemo(
-    () => withFallback(() => getAssistantRenderableMessage(message), undefined),
-    [message],
-  );
   const fallbackDeliveredSegments = fallbackSummary?.deliveredSegments;
+  const hasFallbackDetails = Boolean(
+    fallbackSummary?.message || fallbackSummary?.error || fallbackDeliveredSegments != null,
+  );
   const activePanel =
     rawPayloadPanels.find((panel) => panel.key === activePayloadKey) ?? rawPayloadPanels[0];
   const isProcessing = message.status === 'processing';
-
-  const fallbackStatusText = message.fallbackSuccess === true ? '成功' : '失败';
 
   useEffect(() => {
     if (!activePanel && rawPayloadPanels.length > 0) {
@@ -121,9 +126,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
               ))}
             </div>
           ) : (
-            <div className={styles.historyEmpty}>
-              未从请求体提取到聊天记录，可在下方“请求体”查看原始 messages
-            </div>
+            <div className={styles.historyEmpty}>没有可展示的输入消息</div>
           )}
         </div>
 
@@ -154,19 +157,12 @@ export default function ChatSection({ message }: ChatSectionProps) {
           </div>
         </div>
 
-        <ToolExecutionPanel toolCalls={toolCalls} />
+        <ToolExecutionPanel toolCalls={toolCalls} message={message} />
 
-        {message.isFallback && (
+        {message.isFallback && hasFallbackDetails && (
           <div className={styles.fallbackBox}>
             <div className={styles.fallbackHeader}>
               <span>Fallback 回执</span>
-              <span
-                className={`${styles.fallbackBadge} ${
-                  message.fallbackSuccess ? styles.success : styles.failed
-                }`}
-              >
-                {fallbackStatusText}
-              </span>
             </div>
             <div className={styles.fallbackContent}>
               {fallbackSummary?.message ? (
@@ -179,7 +175,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
                   <strong>Fallback 错误：</strong> {String(fallbackSummary.error)}
                 </div>
               ) : null}
-              {fallbackDeliveredSegments !== undefined ? (
+              {fallbackDeliveredSegments != null ? (
                 <div>
                   <strong>已下发分段：</strong> {String(fallbackDeliveredSegments)}
                 </div>
