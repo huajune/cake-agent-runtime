@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Braces, ChevronRight, ListChecks } from 'lucide-react';
 import { formatDuration, formatJson } from '@/utils/format';
 import type { MessageRecord, MessageRecordToolCallStatus } from '@/api/types/chat.types';
 import { describeToolExecution } from '@/view/message-processing/tool-execution';
@@ -42,10 +42,10 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
         onClick={() => setExpanded((value) => !value)}
       >
         <span className={styles.toolIdentity}>
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span className={styles.toolName} title={outcome}>
-            {toolCall.name}
-            {outcome && ` · ${outcome}`}
+          <ChevronRight size={16} className={styles.chevron} aria-hidden="true" />
+          <span className={styles.toolHeading}>
+            {outcome && <span className={styles.outcome}>{outcome}</span>}
+            <code className={styles.toolName}>{toolCall.name}</code>
           </span>
         </span>
         <span className={styles.toolMeta}>
@@ -61,44 +61,53 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
         </span>
       </button>
       {expanded ? (
-        <>
-          <div className={styles.toolDetails}>
-            <div>
-              <div className={styles.detailLabel}>本次判断</div>
-              {judgments.length > 0 ? (
-                <ul className={styles.toolList}>
-                  {judgments.map((judgment, index) => (
-                    <li key={index}>{judgment}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div>{toolCall.output == null ? '未记录工具返回值' : '仅记录最终结果'}</div>
+        <div className={styles.toolDetails}>
+          {judgments.length > 0 ? (
+            <div className={styles.evidence}>
+              <h5 className={styles.detailLabel}>
+                <ListChecks size={15} aria-hidden="true" />
+                判断依据
+              </h5>
+              <dl className={styles.evidenceList}>
+                {judgments.map(([label, detail], index) => (
+                  <div key={index}>
+                    <dt>{label}</dt>
+                    <dd>{detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : (
+            <p className={styles.emptyEvidence}>
+              {toolCall.output == null ? '未记录工具返回值' : '仅记录最终结果'}
+            </p>
+          )}
+          {(toolCall.input !== undefined || toolCall.output !== undefined) && (
+            <div className={styles.payloads}>
+              {toolCall.input !== undefined && (
+                <ReceiptPayload label="输入参数" value={toolCall.input} />
+              )}
+              {toolCall.output !== undefined && (
+                <ReceiptPayload label="返回结果" value={toolCall.output} />
               )}
             </div>
-          </div>
-          {(toolCall.input !== undefined || toolCall.output !== undefined) && (
-            <div className={styles.toolDetails}>
-              {toolCall.input !== undefined ? (
-                <div>
-                  <div className={styles.detailLabel}>输入参数</div>
-                  <pre>{formatJson(toolCall.input)}</pre>
-                </div>
-              ) : null}
-              {toolCall.output !== undefined ? (
-                <div>
-                  <div className={styles.detailLabel}>返回结果</div>
-                  <pre>
-                    {typeof toolCall.output === 'string'
-                      ? toolCall.output
-                      : formatJson(toolCall.output)}
-                  </pre>
-                </div>
-              ) : null}
-            </div>
           )}
-        </>
+        </div>
       ) : null}
     </li>
+  );
+}
+
+function ReceiptPayload({ label, value }: { label: string; value: unknown }) {
+  return (
+    <details className={styles.payload}>
+      <summary>
+        <Braces size={14} aria-hidden="true" />
+        {label}
+        <ChevronRight size={14} className={styles.chevron} aria-hidden="true" />
+      </summary>
+      <pre>{typeof value === 'string' ? value : formatJson(value)}</pre>
+    </details>
   );
 }
 

@@ -388,7 +388,20 @@ describe('CandidateBlacklistRepository', () => {
       expect(fallbackMock.or).toHaveBeenCalledWith(
         'im_contact_id.eq.contact_001,external_user_id.eq.contact_001',
       );
+      expect(fallbackMock.eq).toHaveBeenCalledWith('is_self', false);
       expect(fallbackMock.gte).toHaveBeenCalledWith('timestamp', expect.any(String));
+    });
+
+    it('keeps a channel alias without mixing snapshots from different accounts', async () => {
+      mockSupabaseClient.from
+        .mockReturnValueOnce(makeQueryMock({ data: [], error: null }))
+        .mockReturnValueOnce(
+          makeQueryMock({
+            data: [snapshotRow, { ...snapshotRow, im_bot_id: 'other-bot', chat_id: 'other-chat' }],
+            error: null,
+          }),
+        );
+      expect(await repository.findContactSnapshot('external_alias')).toBeNull();
     });
 
     it('should aggregate fields across recent rows when the latest row is incomplete', async () => {
