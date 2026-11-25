@@ -2,6 +2,62 @@
 
 候选人连续发两条消息，系统可以合起来回复一次，这就是一个**回复回合**。主聊在 `ACTION_EXECUTION_MODE=execute` 下处理切换时间后的新输入时，Redis 负责入口去重和队列调度，PostgreSQL 保存输入归属和回合进度。处理消息的进程会查这两张表来决定下一步，运营也可以事后查看本轮结局。
 
+## 普通回复
+
+### A、B 怎样合成一次回复
+
+候选人连发 A「门店在哪？」和 B「几点上班？」。系统把这两条提问一起交给模型，回复分为「地址」和「班次」两段。箭头从上往下读。
+
+```mermaid
+sequenceDiagram
+    participant W as 企微
+    participant S as 回复服务
+    participant Q as Redis
+    participant D as 数据库
+    W->>S: 先推送 A，再推送 B
+    S->>Q: 按消息 ID 去重，A、B 入队
+    S->>Q: 取得会话锁，读取 A、B
+    S->>D: 创建回合 R，同时登记输入归属
+    Note over D: agent_reply_inputs 存两行，A 和 B 都指向 R<br/>agent_reply_turns 存一行 R
+    S->>D: 在 R 保存审核后的两段原文
+    S->>W: 发送第一段「地址」
+```
+
+如果企微随即重推 B，Redis 去重键会在入队前拦下。正常发送时，每段使用原回合和段序号生成的请求号。企微受理「地址」后，系统记录回执，再发「班次」。[登记输入与回合](../../../supabase/migrations/20261125080000_resume_ordinary_replies.sql) · [发送前保存分段](../../channels/wecom/message/application/reply-workflow.service.ts)
+
+### A、B 合并回复，发完第一段时宕机
+
+假设「地址」已经发出，「班次」还没发，原进程宕机。后台每分钟查数据库。即使 Redis 待处理列表已过期，后台也能找到待恢复的 R，无需企微再次推送 B。
+
+```mermaid
+sequenceDiagram
+    participant W as 企微
+    participant S as 恢复进程
+    participant Q as Redis
+    participant D as 数据库
+    S->>D: 查询到期回合，找到 R
+    S->>Q: 取得同一聊天的会话锁
+    S->>D: 接管 R，读原文并核对第一段的发送记录
+    alt 第一段已有受理凭证
+        S->>W: 核对权限后，只发第二段「班次」
+        W-->>S: 第二段已受理
+        S->>D: 保存回执，记下两段都已受理
+        S->>Q: 按原消息 ID 确认 A、B
+    else 第一段已派发，受理结果未知
+        Note over S,D: 暂停发送，等待原请求的可信回执<br/>超过恢复期限转人工核实
+    end
+```
+
+待发原文来自 `agent_reply_turns`。每段的发送状态在 `agent_action_records`，原请求的回执在 `agent_action_evidence`。恢复进程沿用原文，跳过模型生成和预约工具。企微发送接口返回 `errcode=0` 表示渠道已受理，候选人是否已读仍是未知。[到期回合查询](reply-turns.repository.ts) · [逐段核对与续发](../../channels/wecom/message/delivery/durable-reply-delivery.service.ts) · [读取发送动作](../action-execution/action-executor.service.ts) · [重启用例](../../../tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts)
+
+### 恢复边界
+
+- **宕机时有一段还在途。** 回合尚未结案、该段结果未知时，恢复进程等待与原请求匹配的可信回执，确认受理后再发后段。已经记为失败或未知并结案的回合保留原结局。连接建立前的明确失败可以有限重试。
+- **正文尚未写入或等待过久。** 自动续发要求回合仍在 `preparing` 或 `planned` 且已有最终分段。写入前宕机、工具结果又无法确认时，保留输入归属，交人工核实。从原输入时间算起，超过 24 小时仍待恢复的发送也转人工。运营撤回托管权限后停止发送剩余段。
+- **两段都已受理，只差本地收尾。** 系统在回合中保存受理段数和总段数，移除待发原文，记为 `settled`。按原消息 ID 确认输入后，记为 `acked`。若回复承诺由人工跟进，系统先用原工单幂等键提交跟进意图，再确认输入、清掉临时数据。若只有 Redis 输入确认失败，重试仅使用原消息 ID。
+
+11 月 6 日的 `single_pass` 策略由当前进程发送普通回复，中断后只做收尾和核实。11 月 25 日的改造恢复了按段续发，需对应迁移和配套应用部署后生效。为兼容旧应用，数据库仍使用 `delivery_policy = single_pass`。判断某个回合能否续发，要看回合状态和实际保存的分段。缺少待发原文的历史回合沿用原收尾方式。[11 月 6 日迁移](../../../supabase/migrations/20261106160000_ordinary_reply_single_pass.sql) · [按段续发迁移](../../../supabase/migrations/20261125080000_resume_ordinary_replies.sql)
+
 ## Redis 锁和两张回复表各管什么
 
 | 处理时要回答的问题 | 去哪里找答案 | 代码怎样使用它 |
@@ -15,24 +71,6 @@
 两张表里都能看到入站消息 ID，用途分别是**从消息找回合**和**从回合找全这批消息**。例如，合并 A、B 时，数据库在同一个事务内写入两条归属记录 `A → R`、`B → R`，以及一条回合记录 `R.input_ids = [A, B]`。如果队列稍后只带着 B 再次进入处理，系统能从 B 找到 R。若 R 已完成，就只补本地收尾，按原 ID 确认 A、B。后来到达的 C 继续留在队列。[登记与查找原回合的 SQL](../../../supabase/migrations/20261125080000_resume_ordinary_replies.sql) · [按原 ID 确认输入](../../channels/wecom/message/application/reply-workflow.service.ts)
 
 Redis 会话锁和回合里的 `owner`、`fence` 也各有作用。锁按**聊天**协调谁可以进入处理。数据库按**回合**校验谁还有权派发。聚合进程的 Redis 租约为 90 秒，持锁时每 30 秒续租。原进程的数据库租约为 10 分钟，每分钟续租。新进程取得 Redis 锁后，还要等未完成回合的数据库租约到期才能接管。接管时数据库更换 `owner` 并递增 `fence`（执行权版本号），旧进程再次派发时会被拒绝。
-
-## 普通回复
-
-### A、B 合并回复，发完第一段时宕机
-
-1. 候选人发 A「门店在哪？」、B「几点上班？」。如果企微随即又推一次 B，入口的 Redis 去重键就会拦下这次重复回调。聚合任务取得会话锁，从 Redis 读到 A、B，在调用模型前把它们登记为同一回合 R。
-2. 模型生成回复并通过守卫。系统按当时的渠道配置切成两段，第一段答地址，第二段答班次。在第一次发送前，系统把两段的**原文和顺序**存入 R 的 `recovery.replySegments`，同时写入本轮业务结果。每段用原回合和段序号生成稳定的请求号。[发送前保存分段](../../channels/wecom/message/application/reply-workflow.service.ts)
-3. 企微受理了第一段，系统记下回执，进程随即宕机。只要 Redis 待处理列表仍在，新进程就能重读 A、B。要知道地址那一段是否已被企微受理，还要查发送记录。即使列表已过期，后台也会每分钟扫描数据库，找到租约已到期的 R，无需企微再次推送 B。[到期回合查询](reply-turns.repository.ts)
-4. 后台接管 R，取出原回复，按段序号查发送动作。每段的状态在 `agent_action_records`，原请求的回执保存在 `agent_action_evidence`。第一段已有受理凭证，直接跳过。第二段尚未派发，系统核对原路由与当前托管权限后按原文发送。恢复过程无需再次调用模型或执行预约工具。[按段续发](../../channels/wecom/message/delivery/durable-reply-delivery.service.ts) · [读取发送动作](../action-execution/action-executor.service.ts)
-5. 两段都受理后，R 记录受理数和总段数，并移除待发原文。随后系统按 `R.input_ids` 确认 A、B。若宕机发生在两段都已受理之后，恢复只补本地收尾。这里的“受理”指企微发送接口明确返回 `errcode=0` 或有匹配的可信回执。候选人是否已读仍是未知。[重启与合并消息用例](../../../tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts)
-
-### 恢复边界
-
-- **宕机时有一段还在途。** 回合尚未结案、该段结果未知时，恢复进程等待与原请求匹配的可信回执，确认受理后再发后段。已经记为失败或未知并结案的回合保留原结局。连接建立前的明确失败可以有限重试。
-- **正文尚未写入或等待过久。** 自动续发要求回合仍在 `preparing` 或 `planned` 且已有最终分段。写入前宕机、工具结果又无法确认时，保留输入归属，交人工核实。从原输入时间算起，超过 24 小时仍待恢复的发送也转人工。运营撤回托管权限后停止发送剩余段。
-- **还差本地收尾。** `settled` 表示投递结局已保存，`acked` 表示原输入已确认。若回复承诺由人工跟进，系统用原工单幂等键提交跟进意图，再确认输入、清掉临时数据。若只有 Redis 输入确认失败，重试仅使用原消息 ID。
-
-11 月 6 日的 `single_pass` 策略由当前进程发送普通回复，中断后只做收尾和核实。11 月 25 日的改造恢复了按段续发，需对应迁移和配套应用部署后生效。为兼容旧应用，数据库仍使用 `delivery_policy = single_pass`。判断某个回合能否续发，要看回合状态和实际保存的分段。缺少待发原文的历史回合沿用原收尾方式。[11 月 6 日迁移](../../../supabase/migrations/20261106160000_ordinary_reply_single_pass.sql) · [按段续发迁移](../../../supabase/migrations/20261125080000_resume_ordinary_replies.sql)
 
 ## 人工核实与流水
 
