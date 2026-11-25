@@ -417,7 +417,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
     try {
       if (this.hasTextFilters(filters)) {
-        return this.getFilteredMessageStats(startTime, endTime, filters);
+        return await this.getFilteredMessageStats(startTime, endTime, filters);
       }
 
       const result = await this.rpc<
@@ -1010,17 +1010,11 @@ export class MessageProcessingRepository extends BaseRepository {
     avgDuration: number;
     avgTtft: number;
   }> {
-    const rows = await this.select<MessageProcessingDbRecord>(
-      ['status', 'total_duration', 'ttft_ms'].join(','),
-      (q) => {
-        let r = q
-          .gte('received_at', new Date(startTime).toISOString())
-          .lt('received_at', new Date(endTime).toISOString());
-        r = this.applyTextFilters(r, filters);
-        return r;
-      },
-    );
-
+    const start = new Date(startTime).toISOString();
+    const end = new Date(endTime).toISOString();
+    const pageSize = 1000;
+    let after: string | undefined;
+    let total = 0;
     let success = 0;
     let failed = 0;
     let durationSum = 0;
@@ -1028,25 +1022,44 @@ export class MessageProcessingRepository extends BaseRepository {
     let ttftSum = 0;
     let ttftCount = 0;
 
-    for (const row of rows) {
-      if (row.status === 'success') success += 1;
-      else if (row.status === 'failure' || row.status === 'timeout') failed += 1;
+    // PostgREST limits each response. Use the unique message ID to resume without shifting offsets.
+    for (;;) {
+      const rows = await this.selectFromOrNull<MessageProcessingDbRecord>(
+        this.tableName,
+        'message_id,status,total_duration,ttft_ms',
+        (query) => {
+          const filtered = this.applyTextFilters(
+            query.gte('received_at', start).lt('received_at', end),
+            filters,
+          );
+          const page = filtered.order('message_id', { ascending: true }).limit(pageSize);
+          return after === undefined ? page : page.gt('message_id', after);
+        },
+      );
+      if (rows === null) throw new Error('筛选消息统计分页读取失败');
+      total += rows.length;
+      for (const row of rows) {
+        if (row.status === 'success') success += 1;
+        else if (row.status === 'failure' || row.status === 'timeout') failed += 1;
 
-      const duration = this.parseNumber(row.total_duration);
-      if (duration !== undefined && duration > 0) {
-        durationSum += duration;
-        durationCount += 1;
-      }
+        const duration = this.parseNumber(row.total_duration);
+        if (duration !== undefined && duration > 0) {
+          durationSum += duration;
+          durationCount += 1;
+        }
 
-      const ttft = this.extractTtftMs(row);
-      if (ttft !== undefined && ttft > 0) {
-        ttftSum += ttft;
-        ttftCount += 1;
+        const ttft = this.extractTtftMs(row);
+        if (ttft !== undefined && ttft > 0) {
+          ttftSum += ttft;
+          ttftCount += 1;
+        }
       }
+      if (rows.length < pageSize) break;
+      after = rows[rows.length - 1].message_id;
     }
 
     return {
-      total: rows.length,
+      total,
       success,
       failed,
       avgDuration: durationCount > 0 ? Math.round(durationSum / durationCount) : 0,
