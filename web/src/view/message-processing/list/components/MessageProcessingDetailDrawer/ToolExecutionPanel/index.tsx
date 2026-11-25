@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Braces, ChevronRight, ListChecks } from 'lucide-react';
+import { ChevronRight, ListChecks } from 'lucide-react';
 import { formatJson } from '@/utils/format';
 import type { MessageRecord, MessageRecordToolCallStatus } from '@/api/types/chat.types';
 import { describeToolExecution } from '@/view/message-processing/tool-execution';
@@ -90,15 +90,11 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
               {toolCall.output == null ? '未记录工具返回值' : '仅记录最终结果'}
             </p>
           )}
-          {(toolCall.input !== undefined || toolCall.output !== undefined) && (
-            <div className={styles.payloads}>
-              {toolCall.input !== undefined && (
-                <ReceiptPayload label="输入参数" value={toolCall.input} />
-              )}
-              {toolCall.output !== undefined && (
-                <ReceiptPayload label="返回结果" value={toolCall.output} />
-              )}
-            </div>
+          {toolCall.input !== undefined && (
+            <ReceiptPayload label="输入参数" value={toolCall.input} />
+          )}
+          {toolCall.output !== undefined && (
+            <ReceiptPayload label="返回结果" value={toolCall.output} />
           )}
         </div>
       ) : null}
@@ -108,14 +104,10 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
 
 function ReceiptPayload({ label, value }: { label: string; value: unknown }) {
   return (
-    <details className={styles.payload}>
-      <summary>
-        <Braces size={14} aria-hidden="true" />
-        {label}
-        <ChevronRight size={14} className={styles.chevron} aria-hidden="true" />
-      </summary>
+    <div className={styles.payload}>
+      <h5 className={styles.detailLabel}>{label}</h5>
       <pre>{typeof value === 'string' ? value : formatJson(value)}</pre>
-    </details>
+    </div>
   );
 }
 

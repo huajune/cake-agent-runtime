@@ -48,8 +48,7 @@
   }
 }
 
-.toolHeader:focus-visible,
-.payload summary:focus-visible {
+.toolHeader:focus-visible {
   outline: 2px solid $primary-dark;
   outline-offset: -2px;
 }
@@ -58,8 +57,7 @@
   flex: none;
   color: $text-secondary;
 }
-.toolHeader[aria-expanded='true'] .chevron,
-.payload[open] > summary .chevron {
+.toolHeader[aria-expanded='true'] .chevron {
   transform: rotate(90deg);
 }
 
@@ -181,44 +179,16 @@
   color: $text-secondary;
   font-size: $font-size-xs;
 }
-.payloads {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: $spacing-sm;
-}
 .payload {
   min-width: 0;
-  border: 1px solid $border;
-  border-radius: $radius-md;
-  overflow: hidden;
-  summary {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 34px;
-    padding: 4px 10px;
-    color: $text-secondary;
-    background: $bg-secondary;
-    font-size: $font-size-xs;
-    cursor: pointer;
-    list-style: none;
-    &::-webkit-details-marker {
-      display: none;
-    }
-    &:hover {
-      background: $bg-tint;
-    }
-    .chevron {
-      margin-inline-start: auto;
-    }
-  }
   pre {
     margin: 0;
     max-height: 240px;
     padding: 12px;
     overflow: auto;
-    background: $text-primary;
-    color: $bg-secondary;
+    border-radius: $radius-sm;
+    background: $bg-secondary;
+    color: $text-body;
     font-family: $font-family-mono;
     font-size: $font-size-xs;
     line-height: 1.6;
@@ -236,8 +206,5 @@
   .toolMeta {
     justify-content: flex-start;
     padding-inline-start: 24px;
-  }
-  .payload summary {
-    min-height: 44px;
   }
 }
