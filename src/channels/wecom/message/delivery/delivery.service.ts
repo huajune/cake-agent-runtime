@@ -3,7 +3,7 @@ import {
   REPLY_TURN_STATUS,
 } from '@biz/reply-execution/reply-execution.constants';
 import { ReplySendError, classifyReplySendError } from './reply-send-error';
-import { type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { DurableReplyDeliveryService } from './durable-reply-delivery.service';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -18,7 +18,13 @@ import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MESSAGE_SPLIT_MAX_SEGMENTS } from '@infra/config/constants/message.constants';
 import { MessageSplitter } from '../utils/message-splitter.util';
-import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
+import {
+  DeliveryContext,
+  DeliveryResult,
+  AgentReply,
+  DeliveryFailureError,
+  type RecoveryDeliveryContext,
+} from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from './typing-policy.service';
 import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
@@ -105,10 +111,11 @@ export class MessageDeliveryService implements OnModuleInit {
         return skippedResult;
       }
 
-      const needsSplit = this.typingPolicy.shouldSplit(reply.content);
-      const result = (knownResult = needsSplit
-        ? await this.deliverSegments(reply.content, context)
-        : await this.deliverSingle(reply.content, context));
+      const segments = turn?.recovery.replySegments ?? this.prepareSegments(reply.content);
+      const result = (knownResult =
+        segments.length === 1
+          ? await this.deliverSingle(segments[0], context)
+          : await this.deliverSegments(segments, context));
 
       const totalTime = Date.now() - startTime;
 
@@ -122,6 +129,7 @@ export class MessageDeliveryService implements OnModuleInit {
       await this.finishOrdinary(turn, result);
       return { ...result, totalTime };
     } catch (error) {
+      if (error instanceof ReplyDeferredError && turn?.recovery.replySegments) throw error;
       const totalTime = Date.now() - startTime;
       const errorMessage = toErrorMessage(error);
       const failureResult =
@@ -156,6 +164,17 @@ export class MessageDeliveryService implements OnModuleInit {
     }
   }
 
+  prepareSegments(content: string): string[] {
+    return this.typingPolicy.shouldSplit(content)
+      ? MessageSplitter.split(content, MESSAGE_SPLIT_MAX_SEGMENTS)
+      : [MessageSplitter.stripTrailingPunctuation(content) || content.trim()];
+  }
+
+  async resumeDelivery(turn: ReplyTurn, context: RecoveryDeliveryContext): Promise<ReplyTurn> {
+    if (!this.durable) throw new Error('reply_delivery_unavailable');
+    return this.durable.resumeSegments(turn, context);
+  }
+
   private async beginDelivery(context: DeliveryContext): Promise<ReplyTurn | undefined> {
     const turn = await this.durable?.resolveTurn(context);
     if (!turn || !this.durable) return undefined;
@@ -164,9 +183,11 @@ export class MessageDeliveryService implements OnModuleInit {
       : turn;
   }
 
-  private async deliverSingle(content: string, context: DeliveryContext): Promise<DeliveryResult> {
+  private async deliverSingle(
+    outboundContent: string,
+    context: DeliveryContext,
+  ): Promise<DeliveryResult> {
     const { contactName } = context;
-    const outboundContent = MessageSplitter.stripTrailingPunctuation(content) || content.trim();
 
     try {
       await this.sendTextSegment(
@@ -188,6 +209,8 @@ export class MessageDeliveryService implements OnModuleInit {
         totalTime: 0,
       };
     } catch (error) {
+      if (error instanceof ReplyDeferredError && context.replyTurn?.recovery.replySegments)
+        throw error;
       const errorMessage = toErrorMessage(error);
       this.logger.error(`[${contactName}] 单条消息发送失败: ${errorMessage}`);
       throw new DeliveryFailureError(errorMessage, {
@@ -204,14 +227,12 @@ export class MessageDeliveryService implements OnModuleInit {
   }
 
   private async deliverSegments(
-    content: string,
+    segments: string[],
     context: DeliveryContext,
   ): Promise<DeliveryResult> {
     const { contactName, chatId } = context;
-    const segments = MessageSplitter.split(content, MESSAGE_SPLIT_MAX_SEGMENTS);
 
     this.logger.log(`[${contactName}] 消息触发分段发送，拆分为 ${segments.length} 条消息发送`);
-    this.logger.debug(`[${contactName}] 原始消息: "${content}"`);
     this.logger.debug(`[${contactName}] 拆分结果: ${JSON.stringify(segments)}`);
 
     let successCount = 0;
@@ -265,6 +286,8 @@ export class MessageDeliveryService implements OnModuleInit {
           ).catch(() => undefined);
         }
       } catch (error) {
+        if (error instanceof ReplyDeferredError && context.replyTurn?.recovery.replySegments)
+          throw error;
         failedCount++;
         unknownSegments += error instanceof ReplySendError && error.unknownResult ? 1 : 0;
         failureReason = error instanceof ReplySendError ? error.failureReason : undefined;

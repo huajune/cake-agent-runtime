@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { TurnSideEffectIntent } from '@agent/runner/turn-side-effect.types';
+import { readTurnSideEffectIntent } from '@agent/runner/turn-outcome';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import type { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 
@@ -11,6 +13,9 @@ const TOOL_EFFECT_NAMES = [
 ] as const;
 
 const effectsSchema = z.object({
+  afterReply: z
+    .array(z.custom<TurnSideEffectIntent>((item) => readTurnSideEffectIntent(item) !== null))
+    .optional(),
   toolCalls: z
     .array(
       z.object({
@@ -48,7 +53,21 @@ type AnchorContext = Parameters<ReengagementAnchorService['handleToolAnchors']>[
 export function ordinaryReplyEffects(
   calls: AgentToolCall[] | undefined,
   context: AnchorContext,
+  afterReply?: { intents: TurnSideEffectIntent[]; userMessage: string },
 ): Record<string, unknown> {
+  // Preserve the original handoff key, reason, work order and candidate's question.
+  // The alert can reconstruct its context without a copy of the chat or session state.
+  const intents = afterReply?.intents
+    .filter((intent) => !intent.alreadyDispatched)
+    .map((intent) => {
+      const copy = {
+        ...intent,
+        currentMessageContent: intent.currentMessageContent ?? afterReply.userMessage,
+      };
+      delete copy.recentMessages;
+      delete copy.sessionState;
+      return copy;
+    });
   const toolCalls = (calls ?? [])
     .filter((call) => (TOOL_EFFECT_NAMES as readonly string[]).includes(call.toolName))
     .map((call) => {
@@ -72,6 +91,7 @@ export function ordinaryReplyEffects(
       };
     });
   return effectsSchema.parse({
+    ...(intents?.length ? { afterReply: intents } : {}),
     // 空集合也是生成已结束、无需业务补账的证据；不能和保存失败混为一谈。
     toolCalls: context.isGroupChat ? [] : toolCalls,
     context: { ...context, isGroupChat: Boolean(context.isGroupChat) },
@@ -81,6 +101,7 @@ export function ordinaryReplyEffects(
 export function readOrdinaryReplyEffects(value: unknown): {
   toolCalls: AgentToolCall[];
   context: AnchorContext;
+  afterReply?: TurnSideEffectIntent[];
 } {
   return effectsSchema.parse(value);
 }

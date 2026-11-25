@@ -10,18 +10,22 @@ import { ActionExecutorService } from '@biz/action-execution/action-executor.ser
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
 import type { ActionIntent } from '@biz/action-execution/action-execution.types';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
+import { REPLY_DELIVERY_OUTCOME } from '@biz/reply-execution/reply-execution.constants';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
-import type { DeliveryContext } from '../types';
+import type { DeliveryContext, RecoveryDeliveryContext } from '../types';
 import {
   ACTION_EVIDENCE_KIND,
+  ACTION_EXECUTION_STATUS,
   ACTION_KIND,
   ACTION_MODE,
   ACTION_STATE,
 } from '@shared-types/action-execution.contract';
 import { PERMITTED_ACTION } from '@shared-types/action-permit.types';
+
+const PRE_SEND_CHECK_PENDING = 'reply_pre_dispatch_check_unconfirmed';
 
 /** Ordinary replies complete on send API acceptance, without claiming delivery/read. */
 @Injectable()
@@ -54,22 +58,59 @@ export class DurableReplyDeliveryService implements OnModuleInit {
     return undefined;
   }
 
-  /** One live pass; only attempted segments enter the action ledger, never a whole text plan. */
+  /** Recovery walks the same immutable action identities. The executor returns accepted
+   * segments without calling WeCom and holds the suffix behind any in-flight segment. */
+  async resumeSegments(turn: ReplyTurn, context: RecoveryDeliveryContext): Promise<ReplyTurn> {
+    const segments = turn.recovery.replySegments;
+    if (!segments?.length) throw new ReplyDeferredError('missing_reply_segments');
+    let accepted = 0;
+    for (const segment of segments) {
+      try {
+        await this.sendOrdinarySegment(turn, context, segment, accepted);
+      } catch (error) {
+        if (!(error instanceof ReplySendError) || error.unknownResult) throw error;
+        await context.assertOwned?.();
+        return this.turns.settle(turn, {
+          outcome:
+            error.message === 'permission_or_freshness_changed' ||
+            error.message === ACTION_STATE.CANCELLED
+              ? REPLY_DELIVERY_OUTCOME.SKIPPED
+              : REPLY_DELIVERY_OUTCOME.INCOMPLETE,
+          accepted,
+          total: segments.length,
+        });
+      }
+      accepted++;
+    }
+    await context.assertOwned?.();
+    return this.turns.settle(turn, {
+      outcome: REPLY_DELIVERY_OUTCOME.COMPLETE,
+      accepted,
+      total: segments.length,
+    });
+  }
+
   async sendOrdinarySegment(
     turn: ReplyTurn,
-    context: DeliveryContext,
+    context: DeliveryContext | RecoveryDeliveryContext,
     text: string,
     index: number,
   ): Promise<void> {
     if (turn.mode !== ACTION_MODE.EXECUTE)
       throw new ReplyDeferredError('ordinary_reply_not_executable');
     for (let attempt = 0; attempt <= RUNTIME_RETRY_LIMITS.deliverySegmentRetries; attempt++) {
+      try {
+        await context.assertOwned?.();
+        await this.turns.assertDeliveryActive(turn);
+      } catch (error) {
+        if (turn.recovery.replySegments)
+          throw new ReplyDeferredError(PRE_SEND_CHECK_PENDING, error);
+        throw error;
+      }
       const execution = await this.executor.execute(
         this.intent(turn, text, index),
         {
           authorize: async () => {
-            await context.assertOwned?.();
-            await this.turns.assertDeliveryActive(turn);
             return (
               await this.permit.evaluate({
                 chatId: turn.chatId,
@@ -81,11 +122,27 @@ export class DurableReplyDeliveryService implements OnModuleInit {
             ).allowed;
           },
           dispatch: async (requestId) => {
-            await context.assertOwned?.();
-            await this.turns.assertDeliveryActive(turn);
+            // The owner can change while the action is claimed. No HTTP request
+            // has left this process yet, so the new owner may reuse this action.
+            let token: string;
+            try {
+              token = 'resolveToken' in context ? await context.resolveToken() : context.token;
+              await context.assertOwned?.();
+              await this.turns.assertDeliveryActive(turn);
+            } catch {
+              return {
+                status: ACTION_STATE.FAILED,
+                retryable: true,
+                evidence: {
+                  kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+                  requestTerminated: true,
+                  detail: PRE_SEND_CHECK_PENDING,
+                },
+              };
+            }
             try {
               const response = await this.sender.sendMessage({
-                token: context.token,
+                token,
                 imBotId: turn.accountId,
                 imContactId: context.imContactId,
                 imRoomId: context.imRoomId,
@@ -125,6 +182,14 @@ export class DurableReplyDeliveryService implements OnModuleInit {
         { persistedMode: turn.mode },
       );
       if (execution.status === ACTION_STATE.SUCCEEDED) return;
+      if (
+        turn.recovery.replySegments &&
+        (execution.evidence?.detail === PRE_SEND_CHECK_PENDING ||
+          (execution.status === ACTION_EXECUTION_STATUS.BLOCKED &&
+            execution.reason !== 'permission_or_freshness_changed'))
+      ) {
+        throw new ReplyDeferredError(execution.reason ?? 'segment_ownership_unconfirmed');
+      }
       const retryable =
         execution.status === ACTION_STATE.FAILED &&
         execution.evidence?.kind === ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT &&

@@ -102,6 +102,11 @@ export interface DeliveryContext {
   _apiType?: WecomApiType;
 }
 
+/** A completed action can be reconciled without credentials for another send. */
+export type RecoveryDeliveryContext = Omit<DeliveryContext, 'token'> & {
+  resolveToken: () => Promise<string>;
+};
+
 export interface DeliveryResult {
   /** 仅携带已确认的渠道失败分类；续发还必须检查已发送/未知片段数。 */
   failureReason?: WecomSendFailureReason;

@@ -46,11 +46,12 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
   const turns = {
     repository: { due: jest.fn(), redact: jest.fn() },
     defer: jest.fn(),
+    resumeDelivery: jest.fn(),
     interrupt: jest.fn(),
     requestReview: jest.fn(),
     reviewNotified: jest.fn(),
   };
-  const workflow = { resumeInputCompletion: jest.fn() };
+  const workflow = { resumeInputCompletion: jest.fn(), resumeDelivery: jest.fn() };
   const assertOwned = jest.fn<Promise<void>, []>();
   const leases = { run: jest.fn() };
   const crons = { runBatches: jest.fn() };
@@ -170,7 +171,7 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
     workflow.resumeInputCompletion.mockRejectedValueOnce(new Error('Redis unavailable'));
     await service.recoverDue();
     expect(workflow.resumeInputCompletion).toHaveBeenCalledTimes(2);
-    expect(turns.defer.mock.calls).toEqual([[first]]);
+    expect(turns.defer.mock.calls).toEqual([[{ ...first, status: 'settled' }]]);
   });
   it('does no input repair or defer when the conversation lease is not acquired', async () => {
     turns.repository.due.mockResolvedValue([groupTurn()]);
@@ -205,6 +206,18 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
 
     expect(workflow.resumeInputCompletion).toHaveBeenCalledTimes(1);
     expect(assertOwned).toHaveBeenCalledTimes(2);
-    expect(turns.defer).toHaveBeenCalledWith(turn);
+    expect(turns.defer).toHaveBeenCalledWith({ ...turn, status: 'settled' });
+  });
+
+  it('uses the new owner and fence when a recovered send must wait for its original receipt', async () => {
+    const turn = groupTurn();
+    turn.recovery.replySegments = ['原回复'];
+    const claimed = { ...turn, owner: 'recovery-owner', fence: turn.fence + 1 };
+    turns.repository.due.mockResolvedValue([turn]);
+    turns.resumeDelivery.mockResolvedValue(claimed);
+    workflow.resumeDelivery.mockRejectedValue(new Error('awaiting receipt'));
+    await service.recoverDue();
+    expect(turns.defer).toHaveBeenCalledWith(claimed);
+    expect(workflow.resumeInputCompletion).not.toHaveBeenCalled();
   });
 });

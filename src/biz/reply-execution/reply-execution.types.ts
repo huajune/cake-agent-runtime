@@ -13,7 +13,7 @@ export interface ReplyTurnScope {
   chatId: string;
 }
 
-/** Summary only: no generated reply body, model result or resumable send plan. */
+/** Delivery summary retained after the pending segments have been removed. */
 export interface ReplyDeliverySummary {
   outcome: ReplyDeliveryOutcome;
   accepted?: number;
@@ -32,7 +32,7 @@ export interface ReplyTurn extends ReplyTurnScope {
   status: ReplyTurnStatus;
   owner: string | null;
   fence: number;
-  recovery: Record<string, unknown>;
+  recovery: Record<string, unknown> & { replySegments?: string[] };
   projectionStatus?: ReplyProjectionStatus;
   reviewRequired?: boolean;
   reviewReason?: ReplyReviewReason;

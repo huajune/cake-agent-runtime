@@ -17,6 +17,7 @@ describe('ReplyWorkflowService', () => {
     markMessageAsProcessedAsync: jest.fn(),
   };
   const deliveryService = {
+    prepareSegments: (content: string) => [content],
     deliverReply: jest.fn(),
   };
   const runner = {
