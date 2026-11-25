@@ -29,6 +29,9 @@ const agentTestLoader = () => import('@/view/agent-test/list');
 const testSuiteLoader = () => import('@/view/test-suite/list');
 const strategyLoader = () => import('@/view/strategy/list');
 
+export const MESSAGE_PROCESSING_DETAIL_PATH = '/message-processing/detail';
+export const MessageProcessingDetail = lazy(() => import('@/view/message-processing/detail'));
+
 export const Dashboard = lazy(dashboardLoader);
 export const ConversionAnalysis = lazy(conversionAnalysisLoader);
 export const Users = lazy(usersLoader);

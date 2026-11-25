@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**：2026-11-19（补充候选版本读写约定）
+**最后更新**：2026-11-24（已与新加坡生产库 v11.20.0 清理结果核对）
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
@@ -10,13 +10,17 @@
 
 ---
 
+### v11.20.0 的生产结构
+
+消息流水与模型调用快照默认均保留 90 天。生产已删除 `public.message_processing_records.agent_invocation` 和旧清理函数 `null_agent_invocation(integer, integer)`，详情从快照子表还原。策略版本继续保存在 `public.strategy_config`。原公开逐字段变更表已退役，生产的 124 条历史完整保存在私有归档，迁移前后全字段摘要一致。[v11.20.0 发布说明](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.20.0)
+
 ### v11.18.0 的读写约定
 
 六份数据库治理迁移定义了下列读写接口。各字段的启用条件和回退方法见[专项验收](../todo/runtime-data-model-execution-plan.md#8-2026-年-11-月-19-日候选版本验收)。交付版本见 [v11.18.0 发布说明](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.18.0)。
 
 | 数据 | 写入与查询 |
 | --- | --- |
-| 消息流水与短期快照 | 通过 `save_processing_snapshot` 同事务写入。详情从 `processing_read_steps` 与 `processing_read_invocation` 还原对应代次的工具和响应。列表保持现有轻量投影。 |
+| 消息流水与调用快照 | 通过 `save_processing_snapshot` 同事务写入。详情从 `processing_read_steps` 与 `processing_read_invocation` 还原对应代次的工具和响应。列表仅读取摘要。 |
 | 渠道聊天 | 读完整载荷使用 `chat_read_payload`。Center 继续按账号和会话返回原有受限投影。 |
 | 测试执行 | 写 `test_executions`，完整查询和导出读 `test_execution_results`。该视图执行调用角色权限，服务角色可查。 |
 | 转人工 | 调用 `record_handoff` 写事件、处理明细及日报投影。恢复托管通过 `resolve_hosting_handoffs` 按原暂停作用域关闭对应明细。 |
@@ -31,6 +35,7 @@
 - [核心业务表](#核心业务表)
   - [chat_messages](#1-chat_messages---聊天消息记录)
   - [message_processing_records](#2-message_processing_records---消息处理记录)
+    - [message_processing_invocations](#message_processing_invocations---模型调用快照)
   - [interview_booking_records](#3-interview_booking_records---面试预约记录) 🗄️ 已删除
   - [recruitment_cases](#4-recruitment_cases---招聘案件) 🗄️ 已删除
 - [记忆/画像表](#记忆画像表)
@@ -45,7 +50,7 @@
 - [配置管理表](#配置管理表)
   - [system_config](#11-system_config---系统配置)
   - [strategy_config](#12-strategy_config---策略配置)
-  - [strategy_config_changelog](#13-strategy_config_changelog---策略变更日志)
+  - [策略逐字段变更归档](#13-策略逐字段变更归档)
 - [测试套件表](#测试套件表)
   - [test_batches](#14-test_batches---测试批次)
   - [test_executions](#15-test_executions---测试执行记录)
@@ -60,7 +65,8 @@
 | #     | 表名                                      | 业务域 | 写入方式            | 读取方式     | 数据保留                            |
 | ----- | ----------------------------------------- | ------ | ------------------- | ------------ | ----------------------------------- |
 | 1     | `chat_messages`                           | 消息   | upsert              | select / RPC | 永久（不可再生资产）                |
-| 2     | `message_processing_records`              | 消息   | insert / upsert     | select / RPC | 90 天（agent_invocation 子表 7 天） |
+| 2     | `message_processing_records`              | 消息   | RPC                 | select / RPC | 90 天                               |
+| 2.1   | `message_processing_invocations`          | 消息   | 随流水同事务写入    | 详情查询     | 90 天，删除主流水时级联删除         |
 | ~~3~~ | ~~`interview_booking_records`~~ 🗄️ 已删除 | —      | —                   | —            | 迁移 20260625111500 移除            |
 | ~~4~~ | ~~`recruitment_cases`~~ 🗄️ 已删除         | —      | —                   | —            | 迁移 20260610170000 移除            |
 | 5     | `agent_long_term_memories`                | 记忆   | RPC upsert / select | select       | 永久                                |
@@ -71,7 +77,7 @@
 | 10    | `monitoring_error_logs`                   | 监控   | insert              | select       | 90 天                               |
 | 11    | `system_config`                           | 配置   | upsert              | select       | 永久                                |
 | 12    | `strategy_config`                         | 配置   | insert / update     | select       | 永久（多版本）                      |
-| 13    | `strategy_config_changelog`               | 配置   | insert              | select       | 永久                                |
+| 13    | `strategy_archive.strategy_config_changelog` | 配置 | 退役时归档       | 管理员查询   | 长期保留                            |
 | 14    | `test_batches`                            | 测试   | insert / update     | select       | 永久                                |
 | 15    | `test_executions`                         | 测试   | insert / update     | select       | 永久                                |
 | 16    | `test_conversation_snapshots`             | 测试   | insert / update     | select       | 永久                                |
@@ -86,7 +92,7 @@
 │                                                                 │
 │  chat_messages ──────> message_processing_records               │
 │                            │        (message_id 关联)            │
-│                            │                                    │
+│                            ├─── message_processing_invocations  │
 │                            ├─── 每小时 ──> monitoring_hourly_stats │
 │                            └─── 每天  ──> monitoring_daily_stats  │
 ├─────────────────────────────────────────────────────────────────┤
@@ -107,7 +113,8 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                        配置管理表                                │
 │                                                                 │
-│  strategy_config ──> strategy_config_changelog (审计)            │
+│  strategy_config（在线策略版本）                                 │
+│  strategy_archive.strategy_config_changelog（独立历史归档）      │
 │  system_config (KV 配置：黑名单/功能开关)                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                        测试套件表                                │
@@ -209,7 +216,7 @@
 | `token_usage`      | integer      | -                | Token 消耗量                                                                                     |
 | `is_fallback`      | boolean      | false            | 是否降级处理                                                                                     |
 | `fallback_success` | boolean      | -                | 降级是否成功                                                                                     |
-| `agent_invocation` | jsonb        | -                | Agent 完整调用记录（request/response/http，7 天后置 NULL）                                       |
+| `invocation_version` | uuid       | -                | 保存新快照时生成的代次，用于校验详情引用的工具调用                                               |
 | `batch_id`         | varchar(255) | -                | 聚合批次ID                                                                                       |
 | `created_at`       | timestamptz  | now()            | -                                                                                                |
 | `updated_at`       | timestamptz  | now()            | trigger 自动维护                                                                                 |
@@ -235,8 +242,15 @@
 - **写入**：`saveMessageProcessingRecord()` — 接收时创建，处理完成后更新
 - **读取**：`getSlowestMessages()` / `getMessageProcessingRecords()` — Dashboard 查询
 - **聚合**：RPC `aggregate_hourly_stats()` / `aggregate_daily_stats()`
-- **清理**：RPC `cleanup_message_processing_records(90)` — 保留 90 天
-- **瘦身**：`agent_invocation` 存在子表 `message_processing_invocations`，RPC `delete_expired_agent_invocations(7)` 分批删 7 天前的子表行，`null_agent_invocation(7)` 置空存量主表列
+- `cleanup_message_processing_records()` 按 `received_at` 清理超过 90 天的流水，通过外键级联删除对应快照。
+
+#### message_processing_invocations - 模型调用快照
+
+每条主流水最多关联一条快照，`message_id` 同时是子表主键和指向主流水的外键。`agent_invocation` 保存当次调用的请求、模型回复及随调用记录的工具和 HTTP 信息，`created_at` 决定快照保留期限。详情接口通过 `processing_read_invocation` 读取快照。请求与回复只随详情返回。
+
+`write_version` 与 `response_tools_v1` 用于核对复用的工具调用。主流水修正后，`superseded_invocation` 可保留被替代的旧快照至原到期时间，详情仅返回与当前流水匹配的快照。快照缺失或到期时，仍可读取保留期内的主流水状态与耗时。[快照读写实现](../../supabase/migrations/20261119080000_processing_storage.sql)
+
+每日北京时间 03:00 执行例行清理。`DATA_CLEANUP_PROCESSING_DAYS` 默认 90，快照天数默认继承它，可由 `DATA_CLEANUP_AGENT_INVOCATION_DAYS` 单独覆盖。本次核实生产两者均为 90 天。此前按旧期限删除的快照无法随保留期延长而恢复。[保留期迁移](../../supabase/migrations/20261124024050_align_invocation_retention_with_processing.sql) · [主表旧列退役迁移](../../supabase/migrations/20261124032811_retire_parent_agent_invocation.sql)
 
 ---
 
@@ -627,25 +641,11 @@
 
 ---
 
-### 13. strategy_config_changelog - 策略变更日志
+### 13. 策略逐字段变更归档
 
-**用途**：审计 strategy_config 每次字段变更
+线上从 `GET /strategy/versions` 查询策略版本。`public.strategy_config_changelog` 和旧接口 `GET /strategy/changelog` 已退役。退役前的逐字段历史保存在 `strategy_archive.strategy_config_changelog`，保留原始 `id`、`config_id`、`field`、`old_value`、`new_value`、`changed_at`、`changed_by` 七列。`config_id` 保存原版本标识，删除在线策略版本不会级联删除归档。
 
-**代码位置**：
-
-- Repository: [src/biz/strategy/repositories/strategy-changelog.repository.ts](../../src/biz/strategy/repositories/strategy-changelog.repository.ts)
-- Entity: [src/biz/strategy/entities/strategy-changelog.entity.ts](../../src/biz/strategy/entities/strategy-changelog.entity.ts)
-
-| 字段                      | 类型        | 默认值               | 说明                                        |
-| ------------------------- | ----------- | -------------------- | ------------------------------------------- |
-| `id`                      | uuid        | gen_random_uuid()    | 主键                                        |
-| `config_id`               | uuid        | FK → strategy_config | 关联策略（ON DELETE CASCADE）               |
-| `field`                   | text        | NOT NULL             | 变更字段：persona/stage_goals/red_lines/... |
-| `old_value` / `new_value` | jsonb       | - / NOT NULL         | 前后值                                      |
-| `changed_at`              | timestamptz | now()                | 变更时间                                    |
-| `changed_by`              | text        | -                    | 操作者（预留）                              |
-
-**索引**：`idx_changelog_config_time` (config_id, changed_at DESC) / `idx_changelog_field` (field)
+归档已启用行级安全，`anon`、`authenticated`、`service_role` 均无归档读取权限。需要回滚旧服务时，数据库所有者先确认原 `config_id` 对应版本存在，再运行恢复脚本。脚本在事务内恢复原表、约束、索引、权限和数据，逐行双向核对后提交，私有归档继续保留。[归档迁移](../../supabase/migrations/20261124024135_archive_strategy_config_changelog.sql) · [恢复脚本](../../scripts/sql/restore-strategy-changelog.sql)
 
 ---
 
@@ -748,9 +748,8 @@
 
 | 函数                                               | 默认参数 | 说明                                                 |
 | -------------------------------------------------- | -------- | ---------------------------------------------------- |
-| `cleanup_message_processing_records(days_to_keep)` | 90       | 删除过期处理记录                                     |
-| `delete_expired_agent_invocations(p_days_old)`     | 7        | 分批删除 `message_processing_invocations` 过期子表行 |
-| `null_agent_invocation(p_days_old)`                | 7        | 置空存量主表 agent_invocation 列                     |
+| `cleanup_message_processing_records(days_to_keep)`          | 90 天         | 删除到期流水及关联快照 |
+| `delete_expired_agent_invocations(p_days_old, p_limit)`      | 90 天，500 条 | 按 `created_at` 从最早到期的子表记录开始分批删除 |
 
 `cleanup_chat_messages` / `cleanup_user_activity` 已随迁移 20260902073727 DROP：两表永久保留，改配置也不会再删。
 `monitoring_hourly_stats` / `monitoring_daily_stats` / `handoff_events` / `monitoring_error_logs` 的 90 天清理由仓储直接 `delete().lt()`，不走 RPC。
@@ -789,7 +788,6 @@
 
 | 函数                               | 说明                                                       |
 | ---------------------------------- | ---------------------------------------------------------- |
-| `increment_booking_count(...)`     | 面试预约原子 upsert（自动 COALESCE NULL）                  |
 | `upsert_user_activity(...)`        | 用户活跃度 upsert（每次消息触发）                          |
 | `publish_strategy(p_version_note)` | 策略版本发布（testing → released，旧 released → archived） |
 
@@ -804,7 +802,7 @@
   │
   ├──► message_processing_records（保留 90 天）
   │       │
-  │       ├── 7 天后：message_processing_invocations 子表行删除、存量 agent_invocation 列置 NULL
+  │       ├──► message_processing_invocations（默认 90 天，主流水删除时级联删除）
   │       │
   │       ├── 每小时 ──► monitoring_hourly_stats（保留 90 天）
   │       └── 每天   ──► monitoring_daily_stats（保留 90 天）
@@ -818,10 +816,6 @@
 
 **清理调度**：由 [src/biz/monitoring/services/cleanup/](../../src/biz/monitoring/services/cleanup/) 下的定时任务驱动，经 Supabase RPC 执行批量删除。
 
-**存储估算**（日均 500 条消息）：
+**生产存储实测**（2026-11-24）
 
-- chat_messages: 永久累积，2026-09 实测约 15K 行/月
-- message_processing_records: ~45K 行/90 天（agent_invocation 已拆子表，主表只剩标量与轻 JSONB）
-- monitoring_hourly_stats: ~8760 行/年 ≈ 5 MB
-- monitoring_daily_stats: ~365 行/年 ≈ <1 MB
-- 总计: < 150 MB（远低于 Supabase 免费额度 500 MB）
+按 `pg_total_relation_size` 计入表、TOAST 和索引，清理完成时主流水占 1.46 GiB，调用快照子表占 807 MiB，策略历史归档占 1.12 MiB。快照保留期于当天延长，完整 90 天窗口的容量要在后续观察。

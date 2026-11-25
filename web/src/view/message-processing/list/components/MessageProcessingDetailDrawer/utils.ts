@@ -569,7 +569,33 @@ function buildFinalPromptText(agentRequest?: AnyRecord): string | undefined {
   return sections.length > 0 ? sections.join('\n\n') : undefined;
 }
 
-export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
+function toolFieldsDisplayed(raw: unknown, tool: ToolCallInfo | undefined): boolean {
+  const source = asRecord(raw);
+  if (!source || !tool) return false;
+  const displayed: AnyRecord = {
+    toolName: tool.name,
+    args: tool.input,
+    input: tool.input,
+    arguments: tool.input,
+    result: tool.output,
+    output: tool.output,
+    status: tool.status,
+    resultCount: tool.resultCount,
+    durationMs: tool.durationMs,
+    errorType: tool.errorType,
+    apiCode: tool.apiCode,
+  };
+  // 展示值直接取自同一个原始对象。未映射的旧字段继续在调试载荷中提供。
+  return Object.entries(source).every(
+    ([key, value]) =>
+      Object.prototype.hasOwnProperty.call(displayed, key) && displayed[key] === value,
+  );
+}
+
+export function getRawPayloadPanels(
+  message: MessageRecord,
+  detailTools: ToolCallInfo[],
+): RawPayloadPanel[] {
   const request = getInvocationRequest(message);
   const response = getInvocationResponse(message);
   const responseRecord = asRecord(response);
@@ -604,7 +630,7 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   if (debugRequestContext) {
     panels.push({
       key: 'debug-context',
-      label: '排障上下文',
+      label: '请求上下文',
       description: '处理记录里的链路标识、会话信息与调度上下文',
       data: debugRequestContext,
     });
@@ -652,11 +678,11 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   const toolCalls = Array.isArray(message.toolCalls)
     ? message.toolCalls
     : asArray<AnyRecord>(responseRecord?.toolCalls);
-  if (toolCalls.length > 0) {
+  if (toolCalls.some((call, index) => !toolFieldsDisplayed(call, detailTools[index]))) {
     panels.push({
       key: 'tool-calls',
-      label: '工具执行',
-      description: '工具调用明细（入参 / 出参 / 状态）',
+      label: '工具原始数据',
+      description: '包含工具执行面板未展示的原始字段',
       data: toolCalls,
     });
   }
@@ -700,19 +726,13 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
     });
   }
 
-  if (message.error) {
-    panels.push({
-      key: 'error',
-      label: 'Error',
-      description: '最终记录到监控表的异常信息',
-      data: message.error,
-    });
-  }
-
   return panels;
 }
 
-export function getHistoryMessages(message: MessageRecord): Array<{
+export function getHistoryMessages(
+  message: MessageRecord,
+  { includeFallbackReply = true } = {},
+): Array<{
   role: 'user' | 'assistant';
   content: string;
 }> {
@@ -792,7 +812,7 @@ export function getHistoryMessages(message: MessageRecord): Array<{
     });
   }
 
-  const assistantReply = getResponseText(message);
+  const assistantReply = includeFallbackReply ? getResponseText(message) : undefined;
   if (assistantReply && assistantReply !== '(无响应内容)') {
     reconstructedMessages.push({
       role: 'assistant',

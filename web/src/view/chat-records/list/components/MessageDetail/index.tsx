@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
 import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
 import type { MessageRecord } from '@/api/types/chat.types';
@@ -7,6 +7,7 @@ import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
 import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
+import { MESSAGE_PROCESSING_DETAIL_PATH } from '@/routes/lazy-pages';
 import { formatLocaleDate, formatLocaleDateTime } from '@/utils/format';
 import { MessageBubbleContent } from './MessageBubbleContent';
 import { getBubbleVariant } from './bubble-variant';
@@ -101,7 +102,6 @@ export default function MessageDetail({
   currentSession,
   isLoading,
 }: MessageDetailProps) {
-  const navigate = useNavigate();
   const { data: processingRecords = [], isLoading: processingRecordsLoading } =
     useMessageProcessingRecords({
       chatId: selectedChatId ?? undefined,
@@ -323,28 +323,31 @@ export default function MessageDetail({
                         </span>
                       )}
                       <span className={styles.messageTime}>{formatTime(msg.timestamp)}</span>
-                      {!isAssistant && (
-                        <button
-                          type="button"
-                          className={styles.processingLink}
-                          disabled={processingRecordsLoading || !processingRecord?.messageId}
-                          title={
-                            processingRecord?.messageId
-                              ? `打开流水 ${processingRecord.messageId}`
-                              : '该消息前后 5 分钟内未匹配到处理流水'
-                          }
-                          onClick={() => {
-                            if (!processingRecord?.messageId) return;
-                            navigate(
-                              `/message-processing?messageId=${encodeURIComponent(
-                                processingRecord.messageId,
-                              )}`,
-                            );
-                          }}
-                        >
-                          查看处理详情
-                        </button>
-                      )}
+                      {!isAssistant &&
+                        (processingRecord?.messageId && !processingRecordsLoading ? (
+                          <Link
+                            className={styles.processingLink}
+                            to={`${MESSAGE_PROCESSING_DETAIL_PATH}?messageId=${encodeURIComponent(processingRecord.messageId)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`在新页签打开流水 ${processingRecord.messageId}`}
+                          >
+                            查看处理详情
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.processingLink}
+                            disabled
+                            title={
+                              processingRecordsLoading
+                                ? '正在匹配处理流水'
+                                : '该消息前后 5 分钟内未匹配到处理流水'
+                            }
+                          >
+                            查看处理详情
+                          </button>
+                        ))}
                     </div>
                     <div className={bubbleClass}>
                       <MessageBubbleContent

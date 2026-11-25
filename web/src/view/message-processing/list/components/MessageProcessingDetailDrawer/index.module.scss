@@ -11,6 +11,13 @@
     0 0 0 1px rgba(255, 255, 255, 0.82) inset;
 }
 
+.detailPage {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 /* ── Header ── */
 .header {
   @include monitoring-detail-header;

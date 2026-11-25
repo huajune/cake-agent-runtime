@@ -1030,7 +1030,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
     for (const row of rows) {
       if (row.status === 'success') success += 1;
-      else failed += 1;
+      else if (row.status === 'failure' || row.status === 'timeout') failed += 1;
 
       const duration = this.parseNumber(row.total_duration);
       if (duration !== undefined && duration > 0) {
