@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { Navigate, useLocation } from 'react-router-dom';
+import { matchPath, Navigate, useLocation } from 'react-router-dom';
 import { api } from '@/api/client';
+import { MESSAGE_PROCESSING_DETAIL_PATH } from '@/routes/lazy-pages';
 
 interface DashboardAccess {
   centerId: string | null;
@@ -24,14 +25,13 @@ function ScopedQueries({ access, children }: { access: DashboardAccess; children
     () => new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } }),
   );
   const location = useLocation();
+  const centerPageAllowed =
+    CENTER_MENU_PATHS.includes(location.pathname) ||
+    Boolean(matchPath(MESSAGE_PROCESSING_DETAIL_PATH, location.pathname));
   return (
     <AccessContext.Provider value={access}>
       <QueryClientProvider client={client}>
-        {access.centerId && !CENTER_MENU_PATHS.includes(location.pathname) ? (
-          <Navigate to="/hosting" replace />
-        ) : (
-          children
-        )}
+        {access.centerId && !centerPageAllowed ? <Navigate to="/hosting" replace /> : children}
       </QueryClientProvider>
     </AccessContext.Provider>
   );

@@ -21,7 +21,8 @@ import styles from './index.module.scss';
 
 interface MessageProcessingDetailDrawerProps {
   messageId: string;
-  onClose: () => void;
+  /** 列表抽屉提供关闭操作，独立页签由浏览器关闭。 */
+  onClose?: () => void;
 }
 
 function withFallback<T>(factory: () => T, fallback: T): T {
@@ -175,12 +176,6 @@ export default function MessageProcessingDetailDrawer({
     [timings, message],
   );
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
   const handleSubmitFeedback = useCallback(() => {
     if (!message) return;
 
@@ -208,20 +203,32 @@ export default function MessageProcessingDetailDrawer({
     setTraceCopied(false);
   }, [clearSuccess, messageId]);
 
+  const Surface = onClose ? 'div' : 'main';
+  const surfaceClass = onClose ? 'drawer-content' : styles.detailPage;
+  const overlayProps = onClose && {
+    className: 'drawer-overlay',
+    onClick: (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) onClose();
+    },
+  };
+  const closeButton = onClose && (
+    <button type="button" className={styles.closeBtn} onClick={onClose}>
+      &times;
+    </button>
+  );
+
   if (isLoading || !message) {
     return (
-      <div className="drawer-overlay" onClick={handleOverlayClick}>
-        <div className="drawer-content">
+      <div {...overlayProps}>
+        <Surface className={surfaceClass}>
           <div className={styles.header}>
             <div className={styles.headerTop}>
               <h3 className={styles.headerTitle}>处理记录详情</h3>
-              <button className={styles.closeBtn} onClick={onClose}>
-                &times;
-              </button>
+              {closeButton}
             </div>
           </div>
           <div className={styles.loadingBody}>{isLoading ? '加载中...' : '未找到消息详情'}</div>
-        </div>
+        </Surface>
       </div>
     );
   }
@@ -252,8 +259,8 @@ export default function MessageProcessingDetailDrawer({
   ];
 
   return (
-    <div className="drawer-overlay" onClick={handleOverlayClick}>
-      <div className="drawer-content">
+    <div {...overlayProps}>
+      <Surface className={surfaceClass}>
         {/* Header */}
         <div className={styles.header}>
           <div className={styles.headerTop}>
@@ -273,9 +280,7 @@ export default function MessageProcessingDetailDrawer({
                 {message.fallbackSuccess ? 'Fallback 成功' : 'Fallback 失败'}
               </span>
             )}
-            <button className={styles.closeBtn} onClick={onClose}>
-              &times;
-            </button>
+            {closeButton}
           </div>
         </div>
 
@@ -468,7 +473,7 @@ export default function MessageProcessingDetailDrawer({
           onExpectedBehaviorChange={setExpectedBehavior}
           onSubmit={handleSubmitFeedback}
         />
-      </div>
+      </Surface>
     </div>
   );
 }
