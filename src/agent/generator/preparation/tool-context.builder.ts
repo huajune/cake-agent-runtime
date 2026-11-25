@@ -1,3 +1,8 @@
+import {
+  observeToolExecution,
+  type ToolExecutionObservation,
+  type ToolExecutionObservations,
+} from '@observability/context/tool-observation';
 import type { ModelMessage, ToolSet } from 'ai';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -44,8 +49,7 @@ import type {
 import { stripTimeContext } from '@resolution/signal/markers';
 import {
   buildToolCallLimitNotice,
-  computeResultCount,
-  computeToolCallStatus,
+  summarizeToolResult,
   extractToolApiCode,
   extractToolErrorType,
   SIDE_EFFECT_TOOLS,
@@ -422,7 +426,7 @@ const toolRuntimeLogger = new Logger('ToolRuntime');
 /** 给工具 execute 包装真实耗时与统一观测。 */
 export function wrapToolsWithTiming(
   tools: ToolSet,
-  timings: Map<string, number>,
+  observations: ToolExecutionObservations,
   tracer?: AgentTracerService,
   toolCallCounts = new Map<string, number>(),
 ): ToolSet {
@@ -438,61 +442,59 @@ export function wrapToolsWithTiming(
       execute: async (...args: unknown[]) => {
         const startedAt = Date.now();
         const options = args[1] as { toolCallId?: string } | undefined;
-        try {
-          const limit = getToolCallLimit(name);
-          const used = toolCallCounts.get(name) ?? 0;
-          const exhausted = used >= limit;
-          // Reserve before the first await. Several SDK calls can start within one step.
-          if (!exhausted) toolCallCounts.set(name, used + 1);
-          const result = exhausted
-            ? buildToolError({
-                errorType: TOOL_ERROR_TYPES.TURN_CALL_LIMIT_REACHED,
-                replyInstruction: buildToolCallLimitNotice([name], limit),
-                details: { toolExecuted: false },
-              })
-            : await (execute as (...callArgs: unknown[]) => unknown).apply(toolDef, args);
-          const durationMs = Date.now() - startedAt;
-          recordToolTiming(name, timings, options, durationMs);
-          const resultCount = computeResultCount(result);
-          tracer?.emit({
-            type: 'tool_call',
-            toolName: name,
-            durationMs,
-            resultCount,
-            status: computeToolCallStatus(result, resultCount, undefined, undefined, name),
-            sideEffect: !exhausted && SIDE_EFFECT_TOOLS.has(name),
-            errorType: extractToolErrorType(result),
-            apiCode: extractToolApiCode(result),
-          });
-          return result;
-        } catch (error) {
-          const durationMs = Date.now() - startedAt;
-          recordToolTiming(name, timings, options, durationMs);
-          tracer?.emit({
-            type: 'tool_error',
-            toolName: name,
-            durationMs,
-            error: toErrorMessage(error),
-          });
-          throw error;
+        const toolCallId = options?.toolCallId;
+        const observation: ToolExecutionObservation = { toolName: name, status: 'unknown' };
+        if (toolCallId) {
+          // 在第一个 await 之前占位，防止并行调用或重试重用了同一个 ID。
+          observations.set(toolCallId, observations.has(toolCallId) ? null : observation);
+        } else {
+          toolRuntimeLogger.warn(`[tool-timing] 工具 ${name} 缺少 SDK 调用 ID`);
         }
+        return observeToolExecution(toolCallId, observation, async () => {
+          try {
+            const limit = getToolCallLimit(name);
+            const used = toolCallCounts.get(name) ?? 0;
+            const exhausted = used >= limit;
+            if (!exhausted) toolCallCounts.set(name, used + 1);
+            const result = exhausted
+              ? buildToolError({
+                  errorType: TOOL_ERROR_TYPES.TURN_CALL_LIMIT_REACHED,
+                  replyInstruction: buildToolCallLimitNotice([name], limit),
+                  details: { toolExecuted: false },
+                })
+              : await (execute as (...callArgs: unknown[]) => unknown).apply(toolDef, args);
+            const durationMs = Date.now() - startedAt;
+            const summary = summarizeToolResult(name, result);
+            Object.assign(observation, summary, { durationMs });
+            tracer?.emit({
+              type: 'tool_call',
+              toolName: name,
+              toolCallId,
+              durationMs,
+              ...summary,
+              sideEffect: !exhausted && SIDE_EFFECT_TOOLS.has(name),
+              errorType: extractToolErrorType(result),
+              apiCode: extractToolApiCode(result),
+            });
+            return result;
+          } catch (error) {
+            observation.durationMs = Date.now() - startedAt;
+            observation.status = 'error';
+            tracer?.emit({
+              type: 'tool_error',
+              toolName: name,
+              toolCallId,
+              status: observation.status,
+              durationMs: observation.durationMs,
+              error: toErrorMessage(error),
+            });
+            throw error;
+          }
+        });
       },
     } as ToolSet[string];
   }
   return wrapped;
-}
-
-function recordToolTiming(
-  name: string,
-  timings: Map<string, number>,
-  options: { toolCallId?: string } | undefined,
-  durationMs: number,
-): void {
-  if (options?.toolCallId) {
-    timings.set(options.toolCallId, durationMs);
-    return;
-  }
-  toolRuntimeLogger.warn(`[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`);
 }
 
 /** 按 toolMode 与显式白名单过滤工具。 */
@@ -514,7 +516,7 @@ export function resolveToolsForMode(
 export interface ToolRuntime {
   tools: ToolSet;
   ledger: TurnLedger;
-  toolExecutionTimings: Map<string, number>;
+  toolObservations: ToolExecutionObservations;
   availableToolCount: number;
   activeToolCount: number;
 }
@@ -553,20 +555,20 @@ export class ToolRuntimeBuilderService {
     }
 
     const toolContext = buildToolContext(resolved.toolModel, ledger);
-    const toolExecutionTimings = new Map<string, number>();
+    const toolObservations: ToolExecutionObservations = new Map();
     const { scenario, mode, allowedToolNames } = resolved.toolModel.selection;
     const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
     const selectedTools = resolveToolsForMode(scenarioTools, mode, allowedToolNames);
     const tools = wrapToolsWithTiming(
       selectedTools,
-      toolExecutionTimings,
+      toolObservations,
       this.tracer,
       input.toolCallCounts,
     );
     return {
       tools,
       ledger,
-      toolExecutionTimings,
+      toolObservations,
       availableToolCount: Object.keys(scenarioTools).length,
       activeToolCount: Object.keys(selectedTools).length,
     };

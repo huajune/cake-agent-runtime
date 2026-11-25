@@ -103,7 +103,7 @@ description: 抽样分析 Agent 生产对话或 BadCase / GoodCase 反馈样本�
 对每个候选 BadCase 做分层证据下钻，具体顺序见 `references/observability-troubleshooting.md`：
 
 1. 用 `chat_messages + message_processing_records` 锚定问题 turn、`message_id/trace_id` 和主链终态。
-2. 查 `agent_execution_events` 还原模型、工具、语义评审和异常的时间线。
+2. 按同一 trace 查 `agent_execution_events` 中留存的模型尝试、工具、守卫和异常线索。完整工具调用清单从主流水读取；单条事件需要结合当轮输入、结果和业务回执判断。
 3. 涉及出站拦截/改写/静默时查 `guardrail_review_records`；涉及转人工、预约、投递、复聊时再查对应业务观测表。
 4. 查 `monitoring_error_logs` 排除观测落库、外部依赖或投递基础设施异常。
 5. 只有单条失败 trace 需要确认“模型当时实际看到了什么”时，才按 `message_id` 定点读取子表 `message_processing_invocations`，从 `processing_read_invocation` 的结果取 `request.agentRequest`；禁止批量拉取该大字段。

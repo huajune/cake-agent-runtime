@@ -7,7 +7,10 @@ import {
   getHistoryMessages,
   getRawPayloadPanels,
   getToolCalls,
+  getToolExecutionCalls,
 } from '../utils';
+import { linkToolEvents } from '@/view/message-processing/tool-execution';
+import ExecutionEventTimeline from '../ExecutionEventTimeline';
 import ToolExecutionPanel from '../ToolExecutionPanel';
 import styles from './index.module.scss';
 
@@ -67,6 +70,14 @@ function getPayloadSummary(data: unknown): string {
 export default function ChatSection({ message }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
   const toolCalls = useMemo(() => withFallback(() => getToolCalls(message), []), [message]);
+  const executionCalls = useMemo(
+    () => withFallback(() => getToolExecutionCalls(message, toolCalls), toolCalls),
+    [message, toolCalls],
+  );
+  const linkedEvents = useMemo(
+    () => linkToolEvents(message.messageId, executionCalls, message.executionEvents ?? []),
+    [message, executionCalls],
+  );
   const renderableMessage = useMemo(
     () => withFallback(() => getAssistantRenderableMessage(message), undefined),
     [message],
@@ -157,7 +168,11 @@ export default function ChatSection({ message }: ChatSectionProps) {
           </div>
         </div>
 
-        <ToolExecutionPanel toolCalls={toolCalls} message={message} />
+        <ToolExecutionPanel
+          toolCalls={executionCalls}
+          events={message.executionEvents ?? []}
+          links={linkedEvents}
+        />
 
         {message.isFallback && hasFallbackDetails && (
           <div className={styles.fallbackBox}>
@@ -232,6 +247,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
           </div>
         </div>
       )}
+      <ExecutionEventTimeline events={message.executionEvents} links={linkedEvents} />
     </>
   );
 }

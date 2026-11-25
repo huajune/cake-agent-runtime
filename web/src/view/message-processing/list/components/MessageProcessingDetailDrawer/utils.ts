@@ -3,6 +3,7 @@ import type {
   MessageRecord,
   MessageRecordMemorySnapshot,
   MessageRecordToolCallStatus,
+  MessageRecordToolCall,
 } from '@/api/types/chat.types';
 import { asRecord } from '@/utils/object';
 import { buildAgentResponseTimeline, type AgentTimelinePart } from './agent-response-timeline';
@@ -26,6 +27,7 @@ export interface ToolCallInfo {
   name: string;
   status: MessageRecordToolCallStatus;
   toolCallId?: string;
+  decisions?: MessageRecordToolCall['decisions'];
   input?: unknown;
   output?: unknown;
   resultCount?: number;
@@ -573,6 +575,8 @@ function toolFieldsDisplayed(raw: unknown, tool: ToolCallInfo | undefined): bool
   const source = asRecord(raw);
   if (!source || !tool) return false;
   const displayed: AnyRecord = {
+    toolCallId: tool.toolCallId,
+    decisions: tool.decisions,
     toolName: tool.name,
     args: tool.input,
     input: tool.input,
@@ -611,7 +615,9 @@ export function getRawPayloadPanels(
     panels.push({
       key: 'request',
       label: agentRequest ? 'LLM 请求' : '请求体',
-      description: agentRequest ? '实际发往大模型的请求快照' : '发送到 Agent 的完整业务请求',
+      description: agentRequest
+        ? '本次处理快照留存的请求字段。可查看已捕获的消息、提示词与工具定义。模型尝试次数见排障观测事件。'
+        : '本次处理留存的业务请求',
       data: requestPayload,
     });
   }
@@ -670,7 +676,7 @@ export function getRawPayloadPanels(
     panels.push({
       key: 'response',
       label: '响应体',
-      description: 'Agent 返回的完整业务响应体',
+      description: '本次处理的响应快照，包含留存的回复和消息。工具清单可由配对的主流水还原。',
       data: responsePayload,
     });
   }
@@ -845,6 +851,41 @@ function inferToolStatus(toolCall: AnyRecord): ToolCallInfo['status'] {
   return 'unknown';
 }
 
+function readToolDecisions(value: unknown): ToolCallInfo['decisions'] {
+  if (!Array.isArray(value)) return undefined;
+  // 完整展示过的标准结构沿用原值。含未知字段的历史记录仍可打开原始数据。
+  if (
+    value.every((item) => {
+      const row = asRecord(item);
+      return row && Object.keys(row).length === 2 && asString(row.label) && asString(row.detail);
+    })
+  )
+    return value;
+  return value.flatMap((item) => {
+    const decision = asRecord(item);
+    const label = asString(decision?.label);
+    const detail = asString(decision?.detail);
+    return label && detail ? [{ label, detail }] : [];
+  });
+}
+
+/** 旧流水可能仅保留步骤或配对的快照；整组选择同一来源，避免重复拼接。 */
+export function getToolExecutionCalls(
+  message: MessageRecord,
+  calls: ToolCallInfo[],
+): ToolCallInfo[] {
+  if (calls.length) return calls;
+  const stepCalls = (message.agentSteps ?? [])
+    .filter((step) => Array.isArray(step?.toolCalls))
+    .sort((left, right) => left.stepIndex - right.stepIndex)
+    .flatMap((step) => step.toolCalls.filter((call) => typeof call?.toolName === 'string'));
+  if (stepCalls.length) return getToolCalls({ ...message, toolCalls: stepCalls });
+  if (message.toolCalls?.length === 0 && message.agentInvocation?.response) {
+    return getToolCalls({ ...message, toolCalls: undefined });
+  }
+  return calls;
+}
+
 export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
   if (Array.isArray(message.toolCalls)) {
     return message.toolCalls.map((toolCall) => {
@@ -852,6 +893,8 @@ export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
       const nestedApiCode = result?.apiCode;
       return {
         name: toolCall.toolName,
+        toolCallId: asString(toolCall.toolCallId),
+        decisions: readToolDecisions(toolCall.decisions),
         status: toolCall.status ?? 'unknown',
         input: toolCall.args,
         output: toolCall.result,
@@ -878,6 +921,9 @@ export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
       acc.push({
         name,
         toolCallId: asString(toolCall.toolCallId),
+        decisions: readToolDecisions(toolCall.decisions),
+        durationMs: asNumber(toolCall.durationMs),
+        resultCount: asNumber(toolCall.resultCount),
         status: inferToolStatus(toolCall),
         input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
         output: toolCall.result ?? toolCall.output,

@@ -122,6 +122,7 @@ export interface AgentInvocationRecord {
 }
 
 export interface ExecutionEvent {
+  observationReason?: string;
   id: number;
   type: string;
   traceId: string;
@@ -146,6 +147,8 @@ export interface ExecutionEvent {
 export type MessageRecordToolCallStatus = 'ok' | 'empty' | 'narrow' | 'unknown' | 'error';
 
 export interface MessageRecordToolCall {
+  toolCallId?: string;
+  decisions?: Array<{ label: string; detail: string }>;
   toolName: string;
   args: Record<string, unknown>;
   result?: unknown;

@@ -14,6 +14,7 @@ import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-re
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { sleep } from '@infra/utils/async.util';
+import { recordToolDecision } from '@observability/context/tool-observation';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/invite/enterprise-room-count.util';
 import { GroupContext } from '../group-task.types';
@@ -231,7 +232,9 @@ export class GroupInviteService implements OnModuleInit {
         code: number | null;
       }> = [];
 
-      for (const targetGroup of availableCandidates) {
+      for (const [index, targetGroup] of availableCandidates.entries()) {
+        const nextGroup =
+          index + 1 < availableCandidates.length ? '改试下一候选群' : '候选群已试完';
         let inviteApiResult = await this.invokeAddMember({
           input,
           targetGroup,
@@ -241,13 +244,15 @@ export class GroupInviteService implements OnModuleInit {
           contactWxid: input.contactWxid,
           roomWxid: targetGroup.imRoomId,
         });
-        if (inviteApiResult.unresolved)
+        if (inviteApiResult.unresolved) {
+          recordToolDecision(targetGroup.groupName, '企微结果待核实，停止尝试其他群');
           return {
             success: false,
             reason: GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN,
             groupName: targetGroup.groupName,
             ...this.actionReceipt(inviteApiResult.action),
           };
+        }
         const initialInviteApiResult = inviteApiResult;
         const compatibilityRetryOutcome = await this.maybeAddChatBotToGroupAndRetryInvite({
           input,
@@ -262,13 +267,15 @@ export class GroupInviteService implements OnModuleInit {
           inviteApiResult = compatibilityRetryOutcome.inviteResult;
         }
 
-        if (inviteApiResult.unresolved)
+        if (inviteApiResult.unresolved) {
+          recordToolDecision(targetGroup.groupName, '补偿操作的结果待核实，停止尝试其他群');
           return {
             success: false,
             reason: GROUP_INVITE_FAILURE_REASON.RESULT_UNKNOWN,
             groupName: targetGroup.groupName,
             ...this.actionReceipt(inviteApiResult.action),
           };
+        }
         const inviteCardSentPendingConsent =
           !inviteApiResult.accepted && this.isInviteCardSentPendingConsent(inviteApiResult);
         if (!inviteApiResult.accepted && !inviteCardSentPendingConsent) {
@@ -281,6 +288,7 @@ export class GroupInviteService implements OnModuleInit {
             );
           }
           if (inviteApiResult.code === -10) {
+            recordToolDecision(targetGroup.groupName, `企微返回群已满（-10），${nextGroup}`);
             this.logger.warn(
               `接口返回群已满，尝试下一个候选群: ${targetGroup.groupName} (user=${input.userId})`,
             );
@@ -294,6 +302,11 @@ export class GroupInviteService implements OnModuleInit {
           this.logger.warn(
             `企业级拉群接口拒绝，尝试下一个候选群: ${targetGroup.groupName} (user=${input.userId}, error=${inviteApiResult.error})`,
           );
+          const reason = this.isRoomNotFoundError(inviteApiResult)
+            ? '企微未找到群'
+            : '本次操作未获受理';
+          const code = inviteApiResult.code == null ? '' : `（${inviteApiResult.code}）`;
+          recordToolDecision(targetGroup.groupName, `${reason}${code}，${nextGroup}`);
           rejectedGroupsDuringInvite.push({
             group: targetGroup,
             error: this.formatInviteRejectionError(
@@ -719,6 +732,7 @@ export class GroupInviteService implements OnModuleInit {
     const ownerBotUserId = params.targetGroup.botUserId?.trim();
     if (!ownerBotUserId) return null;
 
+    recordToolDecision(params.targetGroup.groupName, '接客机器人未找到该群，尝试先将机器人加入群');
     try {
       const addBotResult = await this.invokeAddMember({
         input: params.input,
@@ -765,6 +779,12 @@ export class GroupInviteService implements OnModuleInit {
         });
 
       await syncChatBotRooms();
+      recordToolDecision(
+        params.targetGroup.groupName,
+        addBotResult.code === -9
+          ? '企微返回机器人已在群，重新发起候选人邀请'
+          : '企微已受理机器人入群，重新发起候选人邀请',
+      );
       let retryInviteResult = await retryInviteCandidate();
       let retryAttempts = 1;
       for (const delayMs of COMPAT_RETRY_DELAYS_MS) {
@@ -780,6 +800,10 @@ export class GroupInviteService implements OnModuleInit {
         );
         await sleep(delayMs);
         await syncChatBotRooms();
+        recordToolDecision(
+          params.targetGroup.groupName,
+          `企微仍未找到群，等待 ${delayMs / 1000} 秒后再次邀请`,
+        );
         retryInviteResult = await retryInviteCandidate();
         retryAttempts++;
       }

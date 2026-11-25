@@ -21,7 +21,7 @@
 - `tool_calls` 保存工具输入、输出和错误。
 - `execution_trace` 保存步骤、守卫和投递终态证据。
 - `memory_setup` 和 `memory_trace` 保存记忆夹具与执行前后状态。
-- `agent_execution_events`：若能从执行 trace 取得运行时 traceId，可补查模型、工具、语义评审事件；不要假设每条测试都存在生产主流水或守卫档案。
+- 有运行时 traceId 时，可查模型尝试、入选的工具调用及守卫等排障观测事件。成功的外部动作也会入选；是否构成 bad case 要结合业务回执和候选人看到的回复判断。
 
 ## 2. 表的职责与关联方式
 
@@ -29,7 +29,8 @@
 | ---------------------------- | --------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
 | `chat_messages`              | 候选人和 Agent 实际说了什么                               | `chat_id`, `message_id`                              | 对话事实，不解释运行原因                                 |
 | `message_processing_records` | 本 turn 的主链终态、工具、步骤、记忆、守卫摘要和后处理    | `message_id = trace_id`                              | 主账本；大字段按单 trace 读取                            |
-| `agent_execution_events`     | 模型、工具、语义评审、memory、error/end 的结构化时间线    | `trace_id`                                           | 一条 trace 多行；`payload` 随 event_type 变化            |
+| `message_processing_invocations` | 本次处理的模型输入与响应、投递回执和时序 | `message_id` | 一条主流水至多一份；点查使用 `processing_read_invocation` 还原配对的工具数组 |
+| `agent_execution_events`     | 回合、模型、工具、记忆及守卫留下的排障线索 | `trace_id`，工具内事件可再按 `payload.toolCallId` 关联 | 按条件留存；工具次数取主流水，失败数按处理状态统计 |
 | `guardrail_review_records`   | 首版回复、首审、修复版、二审和最终裁决                    | `trace_id`                                           | 稀疏表，仅守卫有信号的生产回合写；写入是异步 best-effort |
 | `monitoring_error_logs`      | 渠道、外部依赖、观测持久化、告警与投递基础设施是否异常    | `message_id`；无 ID 时用时间窗 + subsystem/component | 系统级告警可以没有 message_id                            |
 | `handoff_events`             | 是否真实触发转人工及 reason/stage                         | `chat_id`, `user_id`, 时间窗                         | 没有 trace_id，需用业务时间对齐                          |

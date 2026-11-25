@@ -1,3 +1,4 @@
+import { RequestContextService } from '@observability/context/request-context.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Readable } from 'stream';
@@ -94,6 +95,7 @@ export class TestExecutionService {
     private readonly executionRepository: TestExecutionRepository,
     private readonly chatSessionService: ChatSessionService,
     @Optional() private readonly memoryFixtureService?: MemoryFixtureService,
+    @Optional() private readonly requestContext?: RequestContextService,
   ) {
     if (!this.memoryFixtureService) {
       this.logger.warn(
@@ -164,33 +166,35 @@ export class TestExecutionService {
         : undefined;
       const messages = this.buildRunnerMessages(historyForAgent, request.message, undefined);
 
-      agentResult = await this.runner.invokeReviewed(
-        {
-          callerKind: CallerKind.TEST_SUITE,
-          messages,
-          userId: request.userId,
-          corpId: TEST_CORP_ID,
-          sessionId,
-          scenario,
-          toolMode: request.toolMode,
-          allowedToolNames: request.allowedToolNames,
-          botUserId: request.botUserId,
-          botImId: request.botImId,
-          strategySource,
-          modelId: request.modelId,
-          disableFallbacks: true,
-          messageId: monitoringInfo.syntheticMessageId,
-          imageUrls: request.imageUrls,
-          imageMessageIds: syntheticImageMessageIds,
-        },
-        {
-          userMessage: request.message,
-          chatId: sessionId,
-          userId: request.userId,
-          traceId: monitoringInfo.syntheticMessageId,
-          botImId: request.botImId,
-          botUserName: request.botUserId,
-        },
+      agentResult = await this.inTestTrace(monitoringInfo.syntheticMessageId, runtimeScope, () =>
+        this.runner.invokeReviewed(
+          {
+            callerKind: CallerKind.TEST_SUITE,
+            messages,
+            userId: request.userId,
+            corpId: TEST_CORP_ID,
+            sessionId,
+            scenario,
+            toolMode: request.toolMode,
+            allowedToolNames: request.allowedToolNames,
+            botUserId: request.botUserId,
+            botImId: request.botImId,
+            strategySource,
+            modelId: request.modelId,
+            disableFallbacks: true,
+            messageId: monitoringInfo.syntheticMessageId,
+            imageUrls: request.imageUrls,
+            imageMessageIds: syntheticImageMessageIds,
+          },
+          {
+            userMessage: request.message,
+            chatId: sessionId,
+            userId: request.userId,
+            traceId: monitoringInfo.syntheticMessageId,
+            botImId: request.botImId,
+            botUserName: request.botUserId,
+          },
+        ),
       );
       turnEnd = await this.runDeferredTurnEnd(agentResult);
       postTurnState = await this.readMemoryStateBestEffort(runtimeScope);
@@ -319,7 +323,10 @@ export class TestExecutionService {
   /**
    * 执行流式测试（返回 Vercel AI SDK StreamTextResult + 元数据）
    */
-  async executeTestStreamWithMeta(request: TestChatRequestDto): Promise<GeneratorStreamResult> {
+  async executeTestStreamWithMeta(
+    request: TestChatRequestDto,
+    traceId?: string,
+  ): Promise<GeneratorStreamResult> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
 
     if (!request.userId) {
@@ -337,7 +344,7 @@ export class TestExecutionService {
     const sessionId = request.sessionId ?? `test-${Date.now()}`;
     const historyForAgent = this.resolveHistoryForAgent(request);
     const strategySource = this.resolveStrategySource(request);
-    await this.prepareMonitoringContext({
+    const monitoringInfo = await this.prepareMonitoringContext({
       request,
       sessionId,
       historyForAgent,
@@ -361,11 +368,15 @@ export class TestExecutionService {
       disableFallbacks: true,
     };
 
-    const runnerResult = await this.runner.stream(runnerParams);
+    const runnerResult = await this.inTestTrace(
+      traceId ?? monitoringInfo.syntheticMessageId,
+      runnerParams,
+      () => this.runner.stream(runnerParams),
+    );
 
     return {
       ...runnerResult,
-      agentRequest: {
+      agentRequest: runnerResult.agentRequest ?? {
         callerKind: CallerKind.TEST_SUITE,
         messages,
         userId: request.userId,
@@ -381,6 +392,26 @@ export class TestExecutionService {
         modelId: request.modelId,
       },
     };
+  }
+
+  private inTestTrace<T>(
+    traceId: string,
+    scope: Pick<TestRuntimeScope, 'userId' | 'sessionId' | 'scenario'>,
+    run: () => T,
+  ): T {
+    return this.requestContext
+      ? this.requestContext.run(
+          {
+            traceId,
+            userId: scope.userId,
+            chatId: scope.sessionId,
+            corpId: TEST_CORP_ID,
+            callerKind: CallerKind.TEST_SUITE,
+            scenario: scope.scenario,
+          },
+          run,
+        )
+      : run();
   }
 
   /**

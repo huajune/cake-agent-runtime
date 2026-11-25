@@ -17,8 +17,8 @@ INSERT INTO public.system_config(key,value) VALUES('runtime_storage_writes','{}'
 DO $$
 DECLARE
   r jsonb := '{"message_id":"gov-message","chat_id":"gov-chat","received_at":"2026-11-18T10:00:00Z","status":"success"}';
-  calls jsonb := jsonb_build_array(jsonb_build_object('name','lookup','args',jsonb_build_object('id',repeat('A',80)),'result','ok'),
-                                  jsonb_build_object('name','lookup','args',jsonb_build_object('id',repeat('A',80)),'error','retry'));
+  calls jsonb := jsonb_build_array(jsonb_build_object('toolName','lookup','toolCallId','first','args',jsonb_build_object('id',repeat('A',80)),'result','ok','decisions',jsonb_build_array(jsonb_build_object('label','filter','detail','matched'))),
+                                  jsonb_build_object('toolName','lookup','toolCallId','second','args',jsonb_build_object('id',repeat('A',80)),'error','retry'));
   steps jsonb; original jsonb; got jsonb; item jsonb; forbidden boolean:=false;
 BEGIN
   steps := jsonb_build_array(jsonb_build_object('stepIndex',0,'attempt','original','toolCalls',jsonb_build_array(calls->0)),

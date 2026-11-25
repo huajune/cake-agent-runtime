@@ -102,6 +102,14 @@ describe('AiStreamObservabilityService', () => {
       totalTokens: 200,
     });
     trace.finalizeSuccess();
+    expect(mockObserver.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'agent_end',
+        traceId: trace.messageId,
+        chatId: 'session-1',
+        callerKind: 'test-suite',
+      }),
+    );
 
     expect(mockTrackingService.recordSuccess).toHaveBeenCalledTimes(1);
 

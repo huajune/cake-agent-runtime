@@ -696,13 +696,16 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 
 | 观测载体                     | 主要内容                                                                                                        |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `message_processing_records` | 入站/AI/投递阶段、agent request（含降维 instructions）、memory snapshot、tool calls、guardrail、post-processing |
-| `agent_execution_events`     | Agent/model/tool 事件，以及 `turn_data_sources`、`turn_preparation`、`prompt_injection_detected`                |
+| `message_processing_records` | 一次消息处理的状态、阶段耗时、步骤、工具参数和结果、记忆及守卫摘要。列表与工具统计读这张表。 |
+| `message_processing_invocations` | 每条主流水可配一份请求与响应现场快照，包括已捕获的模型输入、回复、消息及投递时序。按处理 ID 点查详情。 |
+| `agent_execution_events`     | 用于复盘 bad case 的过程证据，涵盖正常收尾、模型尝试、外部业务动作、质量线索与异常。按事件类型和条件留存。 |
 | `guardrail_review_records`   | 确定性规则证据、首版/修复版、首审/二审决策与 override 标记                                                      |
 | `AgentTracerService`         | 用 request context 把 Agent、模型、工具事件关联到 trace                                                         |
 | `IncidentReporterService`    | memory consolidation 等跨模块失败事件                                                                           |
 
-生产排查 Prompt 先看 `agent_invocation.request.agentRequest.instructions`；section 级归因看同轮
+三表的粒度、快照字段、工具数组还原和各类事件的留存条件见[可观测性体系](../knowledge-base/10-可观测性体系.md)。
+
+排查 Prompt 先看快照子表的 `agent_invocation.request.agentRequest.instructions`。分区归因看同轮
 `turn_preparation.prompt.blocks`、`dynamicBlockIds` 与 `orderHash`，需要正文时再用同轮输入复现
 `ContextService.compose()`。外部源问题看 `turn_data_sources` 的逐源状态、耗时与观测时间。排查成本与
 缓存时同时看 `inputTokens` 和 `cachedInputTokens`；排查工具延迟要区分 step 墙钟与 tool execute 的真实耗时。
