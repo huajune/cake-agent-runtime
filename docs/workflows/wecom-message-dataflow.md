@@ -1,6 +1,6 @@
 # WeCom 消息处理数据流
 
-> 以当前生产代码为准，描述企微入站消息从接收、聚合、Agent 回合、重放到投递和记忆收尾的完整链路。
+> 本文列出消息处理时读写的数据。收发架构、恢复时序和按段续投递的版本边界见[企微消息服务架构](../architecture/message-service-architecture.md#主聊收发时序)。
 >
 > 关键实现：[message](../../src/channels/wecom/message)、[agent](../../src/agent)、[memory](../../src/memory)、[monitoring](../../src/biz/monitoring)。
 
@@ -10,6 +10,8 @@
 | ------------------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
 | Supabase `chat_messages`              | 对话底仓；短期窗口从这里取最近 N 条再套滚动 7 天窗 | `chatId`                                             |
 | Supabase `message_processing_records` | 消息处理流水与 Agent 观测                          | `messageId` / `batchId`                              |
+| Supabase `agent_reply_inputs`、`agent_reply_turns` | 主聊执行回合的输入成员、执行权与投递结局 | 渠道作用域内的 `message_id`、`logical_turn_id` |
+| Supabase `agent_action_records`、`agent_action_evidence` | 分段发送动作与原派发凭证 | `action_id`、`request_id`、派发尝试 ID |
 | Redis pending list                    | debounce 期间和 Agent 运行期间到达的待处理消息     | `wecom:message:pending:{chatId}`                     |
 | Redis last-message-at                 | 静默窗口判定                                       | `wecom:message:last-message-at:{chatId}`             |
 | Redis trace hash                      | 当前请求的增量 timings、Agent 请求与结果           | `wecom:message:trace:{messageId}:v2`                 |
@@ -26,38 +28,38 @@ WeCom callback
   → intake 过滤、去重、写 user 历史、创建单消息流水
   → pending list + delayed job
   → quiet-window worker 取得 chat 处理锁
-  → 合并 pending，创建 batch trace，回收源流水
+  → 读取 pending 快照，执行档先登记或查回本轮输入归属
+  → 进入生成时创建 batch trace，合并准备耗时，异步回收源流水
   → AgentRunner.runInboundTurn
       → Input Guard
       → Preparation（两层记忆召回、共享裁决、Prompt sections、tools）
       → Generator + Tool Guard
       → Output Guard / Reply Repair
       → TurnOutcome
-  → 最多 3 次有界 replay
-  → commit 最终 outcome 的副作用
-  → 投递或按 outcome 沉默/转人工
-  → TurnFinalizer.settle({ delivered })
-  → 等待 turn-end 落盘后释放处理锁
+  → 未固定输入回合时，符合条件可合入新输入并重放，最多 3 次
+  → 按最终 outcome 投递回复、沉默或转人工，执行该结局要求的业务动作
+  → 用实际投递结果结算 TurnFinalizer
+  → 按本轮接纳的消息 ID 确认输入，等待 turn-end 落盘，释放处理锁
 ```
 
 ### 2.1 Intake
 
-`AcceptInboundMessageService` 对每条回调独立执行：
+普通入站由 `AcceptInboundMessageService` 准备消息，再由渠道分派。
 
-1. 过滤不支持的事件并做 Redis 去重；
-2. 创建请求 trace 和 `processing` 流水；
-3. 异步写入 `chat_messages` 的 user 记录；
-4. 必要时准备图片描述；
-5. 把消息加入 pending list，并为本条消息创建 delayed job。
+1. 过滤不支持的事件并做 Redis 去重。
+2. 创建请求 trace 和 `processing` 流水。
+3. 有图片时补齐载荷。
+4. 异步写入 `chat_messages` 的 user 记录。
+5. 开启聚合时，将消息加入 pending list 并安排 delayed job。关闭聚合时走单消息编排。
 
-入口尽快返回 200；真正生成回复由 worker 完成。
+普通入站回调快速返回接收成功。纳管发送回执先验证来源、匹配原请求并保存凭证，再应答。
 
 ### 2.2 静默聚合与处理锁
 
 `MessageProcessor` 到点后先取得 chat 级租约锁，再确认静默窗口已满。满足条件时，
 `SimpleMergeService` 原子取得当前 pending 快照；主编排把多条消息合成一个 batch，合并源 trace 的准备耗时，并删除只用于 intake 的源 `processing` 行。
 
-同一 `chatId` 由租约锁串行；应用层并发槽限制真正执行的 worker 数。处理结束前会补建 follow-up job，承接本轮没有消费的后续消息。
+同一 `chatId` 的聚合任务由租约锁串行，应用层并发槽限制同时执行的任务数。读取快照保留原消息，处理结束后按本轮消息 ID 确认，后续任务接手剩余输入。
 
 ### 2.3 Agent 回合
 
@@ -73,19 +75,14 @@ WeCom callback
 
 ### 2.4 有界 replay
 
-每次 Agent 生成后，主编排检查生成期间新到达的 pending 消息：
+已登记的主聊执行回合固定输入成员，生成期间后到的消息留给下一轮。未建立持久回合时，主编排按以下条件处理新输入。
 
-- 没有新消息：采用当前 outcome；
-- 有新消息且当前 outcome 可重放：丢弃当前 `TurnFinalizer`，合入新消息后重新运行 Agent；
-- outcome 已是非 reply 终态、含待提交副作用，或成功调用了 replay-blocking 工具：采用当前 outcome，新消息留给 follow-up；
+- 没有新消息时采用当前 outcome。
+- 有新消息且允许重放时，丢弃当前 `TurnFinalizer`，合入新消息后重新运行 Agent。
+- 通常遇到非 reply 结局、待提交的业务动作或阻止重放的工具结果时，采用当前版本，新输入留给下一轮。
 - 最多重放 3 次，避免持续输入让一个 worker 永不结束。
 
-当前成功提交后阻断 replay 的工具只有：
-
-- `invite_to_group`
-- `duliday_interview_booking`
-
-列表及“成功提交”的判定以 [tool-call-analysis.ts](../../src/agent/generator/tool-call-analysis.ts) 的 `REPLAY_BLOCKING_TOOLS` / `blocksReplay()` 为准。若不可逆工具在提交前通过 `hasNewerUserInput` 发现了新消息，它会以 `staleInput` 短路旧回合；这种结果允许继续吸收 pending 并 replay。
+工具的重放约束来自工具契约和动作凭证。预约、邀请等动作已成功、仍在途或结果未知时，保留当前版本。若工具在真正派发前因新输入中止，且此前没有阻止重放的动作凭证，才可吸收新消息。[工具重放判定](../../src/agent/generator/tool-call-analysis.ts) · [回合结果判定](../../src/agent/runner/turn-outcome.ts)
 
 ### 2.5 Outcome、副作用与投递
 

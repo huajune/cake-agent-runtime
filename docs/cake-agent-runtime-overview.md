@@ -121,7 +121,7 @@
 | 共享裁决    | `resolveTurnContext`    | 无 IO 产出 Prompt / Tool 共享的 typed 视图、entryStage、ledger seed 和快照  |
 | Prompt 组装 | `ContextService`        | 按 Manifest + Slot 编译 typed system blocks，每轮零 IO（见 §4）             |
 | LLM 执行    | `LlmExecutorService`    | 唯一调用 Vercel AI SDK 的入口                                               |
-| 采纳与收尾  | 渠道 + `TurnFinalizer`  | 最多三次 Replay；按投递结局只触发一次 `onTurnEnd`，丢弃版本不写助手轮次记忆 |
+| 采纳与收尾  | 渠道 + `TurnFinalizer`  | 未登记持久回合时最多重放三次。最终版本按投递结局触发一次 `onTurnEnd`。 |
 
 ### 3.1 三种调用身份（callerKind）
 
@@ -254,12 +254,12 @@ Prompt 组装时再按 procedural / semantic / episodic / working 类型组织�
 ```
 托管平台回调 POST /message
   │
-  ├─ Ingress：立即 ACK 200，所有处理推到微任务
+  ├─ Ingress　普通入站快速应答，纳管发送回执先验证并匹配原请求
   │
   ├─ Application Pipeline
   │   ├─ AcceptInboundMessage   过滤 → 去重 → 写历史 → 图片预处理
-  │   ├─ PreAgentRiskIntercept  自杀/自残/投诉 同步暂停 + 告警（不短路 Agent）
-  │   ├─ ReplyWorkflow          Agent 调用 + Replay 重跑 + 投递
+  │   ├─ ReplyWorkflow          登记输入回合，调用 Agent 并编排投递
+  │   │   └─ AgentRunner        入站守卫判定风险，命中时返回人工介入意图
   │   └─ MessageProcessingFailure  失败兜底 + 飞书告警 + 降级回复
   │
   ├─ Runtime
@@ -270,7 +270,8 @@ Prompt 组装时再按 procedural / semantic / episodic / working 类型组织�
   │
   └─ Delivery
       ├─ TypingPolicy            段落间隔 + 每字符速率
-      └─ DeliveryService         分段发送
+      ├─ DeliveryService         分段发送，记录受理结果
+      └─ ReplyRecoveryService    服务内定时任务，检查到期回合
 ```
 
 ### 7.2 Debounce 聚合 — 等用户停下来再回
@@ -281,11 +282,11 @@ Prompt 组装时再按 procedural / semantic / episodic / working 类型组织�
 t=0   "在吗"  → pending [M1]   注册 job#M1 @t=2s
 t=0.5 "有"   → pending [M1,M2] 注册 job#M2 @t=2.5s
 t=1   "岗位" → pending [...M3] 注册 job#M3 @t=3.0s
-t=2   job#M1 触发 → now-last=1s < 2s → 跳过
-t=3   job#M3 触发 → now-last=2.0s ≥ 2s → 取出全部消息，调 Agent
+t=2   job#M1 触发 → now-last=1s < 2s → 按剩余静默时间安排重检
+t=3   静默满 2s → 读取待处理快照，处理结束后按原消息 ID 确认
 ```
 
-**关键参数**：`mergeDelayMs` 默认 2000ms，由 Supabase `hosting_config` 动态下发。
+示例使用 2 秒窗口。实际窗口取托管配置 `initialMergeWindowMs`。
 **好处**：用户持续打字 → 持续推迟处理，无需"最大聚合数"上限。
 
 ### 7.3 Replay 保护 — 不可逆动作的护身符
@@ -294,8 +295,9 @@ Agent 生成期间用户又发了新消息，怎么办？
 
 ```text
 Agent 产出 TurnOutcome + TurnFinalizer
-  ├─ 非 reply outcome，或工具已产生不可丢弃副作用 → 采用当前结果，不 replay
-  └─ 普通 reply 且生成期间收到新消息
+  ├─ 已登记持久回合 → 本轮成员已固定，新输入留给下一轮
+  ├─ 当前结局、待办业务动作或工具凭证阻止重放 → 采用当前结果
+  └─ 未登记持久回合、收到新消息且当前结果允许重放
        → discard 当前 TurnFinalizer
        → 合并新消息后重跑（最多 3 次）
 
@@ -311,12 +313,12 @@ Agent 产出 TurnOutcome + TurnFinalizer
 
 | 维度            | 配置       | 说明                                  |
 | --------------- | ---------- | ------------------------------------- |
-| Bull 注册并发   | 20（固定） | 保证 delayed job 能被及时调度         |
-| 真正执行并发    | 4（动态）  | 应用层 semaphore，hosting_config 可调 |
-| per-chat 处理锁 | 300s TTL   | 长于单轮 Agent 最坏耗时               |
-| 去重 TTL        | 300s       | Redis SET NX EX，多实例共享           |
+| Bull 注册并发   | 启动时的并发配置 | 按当前 worker 并发数注册     |
+| 真正执行并发    | 默认 4，可调 1–20 | 应用层并发槽                |
+| per-chat 处理锁 | 90 秒租约 | 聚合任务每 30 秒续租                |
+| 去重 TTL        | 默认 300 秒，可调 | 按消息 ID 去重，多实例共享  |
 
-> **延伸阅读**：[message-service-architecture.md](./architecture/message-service-architecture.md)
+> A、B 合并回复、企微受理凭证与宕机续发见[主聊收发时序](./architecture/message-service-architecture.md#主聊收发时序)。
 
 ---
 
@@ -359,7 +361,7 @@ Agent 产出 TurnOutcome + TurnFinalizer
 - 人工介入：Runner 最终 outcome → `TurnOutcomeInterventionService` → `InterventionService`，统一写底账、暂停托管并发送飞书卡片；
 - 接收人和 Webhook：由通知模块与托管账号配置解析。
 
-业务指标配置从 Supabase `hosting_config.agent_reply_config` 动态读取，同一指标默认 30 分钟内不重复发送。
+业务指标配置从 Supabase `system_config` 的 `agent_reply_config` 项动态读取，同一指标默认 30 分钟内不重复发送。
 
 **业务指标告警阈值**：
 
@@ -455,17 +457,7 @@ Agent 产出 TurnOutcome + TurnFinalizer
 
 ### 10.2 Replay 阻断判定
 
-```typescript
-REPLAY_BLOCKING_TOOLS = new Set([
-  'invite_to_group', // 企微 addMember 外部 API
-  'duliday_interview_booking', // 杜力岱外部预约 API
-]);
-```
-
-除此之外，非 reply outcome 与已声明、已提交的工具副作用也会阻断 Replay；
-`advance_stage` 不在该集合中。
-
-> **延伸阅读**：[agent-runtime-architecture.md §6](./architecture/agent-runtime-architecture.md#6-工具系统)
+工具契约声明哪些操作需要检查派发结果。邀请入群、预约等工具一旦已派发，已成功、仍在途或结果未知都要保留当前调用。未登记持久回合且工具因新输入在派发前中止时，若此前没有阻止重放的凭证，可以吸收新输入再生成。[工具契约](../src/tools/tool-contracts.ts) · [工具结果判定](../src/agent/generator/tool-call-analysis.ts) · [回合重放规则](./architecture/message-service-architecture.md#5-agentoutcome-与-replay)
 
 ---
 
@@ -578,14 +570,14 @@ FollowUpTaskProcessor
 
 ```text
 1. 托管平台回调
-   → AcceptInboundMessageService：过滤、去重、持久化、入队并立即 ACK
+   → MessageService 快速应答普通入站，随后过滤、去重、记录渠道历史并分派
 
 2. SimpleMergeService / MessageProcessor
-   → debounce 聚合 → 获取 per-chat 锁 → ReplyWorkflowService
+   → 到静默窗口后取得会话锁，复核窗口并读取待处理快照
+   → 主聊执行档登记或查回输入所属回合
 
 3. 入站防线
-   → PreAgentRiskInterceptService 处理需暂停/告警的业务风险
-   → AgentRunnerService 执行 input guard；风险命中时直接产出 handoff（guardrail.phase=inbound/source=input_guardrail）
+   → AgentRunnerService 执行入站守卫。风险命中时返回 handoff，渠道按最终结局暂停托管或告警
 
 4. PreparationService.prepare()
    → MemoryService.onTurnStart() 拉取短期窗口、会话事实、阶段与长期档案
@@ -600,14 +592,14 @@ FollowUpTaskProcessor
    → 归一化为 reply / handoff / skipped
 
 6. ReplyWorkflowService
-   → 普通 reply 生成期间若有新消息，丢弃当前 finalizer 后合并 Replay（最多 3 次）
-   → 非 reply 或已有不可丢弃副作用时采用当前结果
+   → 已登记回合的输入在生成前固定，新消息留给下一轮
+   → 未登记回合遇到新输入时，仅在当前结果允许重放时合并再生成，最多 3 次
 
 7. 最终结局
    → reply：MessageDeliveryService 分段投递，提交回复关联副作用
    → non-reply：提交暂停、告警或沉默等结局副作用
    → TurnFinalizer.settle({ delivered }) 只执行一次 onTurnEnd
-   → 等待收尾后记录 MPR 并释放 per-chat 锁
+   → 主流程记录处理流水，按本轮消息 ID 确认输入，等记忆收尾后释放会话锁
 ```
 
 ---
@@ -618,9 +610,9 @@ FollowUpTaskProcessor
 | --------------------- | ------------------------------------------------ | ------------------------------------------ |
 | **多模型容错**        | Provider 三层（Registry → Reliable → Router）    | 单家 API 故障自动降级，业务零感知          |
 | **两层记忆**          | 短期会话态 + 长期候选人×bot 档案 + consolidation | 跨轮连续，同时保持存储边界清晰             |
-| **Debounce 聚合**     | 每条消息注册 delay=2s 的 Bull job                | 用户连发不抢答，停止打字才回               |
+| **Debounce 聚合**     | 每条消息按配置的静默窗口安排 Bull 延迟任务        | 连发输入可合成一轮回复                     |
 | **Replay 保护**       | outcome/副作用门禁 + `TurnFinalizer`             | 丢弃版本不污染记忆，投递结局与收尾一致     |
-| **per-chat 串行**     | Redis 处理锁 (300s)                              | 同一会话同时只有一个 Agent 在生成          |
+| **per-chat 串行**     | Redis 会话锁，90 秒租约，持锁任务按期续租         | 聚合任务与恢复任务按聊天串行               |
 | **Section 化 Prompt** | 场景注册表 + PromptSection 接口                  | 新场景 / 新护栏接入只改一处                |
 | **AI 流追踪**         | AiStreamTrace 解析 UIMessageChunk                | 测试与生产隔离观测，时间线粒度到首字节     |
 | **告警限流聚合**      | 5min 窗口 + 恢复检测                             | 一次故障一条告警，不刷屏                   |
@@ -644,7 +636,7 @@ FollowUpTaskProcessor
 | `STRIDE_API_BASE_URL`                                    | 托管平台 API                        |
 | `FEISHU_ALERT_WEBHOOK_URL` / `FEISHU_ALERT_SECRET`       | 飞书告警                            |
 
-### 16.2 由 Supabase `hosting_config` 动态下发
+### 16.2 Supabase `system_config` 中的消息配置
 
 | 键                                                   | 默认值 | 说明                   |
 | ---------------------------------------------------- | ------ | ---------------------- |
@@ -674,7 +666,7 @@ FollowUpTaskProcessor
 | -------------------- | ---------------------------------------------------------------------------------------------- |
 | 新增 Provider        | `RegistryService.onModuleInit()` 自动检测 / OAI-compatible 表                                  |
 | 新增工具             | `src/tools/my-tool.ts` + `ToolRegistryService` 注册 + `scenarioToolMap`                        |
-| 新增 Replay 阻断工具 | 同上，并仅在确有不可丢弃外部副作用时加入 `REPLAY_BLOCKING_TOOLS`                               |
+| 新增 Replay 阻断工具 | 在工具契约中声明 `TOOL_REPLAY.BLOCK_ON_SUCCESS`，并验证工具返回的派发凭证                  |
 | 新增 Prompt Section  | 实现同步 `PromptSection`，声明 domain/slot/dynamic，在 Context 注册并加入目标 manifest          |
 | 新增场景             | `SCENARIO_PROMPT_MANIFEST` + `scenarioToolMap` 分别声明 Prompt 与工具                           |
 | 新增渠道             | `src/channels/` 新建适配，构造 `InboundTurnRequest` 调 `AgentRunnerService.runInboundTurn()`   |

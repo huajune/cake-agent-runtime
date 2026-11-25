@@ -39,7 +39,7 @@
 - **[重试职责与故障矩阵](architecture/runtime-retry-boundaries.md)** — 八层重试的责任、上限和动作证据保护
 - **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐ — 主干：分层所有权、Runner/Generator、Preparation 与 Prompt、工具、记忆、Provider、消息链路、四个防线作用位和运行时不变量
 - **[Agent 运营手册](product/agent-for-operations.md)** 👉 — 上文的业务语言版（运营向，收录在 product/）
-- **[企微消息服务架构](architecture/message-service-architecture.md)** — 消息管道：去重→过滤→存储→聚合→Agent→投递
+- **[企微消息服务架构](architecture/message-service-architecture.md)** — 从回调接入、Redis 聚合到分段投递，含正常收发和宕机恢复时序图
 - **[Gate 拒绝与人工介入流水线](architecture/handoff-gate-and-intervention-pipeline.md)** — Tool gate → LLM 短路 → Runner handoff → 底账判重 → 暂停托管与飞书告警
 - **[二次主动回复流水线](architecture/reengagement-pipeline.md)** — 复聊：锚点触发、停止条件与水位、outbox 幂等、带外工单核验
 - **[群任务通知流水线](architecture/group-task-pipeline.md)** — 群任务定时通知的运行时流水线

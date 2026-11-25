@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-10-15（新增 §2.2 横切能力地图；其余沿用 2026-09-11 对生产调用链与修复所有权的复核）
+**最后更新** 2026-11-25。本次核对企微消息接入、回合执行与投递恢复。横切能力地图初版为 10 月 15 日，其余专题沿用 9 月 11 日的核对结果。
 
 **面向**：研发、测试与运行时排障
 
@@ -98,8 +98,7 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 
 ### 2.2 横切能力地图
 
-2.1 按模块划分，本节按能力横看：每项能力由谁负责、状态落在哪里、是否已有统一入口。
-“已收口”指存在单一入口或共享原语；“分散”指由多个模块各自实现，改动时需要逐处检查。
+这份地图来自 10 月 15 日的横切能力盘点，主聊动作记录已按 11 月 25 日的实现更新。表中“已收口”表示有统一入口，“分散”表示当时分属多个模块。各能力后续的所有者、存储和运行开关见[运行能力架构](./runtime-capabilities.md)。
 
 | 能力               | 负责模块                                                                                                        | 状态与记录落点                                                                                    | 收口程度 |
 | ------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------- |
@@ -109,22 +108,12 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 | 上下文与记忆       | `agent/generator/preparation`、`memory/`                                                                        | 第 5、7 节                                                                                        | 已收口   |
 | 动作权限           | 工具门禁在 `tools/`，审计目录在 `guardrail/tool`；`toolMode`；复聊不注册工具                                    | `SIDE_EFFECT_TOOLS` 单轮屏蔽；副作用意图由 `TurnOutcomeInterventionService.commit()` 提交         | 已收口   |
 | 人工介入与托管     | `TurnOutcomeInterventionService` → `biz/intervention` → `UserHostingService`                                    | `user_hosting_status`（临时暂停到次日上海零点，或永久）、`handoff_events`                         | 已收口   |
-| 外部动作防重与记录 | 各动作自持                                                                                                      | 见下文                                                                                            | **分散** |
+| 主聊动作防重与记录 | 渠道、`biz/reply-execution`、`biz/action-execution` | 回复回合保存输入归属和投递进度，分段动作保存派发状态与凭证 | 共用动作执行器 |
 | 候选人业务进度     | 无单一所有者                                                                                                    | 见下文                                                                                            | **分散** |
 | 后台作业           | 各队列、各 Cron 自持                                                                                            | 仅共享 `infra/queue/bull.module.ts` 的连接与 stalled 参数                                         | **分散** |
 | 观测与评估         | `observability/`、`biz/monitoring`、`biz/test-suite`、`evaluation/`                                             | 同 `trace_id` 可 join 的流水、事件、守卫与复聊底账（第 12 节）                                    | 已收口   |
 
-**外部动作防重与记录**：没有共享的执行底账，各动作分别依赖：
-
-- 报名：收资单 `submitted`、`active_booking` 指针与海绵实时查重；海绵报名请求不带幂等键。
-- 拉群：session facts 的 `invitedGroups` 加实时群成员预检。
-- 转人工与告警：`handoff_events` 的 `(corp_id, idempotency_key)` 唯一约束，派发前检查是否已暂停。
-- 复聊触达：Redis 槽 `reserved → delivery_attempted → sent | failed | unknown`，并落
-  `reengagement_touch_records`；`unknown` 当前没有补偿消费者。
-- 群任务：主消息与附加消息都发出后才写当日已发 key。
-- 回调消息：Redis `SET NX` 去重，默认 300 秒。
-
-整轮重放时批次号重新生成，按回合派生的键挡不住重放；Replay 只对报名、拉群成功的回合禁止丢弃（6.3）。
+主聊执行档在调用 Agent 前登记回复回合，按固定输入集合与原分段身份处理重试。每段企微发送由动作执行器登记并核对派发凭证。重复报名的业务查重仍需读工单，群任务和主动复聊按各自的队列执行。[回合与动作记录的分工](./message-service-architecture.md#8-redis-与回复表的分工) · [各类动作的执行职责](./runtime-capabilities.md)
 
 **候选人业务进度**：海绵工单是业务真值，本地只存指针（`recruitment_cases` 状态机已于 2026-06-10
 删除）。本地相关状态分布在 `stage:`、`factsv2:`（workbench、`terminal`、`invitedGroups`）、收资单、
@@ -440,15 +429,7 @@ tools 序列用于获得 Qwen 的隐式前缀缓存；命中量从 AI SDK
 
 ### 6.3 Replay 与工具动作
 
-`REPLAY_BLOCKING_TOOLS` 当前只有：
-
-```typescript
-new Set(['invite_to_group', 'duliday_interview_booking']);
-```
-
-这两类成功动作会阻止渠道丢弃当前回合。取消、改约等动作虽是副作用，也由单轮工具屏蔽和 outcome
-保护，但不在这份 Replay blocking 集合中。报名类副作用提交前还会调用
-`hasNewerUserInput()`；发现更晚消息时返回 stale-input 短路，让渠道吸收新消息后重跑，而不是用旧资料下单。
+未登记持久回合的渠道可以重放。工具契约声明哪些操作受重放保护，包括预约、取消、改约、发位置和邀请入群。是否可以丢弃当前生成版本，取决于终态、待提交的业务动作和此前的派发凭证。报名等工具若在派发前因新输入中止，且此前的调用允许重放，渠道可合入新输入再生成。[工具契约](../../src/tools/tool-contracts.ts) · [重放判定](../../src/agent/runner/turn-outcome.ts)
 
 ---
 
@@ -564,57 +545,18 @@ Provider 专属 `providerOptions` 当前只承载 thinking / reasoning 配置；
 
 ### 9.1 接入与聚合
 
-当前公开回调入口是 `POST /message`：
-
-```text
-MessageIngressController
-  └─ MessageCallbackAdapterService.normalizeCallback()
-      └─ MessageService.handleMessage() 立即 ACK
-          └─ 异步 MessagePipelineService.execute()
-              ├─ 过滤（来源、托管、黑名单、消息类型等）
-              ├─ Redis 原子去重（默认 300s）
-              ├─ 写 chat_messages 与处理流水
-              └─ 运行时开关：聚合或直发
-```
-
-聚合路径由 Bull `message-merge` 队列驱动。`MessageProcessor` 对每个 chat 获取短租约锁并续心跳，
-复查 quiet window，claim pending 快照但不提前删除；成功终态才 ack，异常和进程退出时保留 pending
-供 stalled retry / 新实例接管。SIGTERM 会停止领取新任务并等待 in-flight，默认最多 60 秒。
-
-合并窗口、AI 开关、分段发送、模型和 thinking 均从托管运行时配置读取；读取失败才使用环境默认。
-`initialMergeWindowMs` 的托管配置默认值为 3,000ms；运行时配置应用器还保留 2,000ms 的防御性
-空值回落。不再存在“最大合并条数”口径。
+`POST /message` 接收企业和小组回调。普通入站快速应答，后台执行过滤、按消息 ID 去重、记录渠道历史，并按配置直接处理或加入聚合队列。可信的发送回执先匹配原请求并保存凭证，再应答。聚合任务取得会话锁、复核静默窗口并读取 Redis 快照，原消息保留到本轮按 ID 确认。[正常收发与恢复时序](./message-service-architecture.md#主聊收发时序)
 
 ### 9.2 Reply workflow 与 Replay
 
-```text
-ReplyWorkflowService.processMessageCore()
-  ├─ 解析稳定 botUserId、模型/思考配置、图片集合、本批消息时间上界
-  ├─ runner.runInboundTurn(defer 语义由 TurnFinalizer 接管)
-  ├─ 检查运行期间的新 pending 消息
-  │    ├─ 可 replay：discard 当前 finalizer，合入新消息重跑
-  │    └─ 非 reply / 待提交副作用 / blocking tool：采用当前 outcome
-  ├─ 最多 Replay 3 次
-  ├─ 非 reply：commit sideEffects，记录 skipped，settle(delivered=false)
-  ├─ reply：投递、commit reply sideEffects、写复聊锚点
-  ├─ settle(delivered=真实投递结果)
-  ├─ 标记源消息处理完成并 ack pending
-  └─ finally: await finalizer.whenSettled()
-```
+主聊 `execute` 在调用 `runInboundTurn()` 前登记固定的输入集合。生成时新到的消息留给下一轮。未建立持久回合时，渠道才能按 §6.3 的条件合入新消息，最多重放三次。最终版本按 `TurnOutcome` 投递、沉默或转人工，再用实际受理的文本结算记忆。
 
 图片主路径优先让可 vision 模型直接看图，并动态提供 `save_image_description`。全链纯文本或模型漏调
 工具时，渠道还有兼容描述/异步补写，保证下一轮至少有文字记忆；补写不会改变已经定局的本轮回复。
 
 ### 9.3 失败与降级
 
-被动消息生成失败时，`MessageProcessingFailureService` 负责：
-
-- 发送 `AGENT_FALLBACK_MESSAGE` 或内置降级话术；
-- 记录失败流水和 trace；
-- 按错误类型发送告警。
-
-pending 只在成功终态后裁掉；处理异常会让 Bull retry 继续消费同一快照。去重、pending、per-chat 锁和
-TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆、相邻回合不并发覆盖”。
+普通处理异常由渠道记录流水、告警，并按失败类型决定是否发送降级话术。对于已登记的回合，若服务在分段投递途中中断，服务内定时任务读取到期回合并核对原派发凭证。已受理的段跳过，派发结果未知时等待可信回执，超过恢复期限交人工。按段续发的版本要求和分支见消息服务架构。[第一段发出后服务重启](./message-service-architecture.md#第一段发出后服务重启)
 
 ---
 
@@ -681,7 +623,7 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 3. **副作用后只允许无工具文本修复**：不能重进 Generator 重做业务动作。
 4. **投递结局决定 assistant 记忆**：未送达、被拦或被 Replay 丢弃的文本不能投影为“已对用户说过”。
 5. **成功副作用必须看正向信号**：工具调用存在不等于外部动作已完成。
-6. **Replay 有界且输入新鲜**：最多三次；报名等不可逆动作提交前还要检查更新消息。
+6. **已登记回合固定输入成员**。未登记时最多重放三次，报名等动作提交前还会检查输入是否已更新。
 7. **模型可见内层标签是契约**：section 重排不能随意改名或把动态 system 内容搬进 messages。
 
 守卫目录、规则 catalog 和裁决细节见
@@ -764,7 +706,7 @@ Evaluation、Memory、Tool 和 Feishu Sync。
 
 ```text
 1. POST /message
-   └─ 标准化企业/小组回调，立即返回 200
+   └─ 标准化回调，普通入站快速应答
 
 2. 异步 intake
    ├─ 过滤、Redis 去重、写 chat_messages、创建 MPR trace
@@ -776,6 +718,7 @@ Evaluation、Memory、Tool 和 Feishu Sync。
    └─ claim 两条 pending 快照（暂不删除）
 
 4. ReplyWorkflowService
+   ├─ 执行档登记或查回输入所属的持久回合
    └─ runner.runInboundTurn(input)
        ├─ 入站风险预检
        ├─ PreparationService.prepare()
@@ -789,7 +732,8 @@ Evaluation、Memory、Tool 和 Feishu Sync。
        ├─ 确定性 output guardrail；必要时一次 rewrite / replan 并二审
        └─ 返回 reply / handoff / skipped
 
-5. Replay 定局
+5. 判定是否重放
+   ├─ 已登记持久回合：固定输入成员，后到的消息留给下一轮
    ├─ Agent 运行中无新消息：采用本版
    ├─ 有新消息且可重跑：discard 本版 finalizer，合并后重跑
    └─ 非 reply / 待提交副作用 / blocking tool：不丢弃本版
@@ -805,8 +749,7 @@ Evaluation、Memory、Tool 和 Feishu Sync。
    └─ await finalizer.whenSettled() 后释放 chat 锁
 ```
 
-如果处理在成功终态前抛错，pending 不 ack，Bull 可重试；如果生成失败，渠道负责降级回复和告警；
-如果投递未确认成功，仍提取候选人本轮事实，但不会投影 assistant 文本。
+队列按本轮实际接纳的消息 ID 确认，留下尚待处理的新输入。助手记忆只使用已受理的文本，零受理时仍可提取候选人事实。
 
 ---
 
