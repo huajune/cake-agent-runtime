@@ -20,6 +20,10 @@ begin
   update agent_reply_turns set recovery=jsonb_set(recovery,'{resumeUntil}',to_jsonb(now()+interval '10 seconds')) where corp_id='five';
   r:=public.transition_agent_reply_turn('renew',scope);
   assert (r#>>'{turn,recovery,resumeUntil}')::timestamptz=now()+interval '5 minutes','only a live original heartbeat refreshes the window';
+  update agent_reply_turns set recovery_attempts=6,next_check_at=now() where corp_id='five';
+  r:=public.transition_agent_reply_turn('defer',scope);
+  assert r#>>'{turn,next_check_at}'=r#>>'{turn,generation_until}',
+    'an early callback or restarted scanner cannot back off past the first takeover opportunity';
   cutoff:=clock_timestamp()+interval '1 second';
   update agent_reply_turns set generation_until=now()-interval '1 second',recovery=jsonb_set(recovery,'{resumeUntil}',to_jsonb(cutoff)) where corp_id='five';
   r:=public.transition_agent_reply_turn('resume_delivery',scope||'{"newOwner":"recovered"}');

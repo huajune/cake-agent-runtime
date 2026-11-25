@@ -325,9 +325,12 @@ begin
       end if;
       if r.next_check_at is not null then
         update public.agent_reply_turns set recovery_attempts=least(recovery_attempts+1,6),
-          next_check_at=least(case when fence>1 and status='planned' then v_resume_until end,
-            greatest(case when status in ('preparing','planned') then generation_until end,
-              now()+make_interval(mins=>least(30,1<<least(recovery_attempts,5))))),updated_at=now()
+          -- A callback may wake a still-leased turn. Recheck as soon as takeover
+          -- is allowed, even if previous checks accumulated a long backoff.
+          next_check_at=case when status in ('preparing','planned') and recovery ? 'replySegments'
+            then case when fence=1 then generation_until else least(generation_until,v_resume_until) end
+            else greatest(case when status in ('preparing','planned') then generation_until end,
+              now()+make_interval(mins=>least(30,1<<least(recovery_attempts,5)))) end,updated_at=now()
           where corp_id=v_corp and logical_turn_id=r.logical_turn_id returning * into r;
       end if;
     else raise exception 'unknown reply transition'; end if;
