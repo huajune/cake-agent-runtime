@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Braces, ChevronRight, ListChecks } from 'lucide-react';
-import { formatDuration, formatJson } from '@/utils/format';
+import { formatJson } from '@/utils/format';
 import type { MessageRecord, MessageRecordToolCallStatus } from '@/api/types/chat.types';
 import { describeToolExecution } from '@/view/message-processing/tool-execution';
 import { getToolCalls, type ToolCallInfo } from '../utils';
@@ -43,18 +43,19 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
       >
         <span className={styles.toolIdentity}>
           <ChevronRight size={16} className={styles.chevron} aria-hidden="true" />
-          <span className={styles.toolHeading}>
-            {outcome && <span className={styles.outcome}>{outcome}</span>}
-            <code className={styles.toolName}>{toolCall.name}</code>
-          </span>
+          <code className={styles.toolName}>{toolCall.name}</code>
         </span>
-        <span className={styles.toolMeta}>
+        <span className={styles.toolMeta} lang="en">
           {toolCall.durationMs !== undefined ? (
-            <span title={`${toolCall.durationMs} ms`}>{formatDuration(toolCall.durationMs)}</span>
+            <span title={`${toolCall.durationMs} ms`}>
+              {(toolCall.durationMs / 1000).toFixed(2)} s
+            </span>
           ) : null}
-          {toolCall.resultCount !== undefined ? <span>{toolCall.resultCount} 条</span> : null}
-          {toolCall.errorType ? <span>{toolCall.errorType}</span> : null}
-          {toolCall.apiCode !== undefined ? <span>apiCode={toolCall.apiCode}</span> : null}
+          {toolCall.resultCount !== undefined && (
+            <span>
+              {toolCall.resultCount} {toolCall.resultCount === 1 ? 'result' : 'results'}
+            </span>
+          )}
           <span className={`${styles.statusBadge} ${getStatusClass(toolCall.status)}`}>
             {STATUS_LABELS[toolCall.status] ?? toolCall.status}
           </span>
@@ -62,6 +63,13 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
       </button>
       {expanded ? (
         <div className={styles.toolDetails}>
+          {outcome && <p className={styles.outcome}>{outcome}</p>}
+          {(toolCall.errorType || toolCall.apiCode !== undefined) && (
+            <div className={styles.diagnostics}>
+              {toolCall.errorType && <code>{toolCall.errorType}</code>}
+              {toolCall.apiCode !== undefined && <code>apiCode={toolCall.apiCode}</code>}
+            </div>
+          )}
           {judgments.length > 0 ? (
             <div className={styles.evidence}>
               <h5 className={styles.detailLabel}>

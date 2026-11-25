@@ -64,29 +64,23 @@
 }
 
 .toolIdentity,
-.toolHeading,
 .toolMeta {
   display: flex;
   align-items: center;
   gap: $spacing-sm;
   min-width: 0;
 }
-.toolHeading {
-  flex-wrap: wrap;
-  gap: 2px $spacing-sm;
-}
 .toolName {
-  color: $primary-dark;
-  padding: 1px 6px;
-  border-radius: $radius-sm;
-  background: $primary-06;
+  min-width: 0;
+  color: $text-primary;
   font-family: $font-family-mono;
   font-weight: $font-weight-medium;
-  font-size: $font-size-xs;
+  font-size: $font-size-sm;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .outcome {
+  margin: 0;
   color: $text-primary;
   font-family: $font-family-sans;
   font-size: $font-size-base;
@@ -109,7 +103,10 @@
 .statusBadge {
   padding: 1px 7px;
   border-radius: $radius-full;
-  font: $font-weight-semibold 11px / 1.6 $font-family-mono;
+  font-family: $font-family-mono;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+  line-height: 1.6;
 }
 .statusSuccess {
   background: $success-soft;
@@ -133,6 +130,14 @@
   gap: 12px;
   padding: 12px 14px;
   border-top: 1px solid $border;
+}
+.diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  overflow-wrap: anywhere;
 }
 .evidence {
   min-width: 0;
@@ -178,8 +183,7 @@
 }
 .payloads {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
   gap: $spacing-sm;
 }
 .payload {
