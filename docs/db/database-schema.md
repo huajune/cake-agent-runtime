@@ -2,13 +2,32 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**：2026-11-24（已与新加坡生产库 v11.20.0 清理结果核对）
+**最后更新**：2026-11-25（新加坡生产库消息与动作存储验收）
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
 **项目环境**：prod `resexopnhpthuoxfwydx` / test `gaovfitvetoojkvtalxy`
 
 ---
+
+### v11.21.1 消息与动作存储
+
+迁移依次为 [20261124100000 正文引用](../../supabase/migrations/20261124100000_runtime_body_compaction.sql)、[20261124100100 已采信预约工单](../../supabase/migrations/20261124100100_booking_accepted_work_order.sql) 和 [20261124100200 流水预览](../../supabase/migrations/20261124100200_processing_list_previews.sql)。
+
+TEST 和新加坡生产库均已登记本批三份迁移。生产在既有 `runtime_storage_writes` 中开启 `chat_mixed_text` 和 `action_failed_body`，对应基础开关 `chat_text` 和 `action_body` 已开启。TEST 保留原有开关值。[发布顺序、三份迁移及恢复步骤](../technical/runtime-storage-batch.md#发布与历史清理) · [v11.21.1 发布记录](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.21.1)
+
+动作主表 `agent_action_records` 用 `body_ref_v1` 标记已移交正文的记录。完整读取 `action_record_json` 按企业、动作、采信尝试和采信摘要定位到 `agent_action_evidence.completion`。预约回放用同一采信关系查找较新的工单。确定失败只有在请求已终止、不可重试且正文与回执一致时才能引用。
+
+北京时间 **2026-11-25 13:42:46** 在同一可重复读快照核对两张表。实际变更按批次提交的唯一业务键计算，已计入截止时的已引用数。
+
+| 对象 | 总行数 | 历史实际变更 | 已引用 | 保留原值 | 待核实 | 剩余可清理 | 断链 | 完整读值差异 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `chat_messages` | 614,637 | 576,917 | 582,303 | 32,334 | 0 | 0 | 0 | 0 |
+| `agent_action_records` | 45,424 | 182 | 4,912 | 27,831 | 12,681 | 0 | 0 | 0 |
+
+每个实际变更键在截止快照中均可读取，逐批提交前后的完整值一致。12,681 条动作缺少唯一采信标识，保留原记录。保留原值的动作中有 13 条等待人工裁定。守卫审查、执行事件及裁定记录继续按各自的保留规则处理。还原时先关闭对应的基础和新增写入开关并保留完整读取，再按批次实际变更键和在线新格式还原键恢复，每批最多 100 行。本次截止快照另外导出了 330,559 个混合聊天键和 144 个失败动作键，已逐键核对。[按键还原脚本](../../scripts/restore-runtime-storage.sql)
+
+同一快照抽核 12 条流水，步骤和调用快照中的工具顺序均与原记录一致。80 笔预约样本中有 9 笔的工单号只存在于已采信回执。生产及 TEST 结构的隔离回放验证了快照在 89 天和 90 天保留、超过 90 天进入清理的边界。
 
 ### v11.20.0 的生产结构
 
@@ -158,7 +177,8 @@
 | `im_contact_id`    | text        | -                 | 联系人系统ID                                               |
 | `contact_type`     | text        | 'UNKNOWN'         | UNKNOWN/PERSONAL_WECHAT/OFFICIAL_ACCOUNT/ENTERPRISE_WECHAT |
 | `is_self`          | boolean     | false             | 是否托管账号自己发送                                       |
-| `payload`          | jsonb       | -                 | 原始消息 JSON                                              |
+| `payload`          | jsonb       | -                 | 完整载荷或引用同值文本键后保留的其他字段 |
+| `payload_text_v1`  | smallint    | -                 | 掩码 1 从 `content` 还原 `text`，2 还原 `pureText`，3 还原两键 |
 | `avatar`           | text        | -                 | 用户头像 URL                                               |
 | `external_user_id` | text        | -                 | 企微外部用户ID                                             |
 | `created_at`       | timestamptz | now()             | 记录创建时间                                               |
@@ -171,7 +191,7 @@
 **操作说明**：
 
 - **写入**：`saveChatMessage()` / `saveChatMessagesBatch()` — upsert by message_id
-- **读取**：`getChatHistory()` / `getSessionList()` — 按 chat_id + 时间范围
+- **读取**：`getChatHistory()` / `getSessionList()` — 按 chat_id + 时间范围。完整消息包使用 `chat_read_payload` 组合正文和剩余字段。类型、值或键有差异的字段保留原值。
 - **清理**：不清理，永久保留（业务 / 不可再生数据）
 
 ---
@@ -195,8 +215,8 @@
 | `user_name`        | text         | -                | 用户昵称（trgm 索引）                                                                            |
 | `manager_name`     | text         | -                | 经理姓名                                                                                         |
 | `received_at`      | timestamptz  | now()            | 消息接收时间                                                                                     |
-| `message_preview`  | text         | -                | 用户消息预览                                                                                     |
-| `reply_preview`    | text         | -                | AI 回复预览                                                                                      |
+| `message_preview`  | text         | -                | 本次流水保存的入站内容，列表与最慢榜最多 50 个字符 |
+| `reply_preview`    | text         | -                | 本次流水保存的回复内容，列表与最慢榜最多 120 个字符 |
 | `reply_segments`   | integer      | 0                | 回复分段数                                                                                       |
 | `status`           | text         | NOT NULL, CHECK  | `processing` / `success` / `failure` / `timeout`                                                 |
 | `error`            | text         | -                | 错误信息                                                                                         |
@@ -240,7 +260,7 @@
 **操作说明**：
 
 - **写入**：`saveMessageProcessingRecord()` — 接收时创建，处理完成后更新
-- **读取**：`getSlowestMessages()` / `getMessageProcessingRecords()` — Dashboard 查询
+- **读取**：`getSlowestMessages()` 和 `getMessageProcessingRecords()` 用于总部最慢榜及列表。中心列表也读取限长预览。详情保留主表原值和回复段数，并读取对应快照中的工具顺序和分段回复。快照缺失或到期时，主表保留的回复及兜底内容仍可读取。
 - **聚合**：RPC `aggregate_hourly_stats()` / `aggregate_daily_stats()`
 - `cleanup_message_processing_records()` 按 `received_at` 清理超过 90 天的流水，通过外键级联删除对应快照。
 
@@ -819,3 +839,15 @@
 **生产存储实测**（2026-11-24）
 
 按 `pg_total_relation_size` 计入表、TOAST 和索引，清理完成时主流水占 1.46 GiB，调用快照子表占 807 MiB，策略历史归档占 1.12 MiB。快照保留期于当天延长，完整 90 天窗口的容量要在后续观察。
+
+**消息与动作存储实测**（2026-11-25）
+
+按 `pg_total_relation_size` 计入表、TOAST 和索引，堆页按 8 KiB 计数。更新产生的旧行版本占用已分配页面，后续写入可在数据库例行回收后复用。
+
+| 生产表 | 执行前 MiB | 验收时 MiB | 执行前堆页 | 验收时堆页 |
+| --- | ---: | ---: | ---: | ---: |
+| `chat_messages` | 682.1 | 713.7 | 49,136 | 52,356 |
+| `agent_action_records` | 109.9 | 109.9 | 8,528 | 8,528 |
+| `agent_action_evidence` | 35.0 | 35.1 | 2,256 | 2,262 |
+
+按历史实际变更键比较完整 JSON 与剩余正文字段的 UTF-8 文本，聊天减少 96,994,069 字节，动作减少 25,793 字节。此口径只计正文字段的逻辑表示。
