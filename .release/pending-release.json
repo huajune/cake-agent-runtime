@@ -1,9 +1,44 @@
 {
   "baseVersion": "11.20.0",
-  "nextVersion": "11.20.0",
-  "updatedAt": "2026-11-24",
+  "nextVersion": "11.20.1",
+  "updatedAt": "2026-11-25",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1567",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1567",
+      "title": "按 v11.20.0 生产结果更新流水快照与策略归档说明",
+      "author": "huajune",
+      "mergedAt": "2026-11-25",
+      "opsNotes": [],
+      "businessUpdates": [
+        "按生产清理结果更新流水快照与策略归档说明",
+        "按 v11.20.0 生产结果更新流水快照与策略归档说明"
+      ],
+      "summary": [
+        "按生产清理结果更新流水快照与策略归档说明",
+        "按 v11.20.0 生产结果更新流水快照与策略归档说明"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "主流水旧列和置空 RPC 已退役。主流水与调用快照默认均保留 90 天。文档补充了子表的内容、关联方式和代次校验。",
+        "原公开策略逐字段变更表已归档。文档记录版本历史入口、归档的访问权限和经校验的恢复脚本。",
+        "更新消息流水和快照的容量，移除旧估算及生产目录中已退役的预约 RPC。",
+        "按生产清理结果更新流水快照与策略归档说明"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "TEST 和生产各登记 #1562 的四份迁移。TEST 遗留的一条快照搬迁前后内容与时间一致。生产旧列及旧清理函数均已删除。",
+        "生产归档的 124 条历史与迁移前全字段摘要一致，应用访问角色无归档读取权限。生产服务器保留了迁移前的受限备份。",
+        "生产容器健康。策略版本、流水列表与带快照的详情均返回 HTTP 200，退役接口返回 404。运行时流水与快照保留天数均为 90。",
+        "本次新增或改写的 8 个链接与锚点已核对，`git diff --check` 通过。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.20.0",
     "date": "2026-11-24",
@@ -185,5 +220,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "708f13f393c8599ea8ba38872fcc8c951e29fb51"
+  "lastAnalyzedSha": "53e6c0ce80b4f3cdbddef3bd5e996ba216d236a9"
 }
