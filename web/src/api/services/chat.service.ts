@@ -61,7 +61,11 @@ export async function getChatBusinessDailyTrend(startDate?: string, endDate?: st
   const { data } = await api.get(`/analytics/chat-business-daily-trend?${params.toString()}`);
   return unwrapResponse<{
     trend: ChatDailyStatsItem[];
-    floor: { opsEventsFrom: string | null; dailyOpsReportFrom: string | null; userActivityFrom: string | null };
+    floor: {
+      opsEventsFrom: string | null;
+      dailyOpsReportFrom: string | null;
+      userActivityFrom: string | null;
+    };
     caliber: 'business';
   }>(data);
 }
@@ -172,9 +176,20 @@ export async function getMessageProcessingRecords(options?: {
   return unwrapResponse<MessageRecord[]>(data);
 }
 
-export async function getMessageProcessingRecordDetail(messageId: string) {
+export async function getCapturedProcessingRequest(messageId: string) {
+  const { data } = await api.get(
+    `/analytics/message-processing-records/${encodeURIComponent(messageId)}/request`,
+  );
+  return unwrapResponse<{ request: Record<string, unknown> | null }>(data).request;
+}
+
+export async function getMessageProcessingRecordDetail(
+  messageId: string,
+  requestView: 'full' | 'context' = 'full',
+) {
   const { data } = await api.get(
     `/analytics/message-processing-records/${encodeURIComponent(messageId)}`,
+    { params: requestView === 'context' ? { requestView } : undefined },
   );
   return unwrapResponse<MessageRecord>(data);
 }

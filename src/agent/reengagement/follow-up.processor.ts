@@ -1024,7 +1024,6 @@ export class FollowUpProcessor implements OnModuleInit {
           usage: outcome.usage,
         },
         messages: outcome.responseMessages,
-        toolCalls: outcome.toolCalls,
         delivery: params.deliveryResult,
         timings: {
           timestamps: {

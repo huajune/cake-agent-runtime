@@ -159,8 +159,19 @@ export class MessageController {
     });
   }
 
+  @Get('message-processing-records/:messageId/request')
+  async getCapturedRequest(@Param('messageId') messageId: string) {
+    return { request: await this.messageProcessingService.getCapturedRequest(messageId) };
+  }
+
   @Get('message-processing-records/:messageId')
-  async getMessageProcessingRecordDetail(@Param('messageId') messageId: string) {
-    return this.messageProcessingService.getMessageProcessingRecordById(messageId);
+  async getMessageProcessingRecordDetail(
+    @Param('messageId') messageId: string,
+    @Query('requestView') requestView?: string,
+  ) {
+    return this.messageProcessingService.getMessageProcessingRecordById(
+      messageId,
+      requestView === 'context' ? 'detail' : 'full',
+    );
   }
 }

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getCapturedProcessingRequest } from '@/api/services/chat.service';
 import type { MessageRecord } from '@/api/types/chat.types';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
 import {
@@ -7,7 +9,6 @@ import {
   getHistoryMessages,
   getRawPayloadPanels,
   getToolCalls,
-  getToolExecutionCalls,
 } from '../utils';
 import { linkToolEvents } from '@/view/message-processing/tool-execution';
 import ExecutionEventTimeline from '../ExecutionEventTimeline';
@@ -32,6 +33,14 @@ function withFallback<T>(factory: () => T, fallback: T): T {
 interface ChatSectionProps {
   message: MessageRecord;
 }
+
+const requestPanels = new Set([
+  'request',
+  'final-prompt',
+  'debug-context',
+  'transport-request',
+  'normalized-request',
+]);
 
 function stringifyPayload(data: unknown): string {
   // 纯文本面板（如"最终提示词"）直接原文展示，不走 JSON.stringify——
@@ -68,15 +77,11 @@ function getPayloadSummary(data: unknown): string {
 }
 
 export default function ChatSection({ message }: ChatSectionProps) {
-  const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
+  const [activePayloadKey, setActivePayloadKey] = useState<string>('response');
   const toolCalls = useMemo(() => withFallback(() => getToolCalls(message), []), [message]);
-  const executionCalls = useMemo(
-    () => withFallback(() => getToolExecutionCalls(message, toolCalls), toolCalls),
-    [message, toolCalls],
-  );
   const linkedEvents = useMemo(
-    () => linkToolEvents(message.messageId, executionCalls, message.executionEvents ?? []),
-    [message, executionCalls],
+    () => linkToolEvents(message.messageId, toolCalls, message.executionEvents ?? []),
+    [message, toolCalls],
   );
   const renderableMessage = useMemo(
     () => withFallback(() => getAssistantRenderableMessage(message), undefined),
@@ -90,10 +95,55 @@ export default function ChatSection({ message }: ChatSectionProps) {
       ),
     [message, renderableMessage],
   );
-  const rawPayloadPanels = useMemo(
-    () => withFallback(() => getRawPayloadPanels(message, toolCalls), []),
-    [message, toolCalls],
-  );
+  const hasRequest = Boolean(message.messageId && message.agentInvocation?.request);
+  const requestTab = requestPanels.has(activePayloadKey);
+  const fullRequest = useQuery({
+    queryKey: ['message-processing-record-detail', message.messageId, 'request'],
+    queryFn: () => getCapturedProcessingRequest(message.messageId!),
+    enabled: hasRequest && requestTab,
+    staleTime: 60_000,
+  });
+  const rawPayloadPanels = useMemo(() => {
+    const snapshot = message.agentInvocation;
+    const request = hasRequest ? (fullRequest.data ?? snapshot?.request) : undefined;
+    const panels = withFallback(
+      () =>
+        getRawPayloadPanels(
+          {
+            ...message,
+            agentInvocation: snapshot ? { ...snapshot, request } : undefined,
+          },
+          toolCalls,
+        ),
+      [],
+    );
+    if (hasRequest && request?.agentRequest && !panels.some((p) => p.key === 'final-prompt')) {
+      panels.splice(1, 0, {
+        key: 'final-prompt',
+        label: '最终提示词',
+        description: '本次请求未捕获最终提示词',
+        data: undefined,
+      });
+    }
+    if (hasRequest && !fullRequest.data) {
+      const description = fullRequest.isError
+        ? '请求读取失败'
+        : fullRequest.isSuccess
+          ? '未留存完整请求'
+          : '展开时读取完整请求';
+      return panels.map((panel) =>
+        requestPanels.has(panel.key) ? { ...panel, description, data: undefined } : panel,
+      );
+    }
+    return panels;
+  }, [
+    message,
+    hasRequest,
+    fullRequest.data,
+    fullRequest.isError,
+    fullRequest.isSuccess,
+    toolCalls,
+  ]);
   const fallbackSummary = useMemo(
     () => withFallback(() => getFallbackSummary(message), undefined),
     [message],
@@ -103,14 +153,9 @@ export default function ChatSection({ message }: ChatSectionProps) {
     fallbackSummary?.message || fallbackSummary?.error || fallbackDeliveredSegments != null,
   );
   const activePanel =
-    rawPayloadPanels.find((panel) => panel.key === activePayloadKey) ?? rawPayloadPanels[0];
+    rawPayloadPanels.find((panel) => panel.key === activePayloadKey) ??
+    rawPayloadPanels.find((panel) => panel.data !== undefined);
   const isProcessing = message.status === 'processing';
-
-  useEffect(() => {
-    if (!activePanel && rawPayloadPanels.length > 0) {
-      setActivePayloadKey(rawPayloadPanels[0].key);
-    }
-  }, [activePanel, rawPayloadPanels]);
 
   return (
     <>
@@ -169,7 +214,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
         </div>
 
         <ToolExecutionPanel
-          toolCalls={executionCalls}
+          toolCalls={toolCalls}
           events={message.executionEvents ?? []}
           links={linkedEvents}
         />
@@ -237,10 +282,24 @@ export default function ChatSection({ message }: ChatSectionProps) {
                     <div className={styles.payloadLabel}>{activePanel.label}</div>
                     <div className={styles.payloadDescription}>{activePanel.description}</div>
                   </div>
-                  <div className={styles.payloadMeta}>{getPayloadSummary(activePanel.data)}</div>
+                  {activePanel.data !== undefined && (
+                    <div className={styles.payloadMeta}>{getPayloadSummary(activePanel.data)}</div>
+                  )}
                 </div>
                 <div className={styles.codeShell}>
-                  <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
+                  {activePanel.data !== undefined ? (
+                    <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
+                  ) : fullRequest.isError ? (
+                    <button
+                      type="button"
+                      className={styles.rawTabButton}
+                      onClick={() => void fullRequest.refetch()}
+                    >
+                      重新读取
+                    </button>
+                  ) : (
+                    <span>{fullRequest.isFetching ? '正在读取…' : '无可展示内容'}</span>
+                  )}
                 </div>
               </div>
             ) : null}

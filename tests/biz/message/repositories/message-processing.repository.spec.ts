@@ -99,7 +99,8 @@ describe('MessageProcessingRepository', () => {
       ).toBe(true);
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('save_processing_snapshot', {
         p_record: expect.objectContaining({ message_id: baseRecord.messageId }),
-        p_invocation: snapshot,
+        p_request: null,
+        p_response: snapshot.response,
       });
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
@@ -479,42 +480,44 @@ describe('MessageProcessingRepository', () => {
       status: 'success',
     };
 
-    it.each([
-      { embedded: { agent_invocation: { fromChild: true } } },
-      { embedded: [{ agent_invocation: { fromChild: true } }] },
-    ])('reads the child snapshot with either embed shape', async ({ embedded }) => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const query = makeQueryMock({
-        data: [{ ...detailRow, message_processing_invocations: embedded }],
-      });
-      mockSupabaseClient.from.mockReturnValue(query);
-
-      const result = await repository.getMessageProcessingRecordById('detail');
-
-      const projection = query.select.mock.calls[0][0].split(',');
-      expect(projection).toContain(
-        'message_processing_invocations(agent_invocation:processing_read_invocation)',
-      );
-      expect(projection).not.toContain('agent_invocation');
-      expect(projection).not.toContain('invocation_version');
-      expect(result?.agentInvocation).toEqual({ fromChild: true });
-    });
-
-    it.each([[], null, [{ agent_invocation: null }]].map((embed) => ({ embed })))(
-      'omits unavailable or superseded snapshots',
-      async ({ embed }) => {
+    it.each(['detail', 'full'] as const)(
+      'reads the %s snapshot projection and preserves the tool sequence',
+      async (projection) => {
         mockSupabaseService.isClientInitialized.mockReturnValue(true);
-        mockSupabaseClient.from.mockReturnValue(
-          makeQueryMock({
-            data: [{ ...detailRow, message_processing_invocations: embed }],
-          }),
+        const child = { request: { messages: [] }, response: { reply: 'saved' } };
+        const call = { toolName: 'invite', result: 'sent' };
+        const query = makeQueryMock({
+          data: [
+            {
+              ...detailRow,
+              message_processing_invocations: child,
+              agent_steps: [{ stepIndex: 0 }, { stepIndex: 0 }],
+              tool_calls: [{ ...call, stepPosition: 1 }],
+            },
+          ],
+        });
+        mockSupabaseClient.from.mockReturnValue(query);
+        const result = await repository.getMessageProcessingRecordById('detail', projection);
+        expect(query.select.mock.calls[0][0]).toContain(
+          projection === 'detail'
+            ? 'message_processing_invocations(request:processing_request_context,response)'
+            : 'message_processing_invocations(request,response)',
         );
-
-        const result = await repository.getMessageProcessingRecordById('detail');
-
-        expect(result?.agentInvocation).toBeUndefined();
+        expect(result?.agentInvocation).toEqual({ ...child, isFallback: false });
+        expect(result?.agentSteps?.map((step) => step.toolCalls)).toEqual([[], [call]]);
+        expect(result?.toolCalls).toEqual([call]);
       },
     );
+
+    it('omits an expired snapshot and keeps the processing record', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.from.mockReturnValue(
+        makeQueryMock({ data: [{ ...detailRow, message_processing_invocations: null }] }),
+      );
+      expect(
+        (await repository.getMessageProcessingRecordById('detail'))?.agentInvocation,
+      ).toBeUndefined();
+    });
   });
 
   // ==================== getMessageStats ====================

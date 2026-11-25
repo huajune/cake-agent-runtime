@@ -314,6 +314,7 @@ describe('MessageProcessingService', () => {
       expect(result).toEqual({ ...mockRecord, executionEvents: [] });
       expect(mockMessageProcessingRepository.getMessageProcessingRecordById).toHaveBeenCalledWith(
         'msg-123',
+        'full',
       );
       expect(mockAgentExecutionEventRepository.findByTraceId).toHaveBeenCalledWith('msg-123');
     });

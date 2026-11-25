@@ -117,6 +117,16 @@ describe('AiStreamObservabilityService', () => {
     const invocation = metadata.agentInvocation;
 
     expect(metadata.replySegments).toBe(1);
+    expect(metadata.toolCalls).toEqual([
+      expect.objectContaining({
+        toolCallId: 'tool-1',
+        toolName: 'duliday_job_list',
+        args: expect.objectContaining({ brand: '肯德基' }),
+        result: expect.objectContaining({ total: 2 }),
+        status: 'ok',
+      }),
+    ]);
+    expect(invocation.response).not.toHaveProperty('toolCalls');
 
     expect(invocation.request).toEqual(
       expect.objectContaining({
@@ -135,18 +145,6 @@ describe('AiStreamObservabilityService', () => {
             totalTokens: 200,
           }),
         }),
-        toolCalls: [
-          expect.objectContaining({
-            toolName: 'duliday_job_list',
-            input: expect.objectContaining({
-              brand: '肯德基',
-            }),
-            output: expect.objectContaining({
-              total: 2,
-            }),
-            state: 'output-available',
-          }),
-        ],
         messages: [
           expect.objectContaining({
             role: 'assistant',
@@ -158,6 +156,7 @@ describe('AiStreamObservabilityService', () => {
               expect.objectContaining({
                 type: 'tool-duliday_job_list',
                 toolName: 'duliday_job_list',
+                state: 'output-available',
               }),
               expect.objectContaining({
                 type: 'text',

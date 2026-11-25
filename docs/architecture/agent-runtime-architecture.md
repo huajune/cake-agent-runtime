@@ -703,7 +703,7 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 | `AgentTracerService`         | 用 request context 把 Agent、模型、工具事件关联到 trace                                                         |
 | `IncidentReporterService`    | memory consolidation 等跨模块失败事件                                                                           |
 
-三表的粒度、快照字段、工具数组还原和各类事件的留存条件见[可观测性体系](../knowledge-base/10-可观测性体系.md)。
+三表的粒度、快照字段、工具与步骤关联和各类事件的留存条件见[可观测性体系](../knowledge-base/10-可观测性体系.md)。
 
 排查 Prompt 先看快照子表的 `agent_invocation.request.agentRequest.instructions`。分区归因看同轮
 `turn_preparation.prompt.blocks`、`dynamicBlockIds` 与 `orderHash`，需要正文时再用同轮输入复现

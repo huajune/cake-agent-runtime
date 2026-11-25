@@ -98,6 +98,10 @@ export class MessageProcessingService {
     return result.records;
   }
 
+  getCapturedRequest(messageId: string): Promise<unknown> {
+    return this.messageProcessingRepository.getCapturedRequest(messageId);
+  }
+
   /**
    * 获取单条消息处理记录详情。
    *
@@ -105,10 +109,10 @@ export class MessageProcessingService {
    * 守卫命中的回合返回首版全文/违规证据/重写版全文，供详情页还原
    * 「首版 → 首审意见 → 重写版 → 二审」全过程；未命中或历史数据为 undefined。
    */
-  async getMessageProcessingRecordById(messageId: string) {
+  async getMessageProcessingRecordById(messageId: string, projection: 'full' | 'detail' = 'full') {
     this.logger.debug(`获取消息处理记录详情: ${messageId}`);
     const [record, guardrailReview, executionEvents] = await Promise.all([
-      this.messageProcessingRepository.getMessageProcessingRecordById(messageId),
+      this.messageProcessingRepository.getMessageProcessingRecordById(messageId, projection),
       this.guardrailReviewService.findByTraceId(messageId),
       this.agentExecutionEventRepository.findByTraceId(messageId),
     ]);

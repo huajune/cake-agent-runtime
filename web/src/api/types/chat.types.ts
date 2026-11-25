@@ -107,18 +107,10 @@ export interface AgentResponseMessage {
   parts: AgentMessagePart[];
 }
 
-export interface RawHttpResponse {
-  status: number;
-  statusText: string;
-  headers?: Record<string, string | undefined>;
-  responseTime?: number;
-}
-
 export interface AgentInvocationRecord {
-  request: Record<string, unknown>;
-  response: Record<string, unknown>;
+  request?: Record<string, unknown> | null;
+  response: Record<string, unknown> | null;
   isFallback: boolean;
-  http?: RawHttpResponse;
 }
 
 export interface ExecutionEvent {

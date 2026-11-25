@@ -398,8 +398,12 @@ export class AiStreamTrace {
     payload: AiStreamSummaryPayload,
     errorMessage?: string,
   ): MonitoringMetadata {
-    const storedResponse = this.content.buildStoredResponse(payload, this.traceId, errorMessage);
-    const toolCalls = this.toAgentToolCalls(storedResponse.toolCalls);
+    const { toolCalls: rawCalls, ...storedResponse } = this.content.buildStoredResponse(
+      payload,
+      this.traceId,
+      errorMessage,
+    );
+    const toolCalls = this.toAgentToolCalls(rawCalls);
 
     return {
       scenario: this.scenario as MonitoringMetadata['scenario'],

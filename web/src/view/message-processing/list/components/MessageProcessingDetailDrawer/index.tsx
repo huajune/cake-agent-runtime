@@ -56,7 +56,7 @@ export default function MessageProcessingDetailDrawer({
   onClose,
 }: MessageProcessingDetailDrawerProps) {
   const navigate = useNavigate();
-  const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId);
+  const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId, 'context');
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const [traceCopied, setTraceCopied] = useState(false);
   const feedback = useFeedback();
@@ -286,7 +286,7 @@ export default function MessageProcessingDetailDrawer({
         {/* Body — left/right split */}
         <div className={styles.body}>
           <div ref={leftColRef} className={styles.leftCol}>
-            <ChatSection message={message} />
+            <ChatSection key={messageId} message={message} />
           </div>
 
           <div className={styles.rightCol}>
