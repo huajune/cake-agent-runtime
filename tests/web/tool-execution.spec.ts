@@ -1,6 +1,56 @@
-import { describeToolExecution } from '../../web/src/view/message-processing/tool-execution';
+import {
+  describeToolExecution,
+  linkToolEvents,
+} from '../../web/src/view/message-processing/tool-execution';
+import type { ExecutionEvent } from '../../web/src/api/types/chat.types';
 
 describe('message processing tool execution', () => {
+  it('links only unambiguous calls on the same trace while keeping orphan and historical events independent', () => {
+    const calls = [
+      'first',
+      'second',
+      'duplicate',
+      'duplicate',
+      'reused',
+      'mismatched',
+      undefined,
+    ].map((toolCallId) => ({ name: 'search', toolCallId }));
+    const event = (
+      id: number,
+      toolCallId?: string,
+      type = 'tool_call',
+      overrides: Partial<ExecutionEvent> = {},
+    ): ExecutionEvent => ({
+      id,
+      type,
+      traceId: 'turn',
+      createdAt: '2026-11-25',
+      payload: { toolName: 'search', toolCallId },
+      ...overrides,
+    });
+    const events = [
+      event(1, 'second'),
+      event(2, 'first', 'collection_form_audit'),
+      event(3, 'first', 'tool_error'),
+      event(4),
+      event(5, 'duplicate'),
+      event(6, 'orphan'),
+      event(7, 'second', 'tool_call', { traceId: 'another-turn' }),
+      event(8, 'reused'),
+      event(9, 'reused', 'tool_error'),
+      event(10, 'reused', 'brand_state_change'),
+      event(11, 'mismatched', 'tool_call', {
+        payload: { toolCallId: 'mismatched', toolName: 'different' },
+      }),
+    ];
+    expect([...linkToolEvents('turn', calls, events)]).toEqual([
+      [1, 1],
+      [2, 0],
+      [3, 0],
+    ]);
+    expect(linkToolEvents(undefined, calls, events).size).toBe(0);
+    expect(linkToolEvents('turn', [], events).size).toBe(0);
+  });
   it('separates scanned, filtered, matched and returned jobs for one call', () => {
     const result = {
       queryMeta: {
@@ -22,9 +72,9 @@ describe('message processing tool execution', () => {
     expect(describeToolExecution('duliday_job_list', result)).toEqual({
       outcome: '返回 20 个岗位',
       judgments: [
-        '扫描了 200 个岗位（10 页），上游共 200 个',
-        '按班次（可上班时段 18:00 起）筛选，排除 100 个岗位',
-        '已查范围内匹配 100 个岗位，按排序取前 20 个',
+        ['扫描范围', '扫描了 200 个岗位（10 页），上游共 200 个'],
+        ['筛选条件', '按班次（可上班时段 18:00 起）筛选，排除 100 个岗位'],
+        ['匹配结果', '已查范围内匹配 100 个岗位，按排序取前 20 个'],
       ],
     });
     // 同一回合里的下一次调用只有最终数量，不能借用前一次的筛选依据。
@@ -48,9 +98,9 @@ describe('message processing tool execution', () => {
       },
     });
     expect(view.judgments).toEqual([
-      '扫描了 0 个岗位，上游共 21 个',
-      '扫描未完成，读取后续页面失败',
-      '按用工形式筛选，排除 0 个岗位',
+      ['扫描范围', '扫描了 0 个岗位，上游共 21 个'],
+      ['扫描进度', '扫描未完成，读取后续页面失败'],
+      ['筛选条件', '按用工形式筛选，排除 0 个岗位'],
     ]);
     expect(view.outcome).toBe('已查询范围内尚未确认可推荐岗位');
   });
@@ -64,7 +114,7 @@ describe('message processing tool execution', () => {
       },
     });
     expect(view.outcome).toBe('核对了 1 个指定岗位');
-    expect(view.judgments).toEqual(['按指定岗位核对详情，班次条件不参与筛除']);
+    expect(view.judgments).toEqual([['岗位核对', '按指定岗位核对详情，班次条件不参与筛除']]);
   });
 
   it('shows a recorded preference for sorting separately from an applied filter', () => {
@@ -86,11 +136,11 @@ describe('message processing tool execution', () => {
       },
     });
     expect(view.judgments).toEqual([
-      '按班次（仅周末）筛选，排除 1 个岗位',
-      '按用工形式（小时工）筛选，排除 0 个岗位',
-      '指定用工形式没有匹配，已放宽到同类兼职岗位',
-      '排序时优先展示灵活排班的岗位',
-      '已查范围内匹配 5 个岗位',
+      ['筛选条件', '按班次（仅周末）筛选，排除 1 个岗位'],
+      ['筛选条件', '按用工形式（小时工）筛选，排除 0 个岗位'],
+      ['用工形式', '指定用工形式没有匹配，已放宽到同类兼职岗位'],
+      ['排序依据', '排序时优先展示灵活排班的岗位'],
+      ['匹配结果', '已查范围内匹配 5 个岗位'],
     ]);
   });
 
@@ -109,9 +159,9 @@ describe('message processing tool execution', () => {
     ).toEqual({
       outcome: '需补充资料',
       judgments: [
-        '表单核验结果为「收资尚未完成」',
-        '「联系电话」被退回，候选人原话中找不到提交的值，核对后重新提交',
-        '仍需补充联系电话',
+        ['表单核验', '表单核验结果为「收资尚未完成」'],
+        ['字段核验', '「联系电话」被退回，候选人原话中找不到提交的值，核对后重新提交'],
+        ['待补字段', '仍需补充联系电话'],
       ],
     });
     expect(
@@ -119,7 +169,7 @@ describe('message processing tool execution', () => {
         nextAction: 'already_booked',
         duplicateBookingGuard: { workOrderId: 123, matchedBy: 'brand' },
       }),
-    ).toEqual({ outcome: '已有在途预约', judgments: ['查到同品牌在途工单 123'] });
+    ).toEqual({ outcome: '已有在途预约', judgments: [['预约查重', '查到同品牌在途工单 123']] });
     expect(
       describeToolExecution('duliday_interview_precheck', { nextAction: 'ready_to_book' }),
     ).toEqual({ outcome: '已具备提交预约的条件', judgments: [] });
@@ -140,10 +190,10 @@ describe('message processing tool execution', () => {
     ).toEqual({
       outcome: '邀请卡已发送',
       judgments: [
-        '上海的群快照中有 3 个群',
-        '优先选择人数较少的候选群，选中「餐饮二群」',
-        '关联动作的状态为「成功」',
-        '本次动作没有新发请求',
+        ['候选群', '上海的群快照中有 3 个群'],
+        ['选群依据', '优先选择人数较少的候选群，选中「餐饮二群」'],
+        ['动作状态', '关联动作的状态为「成功」'],
+        ['请求派发', '本次动作没有新发请求'],
       ],
     });
     expect(
@@ -155,7 +205,10 @@ describe('message processing tool execution', () => {
       }),
     ).toEqual({
       outcome: '候选群均被接口拒绝',
-      judgments: ['企微拒绝了 2 个候选群的请求', '回执说明为「room not found」'],
+      judgments: [
+        ['拒绝记录', '企微拒绝了 2 个候选群的请求'],
+        ['回执说明', '回执说明为「room not found」'],
+      ],
     });
     expect(
       describeToolExecution('invite_to_group', {
@@ -165,7 +218,10 @@ describe('message processing tool execution', () => {
       }),
     ).toEqual({
       outcome: '整次群邀请结果未记录',
-      judgments: ['单次企微请求未受理（400400）', '回执说明为「room not found」'],
+      judgments: [
+        ['渠道回执', '单次企微请求未受理（400400）'],
+        ['回执说明', '回执说明为「room not found」'],
+      ],
     });
   });
 
@@ -190,7 +246,7 @@ describe('message processing tool execution', () => {
       },
     });
     expect(view.outcome).toBe('预约成功');
-    expect(view.judgments).toContain('报名后的群邀请结果为「群邀请结果待核实」');
+    expect(view.judgments).toContainEqual(['群邀请', '报名后的群邀请结果为「群邀请结果待核实」']);
   });
 
   it('does not fabricate decisions from partial, unrecognized or text-only legacy payloads', () => {
@@ -211,6 +267,6 @@ describe('message processing tool execution', () => {
         toolExecuted: false,
         errorType: 'shared.turn_call_limit_reached',
       }),
-    ).toEqual({ outcome: '工具未执行', judgments: ['已达到本轮调用次数上限'] });
+    ).toEqual({ outcome: '工具未执行', judgments: [['执行条件', '已达到本轮调用次数上限']] });
   });
 });

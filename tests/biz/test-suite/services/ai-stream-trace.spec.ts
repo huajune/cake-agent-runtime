@@ -94,17 +94,15 @@ describe('AiStreamTrace', () => {
 
     const [, errorMessage, metadata] = mockTrackingService.recordFailure.mock.calls[0];
     expect(errorMessage).toBe('boom');
-    expect(metadata.agentInvocation.response).toEqual(
+    expect(metadata.agentInvocation.response.error).toBe('boom');
+    expect(metadata.agentInvocation.response).not.toHaveProperty('toolCalls');
+    expect(metadata.toolCalls).toEqual([
       expect.objectContaining({
-        error: 'boom',
-        toolCalls: [
-          expect.objectContaining({
-            toolName: 'search',
-            input: { q: 'abc' },
-          }),
-        ],
+        toolCallId: 'tool-1',
+        toolName: 'search',
+        args: { q: 'abc' },
       }),
-    );
+    ]);
 
     expect(mockObserver.emit).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -1,3 +1,7 @@
+import { wrapToolsWithTiming } from '@agent/generator/preparation/tool-context.builder';
+import { AgentTracerService } from '@observability/agent-tracer.service';
+import { RequestContextService } from '@observability/context/request-context.service';
+
 import { getTomorrowDate } from '@infra/utils/date.util';
 import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
 import {
@@ -1490,6 +1494,40 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
         kind: 'proposal_rejected',
         reason: 'label_title_not_found',
         channel: 'form_answer',
+      }),
+    );
+  });
+
+  it('把拒收字段的审计归到实际发起预检的工具调用', async () => {
+    const request = new RequestContextService();
+    const tracer = new AgentTracerService(request, observer);
+    const name = 'duliday_interview_precheck';
+    context.turnInput.messages = [{ role: 'user', content: '我是社会人士' }];
+    const precheck = buildInterviewPrecheckTool(sponge as never, ops as never, {
+      collectionForms: collectionForms as never,
+      observer: tracer,
+      longTermService: longTerm as never,
+    })(context);
+    const tools = wrapToolsWithTiming({ [name]: precheck }, new Map(), tracer);
+    await request.run({ traceId: 'turn-precheck' }, () =>
+      tools[name].execute!(
+        {
+          mode: 'validate',
+          jobId: 100,
+          fieldValueProposals: [
+            { labelTitle: '不存在的标签', value: '社会人士', quote: '我是社会人士' },
+          ],
+        },
+        { toolCallId: 'verify-form', messages: [], context: {} },
+      ),
+    );
+    expect(observer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'turn-precheck',
+        toolCallId: 'verify-form',
+        type: 'collection_form_audit',
+        kind: 'proposal_rejected',
+        reason: 'label_title_not_found',
       }),
     );
   });

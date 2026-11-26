@@ -44,17 +44,14 @@ assert query(f"select count(*)=7 and count(distinct sequence_no)=7 from handoff_
 assert query(f"select handoff_count from daily_ops_report where corp_id='{run}'") == "7"
 
 # Whichever request wins, its snapshot and tool array must describe the same write.
-switch = "insert into system_config(key,value) values('runtime_storage_writes','{\"response_tools\":true}') on conflict(key) do update set value=excluded.value;"
-query(switch)
 def snapshot(i):
     calls = [{"toolCallId": f"attempt-{i}", "name": "lookup", "result": "x" * 100}]
     record = dict(message_id=run, chat_id=run, received_at="2026-11-18T12:00:00Z", status="success", tool_calls=calls)
-    invocation = {"request": {"attempt": i}, "response": {"toolCalls": calls}}
-    return f"select save_processing_snapshot('{json.dumps(record)}','{json.dumps(invocation)}');"
+    request = {"attempt": i}
+    return f"select save_processing_snapshot('{json.dumps(record)}','{json.dumps(request)}','{{}}');"
 assert parallel([snapshot(i) for i in range(8)]) == ["t"] * 8
-assert query(f"""select m.invocation_version=i.write_version and
-  public.processing_read_invocation(i)#>'{{response,toolCalls}}'=m.tool_calls and
-  m.tool_calls#>>'{{0,toolCallId}}'='attempt-'||(i.agent_invocation#>>'{{request,attempt}}')
-  from message_processing_records m join message_processing_invocations i using(message_id)
+assert query(f"""select i.response='{{}}'::jsonb and
+  m.tool_calls#>>'{{0,toolCallId}}'='attempt-'||(i.request->>'attempt')
+  from message_processing_records m join message_processing_turn_snapshots i using(message_id)
   where m.message_id='{run}';""") == "t"
 print("PASS concurrent duplicate and independent handoffs, daily counts, and eight overlapping snapshot writes")

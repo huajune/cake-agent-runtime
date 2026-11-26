@@ -2,9 +2,10 @@ import { Logger } from '@nestjs/common';
 import type { UIMessageChunk } from 'ai';
 import { randomUUID } from 'node:crypto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { Observer } from '@observability/observer.interface';
+import { CallerKind } from '@enums/agent.enum';
+import type { AgentEvent, Observer } from '@observability/observer.interface';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
-import { computeResultCount, computeToolCallStatus } from '@agent/generator/tool-call-analysis';
+import { summarizeToolResult } from '@agent/generator/tool-call-analysis';
 import { AiStreamTraceContentStore } from './ai-stream-trace-content-store';
 import { AiStreamTraceTiming } from './ai-stream-trace-timing';
 
@@ -196,7 +197,7 @@ export class AiStreamTrace {
     }
     this.timing.markWorkerStart();
 
-    this.observer.emit({
+    this.emit({
       type: 'agent_start',
       userId: options.userId || 'unknown',
       corpId: 'test',
@@ -385,7 +386,7 @@ export class AiStreamTrace {
     if (!this.skipTrackingPersistence) {
       this.messageTrackingService.recordFailure(this.traceId, errorMessage, metadata);
     }
-    this.observer.emit({
+    this.emit({
       type: 'agent_error',
       userId: this.options.userId || 'unknown',
       error: errorMessage,
@@ -397,8 +398,12 @@ export class AiStreamTrace {
     payload: AiStreamSummaryPayload,
     errorMessage?: string,
   ): MonitoringMetadata {
-    const storedResponse = this.content.buildStoredResponse(payload, this.traceId, errorMessage);
-    const toolCalls = this.toAgentToolCalls(storedResponse.toolCalls);
+    const { toolCalls: rawCalls, ...storedResponse } = this.content.buildStoredResponse(
+      payload,
+      this.traceId,
+      errorMessage,
+    );
+    const toolCalls = this.toAgentToolCalls(rawCalls);
 
     return {
       scenario: this.scenario as MonitoringMetadata['scenario'],
@@ -439,26 +444,26 @@ export class AiStreamTrace {
     if (!stored || stored.length === 0) return undefined;
     return stored
       .filter((tool) => Boolean(tool.toolName))
-      .map((tool) => {
-        const resultCount = computeResultCount(tool.output);
-        return {
-          toolName: tool.toolName,
-          args: (tool.input ?? {}) as Record<string, unknown>,
-          result: tool.output,
-          resultCount,
-          status: computeToolCallStatus(
-            tool.output,
-            resultCount,
-            tool.errorText,
-            tool.state,
-            tool.toolName,
-          ),
-        };
-      });
+      .map((tool) => ({
+        toolName: tool.toolName,
+        toolCallId: tool.toolCallId,
+        args: (tool.input ?? {}) as Record<string, unknown>,
+        result: tool.output,
+        ...summarizeToolResult(tool.toolName, tool.output, tool.errorText, tool.state),
+      }));
+  }
+
+  private emit(event: AgentEvent): void {
+    this.observer.emit({
+      ...event,
+      traceId: this.traceId,
+      chatId: this.options.chatId,
+      callerKind: CallerKind.TEST_SUITE,
+    });
   }
 
   private emitObserverSummary(payload: AiStreamSummaryPayload): void {
-    this.observer.emit({
+    this.emit({
       type: 'agent_stream_timing',
       messageId: payload.traceId,
       sessionId: payload.sessionId,
@@ -476,7 +481,7 @@ export class AiStreamTrace {
     });
 
     if (payload.status === 'success') {
-      this.observer.emit({
+      this.emit({
         type: 'agent_end',
         userId: this.options.userId || 'unknown',
         steps: this.content.getStepCount(),

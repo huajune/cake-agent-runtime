@@ -44,7 +44,7 @@ describe('HandoffEventsRepository', () => {
   ])('preserves the atomic result %p', async (data, outcome) => {
     const table = chain({ data: null, error: null });
     const { rpc, from } = mockClientWithRpc(table, { data, error: null });
-    await expect(repository.insertHandoffEvent(input)).resolves.toBe(outcome);
+    await expect(repository.recordHandoffTicket(input)).resolves.toBe(outcome);
     expect(rpc).toHaveBeenCalledWith('record_handoff', {
       p_ticket: expect.objectContaining({
         corp_id: 'corp',

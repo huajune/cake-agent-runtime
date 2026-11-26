@@ -1,3 +1,4 @@
+import type { ToolExecutionObservations } from '@observability/context/tool-observation';
 import { getToolCallLimit } from '@tools/tool-contracts';
 /**
  * Agent 生成器：prepare → AI SDK 多步模型/工具循环 → 生成结果归一化。
@@ -29,8 +30,7 @@ import {
   buildToolCallLimitNotice,
   collectCalledToolNames,
   collectToolReplayEvidence,
-  computeResultCount,
-  computeToolCallStatus,
+  summarizeToolResult,
   findReplayBlockedSideEffectTools,
   replayBlockingStatus,
   replayBlockingComponents,
@@ -107,6 +107,16 @@ const shortCircuitByAnyToolResult = ({
   const lastStep = steps[steps.length - 1];
   return (lastStep?.toolResults ?? []).some((r) => isShortCircuitedToolResult(r.output));
 };
+
+function uniqueCallsById<T extends { toolCallId: string }>(
+  entries: readonly T[],
+): Map<string, T | null> {
+  const unique = new Map<string, T | null>();
+  for (const entry of entries) {
+    if (entry.toolCallId) unique.set(entry.toolCallId, unique.has(entry.toolCallId) ? null : entry);
+  }
+  return unique;
+}
 
 /** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
 type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
@@ -253,7 +263,7 @@ export class GeneratorAgent {
             turnLedger: ctx.ledger,
             stepStartMs,
             stepEndWallclocks,
-            toolExecutionTimings: ctx.toolExecutionTimings,
+            toolObservations: ctx.toolObservations,
           });
           result.confirmationClosureEligible = ctx.confirmationClosureEligible === true;
           this.attachTurnEnd(result, ctx, params.messageId, result.text);
@@ -495,11 +505,8 @@ export class GeneratorAgent {
      * 导致 durationMs 出现 1000ms 整数倍的假象）。
      */
     stepEndWallclocks?: number[];
-    /**
-     * toolCallId → 工具 execute 真实耗时（由 preparation 的 timing wrapper 记录）。
-     * 命中时 AgentToolCall.durationMs 用真实执行时间；缺失时退回步骤墙钟近似。
-     */
-    toolExecutionTimings?: Map<string, number>;
+    /** 按 SDK 调用 ID 读取工具实测值，步骤墙钟单独保留在步骤上。 */
+    toolObservations?: ToolExecutionObservations;
     /**
      * 与 steps 等长：每步由 llm-executor 第几次尝试产出。executor 重试续接了前次已完成
      * 工具步时不全相同，此时 agent_steps/tool_calls 逐条标注 attempt，让流水能看出
@@ -528,33 +535,26 @@ export class GeneratorAgent {
 
       const stepToolCalls: AgentToolCall[] = [];
       if (step.toolCalls) {
+        const callsById = uniqueCallsById(step.toolCalls);
+        const resultsById = uniqueCallsById(step.toolResults ?? []);
         for (const tc of step.toolCalls) {
-          const tr = step.toolResults?.find((t) => t.toolCallId === tc.toolCallId);
-          const result = (tr as { output?: unknown } | undefined)?.output;
-          const resultCount = computeResultCount(result);
-          const status = computeToolCallStatus(
-            result,
-            resultCount,
-            undefined,
-            undefined,
-            tc.toolName,
-          );
-          // 优先用 timing wrapper 记录的真实执行耗时；
-          // 缺失时退回旧近似（单工具步的步骤墙钟，含 LLM 思考时间）
-          const executionMs = params.toolExecutionTimings?.get(tc.toolCallId);
-          const durationMs =
-            executionMs ??
-            (stepDurationMs !== undefined && step.toolCalls.length === 1
-              ? stepDurationMs
-              : undefined);
-
+          const uniqueInStep = callsById.get(tc.toolCallId) === tc;
+          const result = uniqueInStep ? resultsById.get(tc.toolCallId)?.output : undefined;
+          const captured = params.toolObservations?.get(tc.toolCallId);
+          const measured =
+            uniqueInStep && captured?.toolName === tc.toolName ? captured : undefined;
+          const summary = measured ?? summarizeToolResult(tc.toolName, result);
           const call: AgentToolCall = {
+            ...(tc.toolCallId && captured !== null && uniqueInStep
+              ? { toolCallId: tc.toolCallId }
+              : {}),
             toolName: tc.toolName,
-            args: ((tc as { input?: unknown }).input ?? {}) as Record<string, unknown>,
+            args: (tc.input ?? {}) as Record<string, unknown>,
             result,
-            resultCount,
-            status,
-            durationMs,
+            resultCount: summary.resultCount,
+            status: summary.status,
+            durationMs: measured?.durationMs,
+            ...(measured?.decisions?.length ? { decisions: measured.decisions } : {}),
             ...(attempt !== undefined ? { attempt } : {}),
           };
           stepToolCalls.push(call);
@@ -664,7 +664,7 @@ export class GeneratorAgent {
         turnLedger: ctx.ledger,
         stepStartMs,
         stepEndWallclocks,
-        toolExecutionTimings: ctx.toolExecutionTimings,
+        toolObservations: ctx.toolObservations,
         stepAttempts: r.stepAttempts,
       });
     } catch (error) {

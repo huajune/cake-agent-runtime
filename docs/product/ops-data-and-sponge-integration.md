@@ -59,12 +59,12 @@ agent_long_term_memories.active_booking jsonb
 - **破冰排除加好友握手语**：加好友时微信以普通 user 消息推送握手语（`我是{昵称}` / `请求添加你为朋友` / `我通过了你的…验证请求`），由 `isPureFriendAddGreeting`（`src/channels/wecom/message/utils/friend-add-greeting.util.ts`）识别，命中即**不记** `candidate.message_received` → 破冰自然落到下一条真实消息；带求职意图的「我是找工作的 / 我是兼职 / 我是应聘的」仍计入破冰
 - 早期"合成 `[新好友添加]` synthetic 消息"方案未实施；曾随之落库的孤儿列 `message_processing_records.is_synthetic` 已连同 `idx_mpr_synthetic` 索引删除（迁移 `20260706043700`）
 
-### 6. handoff 简化 + 单独事件表
+### 6. 转人工工单与触发事件
 
 - 废弃 recruitment_cases 的 `active/handoff/closed` 状态机
-- handoff 状态只靠 `UserHostingService` 的 pause/resume 一层表达
-- `handoff_events` 表记录富字段明细（reason 原话 / action_advice / stage / work_order_id）
-- **聚合分析数据源已切到 `ops_events(handoff.triggered)` 的 payload**（见六-D Block 4），handoff_events 退为回捞复盘底账
+- 当前托管状态由 `UserHostingService` 的暂停与恢复表示
+- `handoff_events` 记录转人工工单的原因、处理建议、结果及解决时间
+- **聚合分析数据源已切到 `ops_events(handoff.triggered)` 的 payload**（见六-D Block 4），工单处理进度和复盘明细读 `handoff_events`
 
 ### 7. 自助改约 / 取消（新增能力）
 
@@ -83,7 +83,7 @@ agent_long_term_memories.active_booking jsonb
 | `agent_long_term_memories`                | 列 `active_booking jsonb`（原 `latest_booking`，迁移 `20260630120000` 改名） | 候选人当前有效预约工单指针（含 `bookings[]` 多工单）                                                  |
 | `ops_events`                              | 在产                                                                         | 事件底账：append-only，所有事件原始记录 + idempotency_key                                             |
 | `daily_ops_report`                        | 在产                                                                         | 每日每 bot **14 列**事件计数（从 ops_events 投影；12 列初版 + 取消/改约 2 列，迁移 `20260608120000`） |
-| `handoff_events`                          | 在产                                                                         | Handoff 富字段底账（含 stage / action_advice；聚合分析已改读 ops_events）                             |
+| `handoff_events`                          | 在产                                                                         | 转人工工单及处理进度（触发次数读 ops_events）                             |
 | `recruitment_cases`                       | **已删除**                                                                   | 2026-06-10 整表删除（迁移 `20260610170000_drop_recruitment_cases.sql`），代码同步移除                 |
 | `message_processing_records.is_synthetic` | **已删除**                                                                   | synthetic 方案未实施留下的孤儿列，连同 `idx_mpr_synthetic` 于迁移 `20260706043700` 删除               |
 
@@ -234,36 +234,11 @@ CREATE TABLE daily_ops_report (
 - `candidate.hired` 不采集，无入职列（统计收口到面试通过）
 - **不存飞书同步状态**：飞书日报每日定时读一次推一次（见六-F），不回写、不增量
 
-### 3.5 handoff_events 表
+### 3.5 转人工工单（handoff_events）
 
-```sql
-CREATE TABLE handoff_events (
-  id bigserial PRIMARY KEY,
-  chat_id text NOT NULL,
-  corp_id text NOT NULL,
-  user_id text,                        -- 候选人维度复盘
-  reason_code text NOT NULL,           -- 原因代码（当前 15 类，见 request-handoff.tool.ts）；text 不设约束，可扩展
-  reason text,                         -- Agent 给的原话
-  action_advice text,                  -- Agent 给的建议动作
-  stage text,                          -- 触发时会话阶段（程序性阶段），定位 handoff 卡在哪一步
-  bot_im_id text,                      -- 关联到 group
-  work_order_id bigint,                -- modify_appointment 等场景关联工单
-  idempotency_key text NOT NULL,       -- 去重
-  created_at timestamptz DEFAULT now(),
-  UNIQUE(corp_id, idempotency_key)     -- 按 corp 隔离去重
-);
+每行是一张转人工工单。`record_handoff` 按企业和幂等键关联一次触发，在同一事务写入工单、经营事件并更新日报。工单保存处理建议、会话内序号和关联预约工单号。恢复托管后，`resolve_hosting_handoffs` 按原企业、托管账号、会话及暂停时间范围更新 `outcome` 与 `resolved_at`。[工单字段](../../supabase/migrations/20260902073727_retention_schema_audit.sql) · [登记与关闭事务](../../supabase/migrations/20261119082000_atomic_handoffs.sql)
 
-CREATE INDEX idx_handoff_events_corp_created ON handoff_events (corp_id, created_at);
-CREATE INDEX idx_handoff_events_corp_reason ON handoff_events (corp_id, reason_code);
-CREATE INDEX idx_handoff_events_corp_stage ON handoff_events (corp_id, stage);
-CREATE INDEX idx_handoff_events_user_id ON handoff_events (user_id);
-```
-
-**特点**：
-
-- append-only 事件流，永不更新
-- 触发 handoff 时 INSERT 一行，同时也 INSERT 一行 ops_events（event_name='handoff.triggered'，payload 带 reason_code/reason/action_advice/stage）
-- **分工（2026-08 现状）**：转化分析页的原因分布**读 ops_events(handoff.triggered) 的 payload**（与其余指标同一 report_date 切窗、同一 group 过滤口径，且与 daily_ops_report.handoff_count 同源）；handoff_events 提供 reason 原话、action_advice、stage、work_order_id 等富字段，供触发追踪 → 原因复盘 → 回捞对话
+转化分析从 `ops_events` 的 `handoff.triggered` 事件按业务日期、小组、原因计数，与 `daily_ops_report.handoff_count` 同源。复盘工单处理进度时读取 `handoff_events`。
 
 ### 3.6 索引补充
 
@@ -585,7 +560,7 @@ handoff 涉及两件**互不相干**的事，分开处理——别混在一起�
 | 关注点                                    | 由谁表达                                                                                    | 用途                                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | **运行时状态**：这人现在归谁管            | `UserHostingService` 的 pause/resume 一层（pause=人工跟进中，active=AI 跟进；次日零点自动解禁） | 决定 AI 要不要继续自动回复                             |
-| **触发分析**（本节重点）：何时/为何转人工 | `ops_events.handoff.triggered`（聚合分析数据源）+ `handoff_events`（富字段底账）            | 聚合原因、定位卡点、回捞对话 → 反推优化 Agent 托管流程 |
+| **触发分析**（本节重点）：何时/为何转人工 | `ops_events.handoff.triggered`（聚合分析数据源）+ `handoff_events`（转人工工单）            | 聚合原因、定位卡点、回捞对话 → 反推优化 Agent 托管流程 |
 
 不再维护 recruitment_cases 的 `active/handoff/closed` 状态机：运行时状态用 pause 一层就够，分析价值全部沉到事件底账。
 
@@ -596,13 +571,12 @@ Agent 调 request_handoff（reasonCode 15 类之一）
   ↓
 InterventionService.dispatch()
   ├─ ① UserHostingService.pauseUser()    运行时状态：暂停 AI 托管
-  ├─ ② handoff_events INSERT 一行         富字段底账（reason_code/reason/action_advice/stage/work_order_id）
-  ├─ ③ ops_events(handoff.triggered)     计数底账 + 投影 handoff_count +1
-  └─ ④ 发飞书告警
+  ├─ ② record_handoff                    登记转人工工单与触发事件，首次触发更新日报计数
+  └─ ③ 发飞书告警
 
 招聘经理恢复托管
   ↓
-UserHostingService.resumeUser()           运行时状态：恢复（不做任何 case 状态操作）
+UserHostingService.resumeUser()           恢复托管并关闭原暂停范围内的工单
 ```
 
 ### 原因代码（15 类，`request-handoff.tool.ts`）
@@ -744,8 +718,8 @@ data: {
    - 来源：扫 ops_events.booking.succeeded 近 60 天待通过工单；写入走统一投影路径
    - 不依赖 active_booking（避免被新预约/取消影响丢历史）
 
-6. **handoff 双底账分工**
-   - ops_events 做计数与聚合分析（与全体指标同切窗同过滤），handoff_events 提供富字段供回捞复盘
+6. **转人工事件与工单**
+   - ops_events 做计数与聚合分析（与全体指标同切窗同过滤），handoff_events 提供工单建议、处理结果与解决时间
    - reason_code 无 DB 约束，增删原因只改工具枚举 + 前端映射，无需迁移
 
 7. **huajune 上报互斥**
@@ -763,7 +737,7 @@ data: {
 | 海绵 API 挂了 Agent 上下文无法渲染            | Redis 5min 缓存兜底；若仍失败按"海绵不会挂"假设处理                                               |
 | 候选人入职/流程终结后 active_booking 仍有指针 | Agent 上下文渲染时通过 currentStatus 区分对待（已上岗就不显示"待面试"提示）；自助取消已联动清指针 |
 | recruitment_cases 历史数据                    | 已整表删除（2026-06-10），历史查询走海绵工单 / `ops_events`                                       |
-| handoff_events 没有"已解决"状态               | 如后续需要追踪闭环，反查 user_pauses 表"暂停超 N 天未恢复"的用户                                  |
+| 工单仍在人工处理 | 查 `handoff_events.outcome` 和 `resolved_at`，结合当前托管状态核对。 |
 | 海绵 15min cron 调用量大                      | 仅扫近 60 天底账内"未通过"工单，通过后即移出待轮询集合                                            |
 | 换号（wxid 轮换）导致账号对比裂成两行         | `conversion_bot_identity_aliases` 动态配置合并同一身份（临时止血；根治需统一 wecomUserId 口径）   |
 

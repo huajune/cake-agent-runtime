@@ -69,10 +69,13 @@ export function useMessageProcessingRecords(options?: {
 /**
  * 获取单条消息处理记录详情
  */
-export function useMessageProcessingRecordDetail(messageId: string | null) {
+export function useMessageProcessingRecordDetail(
+  messageId: string | null,
+  requestView: 'full' | 'context' = 'full',
+) {
   return useQuery({
-    queryKey: ['message-processing-record-detail', messageId],
-    queryFn: () => chatService.getMessageProcessingRecordDetail(messageId!),
+    queryKey: ['message-processing-record-detail', messageId, requestView],
+    queryFn: () => chatService.getMessageProcessingRecordDetail(messageId!, requestView),
     enabled: !!messageId,
     staleTime: 60000,
   });

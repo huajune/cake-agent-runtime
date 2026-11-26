@@ -26,7 +26,7 @@ describe('GeneratorAgent 空响应恢复', () => {
     memoryLoadWarning: undefined,
     entryStage: undefined,
     ledger: createTurnLedger(),
-    toolExecutionTimings: new Map<string, number>(),
+    toolObservations: new Map(),
     ...over,
   });
 
@@ -346,7 +346,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
         memoryLoadWarning: undefined,
         entryStage: undefined,
         ledger: createTurnLedger(),
-        toolExecutionTimings: new Map<string, number>(),
+        toolObservations: new Map(),
         ...ctxFor(userText),
       }),
     };

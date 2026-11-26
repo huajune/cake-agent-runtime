@@ -42,8 +42,7 @@ export class CandidateBlacklistService {
   /**
    * 任一 ID 命中黑名单即返回命中项。
    *
-   * 同一候选人在不同上下文里存在多个等价 ID（chatId / imContactId / externalUserId），
-   * 运营拉黑时使用其中任意一个均可命中。
+   * 检查本次渠道请求带来的会话、联系人系统或外部联系人标识，按运营录入的原值匹配。
    */
   async matchBlacklisted(
     targetIds: ReadonlyArray<string | null | undefined>,

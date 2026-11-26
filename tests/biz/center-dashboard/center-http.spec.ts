@@ -17,6 +17,15 @@ class LegacyController {
     legacyCalls++;
     return [{ id: 'hq' }, { id: 'own' }];
   }
+  @Get([
+    'analytics/message-processing-records/:messageId/request',
+    'analytics/message-processing-records/:messageId/model-calls',
+    'analytics/message-processing-records/:messageId/model-calls/:id',
+  ])
+  modelRequest() {
+    legacyCalls++;
+    return { request: { instructions: 'private test fixture' } };
+  }
   @Get('analytics/chat-sessions/:chatId/messages') messages() {
     legacyCalls++;
     return { leaked: true };
@@ -73,6 +82,16 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
     legacyCalls = 0;
     center.handle.mockReset().mockResolvedValue([{ id: 'own' }]);
   });
+  it.each(['request', 'model-calls', 'model-calls/7e690820-cd8c-4ed4-941c-e7c096658067'])(
+    'keeps %s outside center access',
+    async (path) => {
+      await request(app.getHttpServer())
+        .get(`/analytics/message-processing-records/example/${path}`)
+        .set('X-Real-IP', '1.193.23.48')
+        .expect(403);
+      expect(legacyCalls).toBe(0);
+    },
+  );
   it('same URL returns scoped center rows and unchanged HQ rows', async () => {
     const own = await request(app.getHttpServer())
       .get('/group/list')

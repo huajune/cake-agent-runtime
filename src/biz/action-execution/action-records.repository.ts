@@ -70,7 +70,6 @@ export class ActionRecordsRepository extends BaseRepository {
     const result = await this.transition(ACTION_RECORD_OPERATION.SETTLE, {
       ...this.ownership(record),
       completion,
-      evidenceHash: actionDigest(completion),
     });
     if (!result.record) throw new Error('Action disappeared during settlement');
     return result.record;

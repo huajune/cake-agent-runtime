@@ -23,7 +23,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * 裁定：业务 / 不可再生数据永久（chat_messages、user_activity 等不清理），Agent 观测数据统一 ≤ 90 天。
  *
  * 清理顺序（每日 03:00 上海时区）:
- * 1. agent_invocation（>N 天）：删除 message_processing_invocations 子表行；
+ * 1. agent_invocation（>N 天）：按同一批量预算清理回合快照和模型 HTTP 正文；
  *    agent_steps/tool_calls 不提前 NULL（工具统计兜底 RPC + badcase 证据需要处理链窗口），
  *    随消息处理行删除统一回收
  * 2. DELETE guardrail_review_records（>N 天）— message_processing_records 的 trace 附属证据

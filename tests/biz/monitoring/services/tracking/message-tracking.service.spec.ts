@@ -1,3 +1,8 @@
+import {
+  captureProviderFetch,
+  captureReplyGeneration,
+  withProcessingTurn,
+} from '@observability/context/model-invocations';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
@@ -172,6 +177,40 @@ describe('MessageTrackingService', () => {
       }),
     );
   });
+
+  it.each(['success', 'failure'])(
+    'retains HTTP exchanges after the %s handler leaves its processing scope',
+    async (status) => {
+      mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
+        messageId: 'wire',
+        chatId: 'chat',
+        receivedAt: 1000,
+        status: 'processing',
+      });
+      const send = captureProviderFetch('qwen', async () => Response.json({ vendorOnly: 17 }));
+      await withProcessingTurn('wire', async () => {
+        await captureReplyGeneration(async () => {
+          await (await send('https://model.invalid', { method: 'POST', body: '{}' })).json();
+        });
+        if (status === 'success') service.recordSuccess('wire');
+        else service.recordFailure('wire', 'tool failed');
+      });
+      await flushPromises();
+      expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'wire',
+          status,
+          modelInvocations: [
+            expect.objectContaining({
+              complete: true,
+              httpStatus: 200,
+              responseBody: Buffer.from('{"vendorOnly":17}').toString('base64'),
+            }),
+          ],
+        }),
+      );
+    },
+  );
 
   it('keeps inbound handoff attribution on a successful turn with no reply segments', async () => {
     mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
