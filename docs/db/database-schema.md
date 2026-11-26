@@ -42,7 +42,7 @@ TEST 和新加坡生产库均已登记本批三份迁移。生产在既有 `runt
 | 消息流水与调用快照 | 通过 `save_processing_snapshot` 同事务写入。详情从 `processing_read_steps` 与 `processing_read_invocation` 还原对应代次的工具和响应。列表仅读取摘要。 |
 | 渠道聊天 | 读完整载荷使用 `chat_read_payload`。Center 继续按账号和会话返回原有受限投影。 |
 | 测试执行 | 写 `test_executions`，完整查询和导出读 `test_execution_results`。该视图执行调用角色权限，服务角色可查。 |
-| 转人工 | 调用 `record_handoff` 写事件、处理明细及日报投影。恢复托管通过 `resolve_hosting_handoffs` 按原暂停作用域关闭对应明细。 |
+| 转人工 | `handoff_events` 存转人工工单及建议、处理结果和解决时间。`record_handoff` 在同一事务登记工单、`ops_events` 的 `handoff.triggered` 事件与日报投影。触发次数按经营事件计；恢复托管通过 `resolve_hosting_handoffs` 在原暂停作用域关闭工单。 |
 | 动作回执、人工裁定 | 现行 RPC 按原派发尝试保存采信回执。`action_record_json` 返回完整动作，`action_terminal_evidence` 识别同一次尝试的冲突证据。`agent_action_reviews` 对服务角色仅支持直接查询，裁定使用 `review_agent_action`。 |
 
 `system_config` 中 `runtime_storage_writes` 的 `response_tools`、`steps`、`chat_text`、`test_text`、`action_body` 各自控制合格新写。仅 JSON 布尔值 `true` 开启相应格式，初始均关闭。停写后仍可通过完整投影读取已有记录。每次还原显式指定至多 100 个业务键。[按键还原脚本](../../scripts/restore-runtime-storage.sql)
@@ -109,8 +109,9 @@ TEST 和新加坡生产库均已登记本批三份迁移。生产在既有 `runt
 ┌─────────────────────────────────────────────────────────────────┐
 │                        核心业务表                                │
 │                                                                 │
-│  chat_messages ──────> message_processing_records               │
-│                            │        (message_id 关联)            │
+│  chat_messages <── request.sourceMessageIds[]（渠道输入）       │
+│                       message_processing_records                │
+│                            │        (流水 message_id)            │
 │                            ├─── message_processing_invocations  │
 │                            ├─── 每小时 ──> monitoring_hourly_stats │
 │                            └─── 每天  ──> monitoring_daily_stats  │
@@ -162,7 +163,7 @@ TEST 和新加坡生产库均已登记本批三份迁移。生产在既有 `runt
 | ------------------ | ----------- | ----------------- | ---------------------------------------------------------- |
 | `id`               | uuid        | gen_random_uuid() | 主键                                                       |
 | `chat_id`          | text        | NOT NULL          | 会话ID，通常为 recipientId                                 |
-| `message_id`       | text        | NOT NULL, UNIQUE  | 消息唯一ID，用于去重                                       |
+| `message_id`       | text        | NOT NULL, UNIQUE  | 渠道消息 ID，用于原消息去重                                       |
 | `role`             | text        | NOT NULL          | 消息角色：`user` / `assistant`                             |
 | `content`          | text        | NOT NULL          | 消息内容                                                   |
 | `timestamp`        | timestamptz | NOT NULL          | 消息发送时间                                               |
@@ -180,7 +181,7 @@ TEST 和新加坡生产库均已登记本批三份迁移。生产在既有 `runt
 | `payload`          | jsonb       | -                 | 完整载荷或引用同值文本键后保留的其他字段 |
 | `payload_text_v1`  | smallint    | -                 | 掩码 1 从 `content` 还原 `text`，2 还原 `pureText`，3 还原两键 |
 | `avatar`           | text        | -                 | 用户头像 URL                                               |
-| `external_user_id` | text        | -                 | 企微外部用户ID                                             |
+| `external_user_id` | text        | -                 | 渠道外部联系人 ID，取自回调或渠道历史中的 externalUserId                                             |
 | `created_at`       | timestamptz | now()             | 记录创建时间                                               |
 
 **索引**：
@@ -209,7 +210,7 @@ TEST 和新加坡生产库均已登记本批三份迁移。生产在既有 `runt
 | 字段               | 类型         | 默认值           | 说明                                                                                             |
 | ------------------ | ------------ | ---------------- | ------------------------------------------------------------------------------------------------ |
 | `id`               | bigint       | sequence         | 主键（自增）                                                                                     |
-| `message_id`       | text         | NOT NULL, UNIQUE | 关联 chat_messages                                                                               |
+| `message_id`       | text         | NOT NULL, UNIQUE | 处理流水 ID，同一轮可合并多条渠道输入。API 字段为 messageId                                                                               |
 | `chat_id`          | text         | NOT NULL         | 会话ID                                                                                           |
 | `user_id`          | text         | -                | 用户ID                                                                                           |
 | `user_name`        | text         | -                | 用户昵称（trgm 索引）                                                                            |
@@ -265,6 +266,8 @@ TEST 和新加坡生产库均已登记本批三份迁移。生产在既有 `runt
 - `cleanup_message_processing_records()` 按 `received_at` 清理超过 90 天的流水，通过外键级联删除对应快照。
 
 #### message_processing_invocations - 模型调用快照
+
+**从流水追溯输入。** 从详情的 `agentInvocation.request.sourceMessageIds` 取渠道消息 ID，再在同一会话的 `chat_messages.message_id` 中查找。一次合并处理可以有多条输入。快照缺失或过期时，详情仍能显示流水 ID。后台触发的流水也可能没有渠道输入。消息表的 `external_user_id` 是渠道提供的标识，黑名单反查和复聊需结合会话、托管账号及消息方向使用。
 
 每条主流水最多关联一条快照，`message_id` 同时是子表主键和指向主流水的外键。`agent_invocation` 保存当次调用的请求、模型回复及随调用记录的工具和 HTTP 信息，`created_at` 决定快照保留期限。详情接口通过 `processing_read_invocation` 读取快照。请求与回复只随详情返回。
 

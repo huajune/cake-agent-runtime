@@ -241,9 +241,44 @@ describe('ReengagementTouchRepository', () => {
       externalUserId: 'external-1',
     });
     expect(queryMock.select).toHaveBeenCalledWith(
-      'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self',
+      'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self,org_id,role',
     );
     expect(queryMock.limit).toHaveBeenCalledWith(20);
+  });
+
+  it('keeps channel contact IDs scoped to the recipient and hosting account', async () => {
+    const bot = {
+      org_id: 'this-org',
+      im_bot_id: 'this-bot',
+      manager_name: '托管账号',
+      is_self: true,
+      im_contact_id: 'self-im',
+      external_user_id: 'self-external',
+    };
+    const other = { ...bot, im_bot_id: 'other-bot', is_self: false };
+    const otherOrg = { ...bot, org_id: 'other-org', is_self: false };
+    mockSupabaseClient.from.mockReturnValue(
+      makeQueryMock({ data: [bot, other, otherOrg], error: null }),
+    );
+    expect(await repository.getLatestChatChannelIdentity('chat-1')).toEqual({
+      botImId: 'this-bot',
+      managerName: '托管账号',
+      candidateName: undefined,
+      imContactId: undefined,
+      externalUserId: undefined,
+    });
+    const legacy = {
+      ...bot,
+      is_self: null,
+      role: 'user',
+      im_contact_id: 'peer',
+      external_user_id: 'channel-peer',
+    };
+    mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [bot, legacy], error: null }));
+    expect(await repository.getLatestChatChannelIdentity('chat-1')).toMatchObject({
+      imContactId: 'peer',
+      externalUserId: 'channel-peer',
+    });
   });
 
   it('groups excluded-reason rows by status + scenario in code without touching the stats RPC', async () => {

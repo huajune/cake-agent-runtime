@@ -37,7 +37,7 @@
 
 ## 四、表结构遗留
 
-- [ ] `chat_messages.external_user_id`：来源是群回调的 `groupCallback.externalUserId`，不是候选人标识，列名误导；随入站解析链重构一并改名
+- `chat_messages.external_user_id` 的业务名为「渠道外部联系人 ID」，来源包括企微回调与历史对账。存储列和对外字段维持兼容。若要更改物理名称，先核对渠道对账脚本、黑名单、复聊及外部 SQL 读者。
 - [ ] `chat_messages` 一行 = 一个投递分段：长期应加 `segment_index` / `logical_message_id` 或投递另记，消除「消息数」2.2× 失真
 - [ ] `test_executions` 上 3 个 gin 索引（`execution_trace` / `memory_trace` / `source_trace`，10.7 MB，表仅 2.5k 行）：确认查询是否真用 `@>`，否则 DROP
 - [ ] 迁移里 `cleanup_message_processing_records` 定义了两次（默认 30 / 60）：保留一份

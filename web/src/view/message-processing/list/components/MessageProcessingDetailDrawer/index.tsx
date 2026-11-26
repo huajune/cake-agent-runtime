@@ -57,6 +57,7 @@ export default function MessageProcessingDetailDrawer({
 }: MessageProcessingDetailDrawerProps) {
   const navigate = useNavigate();
   const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId, 'context');
+  const processingId = message?.messageId ?? messageId;
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const [traceCopied, setTraceCopied] = useState(false);
   const feedback = useFeedback();
@@ -137,9 +138,7 @@ export default function MessageProcessingDetailDrawer({
       traceId,
       sourceTrace: {
         chatIds: message.chatId ? [message.chatId] : undefined,
-        anchorMessageIds: message.messageId ? [message.messageId] : undefined,
-        relatedMessageIds: message.messageId ? [message.messageId] : undefined,
-        messageProcessingIds: message.messageId ? [message.messageId] : undefined,
+        messageProcessingIds: [processingId],
         traceIds: traceId ? [traceId] : undefined,
         batchIds: message.batchId ? [message.batchId] : undefined,
         raw: {
@@ -161,7 +160,7 @@ export default function MessageProcessingDetailDrawer({
         },
       },
     };
-  }, [message]);
+  }, [message, processingId]);
   const latencyRows = useMemo(
     () =>
       [
@@ -182,7 +181,6 @@ export default function MessageProcessingDetailDrawer({
       chatHistory: chatHistoryPreview,
       userMessage: lastUserMessage,
       chatId: message.chatId,
-      messageId: message.messageId,
       traceId: feedbackTrace.traceId,
       batchId: message.batchId,
       sourceTrace: feedbackTrace.sourceTrace,
@@ -203,7 +201,7 @@ export default function MessageProcessingDetailDrawer({
   }, [clearSuccess, messageId]);
 
   const Surface = onClose ? 'div' : 'main';
-  const surfaceClass = onClose ? 'drawer-content' : styles.detailPage;
+  const surfaceClass = onClose ? `drawer-content ${styles.detailDrawer}` : styles.detailPage;
   const overlayProps = onClose && {
     className: 'drawer-overlay',
     onClick: (event: React.MouseEvent<HTMLDivElement>) => {
@@ -211,7 +209,7 @@ export default function MessageProcessingDetailDrawer({
     },
   };
   const closeButton = onClose && (
-    <button type="button" className={styles.closeBtn} onClick={onClose}>
+    <button type="button" className={styles.closeBtn} aria-label="关闭处理详情" onClick={onClose}>
       &times;
     </button>
   );
@@ -233,9 +231,12 @@ export default function MessageProcessingDetailDrawer({
   }
 
   const statusTone = getRecordStatusTone(message);
-  const traceId = message.messageId ?? messageId;
+  const sourceIds = message.agentInvocation?.request?.sourceMessageIds;
+  const channelMessageIds = Array.isArray(sourceIds)
+    ? [...new Set(sourceIds.filter((id): id is string => typeof id === 'string' && !!id.trim()))]
+    : [];
   const handleCopyTraceId = async () => {
-    await navigator.clipboard.writeText(traceId);
+    await navigator.clipboard.writeText(processingId);
     setTraceCopied(true);
   };
 
@@ -323,14 +324,26 @@ export default function MessageProcessingDetailDrawer({
             <div className={styles.sideTitle}>排障上下文</div>
             <div className={styles.latencyList}>
               <div className={styles.latencyRow}>
-                <span className={styles.latencyLabel}>Trace ID</span>
+                <span className={styles.latencyLabel}>处理流水 ID</span>
                 <span className={styles.traceValue}>
-                  <code title={traceId}>{traceId}</code>
+                  <code title={processingId}>{processingId}</code>
                   <button type="button" onClick={() => void handleCopyTraceId()}>
                     {traceCopied ? '已复制' : '复制'}
                   </button>
                 </span>
               </div>
+              {channelMessageIds.length > 0 && (
+                <div className={styles.latencyRow}>
+                  <span className={styles.latencyLabel}>来源消息 ID</span>
+                  <ul className={styles.sourceIds}>
+                    {channelMessageIds.map((id) => (
+                      <li key={id}>
+                        <code>{id}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {message.alertType && (
                 <div className={styles.latencyRow}>
                   <span className={styles.latencyLabel}>Alert Type</span>

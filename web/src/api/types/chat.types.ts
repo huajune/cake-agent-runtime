@@ -15,6 +15,7 @@ export interface ChatMessage {
   contactType?: string;
   isSelf?: boolean;
   avatar?: string;
+  /** 渠道回调提供的外部联系人 ID。 */
   externalUserId?: string;
 }
 
@@ -325,6 +326,7 @@ export interface GuardrailReviewRecord {
 }
 
 export interface MessageRecord {
+  /** 处理流水标识，兼容 API 字段名 messageId。 */
   messageId?: string;
   receivedAt: string | number;
   userId?: string;

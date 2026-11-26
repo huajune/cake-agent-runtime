@@ -34,9 +34,11 @@ export function linkToolEvents(
 
 type Receipt = Record<string, unknown>;
 
+type ReceiptJudgment = readonly [label: string, detail: string];
+
 export interface ToolExecutionSummary {
   outcome?: string;
-  judgments: string[];
+  judgments: ReceiptJudgment[];
 }
 
 function text(value: unknown): string | undefined {
@@ -73,27 +75,27 @@ function scheduleWindow(value: unknown): string | undefined {
 
 function describeJobs(result: Receipt): ToolExecutionSummary {
   const meta = asRecord(result.queryMeta);
-  const judgments: string[] = [];
+  const judgments: ReceiptJudgment[] = [];
   const scanned = count(meta?.scannedCount);
   const total = count(meta?.upstreamTotal);
   const pages = count(meta?.scannedPages);
   if (scanned !== undefined) {
     const scope = total === undefined ? '' : `，上游共 ${total} 个`;
     const pageCount = pages === undefined ? '' : `（${pages} 页）`;
-    judgments.push(`扫描了 ${scanned} 个岗位${pageCount}${scope}`);
+    judgments.push(['扫描范围', `扫描了 ${scanned} 个岗位${pageCount}${scope}`]);
   }
   if (meta?.scanComplete === false) {
     const reason = meta.stopReason !== 'complete' && label(meta.stopReason, SCAN_STOP_REASONS);
-    judgments.push(reason ? `扫描未完成，${reason}` : '仅覆盖已扫描的范围');
+    judgments.push(['扫描进度', reason ? `扫描未完成，${reason}` : '仅覆盖已扫描的范围']);
   }
   if (meta?.storeMatchStrategy === 'local_fuzzy_match') {
-    judgments.push('门店精确查询无结果，改用本地模糊匹配');
+    judgments.push(['门店匹配', '门店精确查询无结果，改用本地模糊匹配']);
   }
   const invalid = count(meta?.skippedInvalidWorkTime);
-  if (invalid) judgments.push(`有 ${invalid} 个岗位因班次数据异常被跳过`);
+  if (invalid) judgments.push(['班次数据', `有 ${invalid} 个岗位因班次数据异常被跳过`]);
   const schedule = asRecord(meta?.scheduleFilter);
   if (meta?.purpose === 'inspect' && schedule?.applied === false) {
-    judgments.push('按指定岗位核对详情，班次条件不参与筛除');
+    judgments.push(['岗位核对', '按指定岗位核对详情，班次条件不参与筛除']);
   }
   const constraint = asRecord(schedule?.candidateConstraint);
   const window = scheduleWindow(constraint?.availableWindow);
@@ -113,25 +115,29 @@ function describeJobs(result: Receipt): ToolExecutionSummary {
   for (const [name, filter] of filters) {
     if (filter?.applied !== true) continue;
     const excluded = count(filter.excludedCount);
-    judgments.push(`按${name}筛选${excluded === undefined ? '' : `，排除 ${excluded} 个岗位`}`);
+    judgments.push([
+      '筛选条件',
+      `按${name}筛选${excluded === undefined ? '' : `，排除 ${excluded} 个岗位`}`,
+    ]);
   }
   const matched = count(meta?.matchedCount);
   const returned = count(meta?.returnedCount) ?? count(result.resultCount);
   if (labor?.applied === true && labor.relaxedToFamily === true) {
-    judgments.push('指定用工形式没有匹配，已放宽到同类兼职岗位');
+    judgments.push(['用工形式', '指定用工形式没有匹配，已放宽到同类兼职岗位']);
   }
   if (
     schedule?.applied === true &&
     constraint?.preferFlexibleSchedule === true &&
     matched !== undefined
   ) {
-    judgments.push('排序时优先展示灵活排班的岗位');
+    judgments.push(['排序依据', '排序时优先展示灵活排班的岗位']);
   }
   if (matched !== undefined) {
     const limited = meta?.hasMoreMatches === true && returned !== undefined && returned < matched;
-    judgments.push(
+    judgments.push([
+      '匹配结果',
       `已查范围内匹配 ${matched} 个岗位${limited ? `，按排序取前 ${returned} 个` : ''}`,
-    );
+    ]);
   }
   const outcome =
     text(result._outcome) ??
@@ -171,7 +177,7 @@ const REJECTION_REASONS = {
 };
 
 function describePrecheck(result: Receipt): ToolExecutionSummary {
-  const judgments: string[] = [];
+  const judgments: ReceiptJudgment[] = [];
   const verdict = label(result.collectionVerdict, {
     collecting: '收资尚未完成',
     ready: '收资表单已就绪',
@@ -179,7 +185,7 @@ function describePrecheck(result: Receipt): ToolExecutionSummary {
     escalated: '收资需要人工复核',
     submitted: '收资表单已提交',
   });
-  if (verdict) judgments.push(`表单核验结果为「${verdict}」`);
+  if (verdict) judgments.push(['表单核验', `表单核验结果为「${verdict}」`]);
   if (Array.isArray(result.rejectedAnswers)) {
     for (const answer of result.rejectedAnswers) {
       const rejected = asRecord(answer);
@@ -190,26 +196,30 @@ function describePrecheck(result: Receipt): ToolExecutionSummary {
         ask_candidate: '需向候选人补问',
         drop: '本岗位停止采集该项',
       });
-      if (field) judgments.push([`「${field}」被退回`, reason, action].filter(Boolean).join('，'));
+      if (field)
+        judgments.push([
+          '字段核验',
+          [`「${field}」被退回`, reason, action].filter(Boolean).join('，'),
+        ]);
     }
   }
   const missing = asRecord(result.bookingChecklist)?.missingFields;
   if (Array.isArray(missing)) {
     const names = missing.map(text).filter(Boolean);
-    if (names.length) judgments.push(`仍需补充${names.join('、')}`);
-    else if (!missing.length) judgments.push('预检清单中没有待补字段');
+    if (names.length) judgments.push(['待补字段', `仍需补充${names.join('、')}`]);
+    else if (!missing.length) judgments.push(['待补字段', '预检清单中没有待补字段']);
   }
   const duplicate = asRecord(result.duplicateBookingGuard);
   const order = count(duplicate?.workOrderId);
   if (order !== undefined) {
     const match = label(duplicate?.matchedBy, { job: '同岗位', brand: '同品牌' });
-    judgments.push(`查到${match ?? ''}在途工单 ${order}`);
+    judgments.push(['预约查重', `查到${match ?? ''}在途工单 ${order}`]);
   }
   const requestedDate = asRecord(asRecord(result.interview)?.requestedDate);
   const dateReason = text(requestedDate?.reason);
-  if (dateReason) judgments.push(`面试日期核验记录为「${dateReason}」`);
+  if (dateReason) judgments.push(['面试日期', `面试日期核验记录为「${dateReason}」`]);
   const errorReason = text(result.reason);
-  if (errorReason) judgments.push(`预检回执说明为「${errorReason}」`);
+  if (errorReason) judgments.push(['回执说明', `预检回执说明为「${errorReason}」`]);
   return {
     outcome: text(result._outcome) ?? label(result.nextAction, PRECHECK_ACTIONS),
     judgments,
@@ -250,46 +260,54 @@ function inviteOutcome(result: Receipt): string | undefined {
 }
 
 function describeInvite(result: Receipt): ToolExecutionSummary {
-  const judgments: string[] = [];
+  const judgments: ReceiptJudgment[] = [];
   const city = text(result.city);
   const expectedCity = text(result.expectedCity);
-  if (city && expectedCity) judgments.push(`请求城市为${city}，核验得到的城市为${expectedCity}`);
+  if (city && expectedCity)
+    judgments.push(['城市核验', `请求城市为${city}，核验得到的城市为${expectedCity}`]);
   const totalGroups = count(asRecord(result.citySnapshot)?.totalGroups);
   if (totalGroups !== undefined)
-    judgments.push(`${city ?? '该城市'}的群快照中有 ${totalGroups} 个群`);
-  if (result.fallbackUsed === true) judgments.push('没有匹配行业的群，改在同城范围选群');
+    judgments.push(['候选群', `${city ?? '该城市'}的群快照中有 ${totalGroups} 个群`]);
+  if (result.fallbackUsed === true)
+    judgments.push(['行业匹配', '没有匹配行业的群，改在同城范围选群']);
   else if (
     result.fallbackUsed === false &&
     text(result.industry) &&
     result.matchedIndustry === result.industry
   )
-    judgments.push(`选中的群符合请求的行业「${result.industry}」`);
+    judgments.push(['行业匹配', `选中的群符合请求的行业「${result.industry}」`]);
   const selection = label(result.selectionReason, {
     only_option: '只有一个候选群',
     lowest_member_count: '优先选择人数较少的候选群',
   });
   const group = text(result.groupName);
-  if (selection) judgments.push(group ? `${selection}，选中「${group}」` : selection);
+  if (selection) judgments.push(['选群依据', group ? `${selection}，选中「${group}」` : selection]);
   if (result.alreadyInGroup === true)
-    judgments.push(group ? `成员核验确认候选人已在「${group}」` : '成员核验确认候选人已在群中');
+    judgments.push([
+      '成员核验',
+      group ? `成员核验确认候选人已在「${group}」` : '成员核验确认候选人已在群中',
+    ]);
   if (result.errorType === 'invite.already_invited')
-    judgments.push('会话已有该城市的邀请记录，本次跳过重复邀请');
+    judgments.push(['重复邀请', '会话已有该城市的邀请记录，本次跳过重复邀请']);
   const actionState = label(result.actionStatus, ACTION_STATES);
-  if (actionState) judgments.push(`关联动作的状态为「${actionState}」`);
+  if (actionState) judgments.push(['动作状态', `关联动作的状态为「${actionState}」`]);
   if (typeof result.actionDispatched === 'boolean') {
-    judgments.push(result.actionDispatched ? '本次动作发起了请求' : '本次动作没有新发请求');
+    judgments.push([
+      '请求派发',
+      result.actionDispatched ? '本次动作发起了请求' : '本次动作没有新发请求',
+    ]);
   }
   if (typeof result.accepted === 'boolean') {
     const code =
       typeof result.code === 'number' || typeof result.code === 'string'
         ? `（${result.code}）`
         : '';
-    judgments.push(`单次企微请求${result.accepted ? '已受理' : '未受理'}${code}`);
+    judgments.push(['渠道回执', `单次企微请求${result.accepted ? '已受理' : '未受理'}${code}`]);
   }
   const rejected = count(result.totalRejected);
-  if (rejected !== undefined) judgments.push(`企微拒绝了 ${rejected} 个候选群的请求`);
+  if (rejected !== undefined) judgments.push(['拒绝记录', `企微拒绝了 ${rejected} 个候选群的请求`]);
   const rejection = text(result.reason) ?? text(result.error) ?? text(result.actionReason);
-  if (rejection) judgments.push(`回执说明为「${rejection}」`);
+  if (rejection) judgments.push(['回执说明', `回执说明为「${rejection}」`]);
   const outcome = inviteOutcome(result);
   const reason = label(result.skippedReason ?? result.failureReason, {
     service_unavailable: '拉群服务不可用',
@@ -310,7 +328,7 @@ function describeInvite(result: Receipt): ToolExecutionSummary {
     api_failed: '企微接口异常',
     result_unknown: '群邀请结果待核实',
   });
-  if (reason && reason !== outcome) judgments.push(`回执记录的原因为「${reason}」`);
+  if (reason && reason !== outcome) judgments.push(['回执原因', `回执记录的原因为「${reason}」`]);
   return { outcome, judgments };
 }
 
@@ -326,9 +344,12 @@ export function describeToolExecution(name: string, output: unknown): ToolExecut
     return {
       outcome: text(result._outcome) ?? '工具未执行',
       judgments: [
-        result.errorType === 'shared.turn_call_limit_reached'
-          ? '已达到本轮调用次数上限'
-          : '回执确认已跳过执行',
+        [
+          '执行条件',
+          result.errorType === 'shared.turn_call_limit_reached'
+            ? '已达到本轮调用次数上限'
+            : '回执确认已跳过执行',
+        ],
       ],
     };
   }
@@ -342,8 +363,12 @@ export function describeToolExecution(name: string, output: unknown): ToolExecut
     return {
       outcome,
       judgments: [
-        ...(invite.outcome ? [`报名后的群邀请结果为「${invite.outcome}」`] : []),
-        ...invite.judgments.map((item) => `报名后拉群 · ${item}`),
+        ...(invite.outcome
+          ? [['群邀请', `报名后的群邀请结果为「${invite.outcome}」`] as const]
+          : []),
+        ...invite.judgments.map(
+          ([label, detail]): ReceiptJudgment => [label, `报名后拉群 · ${detail}`],
+        ),
       ],
     };
   }

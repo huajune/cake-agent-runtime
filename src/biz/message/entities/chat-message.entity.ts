@@ -25,6 +25,7 @@ export interface ChatMessageRecord {
   is_self?: boolean;
   payload?: Record<string, unknown>;
   avatar?: string;
+  /** 渠道回调中的 externalUserId，受渠道身份作用域约束。 */
   external_user_id?: string;
   /** 候选人消息只存历史、未交给 Agent 的原因（FilterReason）；NULL=已交给 Agent 或非候选人消息 */
   history_only_reason?: string | null;

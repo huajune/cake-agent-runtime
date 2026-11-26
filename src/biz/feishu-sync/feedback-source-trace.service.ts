@@ -13,17 +13,20 @@ export class FeedbackSourceTraceService {
   async build(feedback: AgentTestFeedback): Promise<FeedbackSourceTrace | null> {
     const processingRecord = await this.resolveFeedbackProcessingRecord(feedback);
     const recordTraceId = this.extractTraceId(processingRecord);
+    const sourceIds = this.getSourceMessageIds(processingRecord);
+    // 旧详情页曾将流水 ID 同时填入两个渠道消息字段，按该流水的请求快照恢复来源。
+    const fromProcessingDetail =
+      feedback.sourceTrace?.raw?.source === 'message-processing-detail-drawer';
+    const anchors = fromProcessingDetail
+      ? []
+      : this.mergeLists(feedback.messageId, feedback.sourceTrace?.anchorMessageIds);
     const baseTrace = this.normalizeFeedbackSourceTrace({
       ...(feedback.sourceTrace ?? {}),
       chatIds: this.mergeLists(feedback.sourceTrace?.chatIds, feedback.chatId),
-      anchorMessageIds: this.mergeLists(
-        feedback.sourceTrace?.anchorMessageIds,
-        feedback.messageId,
-        processingRecord?.messageId,
-      ),
+      anchorMessageIds: anchors.length ? anchors : sourceIds.slice(-1),
       relatedMessageIds: this.mergeLists(
-        feedback.sourceTrace?.relatedMessageIds,
-        processingRecord?.messageId,
+        fromProcessingDetail ? undefined : feedback.sourceTrace?.relatedMessageIds,
+        sourceIds,
       ),
       messageProcessingIds: this.mergeLists(
         feedback.sourceTrace?.messageProcessingIds,
@@ -59,18 +62,25 @@ export class FeedbackSourceTraceService {
   private async resolveFeedbackProcessingRecord(
     feedback: AgentTestFeedback,
   ): Promise<MessageProcessingRecordInput | null> {
-    const candidateMessageIds = this.mergeLists(
-      feedback.messageId,
-      feedback.sourceTrace?.anchorMessageIds,
-      feedback.sourceTrace?.messageProcessingIds,
-    );
+    const processingIds = this.mergeLists(feedback.sourceTrace?.messageProcessingIds);
+    const anchors = this.mergeLists(feedback.messageId, feedback.sourceTrace?.anchorMessageIds);
+    const candidateMessageIds = processingIds.length ? processingIds : anchors;
+    const fromChat =
+      feedback.source === 'chat_record' ||
+      feedback.sourceTrace?.raw?.source === 'chat-record-detail';
+    const matchesSource = (record: MessageProcessingRecordInput) =>
+      (!feedback.chatId || record.chatId === feedback.chatId) &&
+      (processingIds.length > 0 ||
+        !fromChat ||
+        !anchors.length ||
+        this.getSourceMessageIds(record).some((id) => anchors.includes(id)));
 
     for (const messageId of candidateMessageIds) {
       const record = await this.safeGetMessageProcessingRecord(messageId);
-      if (record) return record;
+      if (record && matchesSource(record)) return record;
     }
 
-    if (!feedback.chatId) return null;
+    if (processingIds.length || !feedback.chatId) return null;
 
     try {
       const records = await this.messageProcessingService.getMessageProcessingRecords({
@@ -82,7 +92,8 @@ export class FeedbackSourceTraceService {
         (records as MessageProcessingRecordInput[])[0];
 
       if (!selected?.messageId) return null;
-      return (await this.safeGetMessageProcessingRecord(selected.messageId)) ?? selected;
+      const detail = (await this.safeGetMessageProcessingRecord(selected.messageId)) ?? selected;
+      return matchesSource(detail) ? detail : null;
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.warn(`[Feedback] 查询 chatId=${feedback.chatId} 处理流水失败: ${errorMessage}`);
@@ -178,6 +189,14 @@ export class FeedbackSourceTraceService {
         toolCallCount: Array.isArray(response?.toolCalls) ? response.toolCalls.length : undefined,
       }),
     });
+  }
+
+  private getSourceMessageIds(record: MessageProcessingRecordInput | null): string[] {
+    const request = this.asRecord(this.asRecord(record?.agentInvocation)?.request);
+    const ids = request?.sourceMessageIds;
+    return Array.isArray(ids)
+      ? [...new Set(ids.filter((id): id is string => typeof id === 'string' && !!id.trim()))]
+      : [];
   }
 
   private extractTraceId(record?: MessageProcessingRecordInput | null): string | undefined {

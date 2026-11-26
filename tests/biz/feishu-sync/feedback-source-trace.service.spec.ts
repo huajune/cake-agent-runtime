@@ -72,8 +72,8 @@ describe('FeedbackSourceTraceService', () => {
   it('should fall back to chat records and pick the record matching user message', async () => {
     mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue(null);
     mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue([
-      { messageId: 'msg-old', messagePreview: '旧消息' },
-      { messageId: 'msg-match', messagePreview: '我想找静安附近兼职' },
+      { messageId: 'msg-old', chatId: 'chat-1', messagePreview: '旧消息' },
+      { messageId: 'msg-match', chatId: 'chat-1', messagePreview: '我想找静安附近兼职' },
     ]);
 
     const trace = await service.build({
@@ -83,8 +83,78 @@ describe('FeedbackSourceTraceService', () => {
       chatId: 'chat-1',
     });
 
-    expect(trace?.anchorMessageIds).toEqual(['msg-match']);
+    expect(trace?.anchorMessageIds).toBeUndefined();
     expect(trace?.messageProcessingIds).toEqual(['msg-match']);
+  });
+
+  it.each([
+    {
+      request: { sourceMessageIds: ['channel-a', 'channel-b', null, 'channel-b'] },
+      anchors: ['channel-b'],
+      related: ['channel-a', 'channel-b'],
+    },
+    { request: {}, anchors: undefined, related: undefined },
+    { request: { sourceMessageIds: [] }, anchors: undefined, related: undefined },
+  ])(
+    'uses recorded channel inputs for legacy processing-drawer feedback',
+    async ({ request, anchors, related }) => {
+      mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
+        messageId: 'batch-1',
+        chatId: 'chat-1',
+        agentInvocation: { request },
+      });
+      const trace = await service.build({
+        type: 'badcase',
+        chatHistory: 'history',
+        chatId: 'chat-1',
+        messageId: 'batch-1',
+        sourceTrace: {
+          anchorMessageIds: ['batch-1'],
+          relatedMessageIds: ['batch-1'],
+          messageProcessingIds: ['batch-1'],
+          raw: { source: 'message-processing-detail-drawer' },
+        },
+      });
+      expect(trace?.anchorMessageIds).toEqual(anchors);
+      expect(trace?.relatedMessageIds).toEqual(related);
+      expect(trace?.messageProcessingIds).toEqual(['batch-1']);
+    },
+  );
+
+  it('keeps a missing explicit processing ID without linking a nearby record', async () => {
+    mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue(null);
+    const trace = await service.build({
+      type: 'goodcase',
+      chatHistory: 'history',
+      chatId: 'chat-1',
+      sourceTrace: { messageProcessingIds: ['expired'] },
+    });
+    expect(trace?.messageProcessingIds).toEqual(['expired']);
+    expect(trace?.anchorMessageIds).toBeUndefined();
+    expect(mockMessageProcessingService.getMessageProcessingRecords).not.toHaveBeenCalled();
+  });
+
+  it('checks the recorded input before associating chat feedback with a nearby processing record', async () => {
+    mockMessageProcessingService.getMessageProcessingRecordById
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        messageId: 'batch-2',
+        chatId: 'chat-1',
+        agentInvocation: { request: { sourceMessageIds: ['other'] } },
+      });
+    mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue([
+      { messageId: 'batch-2', chatId: 'chat-1', messagePreview: '附近' },
+    ]);
+    const trace = await service.build({
+      type: 'goodcase',
+      chatHistory: 'history',
+      userMessage: '附近',
+      source: 'chat_record',
+      chatId: 'chat-1',
+      messageId: 'channel-a',
+    });
+    expect(trace?.anchorMessageIds).toEqual(['channel-a']);
+    expect(trace?.messageProcessingIds).toBeUndefined();
   });
 
   it('should stringify compact traces and omit empty branches', () => {

@@ -108,22 +108,29 @@ export class ReengagementTouchRepository extends BaseRepository {
       im_bot_id: string | null;
       im_contact_id: string | null;
       external_user_id: string | null;
+      org_id: string | null;
+      role: string | null;
       is_self: boolean | null;
     }>(
       'chat_messages',
-      'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self',
+      'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self,org_id,role',
       (q) => q.eq('chat_id', sessionId).order('timestamp', { ascending: false }).limit(20),
     );
     const row = rows.find((r) => r.candidate_name || r.manager_name || r.im_bot_id) ?? rows[0];
     if (!row) return null;
-    const recipientRow =
-      rows.find((r) => r.is_self !== true && (r.im_contact_id || r.external_user_id)) ?? row;
+    const recipientRow = rows.find(
+      (r) =>
+        r.org_id === row.org_id &&
+        r.im_bot_id === row.im_bot_id &&
+        (r.is_self === false || (r.is_self == null && r.role === 'user')) &&
+        (r.im_contact_id || r.external_user_id),
+    );
     return {
       candidateName: row.candidate_name ?? undefined,
       managerName: row.manager_name ?? undefined,
       botImId: row.im_bot_id ?? undefined,
-      imContactId: recipientRow.im_contact_id ?? undefined,
-      externalUserId: recipientRow.external_user_id ?? undefined,
+      imContactId: recipientRow?.im_contact_id ?? undefined,
+      externalUserId: recipientRow?.external_user_id ?? undefined,
     };
   }
 
