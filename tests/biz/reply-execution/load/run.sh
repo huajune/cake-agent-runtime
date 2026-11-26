@@ -45,12 +45,12 @@ drive() {
     -v "$out/deps/node_modules:/bench/deps/node_modules:ro" node:24-alpine node "/bench/load/$1.cjs" "${@:2}"
 }
 drive database smoke > "$out/smoke-db.json"
-drive queue smoke > "$out/smoke-queue.json"
+drive queue smoke "${CAKE_BENCH_SLOTS:-20}" > "$out/smoke-queue.json"
 drive database > "$out/database.json"
-drive queue > "$out/queue.json" 2> "$out/queue.log"
+drive queue receipts "${CAKE_BENCH_SLOTS:-20}" > "$out/queue.json" 2> "$out/queue.log"
 drive database repeat > "$out/repeated.json"
-drive queue starts > "$out/queue-starts.json" 2> "$out/queue-starts.log"
+drive queue starts "${CAKE_BENCH_SLOTS:-20}" > "$out/queue-starts.json" 2> "$out/queue-starts.log"
 docker exec -i "$pg" psql -XqAt -v ON_ERROR_STOP=1 -U postgres -d "$database" \
   < "$suite/verify-receipts.sql" > "$out/receipt-audit.json"
-python3 "$suite/queue_estimate.py" > "$out/estimate.json"
+python3 "$suite/queue_estimate.py" --slots "${CAKE_BENCH_SLOTS:-20}" > "$out/estimate.json"
 cat "$out"/{database,queue,repeated,queue-starts,receipt-audit,estimate}.json

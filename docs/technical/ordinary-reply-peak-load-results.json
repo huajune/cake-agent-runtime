@@ -401,5 +401,391 @@
       3.24,
       3.39
     ]
+  },
+  "release50": {
+    "applicationCommit": "26748123075ffcba73c2b282a17a6c423af77439",
+    "queueConcurrency": 50,
+    "postgrestPool": 24,
+    "syntheticProviderBytesPerTurn": {
+      "request": 24576,
+      "response": 2048
+    },
+    "sha256": {
+      "supabase/migrations/20261125080000_resume_ordinary_replies.sql": "eaee226e237011d523e72c8cce4862481cd52dff37ce5bbeb595e4a27c6d4344",
+      "supabase/migrations/20261125080100_processing_snapshot_storage.sql": "11288dd4ab67182469878945c04f58ebefda854bf71194848cae0b28eb292d5a",
+      "supabase/migrations/20261125100000_ordinary_reply_segment_io.sql": "689d83989e19a909e3a1f19be2c67be1b15ef7b315731dac10cfc0b648fc5eaa",
+      "tests/biz/reply-execution/load/database.cjs": "52ffa88b4eabbd33fdbd65f7e8ea7e2398d4a9cdf465f781b66eb4f460ad4b7c",
+      "tests/biz/reply-execution/load/queue.cjs": "aa61e463af66c9d20f4323f6aca271df23be3b5cdb75c15b45a43845cd2c3dc5",
+      "tests/biz/reply-execution/load/run.sh": "e8965a02e7d82c398e20d0a245001f0a11d0d5f954024af6990a5255db26a324",
+      "tests/biz/reply-execution/load/queue_estimate.py": "a1c0ed77e55f7dc4a085ff1e5ed64bee94b6467802ec8f213517c3877d3e63b9"
+    },
+    "queueFromTurnStarts": {
+      "phase": "queue",
+      "concurrency": 50,
+      "turns": 3600,
+      "expected": 7600,
+      "firstFromEnqueueMs": {
+        "n": 3600,
+        "p50": 18030.7,
+        "p95": 37121.4,
+        "p99": 39151.5,
+        "max": 39275.1
+      },
+      "waitForWorkerMs": {
+        "n": 3600,
+        "p50": 17612.6,
+        "p95": 36696.9,
+        "p99": 38706.4,
+        "max": 38860.5
+      },
+      "firstFromWorkerMs": {
+        "n": 3600,
+        "p50": 424.4,
+        "p95": 534.8,
+        "p99": 585.1,
+        "max": 615.2
+      },
+      "endToEndMs": {
+        "n": 3600,
+        "p50": 18427.8,
+        "p95": 37719.2,
+        "p99": 39763.4,
+        "max": 39902.3
+      },
+      "peakWaiting": 1950,
+      "atMinute": {
+        "elapsedMs": 60259.8,
+        "waiting": 1500,
+        "active": 50,
+        "finished": 2050,
+        "firstAccepted": 2050
+      },
+      "injectionDelayMs": {
+        "n": 3600,
+        "p50": 6.7,
+        "p95": 54.6,
+        "p99": 54.6,
+        "max": 54.7
+      },
+      "drainAfterMinuteSec": 37.7,
+      "elapsedSec": 97.7,
+      "finished": 3600,
+      "failed": 0,
+      "errors": [],
+      "accepted": 7600,
+      "audit": {
+        "acked": 3600,
+        "actions": 7600,
+        "receipts": 7600,
+        "captured": 3600
+      },
+      "db": {
+        "cpuPctOfTwoCores": {
+          "n": 194,
+          "p50": 26.7,
+          "p95": 40.1,
+          "p99": 72.2,
+          "max": 73.5
+        },
+        "peakMemMiB": 1848.4,
+        "deadlocks": 0,
+        "maxClients": 26,
+        "maxObservedLockWaiters": 1,
+        "transactions": 38097
+      },
+      "rpc": {
+        "ms": {
+          "n": 36800,
+          "p50": 95.2,
+          "p95": 108.6,
+          "p99": 166.6,
+          "max": 462.6
+        },
+        "operations": {
+          "transition_agent_reply_turn.open": 3600,
+          "transition_agent_reply_turn.save_reply": 3600,
+          "transition_agent_reply_turn.start_delivery": 3600,
+          "transition_agent_reply_segment.claim": 7600,
+          "transition_agent_action.settle": 7600,
+          "transition_agent_reply_turn.settle": 3600,
+          "transition_agent_reply_turn.project": 3600,
+          "transition_agent_reply_turn.ack": 3600
+        },
+        "errors": {}
+      }
+    },
+    "queueFromPeakCloses": {
+      "phase": "queue",
+      "concurrency": 50,
+      "turns": 4200,
+      "expected": 9600,
+      "firstFromEnqueueMs": {
+        "n": 4200,
+        "p50": 36354.7,
+        "p95": 54479.5,
+        "p99": 55774.2,
+        "max": 56152.3
+      },
+      "waitForWorkerMs": {
+        "n": 4200,
+        "p50": 35940.2,
+        "p95": 54059,
+        "p99": 55355.1,
+        "max": 55723.4
+      },
+      "firstFromWorkerMs": {
+        "n": 4200,
+        "p50": 422.3,
+        "p95": 463.5,
+        "p99": 497.8,
+        "max": 564.2
+      },
+      "endToEndMs": {
+        "n": 4200,
+        "p50": 36992.9,
+        "p95": 55102.4,
+        "p99": 56388.7,
+        "max": 56769.8
+      },
+      "peakWaiting": 2500,
+      "atMinute": {
+        "elapsedMs": 60424.5,
+        "waiting": 1749,
+        "active": 50,
+        "finished": 2401,
+        "firstAccepted": 2432
+      },
+      "injectionDelayMs": {
+        "n": 4200,
+        "p50": 3.3,
+        "p95": 12.9,
+        "p99": 167.5,
+        "max": 220
+      },
+      "drainAfterMinuteSec": 40.3,
+      "elapsedSec": 100.3,
+      "finished": 4200,
+      "failed": 0,
+      "errors": [],
+      "accepted": 9600,
+      "audit": {
+        "acked": 4200,
+        "actions": 9600,
+        "receipts": 9600,
+        "captured": 4200
+      },
+      "db": {
+        "cpuPctOfTwoCores": {
+          "n": 199,
+          "p50": 26.9,
+          "p95": 37.5,
+          "p99": 69,
+          "max": 73.4
+        },
+        "peakMemMiB": 1175.9,
+        "deadlocks": 0,
+        "maxClients": 26,
+        "maxObservedLockWaiters": 1,
+        "transactions": 45688
+      },
+      "rpc": {
+        "ms": {
+          "n": 44400,
+          "p50": 94.9,
+          "p95": 104.4,
+          "p99": 132.5,
+          "max": 347.2
+        },
+        "operations": {
+          "transition_agent_reply_turn.open": 4200,
+          "transition_agent_reply_turn.save_reply": 4200,
+          "transition_agent_reply_turn.start_delivery": 4200,
+          "transition_agent_reply_segment.claim": 9600,
+          "transition_agent_action.settle": 9600,
+          "transition_agent_reply_turn.settle": 4200,
+          "transition_agent_reply_turn.project": 4200,
+          "transition_agent_reply_turn.ack": 4200
+        },
+        "errors": {}
+      }
+    },
+    "databaseMinute": {
+      "phase": "database",
+      "scheduled": 23400,
+      "completed": 23400,
+      "failed": 0,
+      "errors": [],
+      "elapsedSec": 60,
+      "peakOfferedPerSec": 2400,
+      "peakCompletedPerSec": 1653,
+      "atEnd": {
+        "offered": 23400,
+        "completed": 23397,
+        "outstanding": 3
+      },
+      "maxOutstanding": 750,
+      "injectionDelayMs": {
+        "n": 23400,
+        "p50": 2.2,
+        "p95": 6.3,
+        "p99": 49,
+        "max": 138.7
+      },
+      "offerToCompletionMs": {
+        "n": 23400,
+        "p50": 5.2,
+        "p95": 264.4,
+        "p99": 516.9,
+        "max": 747.3
+      },
+      "rpc": {
+        "ms": {
+          "n": 23400,
+          "p50": 2.5,
+          "p95": 253.5,
+          "p99": 514.5,
+          "max": 746.7
+        },
+        "operations": {
+          "transition_agent_reply_segment.claim": 9600,
+          "transition_agent_action.settle": 9600,
+          "transition_agent_reply_turn.settle": 4200
+        },
+        "errors": {}
+      },
+      "audit": {
+        "actions": 9600,
+        "receipts": 9600,
+        "turns": 4200
+      },
+      "db": {
+        "cpuPctOfTwoCores": {
+          "n": 60,
+          "p50": 14.3,
+          "p95": 75.7,
+          "p99": 99.2,
+          "max": 99.2
+        },
+        "peakMemMiB": 587.6,
+        "deadlocks": 0,
+        "maxClients": 26,
+        "maxObservedLockWaiters": 0,
+        "transactions": 22379
+      }
+    },
+    "databaseThreeMinutes": {
+      "phase": "database",
+      "scheduled": 70200,
+      "completed": 70200,
+      "failed": 0,
+      "errors": [],
+      "elapsedSec": 180,
+      "peakOfferedPerSec": 2400,
+      "peakCompletedPerSec": 2142,
+      "atEnd": {
+        "offered": 70200,
+        "completed": 70198,
+        "outstanding": 2
+      },
+      "maxOutstanding": 947,
+      "injectionDelayMs": {
+        "n": 70200,
+        "p50": 2.1,
+        "p95": 4.7,
+        "p99": 11.3,
+        "max": 264.5
+      },
+      "offerToCompletionMs": {
+        "n": 70200,
+        "p50": 4.7,
+        "p95": 114.1,
+        "p99": 436.2,
+        "max": 959.4
+      },
+      "rpc": {
+        "ms": {
+          "n": 70200,
+          "p50": 2.2,
+          "p95": 104.6,
+          "p99": 432.5,
+          "max": 957.8
+        },
+        "operations": {
+          "transition_agent_reply_segment.claim": 28800,
+          "transition_agent_action.settle": 28800,
+          "transition_agent_reply_turn.settle": 12600
+        },
+        "errors": {}
+      },
+      "audit": {
+        "actions": 28800,
+        "receipts": 28800,
+        "turns": 12600
+      },
+      "db": {
+        "cpuPctOfTwoCores": {
+          "n": 180,
+          "p50": 17.1,
+          "p95": 58.3,
+          "p99": 101,
+          "max": 101.2
+        },
+        "peakMemMiB": 1500.9,
+        "deadlocks": 0,
+        "maxClients": 26,
+        "maxObservedLockWaiters": 0,
+        "transactions": 69385
+      }
+    },
+    "acceptedReceiptMatches": [
+      {
+        "phase": "database",
+        "actions": 2,
+        "receipts": 2,
+        "matched": 2
+      },
+      {
+        "phase": "database",
+        "actions": 9600,
+        "receipts": 9600,
+        "matched": 9600
+      },
+      {
+        "phase": "database",
+        "actions": 28800,
+        "receipts": 28800,
+        "matched": 28800
+      },
+      {
+        "phase": "queue",
+        "actions": 2,
+        "receipts": 2,
+        "matched": 2
+      },
+      {
+        "phase": "queue",
+        "actions": 7600,
+        "receipts": 7600,
+        "matched": 7600
+      },
+      {
+        "phase": "queue",
+        "actions": 9600,
+        "receipts": 9600,
+        "matched": 9600
+      }
+    ],
+    "historicalQueueEstimate": {
+      "slots": 50,
+      "historicalTurns": 1089,
+      "offered": 4200,
+      "simulationRuns": 100,
+      "p50Hours": 0.73,
+      "p95Hours": 1.32,
+      "p95AcrossSeedsHours": [
+        1.29,
+        1.35
+      ]
+    }
   }
 }

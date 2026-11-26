@@ -1,4 +1,5 @@
 const { createServer } = require('node:http');
+const { randomBytes, randomUUID } = require('node:crypto');
 const {
   app,
   db,
@@ -17,8 +18,13 @@ const Bull = app('bull'),
 const smoke = process.argv[2] === 'smoke';
 const fromTurnStarts = process.argv[2] === 'starts';
 const repeat = 200,
-  concurrency = 20,
+  concurrency = Number(process.argv[3] ?? 20),
   corp = 'benchq-' + Date.now();
+if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100)
+  throw Error('Use 1–100 worker slots');
+// Fixed-size, synthetic non-compressible HTTP entities. No provider or user data is used.
+const requestBody = randomBytes(24 * 1024).toString('base64');
+const responseBody = randomBytes(2 * 1024).toString('base64');
 const rpc = transport(91),
   redis = new Redis({ host: '127.0.0.1', port: 6379 });
 const queue = new Bull(corp, { redis: { host: '127.0.0.1', port: 6379 } });
@@ -83,14 +89,32 @@ async function work(job) {
   };
   try {
     const primary = { orgId: corp, imBotId: 'bot', chatId, imContactId: chatId };
+    const traceId = corp + ':' + id;
     const original = await turns.open(scope, ['input-' + id], new Date().toISOString(), {
       primary,
+      traceId,
     });
     const text = Array.from({ length: segments }, (_, i) => '合成回复 ' + (i + 1));
     const turn = await turns.saveEffects(
       original,
       { context: { ...scope, logicalTurnId: original.logicalTurnId }, toolCalls: [] },
       text,
+      {
+        record: { tool_calls: [] },
+        request: { messageId: traceId, chatId, imBotId: 'bot' },
+        response: { status: 'processing', reply: { content: text.join('\n\n') } },
+        invocations: [
+          {
+            id: randomUUID(),
+            provider: 'fixture',
+            startedAt: new Date().toISOString(),
+            httpStatus: 200,
+            complete: true,
+            requestBody,
+            responseBody,
+          },
+        ],
+      },
     );
     let settled;
     const result = await delivery.deliverReply(
@@ -215,13 +239,17 @@ async function run() {
     `SELECT
     (SELECT count(*) FROM agent_reply_turns WHERE corp_id=$1 AND status='acked')::int acked,
     (SELECT count(*) FROM agent_action_records WHERE corp_id=$1 AND status='succeeded' AND local_sync='complete')::int actions,
-    (SELECT count(*) FROM agent_action_evidence WHERE corp_id=$1)::int receipts`,
+    (SELECT count(*) FROM agent_action_evidence WHERE corp_id=$1)::int receipts,
+    (SELECT count(*) FROM message_processing_records m JOIN message_processing_invocations i USING(message_id)
+      WHERE m.message_id LIKE $1||':%' AND m.status='success' AND i.complete
+        AND octet_length(i.request_body)=24576 AND octet_length(i.response_body)=2048)::int captured`,
     [corp],
   );
   const expected = jobs.reduce((n, j) => n + j.segments, 0);
   console.log(
     JSON.stringify({
       phase: 'queue',
+      concurrency,
       turns: jobs.length,
       expected,
       firstFromEnqueueMs: stats(first),
@@ -247,7 +275,8 @@ async function run() {
     audit.acked !== jobs.length ||
     accepted !== expected ||
     audit.actions !== expected ||
-    audit.receipts !== expected
+    audit.receipts !== expected ||
+    audit.captured !== jobs.length
   )
     process.exitCode = 1;
 }

@@ -57,9 +57,19 @@ async function prepare() {
     `INSERT INTO agent_reply_turns(corp_id,logical_turn_id,account_id,chat_id,input_ids,
     input_occurred_at,mode,status,owner,fence,generation_until,recovery,projection_status)
     SELECT $1,k||i,'bot',k||i,ARRAY[k||i],now(),'execute','planned','live',1,now()+interval '10 minutes',
-    jsonb_build_object('primary','{}'::jsonb,'replySegments',case when i%7<2 then '["段0","段1","段2"]'::jsonb else '["段0","段1"]'::jsonb end),'pending'
+    jsonb_build_object('primary','{}'::jsonb,'traceId',$1||':'||k||i,'replySegments',case when i%7<2 then '["段0","段1","段2"]'::jsonb else '["段0","段1"]'::jsonb end),'pending'
     FROM generate_series(0,$2::int-1) i CROSS JOIN unnest(ARRAY['send','close']) k`,
     [corp, n],
+  );
+  await db.query(
+    `WITH m AS (
+    INSERT INTO message_processing_records(message_id,chat_id,bot_im_id,received_at,status)
+    SELECT recovery->>'traceId',chat_id,account_id,input_occurred_at,'processing'
+    FROM agent_reply_turns WHERE corp_id=$1 AND logical_turn_id LIKE 'close%'
+    RETURNING message_id)
+    INSERT INTO message_processing_turn_snapshots(message_id,response)
+    SELECT message_id,'{"status":"processing"}' FROM m`,
+    [corp],
   );
   const count = profile.reduce((sum, b) => sum + b[0] * factor, 0);
   for (let i = 0; i < n; i++) {
