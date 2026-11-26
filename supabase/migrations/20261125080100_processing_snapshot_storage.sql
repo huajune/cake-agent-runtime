@@ -3,7 +3,31 @@
 BEGIN;
 SET LOCAL lock_timeout = '3s';
 SET LOCAL statement_timeout = '5min';
-LOCK TABLE public.message_processing_records, public.message_processing_invocations IN ACCESS EXCLUSIVE MODE;
+-- The existing one-per-turn rows keep their age, grants and stored business context.
+DO $rename$
+BEGIN
+  IF to_regclass('public.message_processing_turn_snapshots') IS NULL THEN
+    ALTER TABLE public.message_processing_invocations RENAME TO message_processing_turn_snapshots;
+    ALTER INDEX public.idx_mp_invocations_created_at RENAME TO idx_mp_turn_snapshots_created_at;
+  END IF;
+END $rename$;
+LOCK TABLE public.message_processing_records, public.message_processing_turn_snapshots IN ACCESS EXCLUSIVE MODE;
+
+-- The tenant-enabled schema links SDK snapshots, events and reviews via trigger
+-- functions that resolve the relation name at execution time. Preserve their
+-- parent lookup, advisory locks, owner, privileges and the other two branches.
+DO $tenant$
+DECLARE target regprocedure; definition text;
+BEGIN
+  FOREACH target IN ARRAY ARRAY[to_regprocedure('public.inherit_processing_tenant()'),
+      to_regprocedure('public.propagate_processing_tenant()')] LOOP
+    CONTINUE WHEN target IS NULL;
+    definition := pg_get_functiondef(target);
+    IF strpos(definition,'message_processing_invocations')>0 THEN
+      EXECUTE replace(definition,'message_processing_invocations','message_processing_turn_snapshots');
+    END IF;
+  END LOOP;
+END $tenant$;
 
 -- Some installations expose a service-only tenant projection. Rebuild just its
 -- column list, preserving the existing visibility predicate, owner and grants.
@@ -90,7 +114,7 @@ REVOKE ALL ON FUNCTION public.processing_step_layout(jsonb,jsonb) FROM PUBLIC,an
 GRANT EXECUTE ON FUNCTION public.processing_step_layout(jsonb,jsonb) TO service_role;
 
 DROP TRIGGER IF EXISTS processing_guard_tools ON public.message_processing_records;
-DROP TRIGGER IF EXISTS processing_accept_full_snapshot ON public.message_processing_invocations;
+DROP TRIGGER IF EXISTS processing_accept_full_snapshot ON public.message_processing_turn_snapshots;
 
 -- These two helpers live only in the migration session. Unverifiable old step
 -- links are discarded; the parent status, tool list and remaining steps survive.
@@ -105,16 +129,16 @@ END $$;
 DO $migration$
 DECLARE n integer;
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_attribute WHERE attrelid='public.message_processing_invocations'::regclass
+  IF NOT EXISTS (SELECT FROM pg_attribute WHERE attrelid='public.message_processing_turn_snapshots'::regclass
       AND attname='agent_invocation' AND NOT attisdropped) THEN RETURN; END IF;
-  ALTER TABLE public.message_processing_invocations ADD COLUMN request jsonb, ADD COLUMN response jsonb;
-  DELETE FROM public.message_processing_invocations i USING public.message_processing_records r
+  ALTER TABLE public.message_processing_turn_snapshots ADD COLUMN request jsonb, ADD COLUMN response jsonb;
+  DELETE FROM public.message_processing_turn_snapshots i USING public.message_processing_records r
     WHERE r.message_id=i.message_id AND i.response_tools_v1 IS NOT NULL AND
       (r.invocation_version IS NULL OR i.write_version IS DISTINCT FROM r.invocation_version
         OR i.response_tools_v1 IS DISTINCT FROM public.processing_tools_digest(r.tool_calls));
   GET DIAGNOSTICS n=ROW_COUNT;
   RAISE NOTICE 'Snapshots with unverifiable historical tool references omitted: %',n;
-  DELETE FROM public.message_processing_invocations
+  DELETE FROM public.message_processing_turn_snapshots
     WHERE superseded_invocation IS NOT NULL OR jsonb_typeof(agent_invocation) IS DISTINCT FROM 'object'
       OR NOT (agent_invocation ?| ARRAY['request','response']);
   GET DIAGNOSTICS n=ROW_COUNT;
@@ -127,7 +151,7 @@ BEGIN
            WHEN jsonb_typeof(i.agent_invocation#>'{response,toolCalls}')='array'
                 AND i.agent_invocation#>'{response,toolCalls}'<>'[]'::jsonb THEN i.agent_invocation#>'{response,toolCalls}'
            ELSE r.tool_calls END AS calls
-    FROM public.message_processing_records r LEFT JOIN public.message_processing_invocations i USING(message_id)
+    FROM public.message_processing_records r LEFT JOIN public.message_processing_turn_snapshots i USING(message_id)
     WHERE r.agent_steps IS NOT NULL OR (i.agent_invocation->'response') ?| ARRAY['toolCalls','agentSteps','memorySnapshot'];
   -- Some old records put calls solely inside the steps. Preserve their original order.
   UPDATE processing_history SET calls=NULL
@@ -158,12 +182,12 @@ BEGIN
     FROM jsonb_array_elements(tool_calls) WITH ORDINALITY t(item,ord)
   ) WHERE jsonb_typeof(tool_calls)='array'
     AND jsonb_path_exists(tool_calls,'$[*] ? (exists(@.input) || exists(@.arguments) || exists(@.output) || exists(@.state))');
-  UPDATE public.message_processing_invocations SET request=nullif(agent_invocation->'request','null'),
+  UPDATE public.message_processing_turn_snapshots SET request=nullif(agent_invocation->'request','null'),
     response=CASE WHEN jsonb_typeof(agent_invocation->'response')='object' THEN (agent_invocation->'response')-ARRAY['toolCalls','agentSteps','memorySnapshot']
                   ELSE nullif(agent_invocation->'response','null') END;
   -- TTFT was available only inside the response on some older records.
   UPDATE public.message_processing_records r SET ttft_ms=round((i.response#>>'{timings,durations,requestToFirstTextDeltaMs}')::numeric)::integer
-    FROM public.message_processing_invocations i WHERE i.message_id=r.message_id AND r.ttft_ms IS NULL
+    FROM public.message_processing_turn_snapshots i WHERE i.message_id=r.message_id AND r.ttft_ms IS NULL
       AND jsonb_typeof(i.response#>'{timings,durations,requestToFirstTextDeltaMs}')='number'
       AND (i.response#>>'{timings,durations,requestToFirstTextDeltaMs}')::numeric BETWEEN 0 AND 2147483647;
 END $migration$;
@@ -171,12 +195,34 @@ END $migration$;
 DROP FUNCTION IF EXISTS public.save_processing_snapshot(jsonb,jsonb);
 DROP FUNCTION IF EXISTS public.processing_guard_tools(), public.processing_accept_full_snapshot();
 DROP FUNCTION IF EXISTS public.processing_read_steps(public.message_processing_records);
-DROP FUNCTION IF EXISTS public.processing_read_invocation(public.message_processing_invocations);
+DROP FUNCTION IF EXISTS public.processing_read_invocation(public.message_processing_turn_snapshots);
 DROP FUNCTION IF EXISTS public.processing_pack_steps(jsonb,jsonb), public.processing_tools_digest(jsonb);
 ALTER TABLE public.message_processing_records DROP COLUMN IF EXISTS step_tools_v1, DROP COLUMN IF EXISTS invocation_version;
-ALTER TABLE public.message_processing_invocations DROP COLUMN IF EXISTS agent_invocation, DROP COLUMN IF EXISTS write_version,
+ALTER TABLE public.message_processing_turn_snapshots DROP COLUMN IF EXISTS agent_invocation, DROP COLUMN IF EXISTS write_version,
   DROP COLUMN IF EXISTS response_tools_v1, DROP COLUMN IF EXISTS superseded_invocation;
-CREATE OR REPLACE FUNCTION public.save_processing_snapshot(p_record jsonb, p_request jsonb, p_response jsonb)
+-- No historical provider exchange can be inferred from the old SDK projection.
+CREATE TABLE IF NOT EXISTS public.message_processing_invocations (
+  message_id text NOT NULL REFERENCES public.message_processing_records(message_id) ON DELETE CASCADE,
+  id uuid NOT NULL,
+  started_at timestamptz NOT NULL,
+  provider text NOT NULL,
+  http_status smallint CHECK (http_status BETWEEN 100 AND 599),
+  complete boolean NOT NULL,
+  request_body bytea,
+  response_body bytea,
+  CONSTRAINT processing_model_call_pk PRIMARY KEY (message_id,id),
+  CHECK ((http_status IS NULL) = (response_body IS NULL)),
+  CHECK (http_status IS NOT NULL OR NOT complete)
+);
+CREATE INDEX IF NOT EXISTS processing_model_call_by_turn ON public.message_processing_invocations(message_id,started_at,id);
+CREATE INDEX IF NOT EXISTS processing_model_call_expiry ON public.message_processing_invocations(started_at);
+ALTER TABLE public.message_processing_invocations ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.message_processing_invocations FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT, INSERT, DELETE ON public.message_processing_invocations TO service_role;
+DROP POLICY IF EXISTS processing_model_call_service ON public.message_processing_invocations;
+CREATE POLICY processing_model_call_service ON public.message_processing_invocations TO service_role USING (true) WITH CHECK (true);
+
+CREATE OR REPLACE FUNCTION public.save_processing_snapshot(p_record jsonb, p_request jsonb, p_response jsonb, p_invocations jsonb DEFAULT '[]')
 RETURNS boolean LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
   allowed constant text[] := ARRAY['message_id','chat_id','received_at','status','user_id','user_name','manager_name',
@@ -203,21 +249,30 @@ BEGIN
     SELECT %1$s FROM jsonb_populate_record(NULL::public.message_processing_records,$1)
     ON CONFLICT(message_id) DO UPDATE SET %2$s',cols,updates) USING p_record,steps;
   IF p_request IS NOT NULL OR p_response IS NOT NULL THEN
-    INSERT INTO public.message_processing_invocations(message_id,request,response)
+    INSERT INTO public.message_processing_turn_snapshots(message_id,request,response)
       VALUES(p_record->>'message_id',p_request,CASE WHEN jsonb_typeof(p_response)='object' THEN p_response-ARRAY['toolCalls','agentSteps','memorySnapshot'] ELSE p_response END)
       ON CONFLICT(message_id) DO UPDATE SET request=excluded.request,response=excluded.response;
   END IF;
+  INSERT INTO public.message_processing_invocations(message_id,id,started_at,provider,http_status,complete,request_body,response_body)
+    SELECT p_record->>'message_id',a.id,a."startedAt",a.provider,a."httpStatus",a.complete,
+      decode(a."requestBody",'base64'),decode(a."responseBody",'base64')
+    FROM jsonb_to_recordset(p_invocations) AS a(id uuid,"startedAt" timestamptz,provider text,"httpStatus" smallint,
+      complete boolean,"requestBody" text,"responseBody" text)
+    ON CONFLICT (message_id,id) DO NOTHING;
   RETURN true;
 END $$;
-REVOKE ALL ON FUNCTION public.save_processing_snapshot(jsonb,jsonb,jsonb) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.save_processing_snapshot(jsonb,jsonb,jsonb) TO service_role;
+REVOKE ALL ON FUNCTION public.save_processing_snapshot(jsonb,jsonb,jsonb,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.save_processing_snapshot(jsonb,jsonb,jsonb,jsonb) TO service_role;
 -- A corrected processing context invalidates its snapshot. Status-only patches
 -- leave the captured request in place. A full save writes the replacement in
 -- the same transaction after the parent update.
 CREATE OR REPLACE FUNCTION public.discard_corrected_processing_snapshot() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
 BEGIN
-  DELETE FROM public.message_processing_invocations WHERE message_id=NEW.message_id;
+  DELETE FROM public.message_processing_turn_snapshots WHERE message_id=NEW.message_id;
+  IF (OLD.chat_id,OLD.received_at,OLD.batch_id) IS DISTINCT FROM (NEW.chat_id,NEW.received_at,NEW.batch_id) THEN
+    DELETE FROM public.message_processing_invocations WHERE message_id=NEW.message_id;
+  END IF;
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.discard_corrected_processing_snapshot() FROM PUBLIC,anon,authenticated;
@@ -230,7 +285,7 @@ EXECUTE FUNCTION public.discard_corrected_processing_snapshot();
 
 -- The drawer needs conversation history immediately. Load instructions, tool
 -- schemas and complete transport payloads only on the request detail endpoint.
-CREATE OR REPLACE FUNCTION public.processing_request_context(i public.message_processing_invocations)
+CREATE OR REPLACE FUNCTION public.processing_request_context(i public.message_processing_turn_snapshots)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE STRICT SET search_path='' AS $$
 DECLARE name text; source jsonb; part jsonb; context jsonb;
 BEGIN
@@ -247,10 +302,29 @@ BEGIN
   END LOOP;
   RETURN context;
 END $$;
-REVOKE ALL ON FUNCTION public.processing_request_context(public.message_processing_invocations) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.processing_request_context(public.message_processing_invocations) TO service_role;
+REVOKE ALL ON FUNCTION public.processing_request_context(public.message_processing_turn_snapshots) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.processing_request_context(public.message_processing_turn_snapshots) TO service_role;
 
-COMMENT ON TABLE public.message_processing_invocations IS '每次处理至多一行。request 保存当时的请求，response 保存响应和投递。按创建时间保留 90 天。';
+CREATE OR REPLACE FUNCTION public.delete_expired_agent_invocations(p_days_old integer DEFAULT 90, p_limit integer DEFAULT 500)
+RETURNS integer LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
+DECLARE cutoff timestamptz := now()-make_interval(days=>p_days_old); turns integer; calls integer;
+BEGIN
+  IF p_limit IS NULL OR p_limit < 1 OR p_days_old IS NULL OR p_days_old < 1 THEN RAISE EXCEPTION 'invalid retention bounds'; END IF;
+  DELETE FROM public.message_processing_turn_snapshots WHERE message_id IN (
+    SELECT message_id FROM public.message_processing_turn_snapshots WHERE created_at < cutoff ORDER BY created_at LIMIT p_limit
+  );
+  GET DIAGNOSTICS turns = ROW_COUNT;
+  DELETE FROM public.message_processing_invocations WHERE (message_id,id) IN (
+    SELECT message_id,id FROM public.message_processing_invocations WHERE started_at < cutoff ORDER BY started_at LIMIT p_limit-turns
+  );
+  GET DIAGNOSTICS calls = ROW_COUNT;
+  RETURN turns+calls;
+END $$;
+REVOKE ALL ON FUNCTION public.delete_expired_agent_invocations(integer,integer) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_expired_agent_invocations(integer,integer) TO service_role;
+COMMENT ON TABLE public.message_processing_turn_snapshots IS '每条流水至多一份 Cake 回合上下文、SDK 消息和渠道投递摘要。';
+COMMENT ON TABLE public.message_processing_invocations IS '一次模型 HTTP 请求一行，正文保留实际字节，complete 表示响应正文读取到末尾。默认保留 90 天。';
+COMMENT ON FUNCTION public.delete_expired_agent_invocations(integer,integer) IS '在同一批量预算内清理过期回合快照和模型 HTTP 调用。';
 COMMENT ON COLUMN public.message_processing_records.agent_steps IS '按执行顺序保存步骤元数据。tool_calls 中的 stepPosition 对应本数组的零起始位置。';
 NOTIFY pgrst,'reload schema';
 COMMIT;

@@ -176,6 +176,29 @@ export async function getMessageProcessingRecords(options?: {
   return unwrapResponse<MessageRecord[]>(data);
 }
 
+interface ModelCallSummary {
+  id: string;
+  provider: string;
+  startedAt: string;
+  httpStatus: number | null;
+  complete: boolean;
+}
+type HttpBody = { encoding: 'utf8' | 'base64'; body: string } | null;
+
+function modelCallsUrl(messageId: string) {
+  return `/analytics/message-processing-records/${encodeURIComponent(messageId)}/model-calls`;
+}
+
+export async function listProcessingModelCalls(messageId: string, offset: number) {
+  const { data } = await api.get(modelCallsUrl(messageId), { params: { offset } });
+  return unwrapResponse<{ calls: ModelCallSummary[]; nextOffset: number | null }>(data);
+}
+
+export async function getProcessingModelCall(messageId: string, id: string) {
+  const { data } = await api.get(`${modelCallsUrl(messageId)}/${encodeURIComponent(id)}`);
+  return unwrapResponse<{ request: HttpBody; response: HttpBody }>(data);
+}
+
 export async function getCapturedProcessingRequest(messageId: string) {
   const { data } = await api.get(
     `/analytics/message-processing-records/${encodeURIComponent(messageId)}/request`,

@@ -47,9 +47,9 @@ CREATE TEMP TABLE old_capture_times AS SELECT message_id,created_at FROM public.
   \ir ../../scripts/backfill-runtime-bodies.sql
   \ir ../../scripts/backfill-runtime-bodies.sql
 \endif
-\ir ../../supabase/migrations/20261125080000_processing_snapshot_storage.sql
+\ir ../../supabase/migrations/20261125080100_processing_snapshot_storage.sql
 \ir ../../supabase/migrations/20261125081000_retire_body_storage_markers.sql
-\ir ../../supabase/migrations/20261125080000_processing_snapshot_storage.sql
+\ir ../../supabase/migrations/20261125080100_processing_snapshot_storage.sql
 \ir ../../supabase/migrations/20261125081000_retire_body_storage_markers.sql
 DO $verify$
 BEGIN
@@ -59,9 +59,9 @@ BEGIN
   ASSERT (SELECT count(*)=4 AND bool_and(m.tool_calls#>'{0,stepPosition}'='0' AND m.agent_steps='[{"stepIndex":0},{"stepIndex":1}]'
     AND i.request#>>'{agentRequest,instructions}'='historical prompt' AND i.response->>'reply'='done'
     AND NOT i.response?'toolCalls' AND i.created_at=t.created_at AND m.ttft_ms=174)
-    FROM message_processing_records m JOIN message_processing_invocations i USING(message_id)
+    FROM message_processing_records m JOIN message_processing_turn_snapshots i USING(message_id)
     JOIN old_capture_times t USING(message_id) WHERE m.message_id IN ('both','step-only','response-only','direct'));
-  ASSERT NOT EXISTS (SELECT FROM message_processing_invocations WHERE message_id IN ('superseded','stale-response'));
+  ASSERT NOT EXISTS (SELECT FROM message_processing_turn_snapshots WHERE message_id IN ('superseded','stale-response'));
   ASSERT (SELECT tool_calls='[{"toolCallId":"sdk-1","toolName":"search","args":{"q":"old"},"result":{"success":false},"status":"error"}]'
     FROM message_processing_records WHERE message_id='sdk-only');
   ASSERT EXISTS (SELECT FROM message_processing_records WHERE message_id='broken-step' AND tool_calls#>>'{0,toolName}'='invite'
@@ -73,5 +73,8 @@ BEGIN
     FROM agent_action_records WHERE corp_id='cutover' AND action_id='action');
   ASSERT (SELECT count(*)=3 FROM agent_action_evidence WHERE corp_id='cutover' AND action_id='action');
   ASSERT NOT EXISTS(SELECT FROM system_config WHERE key='runtime_storage_writes');
-  ASSERT NOT has_function_privilege('anon','public.processing_request_context(public.message_processing_invocations)','EXECUTE');
+  ASSERT NOT EXISTS (SELECT FROM message_processing_invocations);
+  ASSERT to_regprocedure('public.action_record_json(public.agent_action_records)') IS NOT NULL;
+  ASSERT (SELECT public.action_record_json(r)->'result'=r.result FROM agent_action_records r WHERE corp_id='cutover' AND action_id='action');
+  ASSERT NOT has_function_privilege('anon','public.processing_request_context(public.message_processing_turn_snapshots)','EXECUTE');
 END $verify$;

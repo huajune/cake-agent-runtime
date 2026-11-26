@@ -87,9 +87,12 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.store_action_completion(text,text,text,jsonb) FROM PUBLIC,anon,authenticated,service_role;
 
+-- Reply-segment transitions also return the public action projection.
+CREATE OR REPLACE FUNCTION public.action_record_json(r public.agent_action_records)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$ SELECT to_jsonb(r) $$;
 DROP VIEW IF EXISTS public.test_execution_results RESTRICT;
 DROP FUNCTION IF EXISTS public.action_pack_accepted_body(), public.action_body_storage_state(public.agent_action_records),
-  public.action_record_json(public.agent_action_records), public.chat_body_storage_state(public.chat_messages),
+  public.chat_body_storage_state(public.chat_messages),
   public.chat_store_payload(), public.chat_preserve_payload(), public.chat_read_payload(public.chat_messages),
   public.chat_payload_text_mask(text,jsonb), public.test_store_response(), public.test_preserve_response(),
   public.test_read_response(public.test_executions);

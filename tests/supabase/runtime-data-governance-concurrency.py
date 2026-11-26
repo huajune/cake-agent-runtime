@@ -52,6 +52,6 @@ def snapshot(i):
 assert parallel([snapshot(i) for i in range(8)]) == ["t"] * 8
 assert query(f"""select i.response='{{}}'::jsonb and
   m.tool_calls#>>'{{0,toolCallId}}'='attempt-'||(i.request->>'attempt')
-  from message_processing_records m join message_processing_invocations i using(message_id)
+  from message_processing_records m join message_processing_turn_snapshots i using(message_id)
   where m.message_id='{run}';""") == "t"
 print("PASS concurrent duplicate and independent handoffs, daily counts, and eight overlapping snapshot writes")

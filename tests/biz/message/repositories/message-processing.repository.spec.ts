@@ -115,6 +115,47 @@ describe('MessageProcessingRepository', () => {
     });
   });
 
+  it('writes all attempts in the existing snapshot RPC and reads bodies only by both keys', async () => {
+    const call = {
+      id: 'id',
+      provider: 'qwen',
+      startedAt: new Date().toISOString(),
+      httpStatus: 200,
+      complete: true,
+      requestBody: 'e30=',
+      responseBody: '/wA=',
+    };
+    mockSupabaseClient.rpc.mockResolvedValue({ data: true, error: null });
+    await repository.saveMessageProcessingRecord({ ...baseRecord, modelInvocations: [call] });
+    expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+      'save_processing_snapshot',
+      expect.objectContaining({ p_invocations: [call] }),
+    );
+
+    const page = makeQueryMock({ data: Array.from({ length: 26 }, () => ({ id: 'id' })) });
+    mockSupabaseClient.from.mockReturnValue(page);
+    const summary = await repository.listModelCalls('msg', 0);
+    expect(page.select.mock.calls[0][0]).not.toMatch(/body/);
+    expect(page.eq).toHaveBeenCalledWith('message_id', 'msg');
+    expect(page.range).toHaveBeenCalledWith(0, 25);
+    expect(summary.calls).toHaveLength(25);
+    expect(summary.nextOffset).toBe(25);
+    const detail = makeQueryMock({ data: [{ request_body: '\\x7b7d', response_body: '\\xff00' }] });
+    mockSupabaseClient.from.mockReturnValue(detail);
+    expect(await repository.getModelCall('msg', 'id')).toEqual({
+      request: { encoding: 'utf8', body: '{}' },
+      response: { encoding: 'base64', body: '/wA=' },
+    });
+    expect(detail.eq.mock.calls).toEqual([
+      ['message_id', 'msg'],
+      ['id', 'id'],
+    ]);
+    mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [] }));
+    await expect(repository.getModelCall('other', 'id')).rejects.toMatchObject({ status: 404 });
+    mockSupabaseService.isClientInitialized.mockReturnValue(false);
+    await expect(repository.listModelCalls('msg', 0)).rejects.toMatchObject({ status: 503 });
+  });
+
   // ==================== getSlowestMessages ====================
 
   describe('getSlowestMessages', () => {
@@ -490,7 +531,7 @@ describe('MessageProcessingRepository', () => {
           data: [
             {
               ...detailRow,
-              message_processing_invocations: child,
+              message_processing_turn_snapshots: child,
               agent_steps: [{ stepIndex: 0 }, { stepIndex: 0 }],
               tool_calls: [{ ...call, stepPosition: 1 }],
             },
@@ -500,8 +541,8 @@ describe('MessageProcessingRepository', () => {
         const result = await repository.getMessageProcessingRecordById('detail', projection);
         expect(query.select.mock.calls[0][0]).toContain(
           projection === 'detail'
-            ? 'message_processing_invocations(request:processing_request_context,response)'
-            : 'message_processing_invocations(request,response)',
+            ? 'message_processing_turn_snapshots(request:processing_request_context,response)'
+            : 'message_processing_turn_snapshots(request,response)',
         );
         expect(result?.agentInvocation).toEqual({ ...child, isFallback: false });
         expect(result?.agentSteps?.map((step) => step.toolCalls)).toEqual([[], [call]]);
@@ -512,7 +553,7 @@ describe('MessageProcessingRepository', () => {
     it('omits an expired snapshot and keeps the processing record', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
       mockSupabaseClient.from.mockReturnValue(
-        makeQueryMock({ data: [{ ...detailRow, message_processing_invocations: null }] }),
+        makeQueryMock({ data: [{ ...detailRow, message_processing_turn_snapshots: null }] }),
       );
       expect(
         (await repository.getMessageProcessingRecordById('detail'))?.agentInvocation,

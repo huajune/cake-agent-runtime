@@ -598,9 +598,9 @@ export function getRawPayloadPanels(
   if (requestPayload) {
     panels.push({
       key: 'request',
-      label: agentRequest ? 'LLM 请求' : '请求体',
+      label: agentRequest ? 'Agent 请求' : '回合请求',
       description: agentRequest
-        ? '本次处理快照留存的请求字段。可查看已捕获的消息、提示词与工具定义。模型尝试次数见排障观测事件。'
+        ? 'Cake 准备的消息、提示词和工具定义。实际发送给供应商的正文可在「模型调用原文」逐次查看。'
         : '本次处理留存的业务请求',
       data: requestPayload,
     });
@@ -659,7 +659,7 @@ export function getRawPayloadPanels(
   if (responsePayload) {
     panels.push({
       key: 'response',
-      label: '响应体',
+      label: '回合响应',
       description: '本次处理的响应快照，包含留存的回复和消息。本轮调用清单见工具执行。',
       data: responsePayload,
     });

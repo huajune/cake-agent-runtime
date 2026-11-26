@@ -98,6 +98,14 @@ export class MessageProcessingService {
     return result.records;
   }
 
+  listModelCalls(messageId: string, offset: number) {
+    return this.messageProcessingRepository.listModelCalls(messageId, offset);
+  }
+
+  getModelCall(messageId: string, id: string) {
+    return this.messageProcessingRepository.getModelCall(messageId, id);
+  }
+
   getCapturedRequest(messageId: string): Promise<unknown> {
     return this.messageProcessingRepository.getCapturedRequest(messageId);
   }

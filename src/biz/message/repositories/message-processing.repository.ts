@@ -1,5 +1,6 @@
 import { readGuardrailTrace } from './guardrail-review-read.util';
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { isUtf8 } from 'node:buffer';
 import { isRecord } from '@infra/utils/object.util';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { BaseRepository } from '@infra/supabase/base.repository';
@@ -7,6 +8,22 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import { MessageProcessingDbRecord } from '../entities/message-processing.entity';
 import { MessageProcessingRecordInput } from '../types/message.types';
 import type { MessageProcessingStatus } from '@enums/message.enum';
+
+export interface ModelCallSummary {
+  id: string;
+  provider: string;
+  startedAt: string;
+  httpStatus: number | null;
+  complete: boolean;
+}
+
+function readHttpBody(hex: string | null) {
+  if (hex === null) return null;
+  // PostgREST serializes bytea as PostgreSQL hex. Keep non-UTF-8 error bodies downloadable as base64.
+  const bytes = Buffer.from(hex.slice(2), 'hex');
+  const encoding = isUtf8(bytes) ? 'utf8' : 'base64';
+  return { encoding, body: bytes.toString(encoding) };
+}
 
 interface MessageProcessingFilters {
   /** 会话主体检索词：同时对 user_name 与 chat_id 做子串匹配（运营常直接粘贴 chatId 排障）。 */
@@ -90,8 +107,8 @@ export class MessageProcessingRepository extends BaseRepository {
     'batch_id',
   ].join(',');
 
-  private readonly detailSelectedColumns = `${this.listSelectedColumns},message_processing_invocations(request:processing_request_context,response)`;
-  private readonly fullSelectedColumns = `${this.listSelectedColumns},message_processing_invocations(request,response)`;
+  private readonly detailSelectedColumns = `${this.listSelectedColumns},message_processing_turn_snapshots(request:processing_request_context,response)`;
+  private readonly fullSelectedColumns = `${this.listSelectedColumns},message_processing_turn_snapshots(request,response)`;
 
   // Dashboard 业务趋势只需要时间、用户和预约工具调用结果，避免为图表拉取大块快照字段。
   private readonly businessTrendSelectedColumns = [
@@ -123,6 +140,7 @@ export class MessageProcessingRepository extends BaseRepository {
           p_record: this.toDbRecord(record),
           p_request: snapshot?.request ?? null,
           p_response: snapshot?.response ?? null,
+          ...(record.modelInvocations?.length ? { p_invocations: record.modelInvocations } : {}),
         })) === true
       );
     } catch (error) {
@@ -402,11 +420,45 @@ export class MessageProcessingRepository extends BaseRepository {
 
   async getCapturedRequest(messageId: string): Promise<unknown> {
     const rows = await this.selectFrom<{ request: unknown }>(
-      'message_processing_invocations',
+      'message_processing_turn_snapshots',
       'request',
       (q) => q.eq('message_id', messageId).limit(1),
     );
     return rows[0]?.request ?? null;
+  }
+
+  async listModelCalls(messageId: string, offset: number) {
+    const pageSize = 25;
+    const rows = await this.selectFromOrNull<ModelCallSummary>(
+      'message_processing_invocations',
+      'id,provider,startedAt:started_at,httpStatus:http_status,complete',
+      (q) =>
+        q
+          .eq('message_id', messageId)
+          .order('started_at')
+          .order('id')
+          .range(offset, offset + pageSize),
+    );
+    if (!rows) throw new ServiceUnavailableException('模型调用清单读取失败');
+    return {
+      calls: rows.slice(0, pageSize),
+      nextOffset: rows.length > pageSize ? offset + pageSize : null,
+    };
+  }
+
+  async getModelCall(messageId: string, id: string) {
+    const rows = await this.selectFromOrNull<{
+      request_body: string | null;
+      response_body: string | null;
+    }>('message_processing_invocations', 'request_body,response_body', (q) =>
+      q.eq('message_id', messageId).eq('id', id).limit(1),
+    );
+    if (!rows) throw new ServiceUnavailableException('模型调用原文读取失败');
+    if (!rows[0]) throw new NotFoundException('该流水下没有这次模型调用');
+    return {
+      request: readHttpBody(rows[0].request_body),
+      response: readHttpBody(rows[0].response_body),
+    };
   }
 
   // ==================== 聚合查询 ====================
@@ -1124,7 +1176,7 @@ export class MessageProcessingRepository extends BaseRepository {
    * 从数据库记录格式转换
    */
   private fromDbRecord(record: MessageProcessingDbRecord): MessageProcessingRecordInput {
-    const child = record.message_processing_invocations;
+    const child = record.message_processing_turn_snapshots;
     const steps = record.agent_steps?.map((step) => ({
       ...step,
       toolCalls: [] as AgentToolCall[],

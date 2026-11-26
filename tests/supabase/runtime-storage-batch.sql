@@ -21,11 +21,11 @@ BEGIN
       'status','success','received_at',now(),'tool_calls',c,'agent_steps',steps,
       'message_preview',inbound,'reply_preview',outbound,'reply_segments',2);
     PERFORM public.save_processing_snapshot(r,snapshot->'request',snapshot->'response');
-    UPDATE public.message_processing_invocations SET created_at=now()-make_interval(days=>age) WHERE message_id=r->>'message_id';
+    UPDATE public.message_processing_turn_snapshots SET created_at=now()-make_interval(days=>age) WHERE message_id=r->>'message_id';
   END LOOP;
   ASSERT public.delete_expired_agent_invocations()=1;
   ASSERT (SELECT count(*)=2 AND bool_and(request=snapshot->'request' AND response=(snapshot->'response')-'toolCalls')
-    FROM public.message_processing_invocations i WHERE message_id IN ('batch-age-89','batch-age-90'));
+    FROM public.message_processing_turn_snapshots i WHERE message_id IN ('batch-age-89','batch-age-90'));
   ASSERT (SELECT m.agent_steps='[{},{}]' AND reply_preview=outbound
     AND length(public.processing_list_message_preview(m))=50 AND length(public.processing_list_reply_preview(m))=120
     FROM public.message_processing_records m WHERE message_id='batch-age-91');
@@ -35,7 +35,7 @@ BEGIN
   ASSERT detailed->>'replyPreview'=outbound AND detailed->>'messagePreview'=inbound AND detailed->>'replySegments'='2';
   ASSERT public.center_dashboard_processing_read('processing-detail',ARRAY['other-bot'],current_date-1,current_date+1,'{"id":"batch-age-91"}') IS NULL;
   UPDATE public.message_processing_records SET tool_calls=jsonb_build_array(c->1,c->0) WHERE message_id='batch-age-90';
-  ASSERT NOT EXISTS (SELECT FROM public.message_processing_invocations WHERE message_id='batch-age-90');
+  ASSERT NOT EXISTS (SELECT FROM public.message_processing_turn_snapshots WHERE message_id='batch-age-90');
   ASSERT (SELECT m.agent_steps='[{},{}]' FROM public.message_processing_records m WHERE message_id='batch-age-90');
   PERFORM public.save_processing_snapshot(r||'{"message_id":"batch-fallback","reply_preview":"guard fallback","is_fallback":true}',NULL,NULL);
   ASSERT (SELECT reply_preview='guard fallback' AND public.processing_list_reply_preview(m)='guard fallback'

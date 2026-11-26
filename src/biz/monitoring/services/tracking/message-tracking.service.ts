@@ -1,3 +1,4 @@
+import { takeModelInvocations } from '@observability/context/model-invocations';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { exponentialBackoffMs, sleep } from '@infra/utils/async.util';
@@ -252,6 +253,8 @@ export class MessageTrackingService {
     metadata?: MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string };
     error?: string;
   }): Promise<void> {
+    // Detach the bytes before the first await. The channel is free to release its turn context.
+    const modelInvocations = takeModelInvocations(params.messageId);
     try {
       const existingRecord = await this.messageProcessingService.getMessageProcessingRecordById(
         params.messageId,
@@ -283,6 +286,7 @@ export class MessageTrackingService {
         }`,
       );
 
+      finalRecord.modelInvocations = modelInvocations;
       await this.saveRecordToDatabase(finalRecord);
       if (finalRecord.status === 'success') {
         await this.markSupersededProcessingRecords(finalRecord);

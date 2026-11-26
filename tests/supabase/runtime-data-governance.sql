@@ -5,13 +5,46 @@ SET LOCAL lock_timeout='1s';
 
 CREATE FUNCTION pg_temp.reject_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'injected child failure'; END $$;
-CREATE TRIGGER fail_one_snapshot BEFORE INSERT OR UPDATE ON public.message_processing_invocations
+CREATE TRIGGER fail_one_snapshot BEFORE INSERT OR UPDATE ON public.message_processing_turn_snapshots
   FOR EACH ROW WHEN (NEW.message_id='gov-fail') EXECUTE FUNCTION pg_temp.reject_snapshot();
 
 CREATE TRIGGER fail_one_handoff BEFORE INSERT ON public.handoff_events
   FOR EACH ROW WHEN (NEW.idempotency_key='reject-ticket') EXECUTE FUNCTION pg_temp.reject_snapshot();
 
 SET LOCAL ROLE service_role;
+-- Per-exchange bodies are immutable, independent of the tool projection and never exposed to anon/authenticated.
+DO $model_calls$
+DECLARE
+  r jsonb := jsonb_build_object('message_id','gov-wire','chat_id','fixture','received_at',now(),'status','success');
+  call1 jsonb := jsonb_build_object('id',gen_random_uuid(),'provider','qwen','startedAt',now()-interval '91 days',
+    'httpStatus',503,'complete',true,'requestBody','e30=','responseBody','/wA=');
+  call2 jsonb := call1 || jsonb_build_object('id',gen_random_uuid(),'startedAt',now(),'provider','deepseek',
+    'httpStatus',null,'complete',false,'responseBody',null);
+  calls jsonb := jsonb_build_array(call1,call2);
+BEGIN
+  ASSERT public.save_processing_snapshot(r,'{}','{"reply":"fallback"}',calls);
+  ASSERT public.save_processing_snapshot(r,'{}','{"reply":"fallback"}',calls);
+  UPDATE public.message_processing_records SET tool_calls='[]' WHERE message_id='gov-wire';
+  ASSERT (SELECT count(*)=2 FROM public.message_processing_invocations WHERE message_id='gov-wire');
+  ASSERT (SELECT encode(request_body,'hex')='7b7d' AND encode(response_body,'hex')='ff00' AND complete
+    FROM public.message_processing_invocations WHERE id=(call1->>'id')::uuid);
+  ASSERT (SELECT response_body IS NULL AND http_status IS NULL AND NOT complete FROM public.message_processing_invocations WHERE id=(call2->>'id')::uuid);
+  BEGIN
+    PERFORM public.save_processing_snapshot(r||'{"message_id":"gov-wire-invalid"}','{}','{}',
+      jsonb_build_array(call1||'{"requestBody":"*"}'));
+    RAISE EXCEPTION 'invalid bytes should roll back the entire write';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+  ASSERT NOT EXISTS (SELECT FROM public.message_processing_records WHERE message_id='gov-wire-invalid');
+  ASSERT public.delete_expired_agent_invocations(90,1)=1;
+  ASSERT (SELECT count(*)=1 AND bool_and(id=(call2->>'id')::uuid) FROM public.message_processing_invocations WHERE message_id='gov-wire');
+  UPDATE public.message_processing_records SET chat_id='corrected' WHERE message_id='gov-wire';
+  ASSERT NOT EXISTS (SELECT FROM public.message_processing_invocations WHERE message_id='gov-wire');
+  ASSERT NOT has_table_privilege('anon','public.message_processing_invocations','SELECT');
+  ASSERT NOT has_table_privilege('authenticated','public.message_processing_invocations','SELECT');
+  ASSERT NOT has_table_privilege('service_role','public.message_processing_invocations','UPDATE');
+END $model_calls$;
+
 DO $$
 DECLARE
   r jsonb := '{"message_id":"gov-message","chat_id":"gov-chat","received_at":"2026-11-18T10:00:00Z","status":"success"}';
@@ -25,7 +58,7 @@ BEGIN
   ASSERT public.save_processing_snapshot(r,req,resp);
   ASSERT (SELECT request=req AND response=resp-'toolCalls' AND
     public.processing_request_context(i)='{"agentRequest":{"messages":[{"role":"user","content":"hello"}]}}'
-    FROM public.message_processing_invocations i WHERE message_id='gov-message');
+    FROM public.message_processing_turn_snapshots i WHERE message_id='gov-message');
   ASSERT (SELECT agent_steps='[{"stepIndex":0},{"stepIndex":0}]' AND tool_calls->0->'stepPosition'='0'
     AND tool_calls->1->'stepPosition'='1' FROM public.message_processing_records WHERE message_id='gov-message');
   ASSERT public.save_processing_snapshot(r-'tool_calls',NULL,NULL);
@@ -37,9 +70,9 @@ BEGIN
   EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'injected child failure' THEN RAISE; END IF; END;
   ASSERT NOT EXISTS (SELECT FROM public.message_processing_records WHERE message_id='gov-fail');
   UPDATE public.message_processing_records SET status='timeout' WHERE message_id='gov-message';
-  ASSERT EXISTS (SELECT FROM public.message_processing_invocations WHERE message_id='gov-message');
+  ASSERT EXISTS (SELECT FROM public.message_processing_turn_snapshots WHERE message_id='gov-message');
   UPDATE public.message_processing_records SET tool_calls='[]' WHERE message_id='gov-message';
-  ASSERT NOT EXISTS (SELECT FROM public.message_processing_invocations WHERE message_id='gov-message');
+  ASSERT NOT EXISTS (SELECT FROM public.message_processing_turn_snapshots WHERE message_id='gov-message');
   ASSERT public.save_processing_snapshot(r,req,resp);
   INSERT INTO public.chat_messages(message_id,chat_id,role,content,timestamp,message_type,payload)
     VALUES('gov-chat','a','user','hello',now(),'TEXT','{"text":"hello","other":"original"}');
@@ -54,8 +87,8 @@ BEGIN
   BEGIN DELETE FROM public.agent_action_reviews WHERE false;
   EXCEPTION WHEN insufficient_privilege THEN forbidden:=true; END;
   ASSERT forbidden;
-  ASSERT NOT has_table_privilege('anon','message_processing_invocations','SELECT');
-  ASSERT NOT has_function_privilege('authenticated','public.save_processing_snapshot(jsonb,jsonb,jsonb)','EXECUTE');
+  ASSERT NOT has_table_privilege('anon','message_processing_turn_snapshots','SELECT');
+  ASSERT NOT has_function_privilege('authenticated','public.save_processing_snapshot(jsonb,jsonb,jsonb,jsonb)','EXECUTE');
 END $$;
 
 DO $$

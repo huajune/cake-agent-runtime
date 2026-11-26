@@ -36,7 +36,7 @@
 | --- | --- |
 | `chat_messages` | 保留渠道消息及回调原始身份。仅对可无损还原的纯文本载荷消除重复。保留引用、媒体、语音、系统消息、出站回调等原始差异。 |
 | `message_processing_records` | 一行代表一次处理尝试。顶层 `tool_calls` 作为该次完整工具序列来源，供消息详情和按小时统计工具的 SQL 读取。保留步骤顺序、来源输入和预览各自语义。主表旧 `agent_invocation` 列单独退役。 |
-| `message_processing_invocations` | 一次处理的短期请求/响应快照。保留模型看到的输入、原始消息/响应、快照存在性与过期策略，按版本去除完全相等的副本。暂用原名。 |
+| `message_processing_invocations` | 一次实际模型 HTTP 请求一行，保留本次完整请求与供应商响应。回合上下文与投递结果保存在 `message_processing_turn_snapshots`。 |
 | `agent_execution_events`、`guardrail_review_records` | 分别保留诊断事件、守卫判定及修订前后内容。样本 6 条守卫记录中有 2 条修订文本不同。两类记录继续关联对应尝试。 |
 | `ops_events`、`handoff_events` | 前者保存已发生的业务事件，后者承载一次转人工的建议、序号、结局、解决时间。转化统计读事件，处理进度读工单。通过稳定事件键关联。 |
 | `daily_ops_report` | 保留日报统计与增量投影。单独审查 `candidate_summary`、`booking_brands` 的来源、历史与导出用途。 |

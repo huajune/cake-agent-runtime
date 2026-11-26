@@ -1,3 +1,7 @@
+import {
+  captureProviderFetch,
+  takeModelInvocations,
+} from '@observability/context/model-invocations';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { ReplyWorkflowService } from '@channels/wecom/message/application/reply-workflow.service';
 import { EnterpriseMessageCallbackDto } from '@channels/wecom/message/ingress/message-callback.dto';
@@ -567,6 +571,29 @@ describe('ReplyWorkflowService', () => {
     expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
     expect(replyTurns.acked).not.toHaveBeenCalled();
   });
+
+  it.each(['direct', 'merged'])(
+    'records the actual reply request under the %s processing ID',
+    async (route) => {
+      const send = captureProviderFetch('qwen', async () => new Response('raw vendor'));
+      const run = runner.runInboundTurn.getMockImplementation()!;
+      runner.runInboundTurn.mockImplementationOnce(async (...args) => {
+        await (await send('https://model.invalid', { method: 'POST', body: 'raw request' })).text();
+        return run(...args);
+      });
+      const captured = jest.fn();
+      monitoringService.recordSuccess.mockImplementationOnce((id: string) =>
+        captured(id, takeModelInvocations(id)),
+      );
+      const message = createMessage();
+      if (route === 'direct') await service.processSingleMessage(message);
+      else await service.processMergedMessages([message], 'batch-fixture');
+      expect(captured).toHaveBeenCalledWith(
+        route === 'direct' ? message.messageId : 'batch-fixture',
+        [expect.objectContaining({ responseBody: Buffer.from('raw vendor').toString('base64') })],
+      );
+    },
+  );
 
   it('should execute the direct reply workflow and mark the message as processed', async () => {
     const message = createMessage();

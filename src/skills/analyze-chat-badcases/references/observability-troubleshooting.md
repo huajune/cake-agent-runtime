@@ -29,7 +29,8 @@
 | ---------------------------- | --------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
 | `chat_messages`              | 候选人和 Agent 实际说了什么                               | `chat_id`, `message_id`                              | 对话事实，不解释运行原因                                 |
 | `message_processing_records` | 本 turn 的主链终态、工具、步骤、记忆、守卫摘要和后处理    | `message_id = trace_id`                              | 主账本；大字段按单 trace 读取                            |
-| `message_processing_invocations` | 本次处理的模型输入与响应、投递回执和时序 | `message_id` | 一条主流水至多一份，按需读取 `request` 或 `response` |
+| `message_processing_turn_snapshots` | 回合上下文、SDK 消息、投递回执和时序 | `message_id` | 一条主流水至多一份 |
+| `message_processing_invocations` | 每次调用供应商的 HTTP 状态、请求和响应原文 | `message_id` 和调用 `id` | 一轮可有多行，先读清单，再点查一行正文 |
 | `agent_execution_events`     | 回合、模型、工具、记忆及守卫留下的排障线索 | `trace_id`，工具内事件可再按 `payload.toolCallId` 关联 | 按条件留存；工具次数取主流水，失败数按处理状态统计 |
 | `guardrail_review_records`   | 首版回复、首审、修复版、二审和最终裁决                    | `trace_id`                                           | 稀疏表，仅守卫有信号的生产回合写；写入是异步 best-effort |
 | `monitoring_error_logs`      | 渠道、外部依赖、观测持久化、告警与投递基础设施是否异常    | `message_id`；无 ID 时用时间窗 + subsystem/component | 系统级告警可以没有 message_id                            |
@@ -50,7 +51,7 @@
 - `reply_preview / is_fallback / fallback_success`
 - 各阶段 duration 与 `ttft_ms`
 
-需要核实模型实际输入时，按单条流水读取 `GET /analytics/message-processing-records/:messageId/request` 返回的 `request.agentRequest`。快照过期时，主流水仍可提供步骤与工具。
+需要核实模型实际输入时，先查 `GET /analytics/message-processing-records/:messageId/model-calls`，再按调用 ID 查同一路径下的 `/:id`。旧记录的 `/request` 提供 Cake 当时保存的生成上下文。快照过期时，主流水仍可提供步骤与工具。
 
 ## 4. 分层查询模板
 

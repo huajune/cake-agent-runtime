@@ -1,3 +1,5 @@
+import { useDashboardAccess } from '@/hooks/useDashboardAccess';
+import ModelCalls from './ModelCalls';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getCapturedProcessingRequest } from '@/api/services/chat.service';
@@ -96,6 +98,9 @@ export default function ChatSection({ message }: ChatSectionProps) {
     [message, renderableMessage],
   );
   const hasRequest = Boolean(message.messageId && message.agentInvocation?.request);
+  const canInspectModelCalls =
+    useDashboardAccess()?.centerId === null && Boolean(message.messageId);
+  const showModelCalls = canInspectModelCalls && activePayloadKey === 'model-calls';
   const requestTab = requestPanels.has(activePayloadKey);
   const fullRequest = useQuery({
     queryKey: ['message-processing-record-detail', message.messageId, 'request'],
@@ -256,7 +261,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
         )}
       </div>
 
-      {rawPayloadPanels.length > 0 && (
+      {(rawPayloadPanels.length > 0 || canInspectModelCalls) && (
         <div className={styles.rawSection}>
           <h4 className={styles.rawTitle}>调试载荷</h4>
           <div className={styles.payloadShell}>
@@ -267,15 +272,28 @@ export default function ChatSection({ message }: ChatSectionProps) {
                   type="button"
                   onClick={() => setActivePayloadKey(panel.key)}
                   className={`${styles.rawTabButton} ${
-                    activePanel?.key === panel.key ? styles.rawTabButtonActive : ''
+                    !showModelCalls && activePanel?.key === panel.key
+                      ? styles.rawTabButtonActive
+                      : ''
                   }`}
                 >
                   {panel.label}
                 </button>
               ))}
+              {canInspectModelCalls && (
+                <button
+                  type="button"
+                  className={`${styles.rawTabButton} ${showModelCalls ? styles.rawTabButtonActive : ''}`}
+                  onClick={() => setActivePayloadKey('model-calls')}
+                >
+                  模型调用原文
+                </button>
+              )}
             </div>
 
-            {activePanel ? (
+            {showModelCalls ? (
+              <ModelCalls messageId={message.messageId!} />
+            ) : activePanel ? (
               <div className={styles.payloadCard}>
                 <div className={styles.payloadHeader}>
                   <div>

@@ -31,7 +31,7 @@ export interface MessageProcessingDbRecord {
   token_usage?: number;
   is_fallback?: boolean;
   fallback_success?: boolean;
-  message_processing_invocations?: InvocationProjection | null;
+  message_processing_turn_snapshots?: InvocationProjection | null;
   batch_id?: string;
   /** 工具调用详情 JSONB */
   tool_calls?: Array<AgentToolCall & { stepPosition?: number }> | null;
