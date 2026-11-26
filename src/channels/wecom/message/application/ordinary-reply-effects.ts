@@ -4,6 +4,9 @@ import { readTurnSideEffectIntent } from '@agent/runner/turn-outcome';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import {
   deliveredReplyAnchorsSchema,
+  collectionPrecheckSchema,
+  planCollectionPrecheck,
+  type CollectionPrecheck,
   type AnchorContext,
 } from '@agent/reengagement/anchor.service';
 import { replyJobProjectionSchema } from '@memory/short-term/assistant-job-projection';
@@ -24,6 +27,7 @@ export const deliveredReplySchema = z.object({
 export type DeliveredReplyEffects = z.infer<typeof deliveredReplySchema>;
 
 const effectsSchema = z.object({
+  collectionPrecheck: collectionPrecheckSchema.optional(),
   deliveredReply: deliveredReplySchema.optional(),
   afterReply: z
     .array(z.custom<TurnSideEffectIntent>((item) => readTurnSideEffectIntent(item) !== null))
@@ -64,6 +68,7 @@ export function ordinaryReplyEffects(
   calls: AgentToolCall[] | undefined,
   context: AnchorContext,
   afterReply?: { intents: TurnSideEffectIntent[]; userMessage: string },
+  canFollowUp = true,
 ): Record<string, unknown> {
   // Preserve the original handoff key, reason, work order and candidate's question.
   // The alert can reconstruct its context without a copy of the chat or session state.
@@ -101,6 +106,8 @@ export function ordinaryReplyEffects(
       };
     });
   return effectsSchema.parse({
+    collectionPrecheck:
+      canFollowUp && !context.isGroupChat ? planCollectionPrecheck(calls) : undefined,
     ...(intents?.length ? { afterReply: intents } : {}),
     // 空集合也是生成已结束、无需业务补账的证据；不能和保存失败混为一谈。
     toolCalls: context.isGroupChat ? [] : toolCalls,
@@ -109,6 +116,7 @@ export function ordinaryReplyEffects(
 }
 
 export function readOrdinaryReplyEffects(value: unknown): {
+  collectionPrecheck?: CollectionPrecheck;
   toolCalls: AgentToolCall[];
   context: AnchorContext;
   afterReply?: TurnSideEffectIntent[];

@@ -109,5 +109,68 @@ begin
 end $$;
 revoke all on function public.transition_agent_reply_segment(text,jsonb,jsonb) from public, anon, authenticated;
 grant execute on function public.transition_agent_reply_segment(text,jsonb,jsonb) to service_role;
+
+-- The caller holds the reply-turn lock and has verified the owner and immutable plan.
+-- Keep HTTP bytes in the existing per-call table. They never enter the reply recovery JSON.
+create or replace function public.capture_ordinary_reply_processing(t public.agent_reply_turns, capture jsonb)
+returns void language plpgsql set search_path=public,pg_temp as $$
+declare
+  trace text := t.recovery->>'traceId';
+  m public.message_processing_records;
+begin
+  if nullif(trace,'') is null or capture#>>'{request,messageId}' is distinct from trace
+    or capture#>>'{request,chatId}' is distinct from t.chat_id
+    or capture#>>'{request,imBotId}' is distinct from t.account_id then
+    raise exception 'reply processing identity mismatch';
+  end if;
+  -- Intake may still be writing the initial processing row.
+  insert into public.message_processing_records(message_id,chat_id,bot_im_id,received_at,status)
+    values(trace,t.chat_id,t.account_id,t.input_occurred_at,'processing') on conflict(message_id) do nothing;
+  select * into strict m from public.message_processing_records where message_id=trace for update;
+  if m.chat_id is distinct from t.chat_id or (m.bot_im_id is not null and m.bot_im_id<>t.account_id) then
+    raise exception 'reply processing scope mismatch';
+  end if;
+  if m.status in ('success','failure') then return; end if;
+  perform public.save_processing_snapshot((capture->'record') || jsonb_build_object(
+    'message_id',trace,'chat_id',t.chat_id,'received_at',m.received_at,'bot_im_id',t.account_id,'status','processing'),
+    capture->'request',capture->'response',coalesce(capture->'invocations','[]'::jsonb));
+end $$;
+revoke all on function public.capture_ordinary_reply_processing(public.agent_reply_turns,jsonb) from public,anon,authenticated,service_role;
+
+-- Mark actual delivery from the original receipt even if no JS monitoring callback survives.
+create or replace function public.settle_ordinary_reply_processing() returns trigger
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare
+  trace text := new.recovery->>'traceId';
+  outcome text := new.delivery_result->>'outcome';
+  accepted integer := coalesce((new.delivery_result->>'accepted')::integer,0);
+  segments integer := jsonb_array_length(old.recovery->'replySegments');
+  final_status text := case when outcome in ('complete','skipped') then 'success' else 'failure' end;
+  accepted_text text;
+begin
+  if nullif(trace,'') is null or outcome is null then return new; end if;
+  select left(string_agg(segment,E'\n' order by ord),250) into accepted_text
+    from jsonb_array_elements_text(old.recovery->'replySegments') with ordinality as s(segment,ord)
+    where ord<=accepted;
+  update public.message_processing_records m set status=final_status,
+    reply_segments=segments, reply_preview=accepted_text,
+    error=case when final_status='failure' then 'ordinary_reply_'||outcome end,
+    total_duration=least(2147483647,greatest(0,floor(extract(epoch from (now()-m.received_at))*1000)))::integer
+    where m.message_id=trace and m.chat_id=new.chat_id and (m.bot_im_id is null or m.bot_im_id=new.account_id)
+      and m.status in ('processing','timeout');
+  if found then
+    update public.message_processing_turn_snapshots s
+      set response=coalesce(s.response,'{}'::jsonb) || jsonb_build_object('status',final_status,
+        'delivery',jsonb_build_object('outcome',outcome,'deliveredSegments',accepted,'segmentCount',segments,
+          'success',outcome='complete','skipped',outcome='skipped'))
+      where s.message_id=trace and s.response->>'status'='processing';
+  end if;
+  return new;
+end $$;
+revoke all on function public.settle_ordinary_reply_processing() from public,anon,authenticated,service_role;
+drop trigger if exists settle_ordinary_reply_processing on public.agent_reply_turns;
+create trigger settle_ordinary_reply_processing after update of status on public.agent_reply_turns
+  for each row when (old.status is distinct from new.status and new.status='settled' and old.recovery ? 'replySegments')
+  execute function public.settle_ordinary_reply_processing();
 notify pgrst,'reload schema';
 commit;

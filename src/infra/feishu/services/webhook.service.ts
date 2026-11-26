@@ -12,10 +12,11 @@ import { FeishuApiResponse } from '../interfaces/interface';
  * - 网络错误 / 超时 / HTTP 5xx / HTTP 429 / 飞书限流 code → 可重试（瞬时故障）
  * - HTTP 4xx（非 429）/ 其它飞书业务 code（卡片非法等）→ 不可重试（重发也不会成功）
  */
-class FeishuSendError extends Error {
+export class FeishuSendError extends Error {
   constructor(
     message: string,
     readonly retryable: boolean,
+    readonly rejectedBeforeAcceptance = false,
   ) {
     super(message);
     this.name = 'FeishuSendError';
@@ -121,7 +122,7 @@ export class FeishuWebhookService {
     const config = this.resolveWebhookConfig(channel);
     if (!config) {
       // 配置缺失属永久错误，重试无意义
-      throw new FeishuSendError(`未配置 ${channel} Webhook URL`, false);
+      throw new FeishuSendError(`未配置 ${channel} Webhook URL`, false, true);
     }
 
     await this.postToWebhook(channel, config, content);
@@ -146,6 +147,7 @@ export class FeishuWebhookService {
         throw new FeishuSendError(
           `飞书 API 返回错误: ${JSON.stringify(response.data)}`,
           RETRYABLE_FEISHU_CODES.has(code ?? -1),
+          typeof code === 'number' && code !== 0,
         );
       }
       this.logger.log(`飞书消息发送成功 [${channel}]`);
@@ -160,6 +162,7 @@ export class FeishuWebhookService {
         throw new FeishuSendError(
           `飞书 HTTP 请求失败 [status=${status ?? 'n/a'}]: ${detail}`,
           retryable,
+          status !== undefined && [400, 401, 403, 404, 429].includes(status),
         );
       }
       throw new FeishuSendError(toErrorMessage(error), false);

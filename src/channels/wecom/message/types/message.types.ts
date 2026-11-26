@@ -49,6 +49,8 @@ export interface AgentReply {
 }
 
 export interface AgentInvokeResult {
+  /** SDK input prepared for this generation, used by the durable ordinary-reply checkpoint. */
+  preparedRequest?: Record<string, unknown>;
   reply: AgentReply;
   isFallback: boolean;
   /** 本轮为非 reply 终态（skip_reply 主动沉默/handoff/工具短路），reply.content 可能为空 */

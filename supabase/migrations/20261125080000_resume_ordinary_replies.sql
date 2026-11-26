@@ -86,6 +86,9 @@ begin
         if r.recovery ? 'replySegments' and r.recovery->'replySegments'<>p_input->'segments' then
           return jsonb_build_object('conflict','immutable_reply_segments');
         end if;
+        if p_input ? 'processingCapture' then
+          perform public.capture_ordinary_reply_processing(r,p_input->'processingCapture');
+        end if;
       end if;
       update public.agent_reply_turns set recovery=recovery||jsonb_build_object('effects',p_input->'effects')
           ||case when p_operation='save_reply' then jsonb_build_object('replySegments',p_input->'segments','resumeUntil',now()+v_resume_window) else '{}'::jsonb end,

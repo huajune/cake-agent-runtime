@@ -14,7 +14,10 @@ export class ConversationRiskNotifierService {
     private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
-  async notifyConversationRisk(payload: ConversationRiskNotificationPayload): Promise<boolean> {
+  async notifyConversationRisk(
+    payload: ConversationRiskNotificationPayload,
+    singleAttempt = false,
+  ): Promise<boolean> {
     const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(payload.botImId);
     const card = this.cardRenderer.buildConversationRiskCard({
       ...payload,
@@ -23,7 +26,9 @@ export class ConversationRiskNotifierService {
 
     const routeBotId =
       payload.corpId === 'test' || payload.corpId === 'debug' ? undefined : payload.botImId;
-    const success = await this.privateChatChannel.send(card, routeBotId);
+    const success = singleAttempt
+      ? await this.privateChatChannel.sendOnce(card, routeBotId)
+      : await this.privateChatChannel.send(card, routeBotId);
     if (success) {
       this.logger.warn(`交流异常通知已发送: chatId=${payload.chatId}, risk=${payload.riskLabel}`);
     } else {

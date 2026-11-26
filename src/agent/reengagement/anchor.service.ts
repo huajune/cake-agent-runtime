@@ -38,6 +38,33 @@ interface AnchorAgentResult {
   text?: string;
   toolCalls?: AgentToolCall[];
   outcome?: { kind: string };
+  collectionPrecheck?: CollectionPrecheck;
+}
+
+export const collectionPrecheckSchema = z.enum([
+  'collection_started',
+  'collection_awaiting_confirmation',
+]);
+export type CollectionPrecheck = z.infer<typeof collectionPrecheckSchema>;
+
+/** Only the follow-up stage is needed to replay a precheck. Candidate form fields stay in the tool. */
+export function planCollectionPrecheck(
+  calls: AgentToolCall[] = [],
+): CollectionPrecheck | undefined {
+  let awaitingConfirmation = false;
+  for (const call of calls) {
+    if (call.toolName !== 'duliday_interview_precheck') continue;
+    const result = asRecord(call.result);
+    const missing = asRecord(result?.bookingChecklist)?.missingFields;
+    if (result?.nextAction === 'collect_fields' || (Array.isArray(missing) && missing.length > 0))
+      return 'collection_started';
+    if (
+      result?.success === true &&
+      (result.nextAction === 'confirm_collection' || result.nextAction === 'select_interview_time')
+    )
+      awaitingConfirmation = true;
+  }
+  return awaitingConfirmation ? 'collection_awaiting_confirmation' : undefined;
 }
 
 type ReengagementState = ReengagementSessionState & { interviewAt?: number };
@@ -73,16 +100,14 @@ export class ReengagementAnchorService {
     // 比在这里（Agent 生成完成后）更早且带真实消息时间，此处不再重复写。
     const toolCalls = result.toolCalls ?? [];
     const deliverable = this.isDeliverable(result);
-    if (deliverable && toolCalls.some((call) => this.isCollectionStarted(call))) {
+    const precheck = result.collectionPrecheck ?? planCollectionPrecheck(toolCalls);
+    if (deliverable && precheck === 'collection_started') {
       await this.schedule(
         'booking_incomplete',
         `${context.logicalTurnId ?? context.traceId}:collection_started`,
         context,
       );
-    } else if (
-      deliverable &&
-      toolCalls.some((call) => this.isCollectionAwaitingConfirmation(call))
-    ) {
+    } else if (deliverable && precheck === 'collection_awaiting_confirmation') {
       // 资料已收齐、复述已发出：收资锚点刷新为"待确认"子态，到点只请候选人确认，
       // 不能再按"还缺资料"催填（badcase 0iepqqf5：复述发出 30 分钟后主动跟进说"还有几项资料
       // 需要再补充"，候选人反问"还要补什么"，随后又被完整复述一遍）。
@@ -246,7 +271,7 @@ export class ReengagementAnchorService {
     // 候选人进入收资后仍可能追问薪资、排班、福利。回复若继续明确索要资料，应刷新
     // 收资锚点，不能因为同轮补查岗位详情而降级成“推店未回”。首次 precheck 已由
     // handleToolAnchors 排程，避免同一回合重复创建第二个收资锚点。
-    const collectionStartedThisTurn = toolCalls.some((call) => this.isCollectionStarted(call));
+    const collectionStartedThisTurn = planCollectionPrecheck(toolCalls) === 'collection_started';
     const collectionContinued = !collectionStartedThisTurn && this.asksForCollectionDetails(reply);
     const groupInvitedThisTurn = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
     const presentedStoreCalls =
@@ -401,25 +426,6 @@ export class ReengagementAnchorService {
       presentedStores: [],
       stage: null,
     };
-  }
-
-  private isCollectionStarted(call: AgentToolCall): boolean {
-    if (call.toolName !== 'duliday_interview_precheck') return false;
-    const result = this.asRecord(call.result);
-    if (!result) return false;
-    if (result.nextAction === 'collect_fields') return true;
-    const checklist = this.asRecord(result.bookingChecklist);
-    return Array.isArray(checklist?.missingFields) && checklist.missingFields.length > 0;
-  }
-
-  /** precheck 已进入"资料齐全、待候选人确认复述或选时段"的子态。 */
-  private isCollectionAwaitingConfirmation(call: AgentToolCall): boolean {
-    if (call.toolName !== 'duliday_interview_precheck') return false;
-    const result = this.asRecord(call.result);
-    if (!result || result.success !== true) return false;
-    return (
-      result.nextAction === 'confirm_collection' || result.nextAction === 'select_interview_time'
-    );
   }
 
   private isBookingSucceeded(call: AgentToolCall): boolean {

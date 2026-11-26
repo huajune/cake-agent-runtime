@@ -1,5 +1,6 @@
 import {
   captureReplyGeneration,
+  takeModelInvocations,
   withProcessingTurn,
 } from '@observability/context/model-invocations';
 import {
@@ -450,6 +451,7 @@ export class ReplyWorkflowService {
     let deliveryResult: DeliveryResult | undefined;
     let businessEffects: Record<string, unknown> | undefined;
     let replySegments: string[] | undefined;
+    let processingCapture: Record<string, unknown> | undefined;
     let deliveredWork: DeliveredReplyEffects | undefined;
     const toolCallCounts = new Map<string, number>();
     try {
@@ -640,6 +642,7 @@ export class ReplyWorkflowService {
           agentResult.toolCalls,
           toolAnchorContext,
           declared?.length ? { intents: declared, userMessage: content } : undefined,
+          !agentResult.outcome || agentResult.outcome.kind === 'reply',
         );
         if (agentResult.outcome?.kind === 'reply') {
           const segments = this.deliveryService.prepareSegments(agentResult.reply.content);
@@ -673,12 +676,48 @@ export class ReplyWorkflowService {
           });
           businessEffects = { ...businessEffects, deliveredReply: deliveredWork };
           replySegments = segments;
+          // Persist generation evidence in its owning tables together with the reply plan.
+          // Nothing below this point needs to call the model again after a restart.
+          processingCapture = {
+            record: {
+              scenario,
+              batch_id: batchContext?.batchId,
+              user_id: toolAnchorContext.userId,
+              user_name: contactName,
+              manager_name: toolAnchorContext.channelIdentity?.managerName,
+              message_preview: content.slice(0, 50),
+              tool_calls: agentResult.toolCalls,
+              agent_steps: agentResult.agentSteps,
+              guardrail_output: agentResult.guardrailOutput,
+              memory_snapshot: agentResult.memorySnapshot,
+              token_usage: agentResult.reply.usage?.totalTokens,
+              is_fallback: agentResult.isFallback,
+            },
+            request: {
+              messageId: traceId,
+              chatId,
+              scenario,
+              userId: toolAnchorContext.userId,
+              content,
+              imBotId: durableTurn.accountId,
+              sourceMessageIds: durableTurn.inputIds,
+              agentRequest: agentResult.preparedRequest,
+            },
+            response: {
+              status: 'processing',
+              reply: agentResult.reply,
+              messages: agentResult.responseMessages,
+              processingTimeMs: agentResult.processingTime,
+            },
+            invocations: takeModelInvocations(traceId) ?? [],
+          };
         }
         await params.assertOwned?.();
         durableTurn = await this.replyTurns!.saveEffects(
           durableTurn,
           businessEffects,
           replySegments,
+          processingCapture,
         );
       }
       if (agentResult.outcome?.kind !== 'reply') {
@@ -907,6 +946,7 @@ export class ReplyWorkflowService {
               durableTurn,
               businessEffects,
               replySegments,
+              processingCapture,
             );
           } catch (saveError) {
             if (
@@ -1100,7 +1140,10 @@ export class ReplyWorkflowService {
     if (turn.projectionStatus !== REPLY_PROJECTION_STATUS.PENDING) return;
     const effects = readOrdinaryReplyEffects(turn.recovery.effects);
     await this.reengagementAnchors.handleToolAnchors(
-      { toolCalls: effects.toolCalls },
+      {
+        toolCalls: effects.toolCalls,
+        ...(effects.collectionPrecheck ? { collectionPrecheck: effects.collectionPrecheck } : {}),
+      },
       { ...effects.context, assertOwned },
     );
     await this.replyTurns!.completeProjection(turn);
@@ -1189,6 +1232,11 @@ export class ReplyWorkflowService {
             botUserId: context.channelIdentity?.managerName,
             contactName: context.channelIdentity?.candidateName,
             userMessage: afterReply?.[0]?.currentMessageContent ?? '',
+            replyReceipt: {
+              logicalTurnId: turn.logicalTurnId,
+              accountId: turn.accountId,
+              occurredAt: turn.inputOccurredAt,
+            },
           },
           {
             replyDelivered:
@@ -1554,6 +1602,7 @@ export class ReplyWorkflowService {
 
     const startTime = Date.now();
     let shouldRecordAiEnd = false;
+    let preparedRequest: Record<string, unknown> | undefined;
     let replayBlockedBy: ToolReplayEvidence[] = [];
 
     try {
@@ -1590,8 +1639,10 @@ export class ReplyWorkflowService {
             hasNewerUserInput: params.hasNewerUserInput,
             onPreparedRequest:
               recordMonitoring && messageId
-                ? (agentRequest) =>
-                    this.wecomObservability.recordAgentRequest(messageId, agentRequest)
+                ? (agentRequest) => {
+                    preparedRequest = agentRequest;
+                    return this.wecomObservability.recordAgentRequest(messageId, agentRequest);
+                  }
                 : undefined,
           },
           modelId: params.modelId,
@@ -1647,7 +1698,7 @@ export class ReplyWorkflowService {
         }`,
       );
 
-      return invokeResult;
+      return preparedRequest ? { ...invokeResult, preparedRequest } : invokeResult;
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.error(`Agent 调用异常: ${errorMessage}`);

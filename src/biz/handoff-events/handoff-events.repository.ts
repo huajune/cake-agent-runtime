@@ -63,7 +63,7 @@ export class HandoffEventsRepository extends BaseRepository {
     });
     if (result === 'scope_conflict') {
       this.logger.error('转人工幂等键与所属账号冲突，已保留原记录');
-      return 'duplicate';
+      return input.requireMatchingScope ? 'failed' : 'duplicate';
     }
     return result === 'inserted' || result === 'duplicate' ? result : 'failed';
   }

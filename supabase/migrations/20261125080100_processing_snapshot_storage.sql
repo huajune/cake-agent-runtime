@@ -229,7 +229,7 @@ DECLARE
     'bot_im_id','message_preview','reply_preview','reply_segments','error','alert_type','scenario','total_duration',
     'queue_duration','prep_duration','ai_duration','ttft_ms','send_duration','token_usage','is_fallback','fallback_success',
     'batch_id','tool_calls','agent_steps','anomaly_flags','guardrail_input','guardrail_output','memory_snapshot','post_processing_status'];
-  cols text; updates text; steps jsonb := p_record->'agent_steps';
+  cols text; updates text; conflict_action text; steps jsonb := p_record->'agent_steps';
   steps_only boolean := p_record ? 'agent_steps' AND NOT p_record ? 'tool_calls';
 BEGIN
   IF jsonb_typeof(p_record) IS DISTINCT FROM 'object' OR NOT (p_record ?& ARRAY['message_id','chat_id','received_at','status'])
@@ -245,9 +245,19 @@ BEGIN
   IF steps_only THEN
     updates := updates || ',tool_calls=public.processing_step_layout($2,message_processing_records.tool_calls)->''tool_calls''';
   END IF;
+  -- Intake is asynchronous and may arrive after generation or settlement.
+  -- Replaying the first observation must preserve the original receipt time,
+  -- captured model bytes and any later delivery outcome.
+  IF p_record->>'status'='processing' AND p_request IS NULL AND p_response IS NULL
+    AND p_record-ARRAY['message_id','chat_id','received_at','status','user_id','user_name',
+      'manager_name','bot_im_id','message_preview','scenario','batch_id']='{}'::jsonb THEN
+    conflict_action := 'DO NOTHING';
+  ELSE
+    conflict_action := 'DO UPDATE SET ' || updates;
+  END IF;
   EXECUTE format('INSERT INTO public.message_processing_records (%1$s)
     SELECT %1$s FROM jsonb_populate_record(NULL::public.message_processing_records,$1)
-    ON CONFLICT(message_id) DO UPDATE SET %2$s',cols,updates) USING p_record,steps;
+    ON CONFLICT(message_id) %2$s',cols,conflict_action) USING p_record,steps;
   IF p_request IS NOT NULL OR p_response IS NOT NULL THEN
     INSERT INTO public.message_processing_turn_snapshots(message_id,request,response)
       VALUES(p_record->>'message_id',p_request,CASE WHEN jsonb_typeof(p_response)='object' THEN p_response-ARRAY['toolCalls','agentSteps','memorySnapshot'] ELSE p_response END)

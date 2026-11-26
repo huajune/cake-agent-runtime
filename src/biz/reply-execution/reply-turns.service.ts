@@ -153,8 +153,14 @@ export class ReplyTurnsService {
     turn: ReplyTurn,
     effects: Record<string, unknown>,
     segments?: string[],
+    processingCapture?: Record<string, unknown>,
   ): Promise<ReplyTurn> {
-    if (segments) return this.update(turn, REPLY_TURN_OPERATION.SAVE_REPLY, { effects, segments });
+    if (segments)
+      return this.update(turn, REPLY_TURN_OPERATION.SAVE_REPLY, {
+        effects,
+        segments,
+        ...(processingCapture ? { processingCapture } : {}),
+      });
     return this.update(turn, REPLY_TURN_OPERATION.SAVE_EFFECTS, { effects });
   }
   resumeDelivery(turn: ReplyTurn): Promise<ReplyTurn> {

@@ -121,6 +121,12 @@ export class UserHostingService {
     return entry.expiresAt > Date.now();
   }
 
+  async confirmHandoffPause(userId: string, options: PauseUserOptions): Promise<boolean> {
+    return (
+      (await this.repository.hasActivePause(userId)) || (await this.pauseUser(userId, options))
+    );
+  }
+
   /** 聊天级许可读视图；不匹配候选人/联系人别名，避免跨 bot 接管传播。 */
   async getChatPause(chatId: string): Promise<{ paused: boolean; expiresAt?: number | null }> {
     await this.ensureFreshPausedUsers();
