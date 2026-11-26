@@ -126,6 +126,8 @@ EXCEPTION WHEN raise_exception OR data_exception THEN
   RETURN r.agent_steps;
 END $$;
 
+-- Converting the historical JSON bodies can exceed five minutes at production volume.
+SET LOCAL statement_timeout = '15min';
 DO $migration$
 DECLARE n integer;
 BEGIN
@@ -191,6 +193,7 @@ BEGIN
       AND jsonb_typeof(i.response#>'{timings,durations,requestToFirstTextDeltaMs}')='number'
       AND (i.response#>>'{timings,durations,requestToFirstTextDeltaMs}')::numeric BETWEEN 0 AND 2147483647;
 END $migration$;
+SET LOCAL statement_timeout = '5min';
 
 DROP FUNCTION IF EXISTS public.save_processing_snapshot(jsonb,jsonb);
 DROP FUNCTION IF EXISTS public.processing_guard_tools(), public.processing_accept_full_snapshot();
