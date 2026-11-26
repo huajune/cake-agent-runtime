@@ -1,4 +1,6 @@
-type InvocationProjection = { agent_invocation: unknown };
+import type { AgentStepDetail, AgentToolCall } from '@shared-types/agent-telemetry.types';
+
+type InvocationProjection = { request: unknown; response: unknown };
 
 /**
  * 消息处理记录数据库格式
@@ -29,17 +31,17 @@ export interface MessageProcessingDbRecord {
   token_usage?: number;
   is_fallback?: boolean;
   fallback_success?: boolean;
-  message_processing_invocations?: InvocationProjection | InvocationProjection[] | null;
+  message_processing_turn_snapshots?: InvocationProjection | null;
   batch_id?: string;
   /** 工具调用详情 JSONB */
-  tool_calls?: unknown;
+  tool_calls?: Array<AgentToolCall & { stepPosition?: number }> | null;
   /** 每步循环快照 JSONB */
-  agent_steps?: unknown;
+  agent_steps?: Array<Omit<AgentStepDetail, 'toolCalls'>> | null;
   /** 异常信号数组 */
   anomaly_flags?: string[];
   /** 入站守卫拦截摘要 JSONB（仅拦截命中时非空） */
-  /** 出站守卫全程 trace JSONB（紧凑摘要，KB 级；独立列避免挤进 agent_invocation 大 blob） */
   guardrail_input?: unknown;
+  /** 出站守卫审查过程的摘要 */
   guardrail_output?: unknown;
   /** 记忆上下文快照 JSONB */
   memory_snapshot?: unknown;

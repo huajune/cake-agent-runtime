@@ -112,6 +112,7 @@ describe('AgentExecutionEventRepository', () => {
         scenario: 'recruiting',
         callerKind: 'wecom',
         payload: { toolName: 'duliday_job_list', status: 'empty' },
+        observationReason: '工具返回空结果',
         createdAt: '2026-08-24T01:02:03.000Z',
       },
     ]);

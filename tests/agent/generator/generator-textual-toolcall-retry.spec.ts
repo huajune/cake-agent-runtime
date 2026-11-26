@@ -41,7 +41,7 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
     memoryLoadWarning: undefined,
     entryStage: undefined,
     ledger: createTurnLedger(),
-    toolExecutionTimings: new Map<string, number>(),
+    toolObservations: new Map(),
   });
 
   const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };

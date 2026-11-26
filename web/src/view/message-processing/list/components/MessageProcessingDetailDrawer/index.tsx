@@ -7,7 +7,6 @@ import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import ChatSection from './ChatSection';
-import ExecutionEventTimeline from './ExecutionEventTimeline';
 import GuardrailSection from './GuardrailSection';
 import {
   getRecordStatusLabel,
@@ -57,7 +56,7 @@ export default function MessageProcessingDetailDrawer({
   onClose,
 }: MessageProcessingDetailDrawerProps) {
   const navigate = useNavigate();
-  const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId);
+  const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId, 'context');
   const processingId = message?.messageId ?? messageId;
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const [traceCopied, setTraceCopied] = useState(false);
@@ -288,8 +287,7 @@ export default function MessageProcessingDetailDrawer({
         {/* Body — left/right split */}
         <div className={styles.body}>
           <div ref={leftColRef} className={styles.leftCol}>
-            <ChatSection message={message} />
-            <ExecutionEventTimeline events={message.executionEvents ?? []} />
+            <ChatSection key={messageId} message={message} />
           </div>
 
           <div className={styles.rightCol}>

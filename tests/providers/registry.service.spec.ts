@@ -1,3 +1,8 @@
+import {
+  withProcessingTurn,
+  captureReplyGeneration,
+  takeModelInvocations,
+} from '@observability/context/model-invocations';
 import { ConfigService } from '@nestjs/config';
 import { stepCountIs, tool } from 'ai';
 import { z } from 'zod';
@@ -135,7 +140,9 @@ describe('company model providers', () => {
       thinking?: unknown;
     }> = [];
     const signals: AbortSignal[] = [];
+    const sentBodies: string[] = [];
     jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      sentBodies.push(String(init?.body));
       const body = JSON.parse(String(init?.body));
       requests.push(body);
       signals.push(init.signal);
@@ -167,21 +174,41 @@ describe('company model providers', () => {
     const png =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aU/0AAAAASUVORK5CYII=';
     const replyModelRoute = new ReplyModelRoute();
-    const result = await executor.generate({
-      replyModelRoute,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Check the picture and the fixture.' },
-            { type: 'image', image: Buffer.from(png, 'base64'), mediaType: 'image/png' },
+    const { result, calls } = await withProcessingTurn('a-turn', async () => {
+      const result = await captureReplyGeneration(() =>
+        executor.generate({
+          replyModelRoute,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Check the picture and the fixture.' },
+                { type: 'image', image: Buffer.from(png, 'base64'), mediaType: 'image/png' },
+              ],
+            },
           ],
-        },
-      ],
-      tools: { lookup: tool({ inputSchema: z.object({}), execute }) },
-      stopWhen: stepCountIs(4),
-      thinking: { type: 'enabled', budgetTokens: 1024, effort: 'high' },
+          tools: { lookup: tool({ inputSchema: z.object({}), execute }) },
+          stopWhen: stepCountIs(4),
+          thinking: { type: 'enabled', budgetTokens: 1024, effort: 'high' },
+        }),
+      );
+      return { result, calls: takeModelInvocations('a-turn')! };
     });
+    expect(calls.map((call) => call.httpStatus)).toEqual([200, 503, 200]);
+    expect(calls.map((call) => call.provider)).toEqual(['qwen', 'qwen', 'deepseek']);
+    expect(calls.map((call) => Buffer.from(call.requestBody!, 'base64').toString())).toEqual(
+      sentBodies,
+    );
+    expect(calls.every((call) => call.complete)).toBe(true);
+    const raw = calls.map((call) =>
+      JSON.parse(Buffer.from(call.responseBody!, 'base64').toString()),
+    );
+    expect(raw[0].choices[0].message.tool_calls[0].function).toEqual({
+      name: 'lookup',
+      arguments: '{}',
+    });
+    expect(raw[1].error.message).toBe('unavailable');
+    expect(raw[2].choices[0].message.content).toBe('Fixture confirmed.');
     expect(requests.map((r) => r.model)).toEqual(['qwen4-max', 'qwen4-max', 'deepseek-flash']);
     expect(new Set(signals).size).toBe(3);
     expect(requests[2].messages).toEqual(

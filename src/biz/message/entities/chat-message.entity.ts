@@ -23,7 +23,6 @@ export interface ChatMessageRecord {
   im_contact_id?: string;
   contact_type?: StorageContactType;
   is_self?: boolean;
-  payload_text_v1?: -1;
   payload?: Record<string, unknown>;
   avatar?: string;
   /** 渠道回调中的 externalUserId，受渠道身份作用域约束。 */

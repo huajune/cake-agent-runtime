@@ -1,3 +1,4 @@
+import { RequestContextService } from '@observability/context/request-context.service';
 import { Readable } from 'stream';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
@@ -50,10 +51,12 @@ describe('TestExecutionService', () => {
     revised: false,
   });
 
+  const requestContext = new RequestContextService();
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TestExecutionService,
+        { provide: RequestContextService, useValue: requestContext },
         { provide: AgentRunnerService, useValue: mockLoop },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
         { provide: ChatSessionService, useValue: mockChatSessionService },
@@ -540,6 +543,24 @@ describe('TestExecutionService', () => {
         }),
       );
       expect(loop.stream).toHaveBeenCalled();
+    });
+
+    it('binds tool and model diagnostics to the stream trace and keeps the captured model request', async () => {
+      const agentRequest = { modelId: 'fixture', instructions: '实际捕获的请求', messages: [] };
+      mockLoop.stream.mockImplementationOnce(async () => {
+        expect(requestContext.get()).toMatchObject({
+          traceId: 'ui-stream',
+          chatId: 'session',
+          callerKind: 'test-suite',
+        });
+        return { streamResult: {}, entryStage: 'initial', agentRequest };
+      });
+      const result = await service.executeTestStreamWithMeta(
+        { message: 'hello', userId: 'u', sessionId: 'session' },
+        'ui-stream',
+      );
+      expect(result.agentRequest).toEqual(agentRequest);
+      expect(requestContext.get()).toEqual({});
     });
 
     it('should not attach legacy booking callback to stream params', async () => {

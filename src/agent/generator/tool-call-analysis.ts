@@ -151,6 +151,20 @@ export function computeToolCallStatus(
   return 'unknown';
 }
 
+/** 分类一次工具返回值，供执行事件、流水及只收到 SDK 结果的调用方共用。 */
+export function summarizeToolResult(
+  toolName: string,
+  result: unknown,
+  errorText?: string,
+  state?: string,
+) {
+  const resultCount = computeResultCount(result);
+  return {
+    resultCount,
+    status: computeToolCallStatus(result, resultCount, errorText, state, toolName),
+  };
+}
+
 /**
  * 从工具返回值提取 errorType（buildToolError 约定的机器可读错误分类）。
  *

@@ -1,6 +1,56 @@
-import { describeToolExecution } from '../../web/src/view/message-processing/tool-execution';
+import {
+  describeToolExecution,
+  linkToolEvents,
+} from '../../web/src/view/message-processing/tool-execution';
+import type { ExecutionEvent } from '../../web/src/api/types/chat.types';
 
 describe('message processing tool execution', () => {
+  it('links only unambiguous calls on the same trace while keeping orphan and historical events independent', () => {
+    const calls = [
+      'first',
+      'second',
+      'duplicate',
+      'duplicate',
+      'reused',
+      'mismatched',
+      undefined,
+    ].map((toolCallId) => ({ name: 'search', toolCallId }));
+    const event = (
+      id: number,
+      toolCallId?: string,
+      type = 'tool_call',
+      overrides: Partial<ExecutionEvent> = {},
+    ): ExecutionEvent => ({
+      id,
+      type,
+      traceId: 'turn',
+      createdAt: '2026-11-25',
+      payload: { toolName: 'search', toolCallId },
+      ...overrides,
+    });
+    const events = [
+      event(1, 'second'),
+      event(2, 'first', 'collection_form_audit'),
+      event(3, 'first', 'tool_error'),
+      event(4),
+      event(5, 'duplicate'),
+      event(6, 'orphan'),
+      event(7, 'second', 'tool_call', { traceId: 'another-turn' }),
+      event(8, 'reused'),
+      event(9, 'reused', 'tool_error'),
+      event(10, 'reused', 'brand_state_change'),
+      event(11, 'mismatched', 'tool_call', {
+        payload: { toolCallId: 'mismatched', toolName: 'different' },
+      }),
+    ];
+    expect([...linkToolEvents('turn', calls, events)]).toEqual([
+      [1, 1],
+      [2, 0],
+      [3, 0],
+    ]);
+    expect(linkToolEvents(undefined, calls, events).size).toBe(0);
+    expect(linkToolEvents('turn', [], events).size).toBe(0);
+  });
   it('separates scanned, filtered, matched and returned jobs for one call', () => {
     const result = {
       queryMeta: {

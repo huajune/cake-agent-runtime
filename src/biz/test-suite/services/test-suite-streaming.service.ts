@@ -97,7 +97,7 @@ export class TestSuiteStreamingService {
     try {
       trace.markAiStart();
       const { streamResult, entryStage, agentRequest } =
-        await this.executionService.executeTestStreamWithMeta(normalizedRequest);
+        await this.executionService.executeTestStreamWithMeta(normalizedRequest, trace.messageId);
       if (agentRequest) {
         trace.mergeRequestBody({ agentRequest });
       }

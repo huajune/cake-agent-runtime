@@ -1,4 +1,36 @@
 import { asRecord } from '../../utils/object';
+import type { ExecutionEvent } from '../../api/types/chat.types';
+
+/** 同一 trace 中按 SDK ID 配对。重试重用 ID、缺标识或名称冲突时，事件仍可独立查看。 */
+export function linkToolEvents(
+  traceId: string | undefined,
+  calls: ReadonlyArray<{ name: string; toolCallId?: string }>,
+  events: readonly ExecutionEvent[],
+): Map<number, number> {
+  const links = new Map<number, number>();
+  if (!traceId) return links;
+  const indices = new Map<string, number | null>();
+  calls.forEach(({ toolCallId }, index) => {
+    if (toolCallId) indices.set(toolCallId, indices.has(toolCallId) ? null : index);
+  });
+  const finished = new Set<string>();
+  const scoped = events.filter(
+    (event) => event.traceId === traceId && typeof event.payload?.toolCallId === 'string',
+  );
+  for (const event of scoped) {
+    if (event.type !== 'tool_call' && event.type !== 'tool_error') continue;
+    const id = event.payload.toolCallId as string;
+    const index = indices.get(id);
+    if (finished.has(id) || (index != null && calls[index].name !== event.payload.toolName))
+      indices.set(id, null);
+    finished.add(id);
+  }
+  for (const event of scoped) {
+    const index = indices.get(event.payload.toolCallId as string);
+    if (index != null) links.set(event.id, index);
+  }
+  return links;
+}
 
 type Receipt = Record<string, unknown>;
 

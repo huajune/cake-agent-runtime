@@ -1,3 +1,4 @@
+import type { ModelInvocation } from '@observability/context/model-invocations';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -118,6 +119,7 @@ export interface MessageProcessingRecordInput {
   isFallback?: boolean;
   fallbackSuccess?: boolean;
   agentInvocation?: unknown;
+  modelInvocations?: ModelInvocation[];
   batchId?: string;
   /** 工具调用详情：[{ name, args, result, resultCount, status, durationMs }, ...] */
   toolCalls?: AgentToolCall[];

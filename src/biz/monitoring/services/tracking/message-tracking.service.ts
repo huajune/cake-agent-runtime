@@ -1,14 +1,11 @@
+import { takeModelInvocations } from '@observability/context/model-invocations';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { exponentialBackoffMs, sleep } from '@infra/utils/async.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
-import type {
-  AgentMemorySnapshot,
-  AgentStepDetail,
-  AgentToolCall,
-} from '@shared-types/agent-telemetry.types';
+import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import {
   MonitoringMetadata,
   MonitoringErrorLog,
@@ -256,6 +253,8 @@ export class MessageTrackingService {
     metadata?: MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string };
     error?: string;
   }): Promise<void> {
+    // Detach the bytes before the first await. The channel is free to release its turn context.
+    const modelInvocations = takeModelInvocations(params.messageId);
     try {
       const existingRecord = await this.messageProcessingService.getMessageProcessingRecordById(
         params.messageId,
@@ -287,6 +286,7 @@ export class MessageTrackingService {
         }`,
       );
 
+      finalRecord.modelInvocations = modelInvocations;
       await this.saveRecordToDatabase(finalRecord);
       if (finalRecord.status === 'success') {
         await this.markSupersededProcessingRecords(finalRecord);
@@ -415,25 +415,14 @@ export class MessageTrackingService {
       prepDuration: timings.durations.workerStartToAiStartMs ?? params.existingRecord?.prepDuration,
       aiDuration: timings.durations.aiStartToAiEndMs ?? params.existingRecord?.aiDuration,
       sendDuration: timings.durations.deliveryDurationMs ?? params.existingRecord?.sendDuration,
-      toolCalls:
-        params.metadata?.toolCalls ??
-        this.extractToolCalls(response?.toolCalls) ??
-        params.existingRecord?.toolCalls,
-      agentSteps:
-        params.metadata?.agentSteps ??
-        this.extractAgentSteps(response?.agentSteps) ??
-        params.existingRecord?.agentSteps,
-      memorySnapshot:
-        params.metadata?.memorySnapshot ??
-        this.extractMemorySnapshot(response?.memorySnapshot) ??
-        params.existingRecord?.memorySnapshot,
+      toolCalls: params.metadata?.toolCalls ?? params.existingRecord?.toolCalls,
+      agentSteps: params.metadata?.agentSteps ?? params.existingRecord?.agentSteps,
+      memorySnapshot: params.metadata?.memorySnapshot ?? params.existingRecord?.memorySnapshot,
       guardrailInput: params.metadata?.guardrailInput ?? params.existingRecord?.guardrailInput,
       guardrailOutput: params.metadata?.guardrailOutput ?? params.existingRecord?.guardrailOutput,
       postProcessingStatus: params.existingRecord?.postProcessingStatus,
       anomalyFlags: this.computeAnomalyFlags(
-        params.metadata?.toolCalls ??
-          this.extractToolCalls(response?.toolCalls) ??
-          params.existingRecord?.toolCalls,
+        params.metadata?.toolCalls ?? params.existingRecord?.toolCalls,
       ),
       tokenUsage:
         params.metadata?.tokenUsage ??
@@ -445,7 +434,7 @@ export class MessageTrackingService {
         params.metadata?.fallbackSuccess ??
         this.asBoolean(fallback?.success) ??
         params.existingRecord?.fallbackSuccess,
-      agentInvocation: params.metadata?.agentInvocation ?? params.existingRecord?.agentInvocation,
+      agentInvocation: params.metadata?.agentInvocation,
       batchId:
         params.metadata?.batchId ??
         this.asString(request?.batchId) ??
@@ -629,59 +618,6 @@ export class MessageTrackingService {
 
   private firstNumber(...values: Array<number | undefined>): number | undefined {
     return values.find((value) => value !== undefined);
-  }
-
-  /**
-   * 从 invocation snapshot 中还原工具调用详情。
-   *
-   * 仅在 metadata.toolCalls 缺失（历史记录/老数据）时作为兜底使用。
-   * 正常链路下 wecom-observability 会直接把结构化 toolCalls 填进 metadata。
-   */
-  private extractToolCalls(toolCalls: unknown): AgentToolCall[] | undefined {
-    if (!Array.isArray(toolCalls) || toolCalls.length === 0) return undefined;
-    const calls = toolCalls
-      .map((toolCall) => {
-        const record = this.asRecord(toolCall);
-        if (!record) return null;
-        const toolName = this.asString(record.toolName);
-        if (!toolName) return null;
-        const call: AgentToolCall = {
-          toolName,
-          args: (record.args ?? {}) as Record<string, unknown>,
-          result: record.result,
-          resultCount: this.asNumber(record.resultCount),
-          status: record.status as AgentToolCall['status'],
-          durationMs: this.asNumber(record.durationMs),
-        };
-        return call;
-      })
-      .filter((call): call is AgentToolCall => call !== null);
-    return calls.length > 0 ? calls : undefined;
-  }
-
-  /**
-   * 还原 agent_steps JSON：仅保留满足最小结构（数字 stepIndex + 数组 toolCalls）的条目。
-   *
-   * 历史/老数据可能没有 agent_steps，或字段缺失；不校验直接 cast 会让坏数据流到 UI。
-   * 这里只做轻量字段断言，不做深度 schema 校验——下游消费方仍按 AgentStepDetail 处理。
-   */
-  private extractAgentSteps(agentSteps: unknown): AgentStepDetail[] | undefined {
-    if (!Array.isArray(agentSteps) || agentSteps.length === 0) return undefined;
-
-    const valid = agentSteps.filter((step): step is AgentStepDetail => {
-      if (!step || typeof step !== 'object' || Array.isArray(step)) return false;
-      const record = step as Record<string, unknown>;
-      if (typeof record.stepIndex !== 'number') return false;
-      if (record.toolCalls !== undefined && !Array.isArray(record.toolCalls)) return false;
-      return true;
-    });
-
-    return valid.length > 0 ? valid : undefined;
-  }
-
-  private extractMemorySnapshot(value: unknown): AgentMemorySnapshot | undefined {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-    return value as AgentMemorySnapshot;
   }
 
   /**

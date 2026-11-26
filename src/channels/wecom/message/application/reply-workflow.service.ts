@@ -1,3 +1,7 @@
+import {
+  captureReplyGeneration,
+  withProcessingTurn,
+} from '@observability/context/model-invocations';
 import { ordinaryReplyEffects, readOrdinaryReplyEffects } from './ordinary-reply-effects';
 import { timingSafeEqual } from 'node:crypto';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
@@ -151,6 +155,10 @@ export class ReplyWorkflowService {
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
+    return withProcessingTurn(messageData.messageId, () => this.processSingleReply(messageData));
+  }
+
+  private async processSingleReply(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     const parsed = MessageParser.parse(messageData);
     const { chatId, content, contactName, messageId } = parsed;
     const scenario = MessageParser.determineScenario();
@@ -204,6 +212,16 @@ export class ReplyWorkflowService {
   }
 
   async processMergedMessages(
+    messages: EnterpriseMessageCallbackDto[],
+    batchId: string,
+    assertOwned?: () => Promise<void>,
+  ): Promise<'deferred' | void> {
+    return withProcessingTurn(batchId, () =>
+      this.processMergedReply(messages, batchId, assertOwned),
+    );
+  }
+
+  private async processMergedReply(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
     assertOwned?: () => Promise<void>,
@@ -1205,12 +1223,14 @@ export class ReplyWorkflowService {
         )}`,
       );
 
-      const prepared = await this.prepareRuntimeCompatibilityDescriptions({
-        imageUrls,
-        imageMessageIds,
-        visualMessageTypes: params.visualMessageTypes,
-        contactName: params.contactName ?? params.sessionId,
-      });
+      const prepared = await captureReplyGeneration(() =>
+        this.prepareRuntimeCompatibilityDescriptions({
+          imageUrls,
+          imageMessageIds,
+          visualMessageTypes: params.visualMessageTypes,
+          contactName: params.contactName ?? params.sessionId,
+        }),
+      );
       if (!prepared) {
         throw error;
       }
@@ -1329,39 +1349,41 @@ export class ReplyWorkflowService {
         shouldRecordAiEnd = true;
       }
 
-      const outcome = await this.runner.runInboundTurn({
-        input: { text: params.userMessage, images: params.imageUrls },
-        sessionRef: { corpId, userId, sessionId: params.sessionId },
-        context: {
-          callerKind: CallerKind.WECOM,
-          logicalTurnId: params.logicalTurnId,
-          replyModelRoute: params.replyModelRoute,
-          toolCallCounts,
-          inputOccurredAt: params.inputOccurredAt,
-          messageId,
-          scenario,
-          contactName: params.contactName,
-          botUserId: params.botUserId,
-          botImId: params.botImId,
-          groupId: params.groupId,
-          externalUserId: params.externalUserId,
-          token: params.token,
-          imContactId: params.imContactId,
-          imRoomId: params.imRoomId,
-          apiType: params.apiType,
-          imageMessageIds: params.imageMessageIds,
-          visualMessageTypes: params.visualMessageTypes,
-          thinking: params.thinking,
-          shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-          hasNewerUserInput: params.hasNewerUserInput,
-          onPreparedRequest:
-            recordMonitoring && messageId
-              ? (agentRequest) =>
-                  this.wecomObservability.recordAgentRequest(messageId, agentRequest)
-              : undefined,
-        },
-        modelId: params.modelId,
-      });
+      const outcome = await captureReplyGeneration(() =>
+        this.runner.runInboundTurn({
+          input: { text: params.userMessage, images: params.imageUrls },
+          sessionRef: { corpId, userId, sessionId: params.sessionId },
+          context: {
+            callerKind: CallerKind.WECOM,
+            logicalTurnId: params.logicalTurnId,
+            replyModelRoute: params.replyModelRoute,
+            toolCallCounts,
+            inputOccurredAt: params.inputOccurredAt,
+            messageId,
+            scenario,
+            contactName: params.contactName,
+            botUserId: params.botUserId,
+            botImId: params.botImId,
+            groupId: params.groupId,
+            externalUserId: params.externalUserId,
+            token: params.token,
+            imContactId: params.imContactId,
+            imRoomId: params.imRoomId,
+            apiType: params.apiType,
+            imageMessageIds: params.imageMessageIds,
+            visualMessageTypes: params.visualMessageTypes,
+            thinking: params.thinking,
+            shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+            hasNewerUserInput: params.hasNewerUserInput,
+            onPreparedRequest:
+              recordMonitoring && messageId
+                ? (agentRequest) =>
+                    this.wecomObservability.recordAgentRequest(messageId, agentRequest)
+                : undefined,
+          },
+          modelId: params.modelId,
+        }),
+      );
 
       replayBlockedBy = collectToolReplayEvidence(outcome.toolCalls ?? []);
       const processingTime = Date.now() - startTime;

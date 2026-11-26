@@ -16,17 +16,26 @@
 export const AGENT_TOOL_CALL_STATUSES = ['ok', 'empty', 'narrow', 'unknown', 'error'] as const;
 export type AgentToolCallStatus = (typeof AGENT_TOOL_CALL_STATUSES)[number];
 
+export interface ToolDecision {
+  label: string;
+  detail: string;
+}
+
 export interface AgentToolCall {
+  /** SDK 本次调用的标识，可在同一 trace 内关联观测事件。 */
+  toolCallId?: string;
   toolName: string;
   args: Record<string, unknown>;
   result?: unknown;
+  /** 工具内部实际走过的分支。只写处理流水，与给模型的工具返回值分开。 */
+  decisions?: ToolDecision[];
   /** 结果条数（优先取工具自报的 resultCount 字段，其次从数组/items/total 等形态推断，推断不出则 undefined） */
   resultCount?: number;
   /** 调用状态分类 */
   status?: AgentToolCallStatus;
   /**
    * 工具 execute 真实执行耗时（毫秒，由 timing wrapper 按 toolCallId 记录）。
-   * 历史数据/wrapper 缺失时退化为步骤墙钟近似（含 LLM 思考时间，偏大）。
+   * 缺少实测值时省略。旧流水可能使用了包含模型时间的步骤耗时。
    */
   durationMs?: number;
   /**

@@ -12,7 +12,7 @@
 等群核验 12.3、模型推理 22.8、工具 2.0、模型卡死重试 10.5、拟人化发送 8.4、收尾写入 2.1。
 
 复测口径：`message_processing_records`（status=success、非 reengagement 场景）的 total/queue/ai 分布；
-`message_processing_invocations` 请求快照里的 `quietWindowEligibleAt` / `queueAddAt` / `workerStartAt`；
+`message_processing_turn_snapshots` 回合快照里的 `quietWindowEligibleAt` / `queueAddAt` / `workerStartAt`；
 `agent_execution_events` 的 `turn_data_sources`（群核验耗时）与 `llm_execution`（各次尝试与 purpose）。
 
 ## 一、P0-2 群核验 10 秒上限漏洞（预计平均 −10～12 秒）

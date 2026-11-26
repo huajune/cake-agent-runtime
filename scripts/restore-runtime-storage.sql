@@ -1,3 +1,4 @@
+-- One-time keyed restore for databases preceding 20261125080000, as linked by historical production audits.
 -- psql -X -v ON_ERROR_STOP=1 -v keys='[{"type":"processing","id":"..."}]' -f scripts/restore-runtime-storage.sql
 -- Types: processing, chat, test, action (also requires "corp"). Supply indexed keys from the release audit.
 BEGIN;

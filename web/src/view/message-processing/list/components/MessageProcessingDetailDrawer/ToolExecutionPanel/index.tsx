@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, ListChecks } from 'lucide-react';
 import { formatJson } from '@/utils/format';
-import type { MessageRecord, MessageRecordToolCallStatus } from '@/api/types/chat.types';
+import type { ExecutionEvent, MessageRecordToolCallStatus } from '@/api/types/chat.types';
 import { describeToolExecution } from '@/view/message-processing/tool-execution';
-import { getToolCalls, type ToolCallInfo } from '../utils';
+import type { ToolCallInfo } from '../utils';
 import styles from './index.module.scss';
 
 interface ToolExecutionPanelProps {
   toolCalls: ToolCallInfo[];
-  message: MessageRecord;
+  events: readonly ExecutionEvent[];
+  links: ReadonlyMap<number, number>;
 }
 
 const STATUS_LABELS: Record<MessageRecordToolCallStatus, string> = {
@@ -26,7 +27,13 @@ function getStatusClass(status: MessageRecordToolCallStatus): string {
   return styles.statusUnknown;
 }
 
-function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
+function ToolExecutionItem({
+  toolCall,
+  events,
+}: {
+  toolCall: ToolCallInfo;
+  events: ExecutionEvent[];
+}) {
   const [expanded, setExpanded] = useState(false);
   const { outcome, judgments } = useMemo(
     () => describeToolExecution(toolCall.name, toolCall.output),
@@ -64,10 +71,24 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
       {expanded ? (
         <div className={styles.toolDetails}>
           {outcome && <p className={styles.outcome}>{outcome}</p>}
-          {(toolCall.errorType || toolCall.apiCode !== undefined) && (
+          {(toolCall.toolCallId || toolCall.errorType || toolCall.apiCode !== undefined) && (
             <div className={styles.diagnostics}>
+              {toolCall.toolCallId && <code>调用 ID · {toolCall.toolCallId}</code>}
               {toolCall.errorType && <code>{toolCall.errorType}</code>}
               {toolCall.apiCode !== undefined && <code>apiCode={toolCall.apiCode}</code>}
+            </div>
+          )}
+          {Boolean(toolCall.decisions?.length) && (
+            <div className={styles.evidence}>
+              <h5 className={styles.detailLabel}>执行经过</h5>
+              <dl className={styles.evidenceList}>
+                {toolCall.decisions?.map(({ label, detail }, index) => (
+                  <div key={index}>
+                    <dt>{label}</dt>
+                    <dd>{detail}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           )}
           {judgments.length > 0 ? (
@@ -85,10 +106,30 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
                 ))}
               </dl>
             </div>
-          ) : (
+          ) : !toolCall.decisions?.length && events.length === 0 ? (
             <p className={styles.emptyEvidence}>
               {toolCall.output == null ? '未记录工具返回值' : '仅记录最终结果'}
             </p>
+          ) : null}
+          {events.length > 0 && (
+            <div className={styles.evidence}>
+              <h5 className={styles.detailLabel}>相关观测</h5>
+              <ul>
+                {events.map((event) => (
+                  <li key={event.id}>
+                    <a
+                      href={`#execution-event-${event.id}`}
+                      onClick={(click) => {
+                        click.preventDefault();
+                        document.getElementById(`execution-event-${event.id}`)?.focus();
+                      }}
+                    >
+                      {event.observationReason ?? event.type}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {toolCall.input !== undefined && (
             <ReceiptPayload label="输入参数" value={toolCall.input} />
@@ -111,27 +152,11 @@ function ReceiptPayload({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-export default function ToolExecutionPanel({ toolCalls, message }: ToolExecutionPanelProps) {
-  // 旧流水可能只保留逐步调用。整组使用同一来源，同名调用各自展示自己的回执。
-  const calls = useMemo(() => {
-    if (toolCalls.length) return toolCalls;
-    if (Array.isArray(message.agentSteps)) {
-      const stepCalls = message.agentSteps
-        .filter((step) => Array.isArray(step?.toolCalls))
-        .sort((left, right) => left.stepIndex - right.stepIndex)
-        .flatMap((step) => step.toolCalls.filter((call) => typeof call?.toolName === 'string'));
-      if (stepCalls.length) return getToolCalls({ ...message, toolCalls: stepCalls });
-    }
-    // 某些旧详情返回空数组，但配对的调用快照中仍保留了工具结果。
-    if (message.toolCalls?.length === 0 && message.agentInvocation?.response) {
-      try {
-        return getToolCalls({ ...message, toolCalls: undefined });
-      } catch {
-        // 格式不完整的旧快照不应影响其余详情。
-      }
-    }
-    return toolCalls;
-  }, [toolCalls, message]);
+export default function ToolExecutionPanel({
+  toolCalls: calls,
+  events,
+  links,
+}: ToolExecutionPanelProps) {
   if (calls.length === 0) return null;
 
   return (
@@ -140,7 +165,8 @@ export default function ToolExecutionPanel({ toolCalls, message }: ToolExecution
       <ul className={styles.toolList}>
         {calls.map((toolCall, index) => (
           <ToolExecutionItem
-            key={toolCall.toolCallId ?? `${toolCall.name}-${index}`}
+            key={`${toolCall.toolCallId ?? toolCall.name}-${index}`}
+            events={events.filter((event) => links.get(event.id) === index)}
             toolCall={toolCall}
           />
         ))}
