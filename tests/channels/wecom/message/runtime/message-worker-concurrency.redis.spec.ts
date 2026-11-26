@@ -5,6 +5,7 @@ import StandaloneConnector from 'ioredis/built/connectors/StandaloneConnector';
 import type { RedisOptions } from 'ioredis';
 
 import { ConfigService } from '@nestjs/config';
+import { createMessageWorkerConsumer } from '@wecom/message/runtime/message-worker-consumer';
 import { MessageWorkerManagerService } from '@wecom/message/runtime/message-worker-manager.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 import { MessageOpsController } from '@wecom/message/ingress/message-ops.controller';
@@ -16,6 +17,11 @@ class LoopbackConnector extends StandaloneConnector {
     super({ ...options, host: '127.0.0.1' });
   }
 }
+
+// 此回归只消费队列任务，不加载模型工具和简历 PDF 的原生依赖。
+jest.mock('@wecom/message/application/pipeline.service', () => ({
+  MessagePipelineService: class {},
+}));
 
 const redisPort = Number(process.env.ISOLATED_MESSAGE_WORKER_REDIS_PORT);
 const isolated = redisPort ? describe : describe.skip;
@@ -29,6 +35,51 @@ async function until(check: () => Promise<boolean>) {
 }
 
 isolated('message-merge concurrency with real Bull and loopback Redis', () => {
+  it('awaits the blocking connection name before exposing slots and reuses its acknowledgement on immediate shutdown', async () => {
+    const prefix = `name-ack-${randomUUID()}`;
+    const source = new Bull('message-merge', {
+      prefix,
+      redis: { host: '127.0.0.1', port: redisPort },
+    });
+    const manager = new MessageWorkerManagerService({
+      getSystemConfig: async () => ({ workerConcurrency: 50 }),
+      getMessageMergeEnabled: async () => true,
+    } as never);
+    const original = Bull.prototype.setWorkerName;
+    let acknowledge: () => void;
+    const gate = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
+    const naming = jest.spyOn(Bull.prototype, 'setWorkerName').mockImplementation(async function (
+      this: Bull.Queue,
+    ) {
+      await gate;
+      return original.call(this);
+    });
+    try {
+      const starting = manager.initialize(
+        (slots) => createMessageWorkerConsumer(source, prefix, slots, () => {}),
+        async () => {},
+      );
+      await until(async () => naming.mock.calls.length > 0);
+      expect(await manager.getStatus()).toMatchObject({
+        concurrency: 50,
+        registeredConcurrency: 0,
+      });
+      acknowledge();
+      await starting;
+      expect(await manager.getStatus()).toMatchObject({ registeredConcurrency: 50 });
+      await manager.stop();
+      expect(naming).toHaveBeenCalledTimes(1);
+    } finally {
+      acknowledge();
+      await manager.stop();
+      naming.mockRestore();
+      await source.obliterate({ force: true });
+      await source.close();
+    }
+  });
+
   it.each(['127.0.0.1', 'isolated.upstash.io'])(
     'uses %s layout for 20, 50, 100 and 2 actual slots, then reloads 50 on restart',
     async (host) => {

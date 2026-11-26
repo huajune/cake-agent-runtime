@@ -10,6 +10,17 @@ export interface MessageWorkerConsumer {
   close(): Promise<void>;
 }
 
+// Bull 4 的 process() 会调用 setWorkerName() 却不等待它。每个消费者只登记一次，
+// 把同一份 CLIENT SETNAME 回执纳入就绪检查，避免紧接着 close() 中断未观察的命令。
+class MessageBullQueue extends Bull {
+  private named?: Promise<void>;
+
+  override setWorkerName(): Promise<void> {
+    this.named ??= super.setWorkerName().then(() => undefined);
+    return this.named;
+  }
+}
+
 /** 一次注册共用队列名和前缀。close 只排空本组消费者，生产者继续接收入站任务。 */
 export function createMessageWorkerConsumer(
   source: Queue,
@@ -18,14 +29,14 @@ export function createMessageWorkerConsumer(
   listen: (consumer: Queue) => void,
 ): MessageWorkerConsumer {
   if (!source.client.options.host?.endsWith('.upstash.io')) {
-    const worker = new Bull(source.name, {
+    const worker = new MessageBullQueue(source.name, {
       prefix,
       redis: source.client.options,
       settings: QUEUE_WORKER_SETTINGS,
     });
     listen(worker);
     return {
-      ready: () => worker.client.ping(),
+      ready: () => worker.setWorkerName(),
       process: (handler) => worker.process('process', concurrency, handler),
       close: () => worker.close(),
     };
@@ -42,7 +53,7 @@ export function createMessageWorkerConsumer(
   const workers = Array.from({ length: concurrency }, (_, index) => {
     const blocking = source.client.duplicate(options);
     connections.push(blocking);
-    const worker = new Bull(source.name, {
+    const worker = new MessageBullQueue(source.name, {
       prefix,
       // 第一个槽按队列策略检查延迟任务，其余槽降低空队列的定时轮询频率。
       settings:
@@ -60,7 +71,8 @@ export function createMessageWorkerConsumer(
   });
   let closing: Promise<void> | undefined;
   return {
-    ready: () => Promise.all(connections.map((connection) => connection.ping())),
+    ready: () =>
+      Promise.all([subscriber.ping(), ...workers.map((worker) => worker.setWorkerName())]),
     process: async (handler) => {
       await Promise.all(workers.map((worker) => worker.process('process', 1, handler)));
     },

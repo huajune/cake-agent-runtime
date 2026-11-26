@@ -110,7 +110,7 @@ sequenceDiagram
 
 例如，后台将 20 改成 50。保存成功后，接收请求的实例立即停止领取新任务，继续完成已领取的任务。新消息照常入队。旧消费者排空后，新消费者按 50 个槽领取任务。其余实例每 30 秒读取一次共享配置，按相同步骤调整。切换中再次修改时使用最后保存的值。[切换与排空](../../src/channels/wecom/message/runtime/message-worker-manager.service.ts)
 
-后台和 `GET /message/worker-status` 分别显示已保存目标 `concurrency`、本实例已注册槽数 `registeredConcurrency` 和正在处理的任务数 `activeJobs`。排空或准备连接时，已注册槽数为 0，处理中可以大于 0。上例完成时前两个数都为 50。Upstash 每个槽用独立阻塞连接领取任务，另共享普通命令和订阅两条连接，50 槽共用 52 条消费者连接。普通 Redis 用一个 Bull 消费者注册目标并发。[消费者连接](../../src/channels/wecom/message/runtime/message-worker-consumer.ts) · [后台面板](../../web/src/view/config/list/components/WorkerPanel/index.tsx)
+后台和 `GET /message/worker-status` 分别显示已保存目标 `concurrency`、本实例已注册槽数 `registeredConcurrency` 和正在处理的任务数 `activeJobs`。排空或准备连接时，已注册槽数为 0，处理中可以大于 0。消费者取得 Redis 对阻塞连接的登记回执后才上报新槽数。上例完成时前两个数都为 50。Upstash 每个槽用独立阻塞连接领取任务，另共享普通命令和订阅两条连接，50 槽共用 52 条消费者连接。普通 Redis 用一个 Bull 消费者注册目标并发。[消费者连接](../../src/channels/wecom/message/runtime/message-worker-consumer.ts) · [后台面板](../../web/src/view/config/list/components/WorkerPanel/index.tsx)
 
 
 ## 5. Agent、Outcome 与 replay

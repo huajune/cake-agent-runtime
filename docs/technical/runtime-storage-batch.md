@@ -51,7 +51,7 @@
 
 2026 年 11 月 26 日的两条隔离升级路径均通过。预约样例里，第一次派发有工单 101、102 两份回执，另一尝试报告 103。升级后动作主表仍采信 101，证据表保留三份。260 条历史聊天的原载荷、测试响应以及可读快照的创建时间也逐项核对通过。[升级前的造数与升级后断言](../../tests/supabase/storage-cutover.integration.sql)
 
-并发回归在一次性 Redis 上分别运行普通连接和生产使用的 Upstash 逐槽连接方式。按 20 → 50 → 100 → 2 逐档核对 Bull 的 active 与 waiting，每组 282 个任务各完成一次，包含切换期间入队及队列空闲后的延迟任务。重启后读回保存的 50。复测时将 `ISOLATED_MESSAGE_WORKER_REDIS_PORT` 指向一次性 Redis 的本机端口，然后运行 `pnpm exec jest --runInBand --watchman=false tests/channels/wecom/message/runtime/message-worker-concurrency.redis.spec.ts`。[实队列回归](../../tests/channels/wecom/message/runtime/message-worker-concurrency.redis.spec.ts)
+并发回归在一次性 Redis 上分别运行普通连接和生产使用的 Upstash 逐槽连接方式。按 20 → 50 → 100 → 2 逐档核对 Bull 的 active 与 waiting，每组 282 个任务各完成一次，包含切换期间入队及队列空闲后的延迟任务。重启后读回保存的 50。Linux 上另连续运行 180 次注册后立即关停，阻塞连接登记得到确认，未发生未处理的 Promise 拒绝。复测时将 `ISOLATED_MESSAGE_WORKER_REDIS_PORT` 指向一次性 Redis 的本机端口，然后运行 `pnpm exec jest --runInBand --watchman=false tests/channels/wecom/message/runtime/message-worker-concurrency.redis.spec.ts`。[实队列回归](../../tests/channels/wecom/message/runtime/message-worker-concurrency.redis.spec.ts)
 
 ## 发布与历史清理
 

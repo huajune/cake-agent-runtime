@@ -97,9 +97,9 @@ export class MessageWorkerManagerService {
   async stop(): Promise<void> {
     this.stopping = true;
     this.registered = 0;
-    // close() 可重复调用。先让当前消费者停止领取，再等待进行中的切换退出。
+    // 切换中的旧组已在排空，准备中的新组看到 stopping 后退出。
+    if (this.replacing) await this.replacing;
     await this.worker?.close();
-    await this.replacing;
   }
 
   private serializeConfig<T>(operation: () => Promise<T>): Promise<T> {
