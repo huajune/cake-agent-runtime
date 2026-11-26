@@ -38,13 +38,16 @@ BEGIN
     VALUES('qa-dec-trace','fixture','pass','pass');
   PERFORM save_processing_snapshot(jsonb_build_object('message_id','qa-dec-trace','chat_id',session,
     'batch_id','qa-dec-trace','scenario','reengagement:opening_no_reply',
-    'received_at',at_supplier,'source_occurred_at',at_henan,'status','success','bot_im_id',bot),'{"fixture":true}');
+    'received_at',at_supplier,'source_occurred_at',at_henan,'status','success','bot_im_id',bot),
+    '{"fixture":"request"}','{"fixture":"response"}',
+    '[{"id":"42274e4e-6f44-4537-b665-d0f92665f29b","startedAt":"2026-11-21T07:00:00Z","provider":"qa","complete":false}]');
   INSERT INTO agent_execution_events(trace_id,event_type) VALUES('qa-dec-trace','end');
   PERFORM save_processing_snapshot(jsonb_build_object('message_id','qa-dec-trace','chat_id',session,
-    'received_at',at_supplier,'source_occurred_at',at_supplier,'status','success','bot_im_id',bot),NULL);
+    'received_at',at_supplier,'source_occurred_at',at_supplier,'status','success','bot_im_id',bot),NULL,NULL);
   IF EXISTS (SELECT FROM agent_execution_events WHERE trace_id='qa-dec-trace' AND tenant_id IS DISTINCT FROM 'henan')
     OR (SELECT tenant_id FROM guardrail_review_records WHERE trace_id='qa-dec-trace') IS DISTINCT FROM 'henan'
     OR (SELECT tenant_id FROM message_processing_invocations WHERE message_id='qa-dec-trace') IS DISTINCT FROM 'henan'
+    OR (SELECT tenant_id FROM message_processing_turn_snapshots WHERE message_id='qa-dec-trace') IS DISTINCT FROM 'henan'
     OR (SELECT tenant_id FROM message_processing_records WHERE message_id='qa-dec-trace') IS DISTINCT FROM 'henan'
     THEN RAISE EXCEPTION 'processing retry, invocation or out-of-order child has incorrect owner'; END IF;
 
@@ -98,5 +101,51 @@ BEGIN
     OR has_function_privilege('authenticated','public.tenant_dashboard_read(text,text,date,date,jsonb)','EXECUTE')
     OR has_function_privilege('anon','public.tenant_upsert_long_term_profile_facts(text,text,text,text,jsonb,jsonb,jsonb)','EXECUTE')
     THEN RAISE EXCEPTION 'private RPC accessible outside API'; END IF;
+END $test$;
+
+-- Exercise the same database role as PostgREST. A delayed intake can supply
+-- ownership for an existing result without reopening it or replacing provider bytes.
+SET LOCAL ROLE service_role;
+DO $test$
+DECLARE
+  original timestamptz := '2026-11-21 09:00+08';
+  saved timestamptz := original + interval '1 hour';
+  record jsonb := jsonb_build_object('message_id','qa-late-intake','chat_id','qa-late-chat',
+    'received_at',saved,'status','success');
+BEGIN
+  PERFORM public.save_processing_snapshot(record,'{"fixture":"saved"}','{"reply":"done"}',
+    '[{"id":"42274e4e-6f44-4537-b665-d0f92665f29c","startedAt":"2026-11-21T02:00:00Z","provider":"qa","complete":true,"httpStatus":200,"responseBody":"b2s="}]');
+  PERFORM public.save_processing_snapshot(record || jsonb_build_object('status','processing',
+    'bot_im_id','qa-henan-bot','received_at',saved+interval '1 day','source_occurred_at',original),NULL,NULL);
+  IF NOT EXISTS (SELECT FROM public.message_processing_records r
+    JOIN public.message_processing_turn_snapshots s USING(message_id)
+    JOIN public.message_processing_invocations i USING(message_id)
+    WHERE r.message_id='qa-late-intake' AND r.status='success' AND r.received_at=saved AND r.source_occurred_at=original
+      AND r.tenant_id='henan' AND s.tenant_id=r.tenant_id AND i.tenant_id=r.tenant_id
+      AND s.request='{"fixture":"saved"}' AND i.response_body=decode('b2s=','base64')) THEN
+    RAISE EXCEPTION 'late intake lost the result, snapshot, model bytes or original ownership';
+  END IF;
+  IF to_regprocedure('public.save_processing_snapshot(jsonb,jsonb)') IS NOT NULL THEN
+    RAISE EXCEPTION 'retired snapshot writer still registered';
+  END IF;
+END $test$;
+RESET ROLE;
+
+-- A resumable ordinary reply can write its capture before the intake worker.
+DO $test$
+DECLARE
+  turn public.agent_reply_turns;
+BEGIN
+  turn.chat_id := 'qa-capture-chat';
+  turn.account_id := 'qa-henan-bot';
+  turn.input_occurred_at := '2026-11-21 09:00+08';
+  turn.recovery := '{"traceId":"qa-capture-first"}';
+  PERFORM public.capture_ordinary_reply_processing(turn,jsonb_build_object(
+    'record','{}'::jsonb,'request',jsonb_build_object('messageId','qa-capture-first','chatId',turn.chat_id,'imBotId',turn.account_id),
+    'response','{"reply":"captured"}'::jsonb));
+  IF NOT EXISTS (SELECT FROM public.message_processing_records r JOIN public.message_processing_turn_snapshots s USING(message_id)
+    WHERE r.message_id='qa-capture-first' AND r.source_occurred_at=turn.input_occurred_at AND r.tenant_id='henan' AND s.tenant_id=r.tenant_id) THEN
+    RAISE EXCEPTION 'ordinary reply capture lost original ownership';
+  END IF;
 END $test$;
 ROLLBACK;

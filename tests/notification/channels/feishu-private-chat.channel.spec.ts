@@ -93,7 +93,12 @@ describe('FeishuPrivateChatChannel', () => {
     webhookService.sendMessage.mockClear();
     scopes.feishuRoute.mockRejectedValue(new Error('directory unavailable'));
     await expect(channel.send({}, 'center-bot')).resolves.toBe(false);
-    await expect(channel.sendOnce({}, 'center-bot')).rejects.toThrow('directory unavailable');
+    await expect(channel.sendOnce({}, 'center-bot')).rejects.toMatchObject({
+      name: 'FeishuSendError',
+      message: '无法确认私聊通知接收群',
+      retryable: true,
+      rejectedBeforeAcceptance: true,
+    });
     expect(webhookService.sendMessage).not.toHaveBeenCalled();
     expect(webhookService.sendMessageOrThrow).not.toHaveBeenCalled();
   });

@@ -15,6 +15,7 @@ export interface ChatMessage {
   contactType?: string;
   isSelf?: boolean;
   avatar?: string;
+  /** 渠道回调提供的外部联系人 ID。 */
   externalUserId?: string;
 }
 
@@ -107,21 +108,14 @@ export interface AgentResponseMessage {
   parts: AgentMessagePart[];
 }
 
-export interface RawHttpResponse {
-  status: number;
-  statusText: string;
-  headers?: Record<string, string | undefined>;
-  responseTime?: number;
-}
-
 export interface AgentInvocationRecord {
-  request: Record<string, unknown>;
-  response: Record<string, unknown>;
+  request?: Record<string, unknown> | null;
+  response: Record<string, unknown> | null;
   isFallback: boolean;
-  http?: RawHttpResponse;
 }
 
 export interface ExecutionEvent {
+  observationReason?: string;
   id: number;
   type: string;
   traceId: string;
@@ -146,6 +140,8 @@ export interface ExecutionEvent {
 export type MessageRecordToolCallStatus = 'ok' | 'empty' | 'narrow' | 'unknown' | 'error';
 
 export interface MessageRecordToolCall {
+  toolCallId?: string;
+  decisions?: Array<{ label: string; detail: string }>;
   toolName: string;
   args: Record<string, unknown>;
   result?: unknown;
@@ -330,6 +326,7 @@ export interface GuardrailReviewRecord {
 }
 
 export interface MessageRecord {
+  /** 处理流水标识，兼容 API 字段名 messageId。 */
   messageId?: string;
   receivedAt: string | number;
   userId?: string;

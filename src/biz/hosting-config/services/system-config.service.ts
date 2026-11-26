@@ -419,34 +419,23 @@ export class SystemConfigService {
    * 直接从数据库读取（低频调用，无需缓存）
    */
   async getSystemConfig(): Promise<SystemConfig | null> {
-    try {
-      return await this.systemConfigRepository.getConfigValue<SystemConfig>(
-        SystemConfigKey.SYSTEM_CONFIG,
-      );
-    } catch (error) {
-      this.logger.error('获取系统配置失败', error);
-      return null;
-    }
+    return this.systemConfigRepository.getConfigValueOrThrow<SystemConfig>(
+      SystemConfigKey.SYSTEM_CONFIG,
+    );
   }
 
   /**
    * 更新系统配置
    */
   async updateSystemConfig(config: Partial<SystemConfig>): Promise<SystemConfig> {
-    const existingConfig = (await this.getSystemConfig()) ?? {};
-    const newConfig: SystemConfig = { ...existingConfig, ...config };
-
-    try {
-      await this.systemConfigRepository.setConfigValue(
-        SystemConfigKey.SYSTEM_CONFIG,
-        newConfig,
-        '系统配置（Worker 并发数等）',
-      );
-      this.logger.log(`系统配置已更新: ${JSON.stringify(config)}`);
-    } catch (error) {
-      this.logger.error('更新系统配置到数据库失败', error);
-    }
-
+    const key = SystemConfigKey.SYSTEM_CONFIG;
+    const existingConfig = await this.getSystemConfig();
+    const newConfig = { ...existingConfig, ...config };
+    await this.systemConfigRepository.setConfigValueOrThrow(
+      key,
+      newConfig,
+      '系统配置（Worker 并发数等）',
+    );
     return newConfig;
   }
 
@@ -462,7 +451,7 @@ export class SystemConfigService {
     this.aiReplyEnabledExpiry = 0;
     this.messageMergeEnabled = null;
     this.messageMergeEnabledExpiry = 0;
-    this.agentReplyConfig = null;
+    // 失效后仍保留最近配置，强制回源失败时可继续服务。
     this.agentReplyConfigExpiry = 0;
 
     await this.loadAiReplyStatus({ bypassSharedCache: true });
@@ -581,9 +570,9 @@ export class SystemConfigService {
         }
       }
 
-      const result = await this.systemConfigRepository.getConfigValue<Partial<AgentReplyConfig>>(
-        SystemConfigKey.AGENT_REPLY_CONFIG,
-      );
+      const result = await this.systemConfigRepository.getConfigValueOrThrow<
+        Partial<AgentReplyConfig>
+      >(SystemConfigKey.AGENT_REPLY_CONFIG);
 
       if (result !== null) {
         this.setAgentReplyConfigCache(this.normalizeAgentReplyConfig(result));
@@ -602,8 +591,13 @@ export class SystemConfigService {
       this.logger.log('Agent 回复策略配置已加载');
       return this.agentReplyConfig ?? this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
     } catch (error) {
-      this.logger.error('加载 Agent 回复策略配置失败，使用默认值', error);
-      this.agentReplyConfig = this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
+      this.logger.error(
+        this.agentReplyConfig
+          ? '加载 Agent 回复策略配置失败，保留本地缓存配置'
+          : '加载 Agent 回复策略配置失败，无可用缓存，使用默认配置',
+        error,
+      );
+      this.agentReplyConfig ??= this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
       this.agentReplyConfigExpiry = Date.now() + 30000; // 30 秒后重试
       return this.agentReplyConfig;
     }

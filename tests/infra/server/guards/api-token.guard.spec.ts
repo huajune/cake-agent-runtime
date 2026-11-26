@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
 import { ApiTokenGuard, IS_PUBLIC_KEY } from '@infra/server/guards/api-token.guard';
+import { MessageOpsController } from '@wecom/message/ingress/message-ops.controller';
 
 describe('API authentication', () => {
   const authenticate = jest.fn();
@@ -49,6 +50,24 @@ describe('API authentication', () => {
     flags.getAllAndOverride.mockImplementation((key) => key === 'allowMachineAccess');
     await expect(guard('machine').canActivate(ctx('Bearer machine'))).resolves.toBe(true);
     expect(authenticate).not.toHaveBeenCalled();
+  });
+  it('allows the rollout worker status and concurrency calls with the machine credential', async () => {
+    const access = new ApiTokenGuard(
+      new ConfigService({ CAKE_MACHINE_API_TOKEN: 'worker-machine' }),
+      new Reflector(),
+      { authenticate } as unknown as DashboardAccessService,
+    );
+    const workerContext = (handler: keyof MessageOpsController) =>
+      ({
+        ...ctx('Bearer worker-machine'),
+        getHandler: () => MessageOpsController.prototype[handler],
+        getClass: () => MessageOpsController,
+      }) as ExecutionContext;
+    await expect(access.canActivate(workerContext('getWorkerStatus'))).resolves.toBe(true);
+    await expect(access.canActivate(workerContext('setWorkerConcurrency'))).resolves.toBe(true);
+    await expect(access.canActivate(workerContext('getQueueStatus'))).rejects.toMatchObject({
+      status: 403,
+    });
   });
   it('gates headquarters routes by organization', async () => {
     authenticate.mockResolvedValue({ organization: 'henan' });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
 import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
 import type { MessageRecord } from '@/api/types/chat.types';
@@ -7,6 +7,7 @@ import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
 import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
+import { MESSAGE_PROCESSING_DETAIL_PATH } from '@/routes/lazy-pages';
 import { formatLocaleDate, formatLocaleDateTime } from '@/utils/format';
 import { MessageBubbleContent } from './MessageBubbleContent';
 import { getBubbleVariant } from './bubble-variant';
@@ -47,16 +48,6 @@ function isAssistantMessage(message: ChatMessage): boolean {
     return message.isSelf;
   }
   return message.role === 'assistant';
-}
-
-function getMessageId(message: ChatMessage, fallbackIndex?: number): string | undefined {
-  return (
-    message.id ||
-    message.messageId ||
-    (fallbackIndex !== undefined
-      ? `${message.chatId || 'chat'}-${message.timestamp}-${fallbackIndex}`
-      : undefined)
-  );
 }
 
 const PROCESSING_MATCH_WINDOW_MS = 5 * 60 * 1000;
@@ -101,7 +92,6 @@ export default function MessageDetail({
   currentSession,
   isLoading,
 }: MessageDetailProps) {
-  const navigate = useNavigate();
   const { data: processingRecords = [], isLoading: processingRecordsLoading } =
     useMessageProcessingRecords({
       chatId: selectedChatId ?? undefined,
@@ -162,11 +152,11 @@ export default function MessageDetail({
     [messages],
   );
   const lastUserMessage = lastUserMessageRecord?.content;
-  const lastUserMessageId = lastUserMessageRecord ? getMessageId(lastUserMessageRecord) : undefined;
+  const lastUserMessageId = lastUserMessageRecord?.messageId;
   const sourceTrace = useMemo<FeedbackSourceTrace | undefined>(() => {
     if (!selectedChatId) return undefined;
     const relatedMessageIds = messages
-      .map((msg) => getMessageId(msg))
+      .map((msg) => msg.messageId)
       .filter((id): id is string => Boolean(id));
 
     return {
@@ -271,7 +261,8 @@ export default function MessageDetail({
               const processingRecord = !isAssistant
                 ? findNearestProcessingRecord(processingRecords, msg.timestamp)
                 : undefined;
-              const messageKey = getMessageId(msg, index);
+              const messageKey =
+                msg.messageId || msg.id || `${msg.chatId}-${msg.timestamp}-${index}`;
               const displayName = isAssistant
                 ? msg.managerName || currentSession?.managerName || '招募经理'
                 : msg.candidateName || currentSession?.candidateName || '候选人';
@@ -323,28 +314,31 @@ export default function MessageDetail({
                         </span>
                       )}
                       <span className={styles.messageTime}>{formatTime(msg.timestamp)}</span>
-                      {!isAssistant && (
-                        <button
-                          type="button"
-                          className={styles.processingLink}
-                          disabled={processingRecordsLoading || !processingRecord?.messageId}
-                          title={
-                            processingRecord?.messageId
-                              ? `打开流水 ${processingRecord.messageId}`
-                              : '该消息前后 5 分钟内未匹配到处理流水'
-                          }
-                          onClick={() => {
-                            if (!processingRecord?.messageId) return;
-                            navigate(
-                              `/message-processing?messageId=${encodeURIComponent(
-                                processingRecord.messageId,
-                              )}`,
-                            );
-                          }}
-                        >
-                          查看处理详情
-                        </button>
-                      )}
+                      {!isAssistant &&
+                        (processingRecord?.messageId && !processingRecordsLoading ? (
+                          <Link
+                            className={styles.processingLink}
+                            to={`${MESSAGE_PROCESSING_DETAIL_PATH}?messageId=${encodeURIComponent(processingRecord.messageId)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`在新页签查看该会话时间最近的处理流水 ${processingRecord.messageId}`}
+                          >
+                            查看附近流水
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.processingLink}
+                            disabled
+                            title={
+                              processingRecordsLoading
+                                ? '正在匹配处理流水'
+                                : '该消息前后 5 分钟内未匹配到处理流水'
+                            }
+                          >
+                            查看附近流水
+                          </button>
+                        ))}
                     </div>
                     <div className={bubbleClass}>
                       <MessageBubbleContent

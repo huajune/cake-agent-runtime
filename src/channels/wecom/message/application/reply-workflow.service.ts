@@ -1,7 +1,22 @@
-import { ordinaryReplyEffects, readOrdinaryReplyEffects } from './ordinary-reply-effects';
+import {
+  captureReplyGeneration,
+  takeModelInvocations,
+  withProcessingTurn,
+} from '@observability/context/model-invocations';
+import {
+  deliveredReplySchema,
+  ordinaryReplyEffects,
+  readOrdinaryReplyEffects,
+  type DeliveredReplyEffects,
+} from './ordinary-reply-effects';
 import { timingSafeEqual } from 'node:crypto';
+import { planReplyJobProjection } from '@memory/short-term/assistant-job-projection';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
-import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import {
+  ReplyDeferredError,
+  ReplyDeliveryDeferredError,
+  type ReplyTurn,
+} from '@biz/reply-execution/reply-execution.types';
 import { RUNTIME_RETRY_LIMITS } from '@infra/config/constants/runtime-retry.constants';
 import { hasReplayEvidence, attachReplayEvidence } from '@infra/utils/action-receipt.util';
 import type { ToolReplayEvidence } from '@shared-types/tool-replay.types';
@@ -24,6 +39,7 @@ import {
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import {
   ReengagementAnchorService,
+  type AnchorContext,
   isBookingSucceededCall,
 } from '@agent/reengagement/anchor.service';
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
@@ -159,6 +175,15 @@ export class ReplyWorkflowService {
     messageData: EnterpriseMessageCallbackDto,
     selectPending?: SelectPending,
   ): Promise<void> {
+    return withProcessingTurn(messageData.messageId, () =>
+      this.processSingleReply(messageData, selectPending),
+    );
+  }
+
+  private async processSingleReply(
+    messageData: EnterpriseMessageCallbackDto,
+    selectPending?: SelectPending,
+  ): Promise<void> {
     const parsed = MessageParser.parse(messageData);
     const { chatId, content, contactName, messageId } = parsed;
     const scenario = MessageParser.determineScenario();
@@ -213,6 +238,17 @@ export class ReplyWorkflowService {
   }
 
   async processMergedMessages(
+    messages: EnterpriseMessageCallbackDto[],
+    batchId: string,
+    assertOwned?: () => Promise<void>,
+    selectPending?: SelectPending,
+  ): Promise<'deferred' | void> {
+    return withProcessingTurn(batchId, () =>
+      this.processMergedReply(messages, batchId, assertOwned, selectPending),
+    );
+  }
+
+  private async processMergedReply(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
     assertOwned?: () => Promise<void>,
@@ -343,11 +379,16 @@ export class ReplyWorkflowService {
           durableTurn &&
           error instanceof ReplyDeferredError &&
           (error.reason === REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED ||
-            ['save_effects_not_confirmed', 'save_late_effects_not_confirmed'].includes(
-              error.reason,
-            ))
+            [
+              'save_effects_not_confirmed',
+              'save_reply_not_confirmed',
+              'save_late_effects_not_confirmed',
+            ].includes(error.reason))
         ) {
-          if (error.reason === 'save_effects_not_confirmed')
+          if (
+            error.reason === 'save_effects_not_confirmed' ||
+            error.reason === 'save_reply_not_confirmed'
+          )
             await this.replyTurns!.recordFailure(
               durableTurn,
               'save_effects',
@@ -427,6 +468,9 @@ export class ReplyWorkflowService {
     let agentResult: AgentInvokeResult;
     let deliveryResult: DeliveryResult | undefined;
     let businessEffects: Record<string, unknown> | undefined;
+    let replySegments: string[] | undefined;
+    let processingCapture: Record<string, unknown> | undefined;
+    let deliveredWork: DeliveredReplyEffects | undefined;
     const toolCallCounts = new Map<string, number>();
     try {
       agentResult = await this.callAgentWithVisualCompatibilityFallback(
@@ -609,9 +653,90 @@ export class ReplyWorkflowService {
         channelIdentity: reengagementChannelIdentity,
       };
       if (durableTurn) {
-        businessEffects = ordinaryReplyEffects(agentResult.toolCalls, toolAnchorContext);
+        const declared =
+          agentResult.outcome?.kind === 'reply' ? agentResult.outcome.sideEffects : undefined;
+        // A failure to read session memory must still leave a recoverable record of completed tools.
+        businessEffects = ordinaryReplyEffects(
+          agentResult.toolCalls,
+          toolAnchorContext,
+          declared?.length ? { intents: declared, userMessage: content } : undefined,
+          !agentResult.outcome || agentResult.outcome.kind === 'reply',
+        );
+        if (agentResult.outcome?.kind === 'reply') {
+          const segments = this.deliveryService.prepareSegments(agentResult.reply.content);
+          const state = await this.session.getSessionState(
+            toolAnchorContext.corpId,
+            toolAnchorContext.userId,
+            chatId,
+          );
+          const anchors = toolAnchorContext.isGroupChat
+            ? undefined
+            : await this.reengagementAnchors.planDeliveredReplyAnchors(
+                agentResult,
+                async () => state.lastCandidatePool ?? [],
+              );
+          const latestInput = this.latestCandidateTimestamp(allMessages);
+          deliveredWork = deliveredReplySchema.parse({
+            anchors: anchors && {
+              ...anchors,
+              previousPresentationRounds: state.storePresentationRounds ?? 0,
+            },
+            jobs: planReplyJobProjection(
+              segments,
+              content,
+              state,
+              agentResult.outcome.getReplyJobContext?.(),
+            ),
+            lastInputAt:
+              !toolAnchorContext.isGroupChat && latestInput > 0
+                ? new Date(latestInput).toISOString()
+                : undefined,
+          });
+          businessEffects = { ...businessEffects, deliveredReply: deliveredWork };
+          replySegments = segments;
+          // Persist generation evidence in its owning tables together with the reply plan.
+          // Nothing below this point needs to call the model again after a restart.
+          processingCapture = {
+            record: {
+              scenario,
+              batch_id: batchContext?.batchId,
+              user_id: toolAnchorContext.userId,
+              user_name: contactName,
+              manager_name: toolAnchorContext.channelIdentity?.managerName,
+              message_preview: content.slice(0, 50),
+              tool_calls: agentResult.toolCalls,
+              agent_steps: agentResult.agentSteps,
+              guardrail_output: agentResult.guardrailOutput,
+              memory_snapshot: agentResult.memorySnapshot,
+              token_usage: agentResult.reply.usage?.totalTokens,
+              is_fallback: agentResult.isFallback,
+            },
+            request: {
+              messageId: traceId,
+              chatId,
+              scenario,
+              userId: toolAnchorContext.userId,
+              content,
+              imBotId: durableTurn.accountId,
+              sourceMessageIds: durableTurn.inputIds,
+              agentRequest: agentResult.preparedRequest,
+            },
+            response: {
+              status: 'processing',
+              reply: agentResult.reply,
+              messages: agentResult.responseMessages,
+              processingTimeMs: agentResult.processingTime,
+            },
+            invocations: takeModelInvocations(traceId) ?? [],
+          };
+        }
         await params.assertOwned?.();
-        durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
+        durableTurn = await this.replyTurns!.saveEffects(
+          durableTurn,
+          businessEffects,
+          replySegments,
+          processingCapture,
+        );
       }
       if (agentResult.outcome?.kind !== 'reply') {
         // 同轮已提交的报名/改约/取消结果：先把确定性回执发给候选人，再提交暂停/告警
@@ -720,6 +845,9 @@ export class ReplyWorkflowService {
         logicalTurnId: durableTurn?.logicalTurnId,
         inputOccurredAt: durableTurn?.inputOccurredAt,
         replyTurn: durableTurn,
+        onSettled: (settled: ReplyTurn) => {
+          durableTurn = settled;
+        },
         assertOwned: params.assertOwned,
       };
       deliveryResult = await this.deliveryService.deliverReply(
@@ -731,44 +859,29 @@ export class ReplyWorkflowService {
       // delivered-reply 锚点，否则会排出候选人没收到上一条时的幽灵复聊。
       const replyDelivered = this.wasReplyActuallyDelivered(deliveryResult);
       await params.assertOwned?.();
-      await this.commitReplyOutcomeSideEffects(agentResult.outcome, sideEffectContext, {
-        replyDelivered,
-      });
+      // Durable handoff promises are committed from the original receipt before ACK,
+      // including when the process stopped between provider acceptance and local work.
+      if (!businessEffects?.afterReply) {
+        await this.commitReplyOutcomeSideEffects(agentResult.outcome, sideEffectContext, {
+          replyDelivered,
+        });
+      }
 
       // Agent 回复真实投递 → agent.replied（仅个人单聊；锚点读取必须先于回合 settle）。
-      if (replyDelivered) {
-        const reengagementAnchorContext = {
-          assertOwned: params.assertOwned,
-          traceId: durableTurn?.logicalTurnId ?? traceId,
-          ...{
-            logicalTurnId: durableTurn?.logicalTurnId,
-            inputOccurredAt: durableTurn?.inputOccurredAt,
-          },
-          chatId,
-          userId: agentCallParams.userId,
-          corpId: agentCallParams.corpId,
-          isGroupChat: Boolean(params.primaryMessage.imRoomId),
-          channelIdentity: this.buildReengagementChannelIdentity(
-            parsed,
-            params.primaryMessage,
-            stableBotUserId,
-          ),
-        };
+      if (replyDelivered && !deliveredWork) {
         // 先确认这是不是本会话首条开场回复。开场本身即使询问了位置，也只排
         // opening_no_reply；不能同时排 address_missing，否则候选人持续沉默时会被连追两次。
         await params.assertOwned?.();
         const replyKind = await this.recordAgentReplied(
-          params.primaryMessage,
-          parsed,
-          durableTurn?.logicalTurnId ?? traceId,
-          stableBotUserId,
-          durableTurn ? { turn: durableTurn, assertOwned: params.assertOwned } : undefined,
+          toolAnchorContext,
+          durableTurn,
+          params.primaryMessage.botUserId,
         );
         // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
         // storePresentationRounds，否则第一轮可能被误判为升档。
         await this.reengagementAnchors
           .handleDeliveredReplyAnchors(agentResult, {
-            ...reengagementAnchorContext,
+            ...toolAnchorContext,
             suppressAddressMissing: replyKind !== 'reply',
           })
           .catch((error: unknown) => {
@@ -788,7 +901,10 @@ export class ReplyWorkflowService {
             ? Boolean(deliveryResult.acceptedText)
             : replyDelivered,
         acceptedText: deliveryResult.acceptedText,
+        ...(deliveredWork ? { durableJobProjection: true } : {}),
       });
+      // Finish candidate-pool writes and invalidations before updating those same Redis job fields.
+      if (deliveredWork?.jobs) await agentResult.turnFinalizer?.whenSettled();
 
       const successMetadata = await this.buildSuccessMetadata(
         traceId,
@@ -800,12 +916,13 @@ export class ReplyWorkflowService {
 
       this.monitoringService.recordSuccess(traceId, successMetadata);
       await params.assertOwned?.();
-      await this.advanceProcessedCandidateWatermark(
-        params.primaryMessage,
-        agentCallParams,
-        allMessages,
-        Boolean(durableTurn),
-      );
+      if (!deliveredWork)
+        await this.advanceProcessedCandidateWatermark(
+          params.primaryMessage,
+          agentCallParams,
+          allMessages,
+          Boolean(durableTurn),
+        );
       if (durableTurn && this.replyTurns)
         await this.settleAndAckTurn(durableTurn, params.assertOwned);
       else {
@@ -821,17 +938,34 @@ export class ReplyWorkflowService {
       // 否则候选人已提供的姓名/手机号/意向在重试外的路径上永久丢失。只记用户侧，不投影助手轮次。
       // settle 幂等：若前面已按投递结局触发过，这里是 no-op。
       const deliveryFailure = error instanceof DeliveryFailureError ? error.result : deliveryResult;
+      const acceptedText =
+        error instanceof ReplyDeliveryDeferredError
+          ? replySegments?.slice(0, error.accepted).join('\n\n')
+          : deliveryFailure?.acceptedText;
       agentResult.turnFinalizer?.settle({
-        delivered: Boolean(deliveryFailure?.acceptedText),
-        acceptedText: deliveryFailure?.acceptedText,
+        delivered: Boolean(acceptedText),
+        acceptedText,
+        ...(deliveredWork ? { durableJobProjection: true } : {}),
       });
+      // Finish candidate-pool writes and invalidations before updating those same Redis job fields.
+      if (deliveredWork?.jobs) await agentResult.turnFinalizer?.whenSettled();
+      if (durableTurn && error instanceof ReplyDeliveryDeferredError && error.accepted) {
+        await this.projectConfirmedPrefix(durableTurn, error.accepted, params.assertOwned);
+      }
       if (durableTurn) {
         // 只重试同一份最小业务结果，绝不重跑工具。仍写不进去则保留原输入待核实。
+        if (durableTurn.recovery.replySegments && !(error instanceof DeliveryFailureError))
+          throw new ReplyDeferredError('reply_delivery_pending', error);
         if (durableTurn.projectionStatus === REPLY_PROJECTION_STATUS.NONE) {
           if (!businessEffects)
             throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
           try {
-            durableTurn = await this.replyTurns!.saveEffects(durableTurn, businessEffects);
+            durableTurn = await this.replyTurns!.saveEffects(
+              durableTurn,
+              businessEffects,
+              replySegments,
+              processingCapture,
+            );
           } catch (saveError) {
             if (
               !(
@@ -848,6 +982,8 @@ export class ReplyWorkflowService {
             );
             throw new ReplyDeferredError('late_business_effects_saved');
           }
+          if (durableTurn.recovery.replySegments)
+            throw new ReplyDeferredError('reply_delivery_pending', error);
         }
         // Finish the original input even when text is incomplete. Never re-run its model/tools.
         // A failed terminal write is ack-only work after the lease expires, not a new send.
@@ -867,13 +1003,16 @@ export class ReplyWorkflowService {
           parsed,
           { scenario, traceId, processedMessageIds: durableTurn.inputIds },
         );
-        const settled = await this.replyTurns!.settle(durableTurn, {
-          outcome: deliveryFailure?.unknownSegments
-            ? REPLY_DELIVERY_OUTCOME.UNKNOWN
-            : REPLY_DELIVERY_OUTCOME.INCOMPLETE,
-          accepted: deliveryFailure?.deliveredSegments ?? 0,
-          total: deliveryFailure?.segmentCount ?? 0,
-        });
+        const settled =
+          durableTurn.status === REPLY_TURN_STATUS.SETTLED
+            ? durableTurn
+            : await this.replyTurns!.settle(durableTurn, {
+                outcome: deliveryFailure?.unknownSegments
+                  ? REPLY_DELIVERY_OUTCOME.UNKNOWN
+                  : REPLY_DELIVERY_OUTCOME.INCOMPLETE,
+                accepted: deliveryFailure?.deliveredSegments ?? 0,
+                total: deliveryFailure?.segmentCount ?? 0,
+              });
         await this.ackDurableTurn(settled, params.assertOwned);
         return;
       }
@@ -909,7 +1048,33 @@ export class ReplyWorkflowService {
     }
   }
 
-  /** Close the original input and repair local effects; never generate or resend text. */
+  async resumeDelivery(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<ReplyTurn> {
+    await assertOwned();
+    const primary = this.durablePrimary(turn);
+    await this.completePendingEffects(turn, assertOwned);
+    try {
+      return await this.deliveryService.resumeDelivery(turn, {
+        groupId: primary.groupId,
+        resolveToken: async () => (await this.resolveDurableRoute(turn)).token,
+        replyTurn: turn,
+        chatId: turn.chatId,
+        imBotId: turn.accountId,
+        imContactId: primary.imContactId ?? '',
+        imRoomId: primary.imRoomId ?? '',
+        _apiType: primary._apiType,
+        contactName: '客户',
+        assertOwned,
+        messageId:
+          typeof turn.recovery.traceId === 'string' ? turn.recovery.traceId : turn.inputIds[0],
+      });
+    } catch (error) {
+      if (error instanceof ReplyDeliveryDeferredError && error.accepted)
+        await this.projectConfirmedPrefix(turn, error.accepted, assertOwned);
+      throw error;
+    }
+  }
+
+  /** A settled turn only repairs its original input and local effects. */
   async resumeInputCompletion(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<void> {
     await assertOwned?.();
     const terminal =
@@ -919,10 +1084,10 @@ export class ReplyWorkflowService {
     await this.ackDurableTurn(terminal, assertOwned);
   }
 
-  private async resolveDurableRoute(
+  private durablePrimary(
     turn: ReplyTurn,
-    message: EnterpriseMessageCallbackDto,
-  ): Promise<{ token: string; groupId?: string }> {
+    message?: EnterpriseMessageCallbackDto,
+  ): Partial<EnterpriseMessageCallbackDto> {
     const primary = turn.recovery.primary as Partial<EnterpriseMessageCallbackDto> | undefined;
     const apiType = primary?._apiType ?? WECOM_API_TYPE.ENTERPRISE;
     if (
@@ -930,17 +1095,27 @@ export class ReplyWorkflowService {
       primary.orgId !== turn.corpId ||
       primary.imBotId !== turn.accountId ||
       primary.chatId !== turn.chatId ||
-      message.orgId !== turn.corpId ||
-      message.imBotId !== turn.accountId ||
-      message.chatId !== turn.chatId ||
-      (message._apiType ?? WECOM_API_TYPE.ENTERPRISE) !== apiType ||
-      (message.groupId !== undefined && message.groupId !== primary.groupId) ||
-      message.imContactId !== primary.imContactId ||
-      message.imRoomId !== primary.imRoomId
+      (apiType !== WECOM_API_TYPE.GROUP && apiType !== WECOM_API_TYPE.ENTERPRISE) ||
+      (!message && (!turn.recovery.replySegments || (!primary.imContactId && !primary.imRoomId))) ||
+      (message &&
+        (message.orgId !== turn.corpId ||
+          message.imBotId !== turn.accountId ||
+          message.chatId !== turn.chatId ||
+          (message._apiType ?? WECOM_API_TYPE.ENTERPRISE) !== apiType ||
+          (message.groupId !== undefined && message.groupId !== primary.groupId) ||
+          message.imContactId !== primary.imContactId ||
+          message.imRoomId !== primary.imRoomId))
     )
       throw new ReplyDeferredError('recovery_route_identity_mismatch');
+    return primary;
+  }
 
-    if (apiType === WECOM_API_TYPE.GROUP) {
+  private async resolveDurableRoute(
+    turn: ReplyTurn,
+    message?: EnterpriseMessageCallbackDto,
+  ): Promise<{ token: string; groupId?: string }> {
+    const primary = this.durablePrimary(turn, message);
+    if (primary._apiType === WECOM_API_TYPE.GROUP) {
       try {
         const route = await this.groupCredentials?.resolveForRecovery({
           corpId: turn.corpId,
@@ -955,10 +1130,12 @@ export class ReplyWorkflowService {
     }
     const token = this.config?.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
     if (!token) throw new ReplyDeferredError('enterprise_credential_resolution');
-    const expected = Buffer.from(token);
-    const supplied = Buffer.from(typeof message.token === 'string' ? message.token : '');
-    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied))
-      throw new ReplyDeferredError('enterprise_callback_unverified');
+    if (message) {
+      const expected = Buffer.from(token);
+      const supplied = Buffer.from(typeof message.token === 'string' ? message.token : '');
+      if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied))
+        throw new ReplyDeferredError('enterprise_callback_unverified');
+    }
     return { token, groupId: primary.groupId };
   }
 
@@ -967,8 +1144,53 @@ export class ReplyWorkflowService {
     assertOwned?: () => Promise<void>,
   ): Promise<void> {
     await assertOwned?.();
-    const settled = await this.replyTurns!.settle(turn);
+    const settled =
+      turn.status === REPLY_TURN_STATUS.SETTLED || turn.status === REPLY_TURN_STATUS.ACKED
+        ? turn
+        : await this.replyTurns!.settle(turn);
     await this.ackDurableTurn(settled, assertOwned);
+  }
+
+  private async completePendingEffects(
+    turn: ReplyTurn,
+    assertOwned?: () => Promise<void>,
+  ): Promise<void> {
+    if (turn.projectionStatus !== REPLY_PROJECTION_STATUS.PENDING) return;
+    const effects = readOrdinaryReplyEffects(turn.recovery.effects);
+    await this.reengagementAnchors.handleToolAnchors(
+      {
+        toolCalls: effects.toolCalls,
+        ...(effects.collectionPrecheck ? { collectionPrecheck: effects.collectionPrecheck } : {}),
+      },
+      { ...effects.context, assertOwned },
+    );
+    await this.replyTurns!.completeProjection(turn);
+  }
+
+  private async projectConfirmedPrefix(
+    turn: ReplyTurn,
+    accepted: number,
+    assertOwned?: () => Promise<void>,
+  ): Promise<void> {
+    if (
+      !accepted ||
+      !(turn.recovery.effects as { deliveredReply?: unknown } | undefined)?.deliveredReply
+    )
+      return;
+    try {
+      const { context, deliveredReply } = readOrdinaryReplyEffects(turn.recovery.effects);
+      if (!deliveredReply?.jobs) return;
+      await assertOwned?.();
+      await this.session.applyReplyJobProjection(
+        context.corpId,
+        context.userId,
+        context.chatId,
+        deliveredReply.jobs,
+        accepted,
+      );
+    } catch (error) {
+      throw new ReplyDeferredError('accepted_reply_projection_pending', error);
+    }
   }
 
   private async ackDurableTurn(turn: ReplyTurn, assertOwned?: () => Promise<void>): Promise<void> {
@@ -976,13 +1198,71 @@ export class ReplyWorkflowService {
       await assertOwned?.();
       if (turn.projectionStatus === REPLY_PROJECTION_STATUS.NONE)
         throw new ReplyDeferredError(REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED);
-      if (turn.projectionStatus === REPLY_PROJECTION_STATUS.PENDING) {
-        const effects = readOrdinaryReplyEffects(turn.recovery.effects);
-        await this.reengagementAnchors.handleToolAnchors(
-          { toolCalls: effects.toolCalls },
-          { ...effects.context, assertOwned },
+      await this.completePendingEffects(turn, assertOwned);
+      const stored = turn.recovery.effects as
+        | { afterReply?: unknown; deliveredReply?: unknown }
+        | undefined;
+      if (stored?.deliveredReply) {
+        const { context, deliveredReply } = readOrdinaryReplyEffects(stored);
+        const accepted = turn.deliveryResult?.accepted ?? 0;
+        if (
+          deliveredReply?.anchors &&
+          accepted > 0 &&
+          turn.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.COMPLETE
+        ) {
+          await assertOwned?.();
+          const ownedContext = { ...context, assertOwned };
+          const kind = await this.recordAgentReplied(ownedContext, turn);
+          await this.reengagementAnchors.applyDeliveredReplyAnchors(deliveredReply.anchors, {
+            ...ownedContext,
+            suppressAddressMissing: kind !== 'reply',
+          });
+        }
+        await this.projectConfirmedPrefix(turn, accepted, assertOwned);
+        // Match the original watermark semantics: an incomplete or unknown reply did not finish processing.
+        if (
+          deliveredReply?.lastInputAt &&
+          !context.isGroupChat &&
+          (turn.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.COMPLETE ||
+            turn.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.SKIPPED)
+        ) {
+          await assertOwned?.();
+          await this.session.recordCandidateMessagesProcessed(
+            context.corpId,
+            context.userId,
+            context.chatId,
+            new Date(deliveredReply.lastInputAt),
+          );
+        }
+      }
+      if (stored?.afterReply) {
+        const { context, afterReply } = readOrdinaryReplyEffects(stored);
+        await assertOwned?.();
+        await this.commitReplyOutcomeSideEffects(
+          { kind: 'reply', toolCalls: [], sideEffects: afterReply },
+          {
+            traceId: context.traceId,
+            logicalTurnId: turn.logicalTurnId,
+            corpId: turn.corpId,
+            chatId: turn.chatId,
+            userId: context.userId,
+            botImId: turn.accountId,
+            botUserId: context.channelIdentity?.managerName,
+            contactName: context.channelIdentity?.candidateName,
+            userMessage: afterReply?.[0]?.currentMessageContent ?? '',
+            replyReceipt: {
+              logicalTurnId: turn.logicalTurnId,
+              accountId: turn.accountId,
+              occurredAt: turn.inputOccurredAt,
+            },
+          },
+          {
+            replyDelivered:
+              turn.deliveryResult?.outcome === REPLY_DELIVERY_OUTCOME.COMPLETE &&
+              Boolean(turn.deliveryResult.accepted),
+            requireCommit: true,
+          },
         );
-        await this.replyTurns!.completeProjection(turn);
       }
       await this.simpleMergeService.ackPendingMessageIds(turn.chatId, turn.inputIds);
       for (const id of turn.inputIds) {
@@ -990,7 +1270,11 @@ export class ReplyWorkflowService {
         await this.deduplicationService.markMessageAsProcessedAsync(id);
       }
       await assertOwned?.();
-      await this.replyTurns?.acked(turn);
+      await this.replyTurns?.acked(
+        turn,
+        Boolean(stored?.afterReply),
+        Boolean(stored?.deliveredReply),
+      );
     } catch {
       throw new ReplyDeferredError('ack_repair_pending');
     }
@@ -1006,7 +1290,7 @@ export class ReplyWorkflowService {
   private async commitReplyOutcomeSideEffects(
     outcome: AgentInvokeResult['outcome'],
     context: Parameters<TurnOutcomeInterventionService['commit']>[1],
-    options: { replyDelivered: boolean },
+    options: { replyDelivered: boolean; requireCommit?: boolean },
   ): Promise<void> {
     if (outcome?.kind !== 'reply' || !outcome.sideEffects?.length) return;
     // 承诺对账补的介入只在承诺真的送到候选人手上时才成立：回复被托管暂停/泄漏保护丢弃时，
@@ -1029,6 +1313,7 @@ export class ReplyWorkflowService {
       .catch((error: unknown) => {
         const errorMessage = toErrorMessage(error);
         this.logger.error(`[ReplyOutcomeSideEffect] dispatch failed: ${errorMessage}`);
+        if (options.requireCommit) throw error;
       });
   }
 
@@ -1217,12 +1502,14 @@ export class ReplyWorkflowService {
         )}`,
       );
 
-      const prepared = await this.prepareRuntimeCompatibilityDescriptions({
-        imageUrls,
-        imageMessageIds,
-        visualMessageTypes: params.visualMessageTypes,
-        contactName: params.contactName ?? params.sessionId,
-      });
+      const prepared = await captureReplyGeneration(() =>
+        this.prepareRuntimeCompatibilityDescriptions({
+          imageUrls,
+          imageMessageIds,
+          visualMessageTypes: params.visualMessageTypes,
+          contactName: params.contactName ?? params.sessionId,
+        }),
+      );
       if (!prepared) {
         throw error;
       }
@@ -1333,6 +1620,7 @@ export class ReplyWorkflowService {
 
     const startTime = Date.now();
     let shouldRecordAiEnd = false;
+    let preparedRequest: Record<string, unknown> | undefined;
     let replayBlockedBy: ToolReplayEvidence[] = [];
 
     try {
@@ -1341,39 +1629,43 @@ export class ReplyWorkflowService {
         shouldRecordAiEnd = true;
       }
 
-      const outcome = await this.runner.runInboundTurn({
-        input: { text: params.userMessage, images: params.imageUrls },
-        sessionRef: { corpId, userId, sessionId: params.sessionId },
-        context: {
-          callerKind: CallerKind.WECOM,
-          logicalTurnId: params.logicalTurnId,
-          replyModelRoute: params.replyModelRoute,
-          toolCallCounts,
-          inputOccurredAt: params.inputOccurredAt,
-          messageId,
-          scenario,
-          contactName: params.contactName,
-          botUserId: params.botUserId,
-          botImId: params.botImId,
-          groupId: params.groupId,
-          externalUserId: params.externalUserId,
-          token: params.token,
-          imContactId: params.imContactId,
-          imRoomId: params.imRoomId,
-          apiType: params.apiType,
-          imageMessageIds: params.imageMessageIds,
-          visualMessageTypes: params.visualMessageTypes,
-          thinking: params.thinking,
-          shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-          hasNewerUserInput: params.hasNewerUserInput,
-          onPreparedRequest:
-            recordMonitoring && messageId
-              ? (agentRequest) =>
-                  this.wecomObservability.recordAgentRequest(messageId, agentRequest)
-              : undefined,
-        },
-        modelId: params.modelId,
-      });
+      const outcome = await captureReplyGeneration(() =>
+        this.runner.runInboundTurn({
+          input: { text: params.userMessage, images: params.imageUrls },
+          sessionRef: { corpId, userId, sessionId: params.sessionId },
+          context: {
+            callerKind: CallerKind.WECOM,
+            logicalTurnId: params.logicalTurnId,
+            replyModelRoute: params.replyModelRoute,
+            toolCallCounts,
+            inputOccurredAt: params.inputOccurredAt,
+            messageId,
+            scenario,
+            contactName: params.contactName,
+            botUserId: params.botUserId,
+            botImId: params.botImId,
+            groupId: params.groupId,
+            externalUserId: params.externalUserId,
+            token: params.token,
+            imContactId: params.imContactId,
+            imRoomId: params.imRoomId,
+            apiType: params.apiType,
+            imageMessageIds: params.imageMessageIds,
+            visualMessageTypes: params.visualMessageTypes,
+            thinking: params.thinking,
+            shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+            hasNewerUserInput: params.hasNewerUserInput,
+            onPreparedRequest:
+              recordMonitoring && messageId
+                ? (agentRequest) => {
+                    preparedRequest = agentRequest;
+                    return this.wecomObservability.recordAgentRequest(messageId, agentRequest);
+                  }
+                : undefined,
+          },
+          modelId: params.modelId,
+        }),
+      );
 
       replayBlockedBy = collectToolReplayEvidence(outcome.toolCalls ?? []);
       const processingTime = Date.now() - startTime;
@@ -1424,7 +1716,7 @@ export class ReplyWorkflowService {
         }`,
       );
 
-      return invokeResult;
+      return preparedRequest ? { ...invokeResult, preparedRequest } : invokeResult;
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.error(`Agent 调用异常: ${errorMessage}`);
@@ -1483,10 +1775,7 @@ export class ReplyWorkflowService {
     strict = false,
   ): Promise<void> {
     if (primaryMessage.imRoomId) return;
-    const maxTimestamp = allMessages.reduce((max, message) => {
-      const timestamp = Number(message.timestamp);
-      return Number.isFinite(timestamp) && timestamp > max ? timestamp : max;
-    }, 0);
+    const maxTimestamp = this.latestCandidateTimestamp(allMessages);
     if (maxTimestamp <= 0) return;
     await this.session
       .recordCandidateMessagesProcessed(
@@ -1503,6 +1792,13 @@ export class ReplyWorkflowService {
           )}`,
         );
       });
+  }
+
+  private latestCandidateTimestamp(messages: EnterpriseMessageCallbackDto[]): number {
+    return messages.reduce((max, message) => {
+      const timestamp = Number(message.timestamp);
+      return Number.isFinite(timestamp) && timestamp > max ? timestamp : max;
+    }, 0);
   }
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
@@ -1529,36 +1825,31 @@ export class ReplyWorkflowService {
    * 兼容路径保留旧 trace 幂等与非阻断行为。
    */
   private async recordAgentReplied(
-    primaryMessage: EnterpriseMessageCallbackDto,
-    parsed: ReturnType<typeof MessageParser.parse>,
-    traceId: string,
-    stableBotUserId?: string,
-    durable?: { turn: ReplyTurn; assertOwned?: () => Promise<void> },
+    context: AnchorContext,
+    turn?: ReplyTurn,
+    managerName = context.channelIdentity?.managerName,
   ): Promise<'opening' | 'reply' | 'unknown'> {
-    if (primaryMessage.imRoomId) return 'unknown'; // 群聊不计入候选人漏斗
-    const botImId = primaryMessage.imBotId;
-    const corpId = this.resolveCorpId(primaryMessage);
-    const userId = this.resolveAgentUserId(primaryMessage, parsed);
-    const chatId = parsed.chatId;
-
+    if (context.isGroupChat) return 'unknown';
+    const { corpId, userId, chatId, traceId, channelIdentity, assertOwned } = context;
+    const botImId = turn?.accountId ?? channelIdentity?.botImId;
     try {
       const openingInput = {
         corpId,
         eventName: 'agent.opening_sent' as const,
         idempotencyKey: `${chatId}:opening`,
         botImId,
-        managerName: primaryMessage.botUserId,
+        managerName,
         sourceChannel: 'unknown',
         userId,
         chatId,
-        ...(durable ? { occurredAt: durable.turn.inputOccurredAt } : {}),
+        ...(turn ? { occurredAt: turn.inputOccurredAt } : {}),
       };
-      const owned = durable?.assertOwned ? { assertOwned: durable.assertOwned } : undefined;
-      await durable?.assertOwned?.();
-      const openingResult = durable
+      const owned = assertOwned ? { assertOwned } : undefined;
+      await assertOwned?.();
+      const openingResult = turn
         ? (await this.opsEventsRecorder.recordOpeningDurably(
             openingInput,
-            durable.turn.logicalTurnId,
+            turn.logicalTurnId,
             owned,
           ))
           ? 'inserted'
@@ -1580,19 +1871,15 @@ export class ReplyWorkflowService {
         // 开场白已记录（agent.opening_sent）= reengagement opening_no_reply 场景锚点：
         // 排一个 15min 后的复聊 delayed job（shadow 模式只排程不发；processor 到点会读权威态
         // 做 shouldStop——候选人已回则丢弃）。fire-and-forget，失败不影响主漏斗。
-        await durable?.assertOwned?.();
+        await assertOwned?.();
         const scheduled = this.followUpScheduler.scheduleFollowUp({
           sessionRef: { corpId, userId, sessionId: chatId },
           scenarioCode: 'opening_no_reply',
           anchorEventId: 'opening',
-          anchorAt: durable ? Date.parse(durable.turn.inputOccurredAt) : Date.now(),
-          channelIdentity: this.buildReengagementChannelIdentity(
-            parsed,
-            primaryMessage,
-            stableBotUserId,
-          ),
+          anchorAt: turn ? Date.parse(turn.inputOccurredAt) : Date.now(),
+          channelIdentity,
         });
-        if (durable) {
+        if (turn) {
           const result = await scheduled;
           if (result?.reason === 'enqueue_error') throw new Error('Opening schedule not persisted');
         } else
@@ -1610,20 +1897,20 @@ export class ReplyWorkflowService {
         eventName: 'agent.replied' as const,
         idempotencyKey: `${traceId}:replied`,
         botImId,
-        managerName: primaryMessage.botUserId,
+        managerName,
         sourceChannel: 'unknown',
         userId,
         chatId,
-        ...(durable ? { occurredAt: durable.turn.inputOccurredAt } : {}),
+        ...(turn ? { occurredAt: turn.inputOccurredAt } : {}),
       };
-      await durable?.assertOwned?.();
-      if (durable) await this.opsEventsRecorder.recordEventDurably(repliedInput, owned);
+      await assertOwned?.();
+      if (turn) await this.opsEventsRecorder.recordEventDurably(repliedInput, owned);
       else await this.opsEventsRecorder.recordEvent(repliedInput);
       return 'reply';
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);
-      if (durable) throw error;
+      if (turn) throw error;
       return 'unknown';
     }
   }

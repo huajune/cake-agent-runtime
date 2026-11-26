@@ -10,7 +10,9 @@ describe('SystemConfigService', () => {
 
   const mockSystemConfigRepository = {
     getConfigValue: jest.fn(),
+    getConfigValueOrThrow: jest.fn(),
     setConfigValue: jest.fn(),
+    setConfigValueOrThrow: jest.fn(),
   };
 
   const mockConfigService = {
@@ -41,6 +43,9 @@ describe('SystemConfigService', () => {
     service = module.get<SystemConfigService>(SystemConfigService);
 
     jest.clearAllMocks();
+    mockSystemConfigRepository.getConfigValueOrThrow.mockImplementation((key: string) =>
+      mockSystemConfigRepository.getConfigValue(key),
+    );
 
     // Reset memory cache state
     (service as any).aiReplyEnabled = null;
@@ -355,6 +360,59 @@ describe('SystemConfigService', () => {
       // Backoff expiry should be ~30 seconds
       const expiry = (service as any).agentReplyConfigExpiry;
       expect(expiry).toBeGreaterThan(Date.now());
+      expect(mockSystemConfigRepository.getConfigValueOrThrow).toHaveBeenCalledWith(
+        'agent_reply_config',
+      );
+      expect(mockSystemConfigRepository.setConfigValue).not.toHaveBeenCalled();
+      expect(mockRedisService.set).not.toHaveBeenCalled();
+    });
+
+    it('keeps the last successful chain on a failed refresh, then recovers after backoff', async () => {
+      const clock = jest.spyOn(Date, 'now');
+      let now = Date.now();
+      clock.mockImplementation(() => now);
+      try {
+        mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+          ...DEFAULT_AGENT_REPLY_CONFIG,
+          defaultFallbackModelIds: ['deepseek/deepseek-v4-pro'],
+        });
+        expect(await service.getFallbackChainOverride('chat')).toEqual([
+          'deepseek/deepseek-v4-pro',
+        ]);
+        now += 1001;
+        mockRedisService.set.mockClear();
+        mockRedisService.get.mockRejectedValue(new Error('Redis unavailable'));
+        mockSystemConfigRepository.getConfigValue.mockRejectedValue(new Error('DB unavailable'));
+        expect(await service.getFallbackChainOverride('chat')).toEqual([
+          'deepseek/deepseek-v4-pro',
+        ]);
+        expect(mockSystemConfigRepository.setConfigValue).not.toHaveBeenCalled();
+        expect(mockRedisService.set).not.toHaveBeenCalled();
+        const reads = mockSystemConfigRepository.getConfigValueOrThrow.mock.calls.length;
+        now += 29000;
+        await service.getFallbackChainOverride('chat');
+        expect(mockSystemConfigRepository.getConfigValueOrThrow).toHaveBeenCalledTimes(reads);
+        now += 1001;
+        mockRedisService.get.mockResolvedValue(null);
+        mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+          ...DEFAULT_AGENT_REPLY_CONFIG,
+          defaultFallbackModelIds: ['deepseek/deepseek-flash'],
+        });
+        expect(await service.getFallbackChainOverride('chat')).toEqual(['deepseek/deepseek-flash']);
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it('retains the fallback chain when a forced cache refresh cannot reach the database', async () => {
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        defaultFallbackModelIds: ['deepseek/deepseek-v4-pro'],
+      });
+      await service.getAgentReplyConfig();
+      mockSystemConfigRepository.getConfigValue.mockRejectedValue(new Error('DB unavailable'));
+      await service.refreshCache();
+      expect(await service.getFallbackChainOverride('chat')).toEqual(['deepseek/deepseek-v4-pro']);
     });
   });
 
@@ -608,12 +666,9 @@ describe('SystemConfigService', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null when DB throws error', async () => {
-      mockSystemConfigRepository.getConfigValue.mockRejectedValue(new Error('DB error'));
-
-      const result = await service.getSystemConfig();
-
-      expect(result).toBeNull();
+    it('propagates a DB error so consumers retain their last known configuration', async () => {
+      mockSystemConfigRepository.getConfigValueOrThrow.mockRejectedValueOnce(new Error('DB error'));
+      await expect(service.getSystemConfig()).rejects.toThrow('DB error');
     });
   });
 
@@ -623,7 +678,7 @@ describe('SystemConfigService', () => {
     it('should merge new config with existing config', async () => {
       const existingConfig = { workerConcurrency: 3 };
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(existingConfig);
-      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockResolvedValue(undefined);
 
       const result = await service.updateSystemConfig({ workerConcurrency: 10 });
 
@@ -632,7 +687,7 @@ describe('SystemConfigService', () => {
 
     it('should create config from scratch when no existing config', async () => {
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
-      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockResolvedValue(undefined);
 
       const result = await service.updateSystemConfig({ workerConcurrency: 5 });
 
@@ -641,14 +696,30 @@ describe('SystemConfigService', () => {
 
     it('should persist to DB', async () => {
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
-      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockResolvedValue(undefined);
 
       await service.updateSystemConfig({ workerConcurrency: 5 });
 
-      expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
+      expect(mockSystemConfigRepository.setConfigValueOrThrow).toHaveBeenCalledWith(
         'system_config',
         expect.objectContaining({ workerConcurrency: 5 }),
         '系统配置（Worker 并发数等）',
+      );
+    });
+    it('propagates unconfirmed writes and does not overwrite an unreadable config', async () => {
+      mockSystemConfigRepository.getConfigValueOrThrow.mockRejectedValueOnce(
+        new Error('read failed'),
+      );
+      await expect(service.updateSystemConfig({ workerConcurrency: 50 })).rejects.toThrow(
+        'read failed',
+      );
+      expect(mockSystemConfigRepository.setConfigValueOrThrow).not.toHaveBeenCalled();
+      mockSystemConfigRepository.getConfigValueOrThrow.mockResolvedValueOnce(null);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockRejectedValueOnce(
+        new Error('write failed'),
+      );
+      await expect(service.updateSystemConfig({ workerConcurrency: 50 })).rejects.toThrow(
+        'write failed',
       );
     });
   });

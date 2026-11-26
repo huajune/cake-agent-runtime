@@ -116,6 +116,8 @@
 
 在隔离环境用真实 Supabase 密码会话验过从「登记组织」到供应商员工登录的完整流程。两位河南员工都能看整个河南中心，模拟供应商只能看本组织，总部员工可跨组织查看。账号管理和 AI 总开关仅对 `cakeadmin` 开放。
 
+11 月 26 日，托管测试项目已关闭自行注册。用已确认号码的虚拟员工实测，手机号＋密码返回 `phone_provider_disabled`。控制台关闭短信确认后仍要求短信服务凭据，Phone 尚未启用。本次没有接入短信服务，测试账号已清理。正式全员开户还需等测试项目实登通过。
+
 测试库用河南和供应商各自的托管号验收。两边的聊天、流水与统计归入各自组织，事件重放只记一次。同组织内更换小组或负责人，已记录的业务仍可查看。[数据库验收用例](../../tests/supabase/business-tenant-ownership.sql)
 
 正式发布前，按发布当天的 Stride 目录核对绑定、生效时间和总部及各中心的登录范围。正式迁移、私下交付初始密码、历史回填分别留存验收结果。[发布与回填待办](../todo/business-data-tenant-id.md)
@@ -124,7 +126,7 @@
 
 成员已登记在 `tenant_members`。本版上线后，运行时继续读取 `system_config` 中 `key=hosting_member_config` 的 JSON。它按 `members[botImId]` 保存可选的海绵 token、飞书接收人 open ID 和显示名、企微昵称及人设。顶层可配置运营接收人和任务派单。海绵 token 由业务方更新。蛋糕将配置缓存 5 分钟，到期后在下次使用时重新读取。上游凭据失效时需更新配置。飞书 open ID 用于标识收件人，应用调用凭据由服务端按飞书返回的有效期重新获取。[托管配置实现](../../src/biz/hosting-config/services/hosting-member-config.service.ts) · [飞书应用认证](../../src/infra/feishu/services/api.service.ts)
 
-后续将海绵授权归到租户的业务账号，把个人接收人关联成员，运营接收人和派单规则按组织登记，企微昵称和人设保留在 Bot 上。等报名、预约、通知和 Bot 身份全部从新来源读取并验收后，才能删除这行配置。[配置字段](../../src/biz/hosting-config/types/hosting-member-config.types.ts) · [配置键盘点](../db/database-schema.md#11-system_config---系统配置)
+现有 Bot 的海绵 token、飞书接收人和路由继续使用这份配置。海绵后续鉴权按上游提供的接口再评估。[配置字段](../../src/biz/hosting-config/types/hosting-member-config.types.ts) · [配置键盘点](../db/database-schema.md#11-system_config---系统配置)
 
 1. 登记三个内部租户。核对全部在用同事、渠道连接、Stride 小组 ID、负责人与已知手机号。每人一个档案，每位组长负责一个小组，组内可以有多个 Bot。手机号待补的同事先建档，身份有冲突的交负责人确认。
 2. 为新业务记录写入租户。历史记录按下表分批处理，同时核对外部账号的绑定时间。迁移前后逐租户对账聊天、工单和报表数量，检查重试中的任务。

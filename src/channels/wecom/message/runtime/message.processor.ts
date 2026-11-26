@@ -5,6 +5,8 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
+import { resolveBullPrefix } from '@infra/queue/bull.module';
+import { createMessageWorkerConsumer } from './message-worker-consumer';
 import { ConfigService } from '@nestjs/config';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -50,16 +52,15 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    await this.workerManager.initialize();
-    this.setupQueueEventListeners();
-    await this.waitForQueueReady();
-    // 使用 currentConcurrency 注册，避免 Bull 拉起的 job 数超过 semaphore 容量后
-    // 空转 job 占住 lockDuration（60s），阻塞后续 delayed job 的调度。
-    this.registerWorkers(this.workerManager.getCurrentConcurrency());
-    await this.waitForBclientReady();
-
-    this.logger.log(
-      `MessageProcessor 已初始化（简化版，并发数: ${this.workerManager.getCurrentConcurrency()}）`,
+    await this.workerManager.initialize(
+      (concurrency) =>
+        createMessageWorkerConsumer(
+          this.messageQueue,
+          resolveBullPrefix(this.configService),
+          concurrency,
+          (worker) => this.setupQueueEventListeners(worker),
+        ),
+      (job) => this.handleProcessJob(job),
     );
   }
 
@@ -81,7 +82,10 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     let timer: NodeJS.Timeout | undefined;
     try {
       const result = await Promise.race([
-        this.messageQueue.close().then(() => 'drained' as const),
+        this.workerManager
+          .stop()
+          .then(() => this.messageQueue.close())
+          .then(() => 'drained' as const),
         new Promise<'timeout'>((resolve) => {
           timer = setTimeout(() => resolve('timeout'), this.drainTimeoutMs);
         }),
@@ -104,98 +108,26 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async waitForQueueReady(): Promise<void> {
-    const maxWaitTime = 30000;
-    const checkInterval = 100;
-    const startTime = Date.now();
-
-    return new Promise((resolve) => {
-      const checkClient = () => {
-        const clientStatus = this.messageQueue.client?.status;
-
-        if (clientStatus === 'ready') {
-          this.logger.log('[Bull] ✅ Queue client 已就绪');
-          resolve();
-          return;
-        }
-
-        if (Date.now() - startTime > maxWaitTime) {
-          this.logger.warn('[Bull] ⚠️ Queue client 连接超时，继续运行');
-          resolve();
-          return;
-        }
-
-        setTimeout(checkClient, checkInterval);
-      };
-
-      checkClient();
-    });
-  }
-
-  private async waitForBclientReady(): Promise<void> {
-    const queue = this.messageQueue as Queue & {
-      bclient?: {
-        status?: string;
-      };
-    };
-    const maxWaitTime = 30000;
-    const checkInterval = 100;
-    const startTime = Date.now();
-
-    return new Promise((resolve) => {
-      const checkBclient = () => {
-        const bclientStatus = queue.bclient?.status;
-
-        if (bclientStatus === 'ready') {
-          this.logger.log('[Bull] ✅ bclient 连接就绪');
-          resolve();
-          return;
-        }
-
-        if (Date.now() - startTime > maxWaitTime) {
-          this.logger.warn('[Bull] ⚠️ bclient 连接超时，继续运行');
-          resolve();
-          return;
-        }
-
-        setTimeout(checkBclient, checkInterval);
-      };
-
-      checkBclient();
-    });
-  }
-
-  private setupQueueEventListeners(): void {
-    this.messageQueue.on('completed', (job: Job) => {
+  private setupQueueEventListeners(consumer: Queue): void {
+    consumer.on('error', (error: Error) =>
+      this.logger.error(`[Bull] 消费者连接异常: ${toErrorMessage(error)}`),
+    );
+    consumer.on('completed', (job: Job) => {
       this.logger.log(`[Bull] ✅ 任务 ${job.id} 完成`);
     });
 
-    this.messageQueue.on('failed', (job: Job, error: Error) => {
+    consumer.on('failed', (job: Job, error: Error) => {
       this.logger.error(`[Bull] ❌ 任务 ${job.id} 失败: ${error.message}`);
       void this.queueFailures.exhausted('message-merge', job, error);
     });
 
-    this.messageQueue.on('active', (job: Job) => {
+    consumer.on('active', (job: Job) => {
       this.logger.log(`[Bull] 🔄 任务 ${job.id} 开始处理`);
     });
 
-    this.messageQueue.on('stalled', (job: Job) => {
+    consumer.on('stalled', (job: Job) => {
       this.logger.warn(`[Bull] ⚠️ 任务 ${job.id} 卡住（stalled）`);
     });
-  }
-
-  /**
-   * 注册 Worker
-   */
-  private registerWorkers(concurrency: number): void {
-    this.logger.log(`[Bull] 正在注册 Worker，并发数: ${concurrency}...`);
-
-    // 注册 'process' (SimpleMergeService 创建的任务)
-    this.messageQueue.process('process', concurrency, async (job: Job) => {
-      return this.handleProcessJob(job);
-    });
-
-    this.logger.log(`[Bull] ✅ Worker 已注册`);
   }
 
   /**
@@ -209,7 +141,6 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     let stopLockHeartbeat: (() => void) | undefined;
 
     try {
-      await this.workerManager.acquireExecutionSlot();
       lockAcquired = await this.simpleMergeService.acquireProcessingLock(chatId, lockOwner);
       if (!lockAcquired) {
         this.logger.debug(`[Bull] chatId=${chatId} 已有任务在处理中，跳过当前任务 ${job.id}`);
@@ -286,7 +217,6 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`[Bull] 释放 chatId=${chatId} 处理锁失败: ${errorMessage}`);
         });
       }
-      this.workerManager.releaseExecutionSlot();
     }
   }
 
@@ -369,22 +299,11 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
 
   // ==================== 公共 API ====================
 
-  async setConcurrency(newConcurrency: number): Promise<{
-    success: boolean;
-    message: string;
-    previousConcurrency: number;
-    currentConcurrency: number;
-  }> {
+  setConcurrency(newConcurrency: number) {
     return this.workerManager.setConcurrency(newConcurrency);
   }
 
-  async getWorkerStatus(): Promise<{
-    concurrency: number;
-    activeJobs: number;
-    minConcurrency: number;
-    maxConcurrency: number;
-    messageMergeEnabled: boolean;
-  }> {
+  getWorkerStatus() {
     return this.workerManager.getStatus();
   }
 

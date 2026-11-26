@@ -1,6 +1,6 @@
 # 租户数据表与字段
 
-2026-11-24，按 Supabase 测试库系统目录核对。蛋糕的 `public` 有 33 张实体表，14 张有名为 `tenant_id` 的物理列，19 张采用其他归属方式或尚未落列。此处统计表结构，历史行的归属完整率须另按业务时间核对。Supabase 服务自身的 Auth、Storage、系统表以及 SQL 视图各自独立于这一口径。上期移出的策略历史保存在 `strategy_archive.strategy_config_changelog`，属于平台归档。[归档表的 7 个字段](database-schema.md#13-strategy_config_changelog---策略变更日志)
+2026-11-26，按 Supabase 测试库系统目录核对。蛋糕的 `public` 有 34 张实体表，15 张有名为 `tenant_id` 的物理列，19 张采用其他归属方式或尚未落列。此处统计表结构，历史行的归属完整率须另按业务时间核对。Supabase 服务自身的 Auth、Storage、系统表以及 SQL 视图各自独立于这一口径。上期移出的策略历史保存在 `strategy_archive.strategy_config_changelog`，属于平台归档。[归档表的 7 个字段](database-schema.md#13-strategy_config_changelog---策略变更日志)
 
 ## 本期新增的 7 张实体表
 
@@ -114,26 +114,27 @@ Stride 目录快照，主键为 `(connection_id)`。
 
 手机号、已绑定的 Auth 用户、非空负责小组、飞书人员标识和专用登录名在成员表分别唯一。一位组长可以先开户、后绑组。成员表只持有登录身份的外键，密码由 Supabase Auth 管理。
 
-## 其余 26 张表的归属和完整字段
+## 其余 27 张表的归属和完整字段
 
 回复回合、业务动作和候选人黑名单是需要优先审视的三类业务数据。动作回执、人工裁定以及回合输入已有指向父记录的外键。若以后开放这些明细给租户，先确认父记录归属及查询入口。跨租户的监控汇总、平台策略和评测资产继续按其实际用途解释。
 
 | 表 | 字段数 | 当前归属与缺口 |
 | --- | ---: | --- |
 | `agent_action_evidence` | 6 | 随动作。用 (corp_id, action_id) 外键关联动作主表。 |
-| `agent_action_records` | 31 | 待完善。保存 account_id、chat_id、input_occurred_at。预约动作恢复时按原 Bot 和时间解组织，动作主表尚无独立租户列。 |
+| `agent_action_records` | 28 | 待完善。保存 account_id、chat_id、input_occurred_at。预约动作恢复时按原 Bot 和时间解组织，动作主表尚无独立租户列。 |
 | `agent_action_reviews` | 8 | 随动作。用 (corp_id, action_id) 外键关联原动作。 |
 | `agent_execution_events` | 11 | 有 tenant_id。依消息流水的 trace_id 继承。 |
 | `agent_long_term_memories` | 14 | 有 tenant_id。关系记忆按租户、企业、候选人和 Bot 区分，预约指针保存在 bot_user_id 为空的候选人行。 |
 | `agent_reply_inputs` | 5 | 随回复回合。外键为 (corp_id, logical_turn_id)，也保留原消息 ID。回合主表尚无租户列。 |
 | `agent_reply_turns` | 22 | 待完善。保存账号、会话、输入及业务时间，要做租户独立查询需核实原始消息归属。 |
 | `candidate_blacklist` | 17 | 现行黑名单按 target_id 去重，命中策略共用。记录含 Bot/会话线索，尚不支持同一对象在不同租户独立封禁。 |
-| `chat_messages` | 26 | 有 tenant_id。按原消息时间、渠道连接和 Bot/小组的有效登记归属。 |
+| `chat_messages` | 25 | 有 tenant_id。按原消息时间、渠道连接和 Bot/小组的有效登记归属。 |
 | `daily_ops_report` | 25 | 有 tenant_id。日报投影的唯一维度含组织、企业、日期和 Bot。 |
 | `guardrail_review_records` | 29 | 有 tenant_id。依消息流水的 trace_id 继承。 |
 | `handoff_events` | 19 | 有 tenant_id。按原 Bot、介入时间归属。 |
-| `message_processing_invocations` | 7 | 有 tenant_id。按 message_id 继承父流水归属。 |
-| `message_processing_records` | 38 | 有 tenant_id。按 Bot 与 source_occurred_at 确认组织，随后供子记录继承。 |
+| `message_processing_invocations` | 9 | 有 tenant_id。逐次模型 HTTP 请求按 message_id 继承主流水归属。 |
+| `message_processing_records` | 36 | 有 tenant_id。按 Bot 与 source_occurred_at 确认组织，随后供子记录继承。 |
+| `message_processing_turn_snapshots` | 5 | 有 tenant_id。回合请求和响应按 message_id 继承主流水归属。 |
 | `monitoring_daily_stats` | 19 | 全平台日聚合。一行可计入多个租户的请求。 |
 | `monitoring_error_logs` | 15 | 平台错误与告警。部分行有 message_id 可回查，组件级故障没有单一业务租户。 |
 | `monitoring_hourly_stats` | 27 | 全平台小时聚合。一行可计入多个租户的请求。 |
@@ -143,7 +144,7 @@ Stride 目录快照，主键为 `(connection_id)`。
 | `system_config` | 5 | 按 key 存配置，可含跨租户的托管配置 JSON，服务读取时按具体用途拆解。 |
 | `test_batches` | 17 | 平台评测批次，测试套件按 batch 管理。 |
 | `test_conversation_snapshots` | 17 | 平台评测资产，关联评测批次，引用业务样本时需要按样本来源控制使用。 |
-| `test_executions` | 34 | 平台评测执行，关联测试批次，可关联对话快照。 |
+| `test_executions` | 33 | 平台评测执行，关联测试批次，可关联对话快照。 |
 | `user_activity` | 14 | 有 tenant_id。按会话保留活动汇总，跨事件统计使用带归属的事件与聊天明细。 |
 | `user_hosting_status` | 14 | 有 tenant_id。租户人工暂停写本组织，user_id 仍是会话级唯一键，混合归属会话拒绝租户操作。 |
 
@@ -155,9 +156,9 @@ Stride 目录快照，主键为 `(connection_id)`。
 
 `corp_id text`、`action_id text`、`attempt_id text`、`evidence_hash text`、`completion jsonb`、`created_at timestamptz`。
 
-**agent_action_records（31 列）**
+**agent_action_records（28 列）**
 
-`corp_id text`、`action_id text`、`previous_action_id text`、`account_id text`、`chat_id text`、`logical_turn_id text`、`kind text`、`resource_hash text`、`payload_hash text`、`request_id text`、`intent jsonb`、`input_occurred_at timestamptz`、`retention_redacted boolean`、`mode text`、`status text`、`local_sync text`、`owner text`、`dispatch_attempt_id text`、`fence integer`、`attempts integer`、`result jsonb`、`evidence jsonb`、`retryable boolean`、`next_check_at timestamptz`、`recovery_deadline timestamptz`、`review_required boolean`、`created_at timestamptz`、`updated_at timestamptz`、`accepted_attempt_id text`、`accepted_evidence_hash text`、`body_ref_v1 boolean`。
+`corp_id text`、`action_id text`、`previous_action_id text`、`account_id text`、`chat_id text`、`logical_turn_id text`、`kind text`、`resource_hash text`、`payload_hash text`、`request_id text`、`intent jsonb`、`input_occurred_at timestamptz`、`retention_redacted boolean`、`mode text`、`status text`、`local_sync text`、`owner text`、`dispatch_attempt_id text`、`fence integer`、`attempts integer`、`result jsonb`、`evidence jsonb`、`retryable boolean`、`next_check_at timestamptz`、`recovery_deadline timestamptz`、`review_required boolean`、`created_at timestamptz`、`updated_at timestamptz`。
 
 **agent_action_reviews（8 列）**
 
@@ -183,9 +184,9 @@ Stride 目录快照，主键为 `(connection_id)`。
 
 `id uuid`、`target_id text`、`reason text`、`operator text`、`chat_id text`、`im_contact_id text`、`contact_name text`、`source text`、`hit_count integer`、`last_hit_at timestamptz`、`last_hit_chat_id text`、`last_hit_bot_id text`、`last_hit_message_id text`、`created_at timestamptz`、`updated_at timestamptz`、`im_bot_id text`、`bot_name text`。
 
-**chat_messages（26 列）**
+**chat_messages（25 列）**
 
-`id uuid`、`chat_id text`、`message_id text`、`role text`、`content text`、`timestamp timestamptz`、`candidate_name text`、`manager_name text`、`created_at timestamptz`、`is_room boolean`、`message_type text`、`source text`、`im_bot_id text`、`im_contact_id text`、`contact_type text`、`is_self boolean`、`payload jsonb`、`avatar text`、`external_user_id text`、`visual_facts jsonb`、`history_only_reason text`、`payload_text_v1 smallint`、`hosting_connection_id text`、`hosting_group_id text`、`tenant_id text`、`hosting_observed_group_id text`。
+`id uuid`、`chat_id text`、`message_id text`、`role text`、`content text`、`timestamp timestamptz`、`candidate_name text`、`manager_name text`、`created_at timestamptz`、`is_room boolean`、`message_type text`、`source text`、`im_bot_id text`、`im_contact_id text`、`contact_type text`、`is_self boolean`、`payload jsonb`、`avatar text`、`external_user_id text`、`visual_facts jsonb`、`history_only_reason text`、`hosting_connection_id text`、`hosting_group_id text`、`tenant_id text`、`hosting_observed_group_id text`。
 
 **daily_ops_report（25 列）**
 
@@ -199,13 +200,17 @@ Stride 目录快照，主键为 `(connection_id)`。
 
 `id bigint`、`chat_id text`、`corp_id text`、`user_id text`、`reason_code text`、`reason text`、`action_advice text`、`stage text`、`bot_im_id text`、`work_order_id bigint`、`idempotency_key text`、`created_at timestamptz`、`missing_job_info jsonb`、`job_id bigint`、`sequence_no integer`、`outcome text`、`resolved_at timestamptz`、`recorded_at timestamptz`、`tenant_id text`。
 
-**message_processing_invocations（7 列）**
+**message_processing_invocations（9 列）**
 
-`message_id text`、`agent_invocation jsonb`、`created_at timestamptz`、`write_version uuid`、`response_tools_v1 bytea`、`superseded_invocation jsonb`、`tenant_id text`。
+`message_id text`、`id uuid`、`started_at timestamptz`、`provider text`、`http_status smallint`、`complete boolean`、`request_body bytea`、`response_body bytea`、`tenant_id text`。
 
-**message_processing_records（38 列）**
+**message_processing_records（36 列）**
 
-`id bigint`、`message_id text`、`chat_id text`、`user_id text`、`user_name text`、`manager_name text`、`received_at timestamptz`、`message_preview text`、`reply_preview text`、`reply_segments integer`、`status text`、`error text`、`scenario text`、`total_duration integer`、`queue_duration integer`、`prep_duration integer`、`ai_duration integer`、`send_duration integer`、`token_usage integer`、`is_fallback boolean`、`fallback_success boolean`、`created_at timestamptz`、`updated_at timestamptz`、`batch_id character varying(255)`、`alert_type text`、`tool_calls jsonb`、`agent_steps jsonb`、`anomaly_flags text[]`、`memory_snapshot jsonb`、`post_processing_status jsonb`、`bot_im_id text`、`ttft_ms integer`、`guardrail_input jsonb`、`guardrail_output jsonb`、`invocation_version uuid`、`step_tools_v1 bytea`、`source_occurred_at timestamptz`、`tenant_id text`。
+`id bigint`、`message_id text`、`chat_id text`、`user_id text`、`user_name text`、`manager_name text`、`received_at timestamptz`、`message_preview text`、`reply_preview text`、`reply_segments integer`、`status text`、`error text`、`scenario text`、`total_duration integer`、`queue_duration integer`、`prep_duration integer`、`ai_duration integer`、`send_duration integer`、`token_usage integer`、`is_fallback boolean`、`fallback_success boolean`、`created_at timestamptz`、`updated_at timestamptz`、`batch_id character varying(255)`、`alert_type text`、`tool_calls jsonb`、`agent_steps jsonb`、`anomaly_flags text[]`、`memory_snapshot jsonb`、`post_processing_status jsonb`、`bot_im_id text`、`ttft_ms integer`、`guardrail_input jsonb`、`guardrail_output jsonb`、`source_occurred_at timestamptz`、`tenant_id text`。
+
+**message_processing_turn_snapshots（5 列）**
+
+`message_id text`、`created_at timestamptz`、`tenant_id text`、`request jsonb`、`response jsonb`。
 
 **monitoring_daily_stats（19 列）**
 
@@ -243,9 +248,9 @@ Stride 目录快照，主键为 `(connection_id)`。
 
 `id uuid`、`batch_id uuid`、`feishu_record_id character varying(100)`、`conversation_id character varying(100)`、`participant_name character varying(200)`、`full_conversation jsonb`、`raw_text text`、`total_turns integer`、`avg_similarity_score numeric`、`min_similarity_score numeric`、`status character varying(50)`、`created_at timestamptz`、`updated_at timestamptz`、`source_trace jsonb`、`memory_setup jsonb`、`memory_assertions jsonb`、`validation_title character varying(500)`。
 
-**test_executions（34 列）**
+**test_executions（33 列）**
 
-`id uuid`、`batch_id uuid`、`case_id character varying(100)`、`case_name character varying(500)`、`category character varying(100)`、`test_input jsonb`、`expected_output text`、`agent_request jsonb`、`agent_response jsonb`、`actual_output text`、`tool_calls jsonb`、`execution_status character varying(20)`、`duration_ms integer`、`token_usage jsonb`、`error_message text`、`review_status character varying(20)`、`review_comment text`、`reviewed_by character varying(100)`、`reviewed_at timestamptz`、`failure_reason character varying(100)`、`created_at timestamptz`、`test_scenario character varying(100)`、`conversation_snapshot_id uuid`、`turn_number integer`、`similarity_score numeric`、`input_message text`、`evaluation_reason text`、`reviewer_source character varying(50)`、`source_trace jsonb`、`execution_trace jsonb`、`memory_setup jsonb`、`memory_assertions jsonb`、`memory_trace jsonb`、`response_text_v1 smallint`。
+`id uuid`、`batch_id uuid`、`case_id character varying(100)`、`case_name character varying(500)`、`category character varying(100)`、`test_input jsonb`、`expected_output text`、`agent_request jsonb`、`agent_response jsonb`、`actual_output text`、`tool_calls jsonb`、`execution_status character varying(20)`、`duration_ms integer`、`token_usage jsonb`、`error_message text`、`review_status character varying(20)`、`review_comment text`、`reviewed_by character varying(100)`、`reviewed_at timestamptz`、`failure_reason character varying(100)`、`created_at timestamptz`、`test_scenario character varying(100)`、`conversation_snapshot_id uuid`、`turn_number integer`、`similarity_score numeric`、`input_message text`、`evaluation_reason text`、`reviewer_source character varying(50)`、`source_trace jsonb`、`execution_trace jsonb`、`memory_setup jsonb`、`memory_assertions jsonb`、`memory_trace jsonb`。
 
 **user_activity（14 列）**
 

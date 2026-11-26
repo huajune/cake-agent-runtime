@@ -1,5 +1,15 @@
 import { AllowMachineAccess } from '@infra/server/guards/api-token.guard';
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  DefaultValuePipe,
+  Get,
+  Header,
+  Param,
+  ParseIntPipe,
+  ParseUUIDPipe,
+  Query,
+} from '@nestjs/common';
 import { ChatSessionService } from './services/chat-session.service';
 import { MessageProcessingService } from './services/message-processing.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
@@ -161,8 +171,35 @@ export class MessageController {
     });
   }
 
+  @Get('message-processing-records/:messageId/model-calls')
+  @Header('Cache-Control', 'no-store')
+  listModelCalls(
+    @Param('messageId') messageId: string,
+    @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
+  ) {
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new BadRequestException('offset 无效');
+    return this.messageProcessingService.listModelCalls(messageId, offset);
+  }
+
+  @Get('message-processing-records/:messageId/model-calls/:id')
+  @Header('Cache-Control', 'no-store')
+  getModelCall(@Param('messageId') messageId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.messageProcessingService.getModelCall(messageId, id);
+  }
+
+  @Get('message-processing-records/:messageId/request')
+  async getCapturedRequest(@Param('messageId') messageId: string) {
+    return { request: await this.messageProcessingService.getCapturedRequest(messageId) };
+  }
+
   @Get('message-processing-records/:messageId')
-  async getMessageProcessingRecordDetail(@Param('messageId') messageId: string) {
-    return this.messageProcessingService.getMessageProcessingRecordById(messageId);
+  async getMessageProcessingRecordDetail(
+    @Param('messageId') messageId: string,
+    @Query('requestView') requestView?: string,
+  ) {
+    return this.messageProcessingService.getMessageProcessingRecordById(
+      messageId,
+      requestView === 'context' ? 'detail' : 'full',
+    );
   }
 }

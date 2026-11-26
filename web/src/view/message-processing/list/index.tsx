@@ -276,8 +276,6 @@ export default function MessageProcessingPage() {
     }
   }, [tailLoading, headLoading]);
 
-  // Tab 数据量
-  const realtimeCount = stats.total; // 使用统计数据的总数
   const slowestCount = slowestMessages?.length || 0;
 
   return (
@@ -286,7 +284,6 @@ export default function MessageProcessingPage() {
         stats={stats}
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        realtimeCount={realtimeCount}
         slowestCount={slowestCount}
         timeRange={timeRange}
         onTimeRangeChange={handleTimeRangeChange}

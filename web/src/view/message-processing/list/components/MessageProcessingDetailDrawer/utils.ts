@@ -3,6 +3,7 @@ import type {
   MessageRecord,
   MessageRecordMemorySnapshot,
   MessageRecordToolCallStatus,
+  MessageRecordToolCall,
 } from '@/api/types/chat.types';
 import { asRecord } from '@/utils/object';
 import { buildAgentResponseTimeline, type AgentTimelinePart } from './agent-response-timeline';
@@ -26,6 +27,7 @@ export interface ToolCallInfo {
   name: string;
   status: MessageRecordToolCallStatus;
   toolCallId?: string;
+  decisions?: MessageRecordToolCall['decisions'];
   input?: unknown;
   output?: unknown;
   resultCount?: number;
@@ -59,14 +61,10 @@ function buildResponsePayload(response?: AnyRecord): AnyRecord | undefined {
   const payload: AnyRecord = {};
   const reply = asRecord(response.reply);
   const messages = asArray(response.messages);
-  const toolCalls = asArray(response.toolCalls);
-  const hasCoreResponse = Boolean(reply) || messages.length > 0 || toolCalls.length > 0;
-
   if (reply) payload.reply = reply;
   if (messages.length > 0) payload.messages = messages;
-  if (toolCalls.length > 0) payload.toolCalls = toolCalls;
 
-  if (!hasCoreResponse) return undefined;
+  if (!reply && messages.length === 0) return undefined;
 
   const usage = asRecord(response.usage);
   if (usage) payload.usage = usage;
@@ -351,19 +349,7 @@ function buildRenderablePartsFromResponseMessages(
 export function getAssistantRenderableMessage(message: MessageRecord): UIMessage | undefined {
   const response = getInvocationResponse(message);
   const responseMessages = asArray<AnyRecord>(response?.messages);
-  const invocationToolCalls = asArray<AnyRecord>(response?.toolCalls);
-  const directToolCalls = Array.isArray(message.toolCalls)
-    ? message.toolCalls
-    : invocationToolCalls.map((toolCall) => ({
-        toolName:
-          asString(toolCall.toolName) ||
-          asString(toolCall.tool) ||
-          asString(toolCall.name) ||
-          'unknown-tool',
-        args: toolCall.input ?? toolCall.args ?? toolCall.arguments ?? {},
-        result: toolCall.result ?? toolCall.output,
-        status: inferToolStatus(toolCall),
-      }));
+  const directToolCalls = message.toolCalls ?? [];
   const reply = asRecord(response?.reply);
   const replyReasoning = asString(reply?.reasoning) || asString(response?.reasoningPreview);
   const replyContent =
@@ -536,7 +522,7 @@ export function getResponseText(message: MessageRecord): string {
 /**
  * 将执行快照中的 Instructions 全文和 Messages 展示为可读文本。
  *
- * agent_invocation.request.agentRequest 里存了完整的 instructions（旧记录为 system，
+ * 快照的 request.agentRequest 存储实际捕获的 instructions（部分调用方使用 system，
  * 含注入的
  * [用户档案] / [会话记忆] / [历史求职意向] 等记忆段）和消息序列，但 "LLM 请求"
  * tab 以 JSON 展示，长文本被转义成单行没法读——排障时"模型到底看到了什么记忆"
@@ -569,7 +555,35 @@ function buildFinalPromptText(agentRequest?: AnyRecord): string | undefined {
   return sections.length > 0 ? sections.join('\n\n') : undefined;
 }
 
-export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
+function toolFieldsDisplayed(raw: unknown, tool: ToolCallInfo | undefined): boolean {
+  const source = asRecord(raw);
+  if (!source || !tool) return false;
+  const displayed: AnyRecord = {
+    toolCallId: tool.toolCallId,
+    decisions: tool.decisions,
+    toolName: tool.name,
+    args: tool.input,
+    input: tool.input,
+    arguments: tool.input,
+    result: tool.output,
+    output: tool.output,
+    status: tool.status,
+    resultCount: tool.resultCount,
+    durationMs: tool.durationMs,
+    errorType: tool.errorType,
+    apiCode: tool.apiCode,
+  };
+  // 展示值直接取自同一个原始对象。未映射的旧字段继续在调试载荷中提供。
+  return Object.entries(source).every(
+    ([key, value]) =>
+      Object.prototype.hasOwnProperty.call(displayed, key) && displayed[key] === value,
+  );
+}
+
+export function getRawPayloadPanels(
+  message: MessageRecord,
+  detailTools: ToolCallInfo[],
+): RawPayloadPanel[] {
   const request = getInvocationRequest(message);
   const response = getInvocationResponse(message);
   const responseRecord = asRecord(response);
@@ -584,8 +598,10 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   if (requestPayload) {
     panels.push({
       key: 'request',
-      label: agentRequest ? 'LLM 请求' : '请求体',
-      description: agentRequest ? '实际发往大模型的请求快照' : '发送到 Agent 的完整业务请求',
+      label: agentRequest ? 'Agent 请求' : '回合请求',
+      description: agentRequest
+        ? 'Cake 准备的消息、提示词和工具定义。实际发送给供应商的正文可在「模型调用原文」逐次查看。'
+        : '本次处理留存的业务请求',
       data: requestPayload,
     });
   }
@@ -604,7 +620,7 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   if (debugRequestContext) {
     panels.push({
       key: 'debug-context',
-      label: '排障上下文',
+      label: '请求上下文',
       description: '处理记录里的链路标识、会话信息与调度上下文',
       data: debugRequestContext,
     });
@@ -643,20 +659,18 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   if (responsePayload) {
     panels.push({
       key: 'response',
-      label: '响应体',
-      description: 'Agent 返回的完整业务响应体',
+      label: '回合响应',
+      description: '本次处理的响应快照，包含留存的回复和消息。本轮调用清单见工具执行。',
       data: responsePayload,
     });
   }
 
-  const toolCalls = Array.isArray(message.toolCalls)
-    ? message.toolCalls
-    : asArray<AnyRecord>(responseRecord?.toolCalls);
-  if (toolCalls.length > 0) {
+  const toolCalls = message.toolCalls ?? [];
+  if (toolCalls.some((call, index) => !toolFieldsDisplayed(call, detailTools[index]))) {
     panels.push({
       key: 'tool-calls',
-      label: '工具执行',
-      description: '工具调用明细（入参 / 出参 / 状态）',
+      label: '工具原始数据',
+      description: '包含工具执行面板未展示的原始字段',
       data: toolCalls,
     });
   }
@@ -691,28 +705,13 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
     });
   }
 
-  if (message.agentInvocation?.http) {
-    panels.push({
-      key: 'http',
-      label: 'HTTP',
-      description: '调用链路的 HTTP 元信息',
-      data: message.agentInvocation.http,
-    });
-  }
-
-  if (message.error) {
-    panels.push({
-      key: 'error',
-      label: 'Error',
-      description: '最终记录到监控表的异常信息',
-      data: message.error,
-    });
-  }
-
   return panels;
 }
 
-export function getHistoryMessages(message: MessageRecord): Array<{
+export function getHistoryMessages(
+  message: MessageRecord,
+  { includeFallbackReply = true } = {},
+): Array<{
   role: 'user' | 'assistant';
   content: string;
 }> {
@@ -792,7 +791,7 @@ export function getHistoryMessages(message: MessageRecord): Array<{
     });
   }
 
-  const assistantReply = getResponseText(message);
+  const assistantReply = includeFallbackReply ? getResponseText(message) : undefined;
   if (assistantReply && assistantReply !== '(无响应内容)') {
     reconstructedMessages.push({
       role: 'assistant',
@@ -803,93 +802,46 @@ export function getHistoryMessages(message: MessageRecord): Array<{
   return reconstructedMessages;
 }
 
-function inferToolStatus(toolCall: AnyRecord): ToolCallInfo['status'] {
-  const result = asRecord(toolCall.result) ?? asRecord(toolCall.output);
-  if (result?.success === true) return 'ok';
+function readToolDecisions(value: unknown): ToolCallInfo['decisions'] {
+  if (!Array.isArray(value)) return undefined;
+  // 完整展示过的标准结构沿用原值。含未知字段的历史记录仍可打开原始数据。
   if (
-    toolCall.state === 'error' ||
-    toolCall.state === 'output-error' ||
-    toolCall.state === 'input-error' ||
-    toolCall.state === 'output-denied' ||
-    result?.success === false
-  ) {
-    return 'error';
-  }
-  if (
-    toolCall.state === 'output-available' ||
-    toolCall.output !== undefined ||
-    toolCall.result !== undefined
-  ) {
-    return 'ok';
-  }
-  return 'unknown';
+    value.every((item) => {
+      const row = asRecord(item);
+      return row && Object.keys(row).length === 2 && asString(row.label) && asString(row.detail);
+    })
+  )
+    return value;
+  return value.flatMap((item) => {
+    const decision = asRecord(item);
+    const label = asString(decision?.label);
+    const detail = asString(decision?.detail);
+    return label && detail ? [{ label, detail }] : [];
+  });
 }
 
+/** 旧流水可能仅保留步骤或配对的快照；整组选择同一来源，避免重复拼接。 */
 export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
-  if (Array.isArray(message.toolCalls)) {
-    return message.toolCalls.map((toolCall) => {
-      const result = asRecord(toolCall.result);
-      const nestedApiCode = result?.apiCode;
-      return {
-        name: toolCall.toolName,
-        status: toolCall.status ?? 'unknown',
-        input: toolCall.args,
-        output: toolCall.result,
-        resultCount: toolCall.resultCount,
-        durationMs: toolCall.durationMs,
-        errorType: toolCall.errorType ?? asString(result?.errorType),
-        apiCode:
-          toolCall.apiCode ??
-          (typeof nestedApiCode === 'string' || typeof nestedApiCode === 'number'
-            ? nestedApiCode
-            : undefined),
-      };
-    });
-  }
-
-  const response = getInvocationResponse(message);
-  const directToolCalls = asArray<AnyRecord>(response?.toolCalls);
-  if (directToolCalls.length > 0) {
-    return directToolCalls.reduce<ToolCallInfo[]>((acc, toolCall) => {
-      const name = asString(toolCall.toolName);
-      if (!name) return acc;
-      const result = asRecord(toolCall.result ?? toolCall.output);
-      const apiCode = toolCall.apiCode ?? result?.apiCode;
-      acc.push({
-        name,
-        toolCallId: asString(toolCall.toolCallId),
-        status: inferToolStatus(toolCall),
-        input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
-        output: toolCall.result ?? toolCall.output,
-        errorType: asString(toolCall.errorType) ?? asString(result?.errorType),
-        apiCode: typeof apiCode === 'string' || typeof apiCode === 'number' ? apiCode : undefined,
-      });
-      return acc;
-    }, []);
-  }
-
-  const responseMessages = asArray<AnyRecord>(response?.messages);
-  return responseMessages.flatMap((item) =>
-    asArray<AnyRecord>(item.parts)
-      .filter(
-        (part) =>
-          part.type === 'dynamic-tool' ||
-          (typeof part.type === 'string' && part.type.startsWith('tool-')),
-      )
-      .map((part) => ({
-        name:
-          asString(part.toolName) || asString(part.type)?.replace(/^tool-/, '') || 'unknown-tool',
-        toolCallId: asString(part.toolCallId),
-        status:
-          part.state === 'output-available'
-            ? 'ok'
-            : part.state === 'error' || part.state === 'output-error'
-              ? 'error'
-              : 'unknown',
-        input: part.input ?? part.args,
-        output: part.output ?? part.result,
-      })),
-  );
+  return (message.toolCalls ?? []).map((toolCall) => {
+    const result = asRecord(toolCall.result);
+    const nestedApiCode = result?.apiCode;
+    return {
+      name: toolCall.toolName,
+      toolCallId: asString(toolCall.toolCallId),
+      decisions: readToolDecisions(toolCall.decisions),
+      status: toolCall.status ?? 'unknown',
+      input: toolCall.args,
+      output: toolCall.result,
+      resultCount: toolCall.resultCount,
+      durationMs: toolCall.durationMs,
+      errorType: toolCall.errorType ?? asString(result?.errorType),
+      apiCode:
+        toolCall.apiCode ??
+        (typeof nestedApiCode === 'string' || typeof nestedApiCode === 'number'
+          ? nestedApiCode
+          : undefined),
+    };
+  });
 }
 
 export function getTimingMetrics(message: MessageRecord): TimingMetrics {

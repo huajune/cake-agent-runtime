@@ -1,3 +1,7 @@
+import {
+  captureProviderFetch,
+  takeModelInvocations,
+} from '@observability/context/model-invocations';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import { ReplyWorkflowService } from '@channels/wecom/message/application/reply-workflow.service';
 import { EnterpriseMessageCallbackDto } from '@channels/wecom/message/ingress/message-callback.dto';
@@ -17,6 +21,7 @@ describe('ReplyWorkflowService', () => {
     markMessageAsProcessedAsync: jest.fn(),
   };
   const deliveryService = {
+    prepareSegments: (content: string) => [content],
     deliverReply: jest.fn(),
   };
   const runner = {
@@ -109,6 +114,8 @@ describe('ReplyWorkflowService', () => {
     stopPendingJobsForSessionScenario: jest.fn(),
   };
   const session = {
+    getSessionState: jest.fn().mockResolvedValue({}),
+    applyReplyJobProjection: jest.fn().mockResolvedValue(undefined),
     saveTerminalState: jest.fn(),
     recordCandidateActivity: jest.fn(),
     recordCandidateMessagesProcessed: jest.fn(),
@@ -538,6 +545,53 @@ describe('ReplyWorkflowService', () => {
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
   });
+  it('retries the original opening before acknowledging its input when follow-up admission fails', async () => {
+    const turn = persistedTurn('settled');
+    turn.deliveryResult = { outcome: 'complete', accepted: 1, total: 1 };
+    turn.recovery.effects = {
+      toolCalls: [],
+      context: {
+        corpId: turn.corpId,
+        chatId: turn.chatId,
+        userId: 'contact-1',
+        logicalTurnId: turn.logicalTurnId,
+        traceId: turn.logicalTurnId,
+        inputOccurredAt: turn.inputOccurredAt,
+        isGroupChat: false,
+      },
+      deliveredReply: {
+        anchors: { collectionContinued: false, presentedJobIds: [], asksForLocation: true },
+      },
+    };
+    followUpScheduler.scheduleFollowUp.mockResolvedValueOnce({
+      scheduled: false,
+      reason: 'enqueue_error',
+    });
+    await expect(service.resumeInputCompletion(turn)).rejects.toThrow('ack_repair_pending');
+    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    await service.resumeInputCompletion(turn);
+    expect(opsEventsRecorder.recordOpeningDurably).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'chat-1:opening',
+        occurredAt: turn.inputOccurredAt,
+      }),
+      turn.logicalTurnId,
+      undefined,
+    );
+    expect(
+      followUpScheduler.scheduleFollowUp.mock.calls.map(([input]) => [
+        input.scenarioCode,
+        input.anchorEventId,
+        input.anchorAt,
+      ]),
+    ).toEqual([
+      ['opening_no_reply', 'opening', Date.parse(turn.inputOccurredAt)],
+      ['opening_no_reply', 'opening', Date.parse(turn.inputOccurredAt)],
+    ]);
+    expect(replyTurns.acked).toHaveBeenCalledWith(turn, false, true);
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+  });
+
   it('keeps unconfirmed business effects pending without ACK', async () => {
     await expect(
       service.resumeInputCompletion({ ...persistedTurn('settled'), projectionStatus: 'none' }),
@@ -567,6 +621,29 @@ describe('ReplyWorkflowService', () => {
     expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
     expect(replyTurns.acked).not.toHaveBeenCalled();
   });
+
+  it.each(['direct', 'merged'])(
+    'records the actual reply request under the %s processing ID',
+    async (route) => {
+      const send = captureProviderFetch('qwen', async () => new Response('raw vendor'));
+      const run = runner.runInboundTurn.getMockImplementation()!;
+      runner.runInboundTurn.mockImplementationOnce(async (...args) => {
+        await (await send('https://model.invalid', { method: 'POST', body: 'raw request' })).text();
+        return run(...args);
+      });
+      const captured = jest.fn();
+      monitoringService.recordSuccess.mockImplementationOnce((id: string) =>
+        captured(id, takeModelInvocations(id)),
+      );
+      const message = createMessage();
+      if (route === 'direct') await service.processSingleMessage(message);
+      else await service.processMergedMessages([message], 'batch-fixture');
+      expect(captured).toHaveBeenCalledWith(
+        route === 'direct' ? message.messageId : 'batch-fixture',
+        [expect.objectContaining({ responseBody: Buffer.from('raw vendor').toString('base64') })],
+      );
+    },
+  );
 
   it('should execute the direct reply workflow and mark the message as processed', async () => {
     const message = createMessage();
@@ -741,8 +818,30 @@ describe('ReplyWorkflowService', () => {
       usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
     });
 
+    const caption = captureProviderFetch('qwen', async () => new Response('image description'));
+    let imageReady: Promise<string>;
+    imageDescription.describeAndUpdateAsync.mockImplementationOnce(() => {
+      imageReady = caption('https://model.invalid', {
+        method: 'POST',
+        body: 'vision request',
+      }).then((r) => r.text());
+    });
+    imageDescription.awaitVision.mockImplementationOnce(async () => {
+      await imageReady;
+    });
+    const captured = jest.fn();
+    monitoringService.recordSuccess.mockImplementationOnce((id: string) =>
+      captured(takeModelInvocations(id)),
+    );
+
     await service.processSingleMessage(message);
 
+    expect(captured).toHaveBeenCalledWith([
+      expect.objectContaining({
+        requestBody: Buffer.from('vision request').toString('base64'),
+        complete: true,
+      }),
+    ]);
     expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
       'msg-1',
       'https://example.com/original-job-card.jpg',

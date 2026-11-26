@@ -27,7 +27,7 @@ const context = {
 } as DeliveryContext;
 
 describe('ordinary reply segment external-result boundaries', () => {
-  const turns = { mode: 'execute', assertDeliveryActive: jest.fn(), open: jest.fn() };
+  const turns = { mode: 'execute', open: jest.fn() };
   const executor = { execute: jest.fn() };
   const registry = { register: jest.fn() };
   const permit = { evaluate: jest.fn() };
@@ -43,7 +43,6 @@ describe('ordinary reply segment external-result boundaries', () => {
     jest.resetAllMocks();
     permit.evaluate.mockResolvedValue({ allowed: true });
     sender.sendMessage.mockResolvedValue({ errcode: 0 });
-    turns.assertDeliveryActive.mockResolvedValue(undefined);
     turns.mode = 'execute';
     executor.execute.mockImplementation(
       async (_intent: ActionIntent, handlers: ActionCallbacks<unknown>) =>
@@ -81,7 +80,10 @@ describe('ordinary reply segment external-result boundaries', () => {
           parameters: { text: 'first', index: 0, version: 1 },
         }),
         expect.anything(),
-        { persistedMode: 'execute' },
+        expect.objectContaining({
+          persistedMode: 'execute',
+          replySegment: expect.objectContaining({ turn }),
+        }),
       );
     },
   );
@@ -93,6 +95,26 @@ describe('ordinary reply segment external-result boundaries', () => {
         'reply_send_result_unconfirmed',
       );
       expect(sender.sendMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+  it.each([0, 1])(
+    'enforces the cutoff immediately before HTTP at cutoff plus %i ms',
+    async (elapsed) => {
+      const deadline = '2026-11-25T03:05:00.000Z';
+      const now = jest.spyOn(Date, 'now').mockReturnValue(Date.parse(deadline) + elapsed);
+      try {
+        const recovered = {
+          ...turn,
+          fence: 2,
+          recovery: { ...turn.recovery, replySegments: ['first'], resumeUntil: deadline },
+        };
+        const attempt = service.sendOrdinarySegment(recovered, context, 'first', 0);
+        if (elapsed === 0) await attempt;
+        else await expect(attempt).rejects.toThrow('segment_ownership_unconfirmed');
+        expect(sender.sendMessage).toHaveBeenCalledTimes(elapsed === 0 ? 1 : 0);
+      } finally {
+        now.mockRestore();
+      }
     },
   );
   it('does not resend a transport timeout', async () => {
@@ -114,18 +136,22 @@ describe('ordinary reply segment external-result boundaries', () => {
       service.sendOrdinarySegment(turn, { ...context, assertOwned }, 'first', 0),
     ).rejects.toThrow('chat lease lost');
     expect(sender.sendMessage).not.toHaveBeenCalled();
-    turns.assertDeliveryActive.mockRejectedValue(new Error('input expired'));
+    executor.execute.mockResolvedValue({ status: 'blocked', reason: 'ordinary_reply_fence_lost' });
     await expect(service.sendOrdinarySegment(turn, context, 'first', 0)).rejects.toThrow(
-      'input expired',
+      'ordinary_reply_fence_lost',
     );
     expect(sender.sendMessage).not.toHaveBeenCalled();
   });
   it('keeps persisted execute identities after runtime rollback to observe', async () => {
     turns.mode = 'observe';
     await service.sendOrdinarySegment(turn, context, 'first', 0);
-    expect(executor.execute).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
-      persistedMode: 'execute',
-    });
+    expect(executor.execute).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        persistedMode: 'execute',
+      }),
+    );
     expect(sender.sendMessage).toHaveBeenCalledTimes(1);
   });
   it('does not resend an already successful action', async () => {

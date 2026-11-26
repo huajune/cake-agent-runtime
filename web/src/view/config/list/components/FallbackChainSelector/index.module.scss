@@ -1,0 +1,92 @@
+@use '@/assets/styles/variables' as *;
+
+.selector {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  min-width: 0;
+
+  > div {
+    min-width: 0;
+  }
+}
+
+.chain {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.position {
+  color: $text-muted;
+  font-size: $font-size-xs;
+}
+
+.model {
+  min-width: 0;
+
+  > div {
+    min-width: 0;
+  }
+}
+
+.actions {
+  display: flex;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $text-secondary;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: $primary-soft;
+    color: $primary;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
+.reset {
+  align-self: flex-end;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: $primary;
+  font-size: $font-size-xs;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

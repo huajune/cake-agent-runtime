@@ -64,6 +64,18 @@ describe('SystemConfigRepository', () => {
     expect(repository).toBeDefined();
   });
 
+  it('persists a worker change in one upsert and requires a returned row', async () => {
+    const row = { key: 'system_config', value: { workerConcurrency: 50 }, description: 'Worker' };
+    const query = makeQueryMock({ data: [row], error: null });
+    mockSupabaseClient.from.mockReturnValue(query);
+    await repository.setConfigValueOrThrow(row.key, row.value, row.description);
+    expect(query.upsert).toHaveBeenCalledWith(row, { onConflict: 'key' });
+    mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [], error: null }));
+    await expect(
+      repository.setConfigValueOrThrow(row.key, row.value, row.description),
+    ).rejects.toThrow('写入系统配置失败');
+  });
+
   // ==================== getConfigValue ====================
 
   describe('getConfigValue', () => {
@@ -138,6 +150,40 @@ describe('SystemConfigRepository', () => {
   });
 
   // ==================== setConfigValue ====================
+
+  describe('getConfigValueOrThrow', () => {
+    it('returns null only when the requested config row is absent', async () => {
+      const query = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(query);
+      await expect(repository.getConfigValueOrThrow('agent_reply_config')).resolves.toBeNull();
+      expect(query.select).toHaveBeenCalledWith('value');
+      expect(query.eq).toHaveBeenCalledWith('key', 'agent_reply_config');
+      expect(query.limit).toHaveBeenCalledWith(1);
+    });
+
+    it('preserves the saved model chain without converting it to a default', async () => {
+      const value = { defaultFallbackModelIds: ['deepseek/deepseek-v4-pro'] };
+      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [{ value }], error: null }));
+      await expect(repository.getConfigValueOrThrow('agent_reply_config')).resolves.toEqual(value);
+    });
+
+    it('throws on database failure so the caller can retain its last successful config', async () => {
+      mockSupabaseClient.from.mockReturnValue(
+        makeQueryMock({ data: null, error: { message: 'permission denied', code: '42501' } }),
+      );
+      await expect(repository.getConfigValueOrThrow('agent_reply_config')).rejects.toThrow(
+        '读取系统配置失败: agent_reply_config',
+      );
+    });
+
+    it('throws when the database client is unavailable', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+      await expect(repository.getConfigValueOrThrow('agent_reply_config')).rejects.toThrow(
+        '读取系统配置失败',
+      );
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    });
+  });
 
   describe('setConfigValue', () => {
     it('should skip write when supabase is not available', async () => {

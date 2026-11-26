@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**　2026-11-24
+**最后更新**：2026-11-26（新加坡生产库 v11.22.1 迁移验收）
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
@@ -12,25 +12,25 @@
 
 ### 组织归属（测试库已验收，正式发布待执行）
 
-测试库 `public` 共 33 张实体表，其中 14 张有 `tenant_id`。本期净增 7 张。新增表的字段类型、默认值、主键及其余 26 张表的完整字段和归属见[租户数据表与字段](tenant-schema.md)。
+11 月 26 日核对测试库 `public` 的 34 张实体表，其中 15 张有 `tenant_id`。相对 v11.22.1，本期净增 7 张。新增表的字段类型、默认值、主键及其余 27 张表的完整字段和归属见[租户数据表与字段](tenant-schema.md)。
 
 组织登记在 `tenants`，成员的 `tenant_members.organization` 通过外键引用组织。小组与组织、Bot 与小组分别在 `hosting_group_ownership`、`hosting_bot_memberships` 记录生效时间。聊天、流水、调用明细、执行和审查记录、复聊、人工介入、运营事件、日报、用户活动及长期记忆使用同一组织主键。历史记录缺少时间或渠道证据时保留空归属。权限、登记操作与回填条件见[租户、成员和业务账号](../product/organization-members-and-business-accounts.md)。
 
 中心员工的服务端查询以当前成员档案确定组织。消息处理的 `source_occurred_at` 与处理接收时间分别保存。幂等活动事件写入 `user_activity_events`，业务报表按 Bot 所属组织汇总，同一活动重放只计一次。[可回滚的测试库验收](../../tests/supabase/business-tenant-ownership.sql)
 
-### v11.18.0 的读写约定
+## 这次生产切换改了什么
 
-六份数据库治理迁移定义了下列读写接口。各字段的启用条件和回退方法见[专项验收](../technical/runtime-data-model-acceptance-2026-11-19.md#8-2026-年-11-月-19-日候选版本验收)，生产进度见[数据库治理待办](../todo/database-followup.md)。[v11.18.0 发布说明](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.18.0)
+2026 年 11 月 26 日 16:16（北京时间），新加坡生产库完成本批五份迁移，最新版本号为 `20261125100000`。读消息处理详情时，先用主流水定位处理尝试，再按问题读取对应的回合快照或模型 HTTP 请求。[联合迁移与生产验收](../technical/runtime-storage-batch.md) · [v11.22.1 发布记录](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.22.1)
 
-| 数据 | 写入与查询 |
-| --- | --- |
-| 消息流水与短期快照 | 通过 `save_processing_snapshot` 同事务写入。详情从 `processing_read_steps` 与 `processing_read_invocation` 还原对应代次的工具和响应。列表保持现有轻量投影。 |
-| 渠道聊天 | 读完整载荷使用 `chat_read_payload`。Center 继续按账号和会话返回原有受限投影。 |
-| 测试执行 | 写 `test_executions`，完整查询和导出读 `test_execution_results`。该视图执行调用角色权限，服务角色可查。 |
-| 转人工 | 调用 `record_handoff` 写事件、处理明细及日报投影。恢复托管通过 `resolve_hosting_handoffs` 按原暂停作用域关闭对应明细。 |
-| 动作回执、人工裁定 | 现行 RPC 按原派发尝试保存采信回执。`action_record_json` 返回完整动作，`action_terminal_evidence` 识别同一次尝试的冲突证据。`agent_action_reviews` 对服务角色仅支持直接查询，裁定使用 `review_agent_action`。 |
+| 生产对象 | 切换后的用途 | 停写时点与迁移结果 |
+| --- | --- | --- |
+| `message_processing_records` | 每次处理的状态、耗时、工具调用和分步信息 | 96,378 条主流水全部保留。抽核 964 条流水中的 890 次工具调用，名称、参数、结果均一致，步骤位置均有效。 |
+| `message_processing_turn_snapshots` | 每次处理至多一份 Cake 回合请求和回合响应 | 6,408 份全部迁入。请求、按新结构保留的响应及原创建时间逐份相符。 |
+| `message_processing_invocations` | 每次模型供应商 HTTP 尝试的原始请求和响应 | 切换时为 0 行。旧 SDK 快照没有独立采集的 HTTP 字节，新请求从新版开始记录。 |
+| `chat_messages`、`test_executions` | 直接从本表读渠道载荷和测试响应 | 核对还原的 585,055 条渠道载荷，差异为 0。生产当时有 0 条测试响应需要还原。 |
+| `agent_action_records` | 本表保存当前采信的结果，`agent_action_evidence` 留存各次回执 | 核对 6,423 条受保护动作，其中 6,410 条从对应回执还原，结果和依据差异为 0。 |
 
-`system_config` 中 `runtime_storage_writes` 的 `response_tools`、`steps`、`chat_text`、`test_text`、`action_body` 各自控制合格新写。仅 JSON 布尔值 `true` 开启相应格式，初始均关闭。2026 年 11 月 23 日只读核对生产库，五项均已开启。停写后仍可通过完整投影读取已有记录。每次还原显式指定至多 100 个业务键。[按键还原脚本](../../scripts/restore-runtime-storage.sql)
+本批已删除 10 个兼容字段，旧写入开关也已退役。更早的 v11.20.0 已删除主流水旧列 `agent_invocation` 和公开表 `strategy_config_changelog`，124 条策略历史留存在私有归档。v11.18.0 至 v11.21.1 的旧字段、开关、还原脚本和当时的抽核结果可查对应版本。[十个字段与迁移顺序](../technical/runtime-storage-batch.md#发布顺序) · [11 月 25 日的表结构](https://github.com/huajune/cake-agent-runtime/blob/390af8d4cabdac536c05c534cb5415ce045728ff/docs/db/database-schema.md)
 
 ## 目录
 
@@ -39,6 +39,9 @@
 - [核心业务表](#核心业务表)
   - [chat_messages](#1-chat_messages---聊天消息记录)
   - [message_processing_records](#2-message_processing_records---消息处理记录)
+    - [message_processing_turn_snapshots](#message_processing_turn_snapshots---回合快照)
+    - [message_processing_invocations](#message_processing_invocations---模型-http-调用)
+  - [回复执行与外部动作](#回复执行与外部动作)
   - [interview_booking_records](#3-interview_booking_records---面试预约记录) 🗄️ 已删除
   - [recruitment_cases](#4-recruitment_cases---招聘案件) 🗄️ 已删除
 - [记忆/画像表](#记忆画像表)
@@ -53,7 +56,7 @@
 - [配置管理表](#配置管理表)
   - [system_config](#11-system_config---系统配置)
   - [strategy_config](#12-strategy_config---策略配置)
-  - [strategy_config_changelog](#13-strategy_config_changelog---策略变更日志)
+  - [策略逐字段变更归档](#13-策略逐字段变更归档)
 - [测试套件表](#测试套件表)
   - [test_batches](#14-test_batches---测试批次)
   - [test_executions](#15-test_executions---测试执行记录)
@@ -68,7 +71,9 @@
 | #     | 表名                                      | 业务域 | 写入方式            | 读取方式     | 数据保留                            |
 | ----- | ----------------------------------------- | ------ | ------------------- | ------------ | ----------------------------------- |
 | 1     | `chat_messages`                           | 消息   | upsert              | select / RPC | 永久（不可再生资产）                |
-| 2     | `message_processing_records`              | 消息   | insert / upsert     | select / RPC | 90 天（agent_invocation 子表 7 天） |
+| 2     | `message_processing_records`              | 消息   | RPC                 | select / RPC | 90 天                               |
+| 2.1   | `message_processing_turn_snapshots` | 消息 | 随主流水同事务写入 | 回合详情、完整请求 | 默认 90 天，主流水删除时级联 |
+| 2.2   | `message_processing_invocations` | 消息 | 随主流水同事务写入 | 按处理 ID 列举 HTTP 调用，按调用 ID 读原文 | 默认 90 天，主流水删除时级联 |
 | ~~3~~ | ~~`interview_booking_records`~~ 🗄️ 已删除 | —      | —                   | —            | 迁移 20260625111500 移除            |
 | ~~4~~ | ~~`recruitment_cases`~~ 🗄️ 已删除         | —      | —                   | —            | 迁移 20260610170000 移除            |
 | 5     | `agent_long_term_memories`                | 记忆   | RPC upsert / select | select       | 永久                                |
@@ -79,7 +84,7 @@
 | 10    | `monitoring_error_logs`                   | 监控   | insert              | select       | 90 天                               |
 | 11    | `system_config`                           | 配置   | upsert              | select       | 永久                                |
 | 12    | `strategy_config`                         | 配置   | insert / update     | select       | 永久（多版本）                      |
-| 13    | `strategy_archive.strategy_config_changelog` | 平台策略历史 | 归档 | 运维查阅 | 已由上期迁移移出 public |
+| 13    | `strategy_archive.strategy_config_changelog` | 配置 | 退役时归档       | 管理员查询   | 长期保留                            |
 | 14    | `test_batches`                            | 测试   | insert / update     | select       | 永久                                |
 | 15    | `test_executions`                         | 测试   | insert / update     | select       | 永久                                |
 | 16    | `test_conversation_snapshots`             | 测试   | insert / update     | select       | 永久                                |
@@ -92,9 +97,11 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        核心业务表                                │
 │                                                                 │
-│  chat_messages ──────> message_processing_records               │
-│                            │        (message_id 关联)            │
-│                            │                                    │
+│  chat_messages <── request.sourceMessageIds[]（渠道输入）       │
+│                       message_processing_records                │
+│                            │        (流水 message_id)            │
+│                            ├─── message_processing_turn_snapshots（0 或 1）
+│                            ├─── message_processing_invocations（0 到多次 HTTP）
 │                            ├─── 每小时 ──> monitoring_hourly_stats │
 │                            └─── 每天  ──> monitoring_daily_stats  │
 ├─────────────────────────────────────────────────────────────────┤
@@ -115,7 +122,8 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                        配置管理表                                │
 │                                                                 │
-│  strategy_config ──> strategy_config_changelog (审计)            │
+│  strategy_config（在线策略版本）                                 │
+│  strategy_archive.strategy_config_changelog（独立历史归档）      │
 │  system_config (KV 配置：黑名单/功能开关)                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                        测试套件表                                │
@@ -144,14 +152,12 @@
 | ------------------ | ----------- | ----------------- | ---------------------------------------------------------- |
 | `id`               | uuid        | gen_random_uuid() | 主键                                                       |
 | `chat_id`          | text        | NOT NULL          | 会话ID，通常为 recipientId                                 |
-| `message_id`       | text        | NOT NULL, UNIQUE  | 消息唯一ID，用于去重                                       |
+| `message_id`       | text        | NOT NULL, UNIQUE  | 渠道消息 ID，用于原消息去重                                       |
 | `role`             | text        | NOT NULL          | 消息角色：`user` / `assistant`                             |
 | `content`          | text        | NOT NULL          | 消息内容                                                   |
 | `timestamp`        | timestamptz | NOT NULL          | 消息发送时间                                               |
 | `candidate_name`   | text        | -                 | 候选人微信昵称                                             |
 | `manager_name`     | text        | -                 | 招募经理姓名                                               |
-| `org_id`           | text        | -                 | 企业ID                                                     |
-| `bot_id`           | text        | -                 | Bot ID                                                     |
 | `is_room`          | boolean     | false             | 是否群聊                                                   |
 | `message_type`     | text        | 'TEXT'            | TEXT/IMAGE/VOICE/FILE/VIDEO/LINK                           |
 | `source`           | text        | 'MOBILE_PUSH'     | MOBILE_PUSH/API_SEND/AI_REPLY                              |
@@ -159,10 +165,12 @@
 | `im_contact_id`    | text        | -                 | 联系人系统ID                                               |
 | `contact_type`     | text        | 'UNKNOWN'         | UNKNOWN/PERSONAL_WECHAT/OFFICIAL_ACCOUNT/ENTERPRISE_WECHAT |
 | `is_self`          | boolean     | false             | 是否托管账号自己发送                                       |
-| `payload`          | jsonb       | -                 | 原始消息 JSON                                              |
+| `payload`          | jsonb       | -                 | 渠道上报或发送时保存的完整载荷，按原键读取 |
 | `avatar`           | text        | -                 | 用户头像 URL                                               |
-| `external_user_id` | text        | -                 | 企微外部用户ID                                             |
+| `external_user_id` | text        | -                 | 渠道外部联系人 ID，取自回调或渠道历史中的 externalUserId                                             |
 | `created_at`       | timestamptz | now()             | 记录创建时间                                               |
+| `visual_facts` | jsonb | — | 从图片提取的事实，与图片说明一起更新 |
+| `history_only_reason` | text | — | 消息仅入历史的原因 |
 
 **索引**：
 
@@ -172,7 +180,7 @@
 **操作说明**：
 
 - **写入**：`saveChatMessage()` / `saveChatMessagesBatch()` — upsert by message_id
-- **读取**：`getChatHistory()` / `getSessionList()` — 按 chat_id + 时间范围
+- **读取**：`getChatHistoryDetail()` 按会话和时间顺序读取消息及 `payload`。`getChatSessionList()` 读取会话列表。
 - **清理**：不清理，永久保留（业务 / 不可再生数据）
 
 ---
@@ -190,14 +198,14 @@
 | 字段               | 类型         | 默认值           | 说明                                                                                             |
 | ------------------ | ------------ | ---------------- | ------------------------------------------------------------------------------------------------ |
 | `id`               | bigint       | sequence         | 主键（自增）                                                                                     |
-| `message_id`       | text         | NOT NULL, UNIQUE | 关联 chat_messages                                                                               |
+| `message_id`       | text         | NOT NULL, UNIQUE | 处理流水 ID，同一轮可合并多条渠道输入。API 字段为 messageId                                                                               |
 | `chat_id`          | text         | NOT NULL         | 会话ID                                                                                           |
 | `user_id`          | text         | -                | 用户ID                                                                                           |
 | `user_name`        | text         | -                | 用户昵称（trgm 索引）                                                                            |
 | `manager_name`     | text         | -                | 经理姓名                                                                                         |
 | `received_at`      | timestamptz  | now()            | 消息接收时间                                                                                     |
-| `message_preview`  | text         | -                | 用户消息预览                                                                                     |
-| `reply_preview`    | text         | -                | AI 回复预览                                                                                      |
+| `message_preview`  | text         | -                | 本次流水保存的入站内容，列表与最慢榜最多 50 个字符 |
+| `reply_preview`    | text         | -                | 本次流水保存的回复内容，列表与最慢榜最多 120 个字符 |
 | `reply_segments`   | integer      | 0                | 回复分段数                                                                                       |
 | `status`           | text         | NOT NULL, CHECK  | `processing` / `success` / `failure` / `timeout`                                                 |
 | `error`            | text         | -                | 错误信息                                                                                         |
@@ -206,45 +214,86 @@
 | `total_duration`   | integer      | -                | 总耗时（ms）                                                                                     |
 | `queue_duration`   | integer      | -                | 队列等待耗时（ms）                                                                               |
 | `prep_duration`    | integer      | -                | 准备阶段耗时（ms）                                                                               |
-| `ai_start_at`      | bigint       | -                | AI 处理开始时间戳                                                                                |
-| `ai_end_at`        | bigint       | -                | AI 处理结束时间戳                                                                                |
 | `ai_duration`      | integer      | -                | AI 处理耗时（ms）                                                                                |
 | `send_duration`    | integer      | -                | 消息发送耗时（ms）                                                                               |
-| `tool_calls`       | jsonb        | -                | 工具调用明细 `[{ toolName, args, result, status, durationMs }]`                                  |
-| `agent_steps`      | jsonb        | -                | Agent 逐步轨迹 `[{ stepIndex, text, reasoning, toolCalls, usage, durationMs }]`                  |
+| `tool_calls`       | jsonb        | -                | 完整工具调用，保存名称、参数、结果、状态和耗时。可附内部判断 `decisions` 和零起始的 `stepPosition`                                  |
+| `agent_steps`      | jsonb        | -                | 每步自身的文本、推理、用量和耗时。详情按 `stepPosition` 从 `tool_calls` 取出该步调用                  |
 | `anomaly_flags`    | text[]       | -                | 异常标记：tool_loop/tool_empty_result/tool_narrow_result/tool_chain_overlong/no_tool_called      |
 | `memory_snapshot`  | jsonb        | -                | 运行时记忆快照 `{ currentStage, presentedJobIds, recommendedJobIds, sessionFacts, profileKeys }` |
 | `token_usage`      | integer      | -                | Token 消耗量                                                                                     |
 | `is_fallback`      | boolean      | false            | 是否降级处理                                                                                     |
 | `fallback_success` | boolean      | -                | 降级是否成功                                                                                     |
-| `agent_invocation` | jsonb        | -                | Agent 完整调用记录（request/response/http，7 天后置 NULL）                                       |
 | `batch_id`         | varchar(255) | -                | 聚合批次ID                                                                                       |
 | `created_at`       | timestamptz  | now()            | -                                                                                                |
 | `updated_at`       | timestamptz  | now()            | trigger 自动维护                                                                                 |
+| `bot_im_id` | text | — | 处理本轮的托管账号系统标识，用于 BOT 筛选和中心授权范围 |
+| `source_occurred_at` | timestamptz | — | 原始输入的业务时间，普通回复续发沿用这个时间核定组织。 |
+| `tenant_id` | text | — | 由原 Bot 和业务时间确定，证据不足时为空。 |
+| `ttft_ms` | integer | — | 模型首段文本等待时间，单位毫秒 |
+| `guardrail_input` / `guardrail_output` | jsonb | — | 入站和出站守卫的审查摘要 |
+| `post_processing_status` | jsonb | — | 回合结束后的处理状态 |
 
 > `is_primary` 字段已于 20260414 迁移中移除，单条消息均视为自身主记录；`tools text[]` 已于 20260417 迁移中被 `tool_calls jsonb` 取代。
 
-**索引**：
+按 `message_id` 唯一定位。生产索引支持按接收时间、状态、会话、用户、姓名和中心账号范围查询。更新触发器维护 `updated_at`。更正聊天、接收时间或批次会清除原回合快照和原 HTTP 调用，更正工具或步骤也会清除旧回合快照。状态结算保留已采集的正文。[写入和更正触发器](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql)
 
-- `idx_message_processing_received_at` - received_at DESC
-- `idx_message_processing_received_status` - (received_at DESC, status)
-- `idx_message_batch_id` - batch_id（部分索引：batch_id IS NOT NULL）
-- `idx_message_processing_user_id` - user_id（部分索引：user_id IS NOT NULL）
-- `idx_message_processing_chat_id` - chat_id
-- `idx_message_processing_records_user_name_trgm` - user_name（GIN + pg_trgm）
-- `idx_message_processing_records_anomaly_flags` - anomaly_flags（GIN）
+`saveMessageProcessingRecord()` 调用 `save_processing_snapshot` 写入主流水及当时已采集的两类快照。可续发普通回复在保存已审核分段时提交三表，结算时根据受理回执更新主流水结果。列表与最慢榜仅读轻量字段。总部详情按需加载上下文、提示词和模型原文，中心按授权 BOT 查询摘要。`aggregate_hourly_stats`、`aggregate_daily_stats` 从主流水聚合。[流水仓储](../../src/biz/message/repositories/message-processing.repository.ts) · [分段结算](../../supabase/migrations/20261125100000_ordinary_reply_segment_io.sql)
 
-**触发器**：`trigger_update_message_processing_records_updated_at` — UPDATE 时自动维护 updated_at
+#### message_processing_turn_snapshots - 回合快照
 
-**Realtime**：已加入 `supabase_realtime` publication（Dashboard 实时推送）
+一个处理回合至多一行。总部打开详情时只取聊天上下文和回合响应，点开完整 Agent 请求时才读取提示词、工具定义等。要查合并前的原消息，用完整请求中的 `sourceMessageIds` 在同一会话的 `chat_messages.message_id` 查找。[读取接口](../../src/biz/message/message.controller.ts)
 
-**操作说明**：
+| 字段 | 类型 | 用途 |
+| --- | --- | --- |
+| `message_id` | text | 主键，同时外键关联主流水。 |
+| `created_at` | timestamptz | 首次保存的时间，历史迁入时保留。 |
+| `request` | jsonb | Cake 本轮准备的 SDK 请求、上下文和渠道输入标识。 |
+| `response` | jsonb | 回合级响应和投递摘要。工具调用、步骤、记忆分别由主流水对应字段提供。 |
+| `tenant_id` | text | 继承主流水的组织，主流水补齐归属时同步。 |
 
-- **写入**：`saveMessageProcessingRecord()` — 接收时创建，处理完成后更新
-- **读取**：`getSlowestMessages()` / `getMessageProcessingRecords()` — Dashboard 查询
-- **聚合**：RPC `aggregate_hourly_stats()` / `aggregate_daily_stats()`
-- **清理**：RPC `cleanup_message_processing_records(90)` — 保留 90 天
-- **瘦身**：`agent_invocation` 存在子表 `message_processing_invocations`，RPC `delete_expired_agent_invocations(7)` 分批删 7 天前的子表行，`null_agent_invocation(7)` 置空存量主表列
+#### message_processing_invocations - 模型 HTTP 调用
+
+一轮可能重试、换供应商，产生多次 HTTP 尝试。总部先按 `message_id` 查清单，展开其中一次时再取原始字节。传输中断时保留当时已采集的字节。生产已开启行级安全，普通登录和匿名角色均无直接读取原文的权限。[采集代码](../../src/observability/context/model-invocations.ts) · [原文查询](../../src/biz/message/repositories/message-processing.repository.ts)
+
+| 字段 | 类型 | 用途 |
+| --- | --- | --- |
+| `message_id` | text | 主流水外键。与 `id` 组成主键。 |
+| `id` | uuid | 一次 HTTP 尝试的标识。 |
+| `started_at` | timestamptz | 请求开始时间，也是本表计算保留期的起点。 |
+| `provider` | text | 该次请求使用的供应商。 |
+| `http_status` | smallint | 收到的 HTTP 状态码。未收到响应时可为空。 |
+| `complete` | boolean | 响应是否已完整采集。 |
+| `request_body` / `response_body` | bytea | 捕获到的请求、响应原始字节，可分别为空。 |
+| `tenant_id` | text | 继承主流水的组织，补齐归属时保留已采集的字节。 |
+
+每天北京时间 03:00 清理。主流水按 `received_at`、回合快照按 `created_at`、HTTP 尝试按 `started_at` 计算期限。两类快照默认跟随主流水的 90 天，在同一批 500 行额度内先清理到期回合，再清理到期 HTTP 调用。删除主流水也会级联删除两类快照。[清理任务](../../src/biz/monitoring/services/cleanup/data-cleanup.service.ts) · [清理函数](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql)
+
+### 回复执行与外部动作
+
+Redis 保存待处理输入、Bull 任务和会话锁。下列关系表记录了断电重启后仍需知道的事实，以及供运营回查的事件。
+
+| 表 | 一行的用途 | 写入和读取 |
+| --- | --- | --- |
+| `agent_reply_inputs`（5 列） | 一条渠道输入归属哪个回复回合。合并两条输入会有两行。 | 登记回合的事务写入。后续按企业、账号、聊天及 `message_id` 找回 `logical_turn_id`。[回合函数](../../supabase/migrations/20261125080000_resume_ordinary_replies.sql) |
+| `agent_reply_turns`（22 列） | 一轮普通回复的输入、已审核分段、执行进度和已受理的结果。 | 渠道保存进度。恢复服务按 `next_check_at` 查到期回合，核对原分段回执后决定续发或收尾。普通回复的续发窗口为 5 分钟。[回合仓储](../../src/biz/reply-execution/reply-turns.repository.ts) · [恢复服务](../../src/channels/wecom/message/delivery/reply-recovery.service.ts) |
+| `agent_action_records`（28 列） | 企业内一个外部动作的当前状态。`status`、`result`、`evidence` 保存当前采信的结论。 | 执行器登记、领取派发权，受理或失败后更新结果。恢复和预约读取采信结果及已有工单号。[动作仓储](../../src/biz/action-execution/action-records.repository.ts) |
+| `agent_action_evidence`（6 列） | 某一派发尝试的一份回执，`completion` 保存凭证内容。 | 收到回执时按企业、动作、尝试和摘要去重。核实时可查同一尝试收到的多份不同回执。[回执写入](../../supabase/migrations/20261125081000_retire_body_storage_markers.sql) |
+| `agent_action_reviews`（8 列） | 一次人工裁定的操作者、依据、结论和时间。 | 受控 `review_agent_action` 函数写入，核查动作时读取历史裁定。[人工核实](../technical/runtime-action-records.md#人工核实) |
+| `agent_execution_events`（10 列） | 一次执行中值得排查的事件，用 `trace_id` 回看时间线。 | 应用按事件类型写入。`tool_call` 对有副作用、报错、空结果、窄结果或耗时至少 3 秒的调用留档。工具总数取主流水。[记录条件](../../src/observability/execution-event-policy.ts) · [事件仓储](../../src/biz/monitoring/repositories/agent-execution-event.repository.ts) |
+
+<details>
+<summary>查看这六张表的全部生产字段</summary>
+
+| 表 | 身份与关联 | 执行、结果或依据 | 时间与清理 |
+| --- | --- | --- | --- |
+| `agent_reply_inputs` | `corp_id`、`account_id`、`chat_id`、`message_id`、`logical_turn_id` | — | — |
+| `agent_reply_turns` | `corp_id`、`account_id`、`chat_id`、`logical_turn_id`、`input_ids` | `mode`、`status`、`owner`、`fence`、`recovery`、`projection_status`、`delivery_policy`、`delivery_result`、`review_required`、`review_reason`、`recovery_attempts` | `input_occurred_at`、`generation_until`、`next_check_at`、`review_notified_at`、`created_at`、`updated_at` |
+| `agent_action_records` | `corp_id`、`action_id`、`previous_action_id`、`account_id`、`chat_id`、`logical_turn_id`、`kind`、`resource_hash`、`payload_hash`、`request_id`、`dispatch_attempt_id` | `intent`、`mode`、`status`、`local_sync`、`owner`、`fence`、`attempts`、`result`、`evidence`、`retryable`、`review_required` | `input_occurred_at`、`next_check_at`、`recovery_deadline`、`retention_redacted`、`created_at`、`updated_at` |
+| `agent_action_evidence` | `corp_id`、`action_id`、`attempt_id`、`evidence_hash` | `completion` | `created_at` |
+| `agent_action_reviews` | `id`、`corp_id`、`action_id`、`operator_id` | `basis`、`conclusion`、`completion` | `created_at` |
+| `agent_execution_events` | `id`、`trace_id`、`user_id`、`corp_id`、`chat_id` | `event_type`、`scenario`、`caller_kind`、`payload` | `created_at` |
+
+</details>
 
 ---
 
@@ -651,20 +700,11 @@
 
 ---
 
-### 13. strategy_config_changelog - 策略变更日志
+### 13. 策略逐字段变更归档
 
-平台策略变更历史已归档至 `strategy_archive.strategy_config_changelog`。该表共 7 列，保留原快照，业务服务没有读写权限。[归档迁移](../../supabase/migrations/20261124024135_archive_strategy_config_changelog.sql)
+线上从 `GET /strategy/versions` 查询策略版本。`public.strategy_config_changelog` 和旧接口 `GET /strategy/changelog` 已退役。退役前的逐字段历史保存在 `strategy_archive.strategy_config_changelog`，保留原始 `id`、`config_id`、`field`、`old_value`、`new_value`、`changed_at`、`changed_by` 七列。`config_id` 保存原版本标识，删除在线策略版本不会级联删除归档。
 
-| 字段                      | 类型        | 默认值               | 说明                                        |
-| ------------------------- | ----------- | -------------------- | ------------------------------------------- |
-| `id`                      | uuid        | gen_random_uuid()    | 主键                                        |
-| `config_id`               | uuid        | NOT NULL             | 原策略 ID，归档后独立保留                   |
-| `field`                   | text        | NOT NULL             | 变更字段：persona/stage_goals/red_lines/... |
-| `old_value` / `new_value` | jsonb       | - / NOT NULL         | 前后值                                      |
-| `changed_at`              | timestamptz | now()                | 变更时间                                    |
-| `changed_by`              | text        | -                    | 操作者（预留）                              |
-
-**索引**：`idx_changelog_config_time` (config_id, changed_at DESC) / `idx_changelog_field` (field)
+归档已启用行级安全，`anon`、`authenticated`、`service_role` 均无归档读取权限。需要回滚旧服务时，数据库所有者先确认原 `config_id` 对应版本存在，再运行恢复脚本。脚本在事务内恢复原表、约束、索引、权限和数据，逐行双向核对后提交，私有归档继续保留。[归档迁移](../../supabase/migrations/20261124024135_archive_strategy_config_changelog.sql) · [恢复脚本](../../scripts/sql/restore-strategy-changelog.sql)
 
 ---
 
@@ -700,7 +740,7 @@
 
 ### 15. test_executions - 测试执行记录
 
-**用途**：单条测试用例的执行详情（输入/输出/Agent 请求/相似度分）
+单条测试用例的执行详情包含输入、输出、Agent 请求和相似度分。创建、查询和导出直接读写 `test_executions.agent_response`。
 
 **代码位置**：
 
@@ -767,9 +807,8 @@
 
 | 函数                                               | 默认参数 | 说明                                                 |
 | -------------------------------------------------- | -------- | ---------------------------------------------------- |
-| `cleanup_message_processing_records(days_to_keep)` | 90       | 删除过期处理记录                                     |
-| `delete_expired_agent_invocations(p_days_old)`     | 7        | 分批删除 `message_processing_invocations` 过期子表行 |
-| `null_agent_invocation(p_days_old)`                | 7        | 置空存量主表 agent_invocation 列                     |
+| `cleanup_message_processing_records(days_to_keep)`          | 90 天         | 删除到期流水及关联快照 |
+| `delete_expired_agent_invocations(p_days_old, p_limit)`      | 90 天，500 条 | 先按 `created_at` 清理到期回合快照，再用剩余额度按 `started_at` 清理到期 HTTP 调用 |
 
 `cleanup_chat_messages` / `cleanup_user_activity` 已随迁移 20260902073727 DROP：两表永久保留，改配置也不会再删。
 `monitoring_hourly_stats` / `monitoring_daily_stats` / `handoff_events` / `monitoring_error_logs` 的 90 天清理由仓储直接 `delete().lt()`，不走 RPC。
@@ -808,7 +847,6 @@
 
 | 函数                               | 说明                                                       |
 | ---------------------------------- | ---------------------------------------------------------- |
-| `increment_booking_count(...)`     | 面试预约原子 upsert（自动 COALESCE NULL）                  |
 | `upsert_user_activity(...)`        | 用户活跃度 upsert（每次消息触发）                          |
 | `publish_strategy(p_version_note)` | 策略版本发布（testing → released，旧 released → archived） |
 
@@ -823,7 +861,8 @@
   │
   ├──► message_processing_records（保留 90 天）
   │       │
-  │       ├── 7 天后：message_processing_invocations 子表行删除、存量 agent_invocation 列置 NULL
+  │       ├──► message_processing_turn_snapshots（每轮至多一份，默认 90 天）
+  │       ├──► message_processing_invocations（每次 HTTP 尝试一行，默认 90 天）
   │       │
   │       ├── 每小时 ──► monitoring_hourly_stats（保留 90 天）
   │       └── 每天   ──► monitoring_daily_stats（保留 90 天）
@@ -837,10 +876,18 @@
 
 **清理调度**：由 [src/biz/monitoring/services/cleanup/](../../src/biz/monitoring/services/cleanup/) 下的定时任务驱动，经 Supabase RPC 执行批量删除。
 
-**存储估算**（日均 500 条消息）：
+**生产存储实测**（2026-11-24）
 
-- chat_messages: 永久累积，2026-09 实测约 15K 行/月
-- message_processing_records: ~45K 行/90 天（agent_invocation 已拆子表，主表只剩标量与轻 JSONB）
-- monitoring_hourly_stats: ~8760 行/年 ≈ 5 MB
-- monitoring_daily_stats: ~365 行/年 ≈ <1 MB
-- 总计: < 150 MB（远低于 Supabase 免费额度 500 MB）
+按 `pg_total_relation_size` 计入表、TOAST 和索引，清理完成时主流水占 1.46 GiB，调用快照子表占 807 MiB，策略历史归档占 1.12 MiB。快照保留期于当天延长，完整 90 天窗口的容量要在后续观察。
+
+**消息与动作存储实测**（2026-11-25）
+
+按 `pg_total_relation_size` 计入表、TOAST 和索引，堆页按 8 KiB 计数。更新产生的旧行版本占用已分配页面，后续写入可在数据库例行回收后复用。
+
+| 生产表 | 执行前 MiB | 验收时 MiB | 执行前堆页 | 验收时堆页 |
+| --- | ---: | ---: | ---: | ---: |
+| `chat_messages` | 682.1 | 713.7 | 49,136 | 52,356 |
+| `agent_action_records` | 109.9 | 109.9 | 8,528 | 8,528 |
+| `agent_action_evidence` | 35.0 | 35.1 | 2,256 | 2,262 |
+
+按历史实际变更键比较完整 JSON 与剩余正文字段的 UTF-8 文本，聊天减少 96,994,069 字节，动作减少 25,793 字节。此口径只计正文字段的逻辑表示。

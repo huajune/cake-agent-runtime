@@ -1,3 +1,8 @@
+import {
+  withProcessingTurn,
+  captureReplyGeneration,
+  takeModelInvocations,
+} from '@observability/context/model-invocations';
 import { ConfigService } from '@nestjs/config';
 import { stepCountIs, tool } from 'ai';
 import { z } from 'zod';
@@ -6,8 +11,9 @@ import { RouterService } from '@providers/router.service';
 import { ReliableService } from '@providers/reliable.service';
 import { ModelRole, ReplyModelRoute } from '@/llm/llm.types';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
+import type { RoleModelOverridesProvider } from '@/llm/role-model-overrides';
 
-function setup(env: Record<string, string>) {
+function setup(env: Record<string, string>, overrides?: RoleModelOverridesProvider) {
   const config = new ConfigService(env);
   jest.spyOn(config, 'get').mockImplementation((key: string) => env[key]);
   const registry = new RegistryService(config);
@@ -18,6 +24,8 @@ function setup(env: Record<string, string>) {
       new RouterService(config),
       registry,
       new ReliableService(registry),
+      undefined,
+      overrides,
     ),
   };
 }
@@ -132,7 +140,9 @@ describe('company model providers', () => {
       thinking?: unknown;
     }> = [];
     const signals: AbortSignal[] = [];
+    const sentBodies: string[] = [];
     jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      sentBodies.push(String(init?.body));
       const body = JSON.parse(String(init?.body));
       requests.push(body);
       signals.push(init.signal);
@@ -164,21 +174,41 @@ describe('company model providers', () => {
     const png =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aU/0AAAAASUVORK5CYII=';
     const replyModelRoute = new ReplyModelRoute();
-    const result = await executor.generate({
-      replyModelRoute,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Check the picture and the fixture.' },
-            { type: 'image', image: Buffer.from(png, 'base64'), mediaType: 'image/png' },
+    const { result, calls } = await withProcessingTurn('a-turn', async () => {
+      const result = await captureReplyGeneration(() =>
+        executor.generate({
+          replyModelRoute,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Check the picture and the fixture.' },
+                { type: 'image', image: Buffer.from(png, 'base64'), mediaType: 'image/png' },
+              ],
+            },
           ],
-        },
-      ],
-      tools: { lookup: tool({ inputSchema: z.object({}), execute }) },
-      stopWhen: stepCountIs(4),
-      thinking: { type: 'enabled', budgetTokens: 1024, effort: 'high' },
+          tools: { lookup: tool({ inputSchema: z.object({}), execute }) },
+          stopWhen: stepCountIs(4),
+          thinking: { type: 'enabled', budgetTokens: 1024, effort: 'high' },
+        }),
+      );
+      return { result, calls: takeModelInvocations('a-turn')! };
     });
+    expect(calls.map((call) => call.httpStatus)).toEqual([200, 503, 200]);
+    expect(calls.map((call) => call.provider)).toEqual(['qwen', 'qwen', 'deepseek']);
+    expect(calls.map((call) => Buffer.from(call.requestBody!, 'base64').toString())).toEqual(
+      sentBodies,
+    );
+    expect(calls.every((call) => call.complete)).toBe(true);
+    const raw = calls.map((call) =>
+      JSON.parse(Buffer.from(call.responseBody!, 'base64').toString()),
+    );
+    expect(raw[0].choices[0].message.tool_calls[0].function).toEqual({
+      name: 'lookup',
+      arguments: '{}',
+    });
+    expect(raw[1].error.message).toBe('unavailable');
+    expect(raw[2].choices[0].message.content).toBe('Fixture confirmed.');
     expect(requests.map((r) => r.model)).toEqual(['qwen4-max', 'qwen4-max', 'deepseek-flash']);
     expect(new Set(signals).size).toBe(3);
     expect(requests[2].messages).toEqual(
@@ -224,4 +254,93 @@ describe('company model providers', () => {
       'qwen4-max',
     ]);
   });
+
+  it.each([
+    {
+      name: 'saved page chain wins over env and built-in Flash',
+      failRead: false,
+      env: 'deepseek/deepseek-flash',
+      expected: 'deepseek-v4-pro',
+    },
+    {
+      name: 'failed config read uses the environment chain',
+      failRead: true,
+      env: 'deepseek/deepseek-v4-pro',
+      expected: 'deepseek-v4-pro',
+    },
+    {
+      name: 'failed config read without env uses built-in Flash',
+      failRead: true,
+      env: '',
+      expected: 'deepseek-flash',
+    },
+  ])('$name with the actual provider SDKs', async ({ failRead, env, expected }) => {
+    const getFallbackChainOverride = failRead
+      ? jest.fn().mockRejectedValue(new Error('config unavailable'))
+      : jest.fn().mockResolvedValue(['qwen/qwen3.7-plus', 'deepseek/deepseek-v4-pro']);
+    const { executor } = setup(
+      {
+        DASHSCOPE_API_KEY: 'q',
+        DEEPSEEK_API_KEY: 'd',
+        AGENT_CHAT_MODEL: 'qwen/qwen4-max',
+        AGENT_DEFAULT_FALLBACKS: env,
+      },
+      { getRoleModelOverride: jest.fn().mockResolvedValue(undefined), getFallbackChainOverride },
+    );
+    const models: string[] = [];
+    jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      const model = JSON.parse(String(init?.body)).model;
+      models.push(model);
+      if (model === 'qwen4-max')
+        return Response.json(
+          { error: { message: 'unavailable', type: 'server_error' } },
+          { status: 503 },
+        );
+      return Response.json({
+        id: 'fixture',
+        created: 1,
+        model,
+        choices: [
+          { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+        ],
+      });
+    });
+    const replyModelRoute = new ReplyModelRoute();
+    const result = await executor.generate({ replyModelRoute, prompt: 'hello' });
+    expect(result.modelId).toBe(`deepseek/${expected}`);
+    expect(models).toEqual(['qwen4-max', expected]);
+    expect(replyModelRoute.fallbackModelId).toBe(`deepseek/${expected}`);
+    getFallbackChainOverride.mockClear();
+    await executor.generate({ replyModelRoute, role: ModelRole.Repair, prompt: 'repair' });
+    expect(models.at(-1)).toBe(expected);
+    expect(getFallbackChainOverride).not.toHaveBeenCalled();
+  });
+
+  it.each([{ fallbacks: [] }, { disableFallbacks: true }])(
+    'honors explicit fallback suppression %j even with a page chain and built-in Flash',
+    async (options) => {
+      const getFallbackChainOverride = jest.fn().mockResolvedValue(['deepseek/deepseek-v4-pro']);
+      const { executor } = setup(
+        {
+          DASHSCOPE_API_KEY: 'q',
+          DEEPSEEK_API_KEY: 'd',
+          AGENT_CHAT_MODEL: 'qwen/qwen4-max',
+        },
+        { getRoleModelOverride: jest.fn().mockResolvedValue(undefined), getFallbackChainOverride },
+      );
+      const fetch = jest
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          Response.json(
+            { error: { message: 'unavailable', type: 'server_error' } },
+            { status: 503 },
+          ),
+        );
+      await expect(
+        executor.generate({ ...options, replyModelRoute: new ReplyModelRoute(), prompt: 'hello' }),
+      ).rejects.toThrow();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(getFallbackChainOverride).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
+import { FeishuSendError, FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import type { FeishuWebhookChannel } from '@infra/feishu/constants/constants';
 import { CenterScopeService } from '@biz/center-dashboard/center-scope.service';
 
@@ -33,7 +33,12 @@ export class FeishuPrivateChatChannel {
 
   /** The action executor owns unknown results; never retry a timed-out webhook here. */
   async sendOnce(card: Record<string, unknown>, botImId?: string): Promise<boolean> {
-    const channel = await this.resolveChannel(botImId);
+    let channel: FeishuWebhookChannel | null;
+    try {
+      channel = await this.resolveChannel(botImId);
+    } catch {
+      throw new FeishuSendError('无法确认私聊通知接收群', true, true);
+    }
     if (!channel) return false;
     await this.webhookService.sendMessageOrThrow(channel, card);
     return true;

@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDashboardAccess } from '@/hooks/useDashboardAccess';
+import ModelCalls from './ModelCalls';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getCapturedProcessingRequest } from '@/api/services/chat.service';
 import type { MessageRecord } from '@/api/types/chat.types';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
 import {
@@ -8,6 +12,8 @@ import {
   getRawPayloadPanels,
   getToolCalls,
 } from '../utils';
+import { linkToolEvents } from '@/view/message-processing/tool-execution';
+import ExecutionEventTimeline from '../ExecutionEventTimeline';
 import ToolExecutionPanel from '../ToolExecutionPanel';
 import styles from './index.module.scss';
 
@@ -29,6 +35,14 @@ function withFallback<T>(factory: () => T, fallback: T): T {
 interface ChatSectionProps {
   message: MessageRecord;
 }
+
+const requestPanels = new Set([
+  'request',
+  'final-prompt',
+  'debug-context',
+  'transport-request',
+  'normalized-request',
+]);
 
 function stringifyPayload(data: unknown): string {
   // 纯文本面板（如"最终提示词"）直接原文展示，不走 JSON.stringify——
@@ -65,36 +79,88 @@ function getPayloadSummary(data: unknown): string {
 }
 
 export default function ChatSection({ message }: ChatSectionProps) {
-  const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
+  const [activePayloadKey, setActivePayloadKey] = useState<string>('response');
   const toolCalls = useMemo(() => withFallback(() => getToolCalls(message), []), [message]);
-  const historyMessages = useMemo(
-    () => withFallback(() => getHistoryMessages(message), []),
-    [message],
-  );
-  const rawPayloadPanels = useMemo(
-    () => withFallback(() => getRawPayloadPanels(message), []),
-    [message],
-  );
-  const fallbackSummary = useMemo(
-    () => withFallback(() => getFallbackSummary(message), undefined),
-    [message],
+  const linkedEvents = useMemo(
+    () => linkToolEvents(message.messageId, toolCalls, message.executionEvents ?? []),
+    [message, toolCalls],
   );
   const renderableMessage = useMemo(
     () => withFallback(() => getAssistantRenderableMessage(message), undefined),
     [message],
   );
-  const fallbackDeliveredSegments = fallbackSummary?.deliveredSegments;
-  const activePanel =
-    rawPayloadPanels.find((panel) => panel.key === activePayloadKey) ?? rawPayloadPanels[0];
-  const isProcessing = message.status === 'processing';
-
-  const fallbackStatusText = message.fallbackSuccess === true ? '成功' : '失败';
-
-  useEffect(() => {
-    if (!activePanel && rawPayloadPanels.length > 0) {
-      setActivePayloadKey(rawPayloadPanels[0].key);
+  const historyMessages = useMemo(
+    () =>
+      withFallback(
+        () => getHistoryMessages(message, { includeFallbackReply: !renderableMessage }),
+        [],
+      ),
+    [message, renderableMessage],
+  );
+  const hasRequest = Boolean(message.messageId && message.agentInvocation?.request);
+  const canInspectModelCalls =
+    useDashboardAccess()?.centerId === null && Boolean(message.messageId);
+  const showModelCalls = canInspectModelCalls && activePayloadKey === 'model-calls';
+  const requestTab = requestPanels.has(activePayloadKey);
+  const fullRequest = useQuery({
+    queryKey: ['message-processing-record-detail', message.messageId, 'request'],
+    queryFn: () => getCapturedProcessingRequest(message.messageId!),
+    enabled: hasRequest && requestTab,
+    staleTime: 60_000,
+  });
+  const rawPayloadPanels = useMemo(() => {
+    const snapshot = message.agentInvocation;
+    const request = hasRequest ? (fullRequest.data ?? snapshot?.request) : undefined;
+    const panels = withFallback(
+      () =>
+        getRawPayloadPanels(
+          {
+            ...message,
+            agentInvocation: snapshot ? { ...snapshot, request } : undefined,
+          },
+          toolCalls,
+        ),
+      [],
+    );
+    if (hasRequest && request?.agentRequest && !panels.some((p) => p.key === 'final-prompt')) {
+      panels.splice(1, 0, {
+        key: 'final-prompt',
+        label: '最终提示词',
+        description: '本次请求未捕获最终提示词',
+        data: undefined,
+      });
     }
-  }, [activePanel, rawPayloadPanels]);
+    if (hasRequest && !fullRequest.data) {
+      const description = fullRequest.isError
+        ? '请求读取失败'
+        : fullRequest.isSuccess
+          ? '未留存完整请求'
+          : '展开时读取完整请求';
+      return panels.map((panel) =>
+        requestPanels.has(panel.key) ? { ...panel, description, data: undefined } : panel,
+      );
+    }
+    return panels;
+  }, [
+    message,
+    hasRequest,
+    fullRequest.data,
+    fullRequest.isError,
+    fullRequest.isSuccess,
+    toolCalls,
+  ]);
+  const fallbackSummary = useMemo(
+    () => withFallback(() => getFallbackSummary(message), undefined),
+    [message],
+  );
+  const fallbackDeliveredSegments = fallbackSummary?.deliveredSegments;
+  const hasFallbackDetails = Boolean(
+    fallbackSummary?.message || fallbackSummary?.error || fallbackDeliveredSegments != null,
+  );
+  const activePanel =
+    rawPayloadPanels.find((panel) => panel.key === activePayloadKey) ??
+    rawPayloadPanels.find((panel) => panel.data !== undefined);
+  const isProcessing = message.status === 'processing';
 
   return (
     <>
@@ -121,9 +187,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
               ))}
             </div>
           ) : (
-            <div className={styles.historyEmpty}>
-              未从请求体提取到聊天记录，可在下方“请求体”查看原始 messages
-            </div>
+            <div className={styles.historyEmpty}>没有可展示的输入消息</div>
           )}
         </div>
 
@@ -154,19 +218,16 @@ export default function ChatSection({ message }: ChatSectionProps) {
           </div>
         </div>
 
-        <ToolExecutionPanel toolCalls={toolCalls} />
+        <ToolExecutionPanel
+          toolCalls={toolCalls}
+          events={message.executionEvents ?? []}
+          links={linkedEvents}
+        />
 
-        {message.isFallback && (
+        {message.isFallback && hasFallbackDetails && (
           <div className={styles.fallbackBox}>
             <div className={styles.fallbackHeader}>
               <span>Fallback 回执</span>
-              <span
-                className={`${styles.fallbackBadge} ${
-                  message.fallbackSuccess ? styles.success : styles.failed
-                }`}
-              >
-                {fallbackStatusText}
-              </span>
             </div>
             <div className={styles.fallbackContent}>
               {fallbackSummary?.message ? (
@@ -179,7 +240,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
                   <strong>Fallback 错误：</strong> {String(fallbackSummary.error)}
                 </div>
               ) : null}
-              {fallbackDeliveredSegments !== undefined ? (
+              {fallbackDeliveredSegments != null ? (
                 <div>
                   <strong>已下发分段：</strong> {String(fallbackDeliveredSegments)}
                 </div>
@@ -200,7 +261,7 @@ export default function ChatSection({ message }: ChatSectionProps) {
         )}
       </div>
 
-      {rawPayloadPanels.length > 0 && (
+      {(rawPayloadPanels.length > 0 || canInspectModelCalls) && (
         <div className={styles.rawSection}>
           <h4 className={styles.rawTitle}>调试载荷</h4>
           <div className={styles.payloadShell}>
@@ -211,31 +272,59 @@ export default function ChatSection({ message }: ChatSectionProps) {
                   type="button"
                   onClick={() => setActivePayloadKey(panel.key)}
                   className={`${styles.rawTabButton} ${
-                    activePanel?.key === panel.key ? styles.rawTabButtonActive : ''
+                    !showModelCalls && activePanel?.key === panel.key
+                      ? styles.rawTabButtonActive
+                      : ''
                   }`}
                 >
                   {panel.label}
                 </button>
               ))}
+              {canInspectModelCalls && (
+                <button
+                  type="button"
+                  className={`${styles.rawTabButton} ${showModelCalls ? styles.rawTabButtonActive : ''}`}
+                  onClick={() => setActivePayloadKey('model-calls')}
+                >
+                  模型调用原文
+                </button>
+              )}
             </div>
 
-            {activePanel ? (
+            {showModelCalls ? (
+              <ModelCalls messageId={message.messageId!} />
+            ) : activePanel ? (
               <div className={styles.payloadCard}>
                 <div className={styles.payloadHeader}>
                   <div>
                     <div className={styles.payloadLabel}>{activePanel.label}</div>
                     <div className={styles.payloadDescription}>{activePanel.description}</div>
                   </div>
-                  <div className={styles.payloadMeta}>{getPayloadSummary(activePanel.data)}</div>
+                  {activePanel.data !== undefined && (
+                    <div className={styles.payloadMeta}>{getPayloadSummary(activePanel.data)}</div>
+                  )}
                 </div>
                 <div className={styles.codeShell}>
-                  <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
+                  {activePanel.data !== undefined ? (
+                    <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
+                  ) : fullRequest.isError ? (
+                    <button
+                      type="button"
+                      className={styles.rawTabButton}
+                      onClick={() => void fullRequest.refetch()}
+                    >
+                      重新读取
+                    </button>
+                  ) : (
+                    <span>{fullRequest.isFetching ? '正在读取…' : '无可展示内容'}</span>
+                  )}
                 </div>
               </div>
             ) : null}
           </div>
         </div>
       )}
+      <ExecutionEventTimeline events={message.executionEvents} links={linkedEvents} />
     </>
   );
 }

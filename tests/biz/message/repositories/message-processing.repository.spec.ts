@@ -99,7 +99,8 @@ describe('MessageProcessingRepository', () => {
       ).toBe(true);
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('save_processing_snapshot', {
         p_record: expect.objectContaining({ message_id: baseRecord.messageId }),
-        p_invocation: snapshot,
+        p_request: null,
+        p_response: snapshot.response,
       });
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
@@ -112,6 +113,47 @@ describe('MessageProcessingRepository', () => {
       });
       expect(await repository.saveMessageProcessingRecord(baseRecord)).toBe(false);
     });
+  });
+
+  it('writes all attempts in the existing snapshot RPC and reads bodies only by both keys', async () => {
+    const call = {
+      id: 'id',
+      provider: 'qwen',
+      startedAt: new Date().toISOString(),
+      httpStatus: 200,
+      complete: true,
+      requestBody: 'e30=',
+      responseBody: '/wA=',
+    };
+    mockSupabaseClient.rpc.mockResolvedValue({ data: true, error: null });
+    await repository.saveMessageProcessingRecord({ ...baseRecord, modelInvocations: [call] });
+    expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+      'save_processing_snapshot',
+      expect.objectContaining({ p_invocations: [call] }),
+    );
+
+    const page = makeQueryMock({ data: Array.from({ length: 26 }, () => ({ id: 'id' })) });
+    mockSupabaseClient.from.mockReturnValue(page);
+    const summary = await repository.listModelCalls('msg', 0);
+    expect(page.select.mock.calls[0][0]).not.toMatch(/body/);
+    expect(page.eq).toHaveBeenCalledWith('message_id', 'msg');
+    expect(page.range).toHaveBeenCalledWith(0, 25);
+    expect(summary.calls).toHaveLength(25);
+    expect(summary.nextOffset).toBe(25);
+    const detail = makeQueryMock({ data: [{ request_body: '\\x7b7d', response_body: '\\xff00' }] });
+    mockSupabaseClient.from.mockReturnValue(detail);
+    expect(await repository.getModelCall('msg', 'id')).toEqual({
+      request: { encoding: 'utf8', body: '{}' },
+      response: { encoding: 'base64', body: '/wA=' },
+    });
+    expect(detail.eq.mock.calls).toEqual([
+      ['message_id', 'msg'],
+      ['id', 'id'],
+    ]);
+    mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [] }));
+    await expect(repository.getModelCall('other', 'id')).rejects.toMatchObject({ status: 404 });
+    mockSupabaseService.isClientInitialized.mockReturnValue(false);
+    await expect(repository.listModelCalls('msg', 0)).rejects.toMatchObject({ status: 503 });
   });
 
   // ==================== getSlowestMessages ====================
@@ -374,6 +416,8 @@ describe('MessageProcessingRepository', () => {
       expect(queryMock.select).toHaveBeenCalledTimes(1);
       const [selectedColumns] = queryMock.select.mock.calls[0];
       expect(selectedColumns).toContain('message_id');
+      expect(selectedColumns).toContain('message_preview:processing_list_message_preview');
+      expect(selectedColumns).toContain('reply_preview:processing_list_reply_preview');
       expect(selectedColumns).not.toContain('tool_calls');
       expect(selectedColumns).not.toContain('agent_steps');
       expect(selectedColumns).not.toContain('memory_snapshot');
@@ -409,7 +453,7 @@ describe('MessageProcessingRepository', () => {
   // ==================== getMessageProcessingRecordById ====================
 
   describe('getMessageProcessingRecordById', () => {
-    it('reads first-token latency from the migrated snapshot when the timing column is empty', async () => {
+    it('reads a migrated headquarters detail from the turn snapshot and backfilled timing column', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
       const invocation = { response: { timings: { durations: { requestToFirstTextDeltaMs: 34 } } } };
       mockSupabaseClient.from.mockReturnValue(
@@ -420,7 +464,8 @@ describe('MessageProcessingRepository', () => {
               chat_id: 'chat',
               status: 'success',
               received_at: '2026-11-19T00:00:00Z',
-              message_processing_invocations: { agent_invocation: invocation },
+              ttft_ms: 34,
+              message_processing_turn_snapshots: invocation,
             },
           ],
         }),
@@ -501,42 +546,44 @@ describe('MessageProcessingRepository', () => {
       status: 'success',
     };
 
-    it.each([
-      { embedded: { agent_invocation: { fromChild: true } } },
-      { embedded: [{ agent_invocation: { fromChild: true } }] },
-    ])('reads the child snapshot with either embed shape', async ({ embedded }) => {
-      mockSupabaseService.isClientInitialized.mockReturnValue(true);
-      const query = makeQueryMock({
-        data: [{ ...detailRow, message_processing_invocations: embedded }],
-      });
-      mockSupabaseClient.from.mockReturnValue(query);
-
-      const result = await repository.getMessageProcessingRecordById('detail');
-
-      const projection = query.select.mock.calls[0][0].split(',');
-      expect(projection).toContain(
-        'message_processing_invocations(agent_invocation:processing_read_invocation)',
-      );
-      expect(projection).not.toContain('agent_invocation');
-      expect(projection).not.toContain('invocation_version');
-      expect(result?.agentInvocation).toEqual({ fromChild: true });
-    });
-
-    it.each([[], null, [{ agent_invocation: null }]].map((embed) => ({ embed })))(
-      'omits unavailable or superseded snapshots',
-      async ({ embed }) => {
+    it.each(['detail', 'full'] as const)(
+      'reads the %s snapshot projection and preserves the tool sequence',
+      async (projection) => {
         mockSupabaseService.isClientInitialized.mockReturnValue(true);
-        mockSupabaseClient.from.mockReturnValue(
-          makeQueryMock({
-            data: [{ ...detailRow, message_processing_invocations: embed }],
-          }),
+        const child = { request: { messages: [] }, response: { reply: 'saved' } };
+        const call = { toolName: 'invite', result: 'sent' };
+        const query = makeQueryMock({
+          data: [
+            {
+              ...detailRow,
+              message_processing_turn_snapshots: child,
+              agent_steps: [{ stepIndex: 0 }, { stepIndex: 0 }],
+              tool_calls: [{ ...call, stepPosition: 1 }],
+            },
+          ],
+        });
+        mockSupabaseClient.from.mockReturnValue(query);
+        const result = await repository.getMessageProcessingRecordById('detail', projection);
+        expect(query.select.mock.calls[0][0]).toContain(
+          projection === 'detail'
+            ? 'message_processing_turn_snapshots(request:processing_request_context,response)'
+            : 'message_processing_turn_snapshots(request,response)',
         );
-
-        const result = await repository.getMessageProcessingRecordById('detail');
-
-        expect(result?.agentInvocation).toBeUndefined();
+        expect(result?.agentInvocation).toEqual({ ...child, isFallback: false });
+        expect(result?.agentSteps?.map((step) => step.toolCalls)).toEqual([[], [call]]);
+        expect(result?.toolCalls).toEqual([call]);
       },
     );
+
+    it('omits an expired snapshot and keeps the processing record', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.from.mockReturnValue(
+        makeQueryMock({ data: [{ ...detailRow, message_processing_turn_snapshots: null }] }),
+      );
+      expect(
+        (await repository.getMessageProcessingRecordById('detail'))?.agentInvocation,
+      ).toBeUndefined();
+    });
   });
 
   // ==================== getMessageStats ====================
@@ -593,6 +640,7 @@ describe('MessageProcessingRepository', () => {
           { status: 'success', total_duration: 1000, ttft_ms: '120' },
           { status: 'failure', total_duration: 500, ttft_ms: null },
           { status: 'timeout', total_duration: 0, ttft_ms: '' },
+          { status: 'processing', total_duration: null, ttft_ms: null },
         ],
         error: null,
       });
@@ -607,11 +655,64 @@ describe('MessageProcessingRepository', () => {
       expect(queryMock.or).toHaveBeenCalledWith('user_name.ilike.%Alice%,chat_id.ilike.%Alice%');
       expect(queryMock.ilike).toHaveBeenCalledWith('manager_name', '%LiHanTing%');
       expect(result).toEqual({
-        total: 3,
+        total: 4,
         success: 1,
         failed: 2,
         avgDuration: 750,
         avgTtft: 120,
+      });
+    });
+
+    it('counts every filtered page and averages positive timings across the whole range', async () => {
+      const firstRows = Array.from({ length: 1000 }, (_, index) => ({
+        message_id: String(index).padStart(4, '0'),
+        status: 'timeout',
+        total_duration: index === 0 ? 2000 : null,
+        ttft_ms: index === 0 ? 200 : null,
+      }));
+      const first = makeQueryMock({ data: firstRows });
+      const last = makeQueryMock({
+        data: [
+          { message_id: '1000', status: 'processing', total_duration: null, ttft_ms: null },
+          { message_id: '1001', status: 'failure', total_duration: 100, ttft_ms: 10 },
+          { message_id: '1002', status: 'success', total_duration: 300, ttft_ms: 30 },
+        ],
+      });
+      mockSupabaseClient.from.mockReturnValueOnce(first).mockReturnValueOnce(last);
+
+      const result = await repository.getMessageStats(0, 10000, { managerNames: ['Alice', 'Bob'] });
+
+      expect(result).toEqual({
+        total: 1003,
+        success: 1,
+        failed: 1001,
+        avgDuration: 800,
+        avgTtft: 80,
+      });
+      for (const page of [first, last]) {
+        expect(page.order).toHaveBeenCalledWith('message_id', { ascending: true });
+        expect(page.or).toHaveBeenCalledWith('manager_name.ilike.%Alice%,manager_name.ilike.%Bob%');
+      }
+      expect(first.gt).not.toHaveBeenCalled();
+      expect(last.gt).toHaveBeenCalledWith('message_id', '0999');
+    });
+
+    it('discards partial stats if a later page cannot be read', async () => {
+      const first = makeQueryMock({
+        data: Array.from({ length: 1000 }, (_, index) => ({
+          message_id: String(index),
+          status: 'failure',
+        })),
+      });
+      const error = makeQueryMock({ data: null, error: { code: '42501', message: 'Read failed' } });
+      mockSupabaseClient.from.mockReturnValueOnce(first).mockReturnValueOnce(error);
+
+      await expect(repository.getMessageStats(0, 10000, { userName: 'Alice' })).resolves.toEqual({
+        total: 0,
+        success: 0,
+        failed: 0,
+        avgDuration: 0,
+        avgTtft: 0,
       });
     });
   });

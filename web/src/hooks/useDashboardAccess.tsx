@@ -5,6 +5,7 @@ import { api } from '@/api/client';
 import { dashboardAuth } from '@/api/dashboard-session';
 import type { TenantRole } from '@/api/dashboard-accounts';
 import Login from '@/view/login/list';
+import { MESSAGE_PROCESSING_DETAIL_PATH } from '@/routes/lazy-pages';
 
 interface DashboardAccess {
   userId: string;
@@ -33,11 +34,14 @@ function ScopedQueries({ access, children }: { access: DashboardAccess; children
   );
   useEffect(() => () => client.clear(), [client]);
   const location = useLocation();
+  const centerPageAllowed =
+    CENTER_MENU_PATHS.includes(location.pathname) ||
+    Boolean(matchPath(MESSAGE_PROCESSING_DETAIL_PATH, location.pathname));
   return (
     <AccessContext.Provider value={access}>
       <QueryClientProvider client={client}>
         {(!access.isAdministrator && matchPath('/accounts/*', location.pathname)) ||
-        (access.centerId && !CENTER_MENU_PATHS.includes(location.pathname)) ? (
+        (access.centerId && !centerPageAllowed) ? (
           <Navigate to="/hosting" replace />
         ) : (
           children

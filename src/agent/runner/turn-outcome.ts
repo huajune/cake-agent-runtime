@@ -380,9 +380,11 @@ export function classifyReviewedOutcome(
       })
     : undefined;
 
+  const jobs = result.turnLedger?.jobs;
   return {
     kind: 'reply',
     reply: { text },
+    ...(jobs ? { getReplyJobContext: () => jobs } : {}),
     toolCalls,
     runTurnEnd,
     ...metadata,
@@ -435,11 +437,11 @@ function collectToolSideEffectIntents(toolCalls: AgentToolCall[]): TurnSideEffec
       call.result && typeof call.result === 'object' && !Array.isArray(call.result)
         ? (call.result as { sideEffect?: unknown; sideEffects?: unknown })
         : undefined;
-    const single = normalizeToolSideEffectIntent(result?.sideEffect);
+    const single = readTurnSideEffectIntent(result?.sideEffect);
     if (single) intents.push(single);
     if (Array.isArray(result?.sideEffects)) {
       for (const item of result.sideEffects) {
-        const intent = normalizeToolSideEffectIntent(item);
+        const intent = readTurnSideEffectIntent(item);
         if (intent) intents.push(intent);
       }
     }
@@ -447,7 +449,7 @@ function collectToolSideEffectIntents(toolCalls: AgentToolCall[]): TurnSideEffec
   return intents;
 }
 
-function normalizeToolSideEffectIntent(value: unknown): TurnSideEffectIntent | null {
+export function readTurnSideEffectIntent(value: unknown): TurnSideEffectIntent | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const intent = value as Partial<TurnSideEffectIntent>;
   if (intent.kind === 'conversation_risk') {

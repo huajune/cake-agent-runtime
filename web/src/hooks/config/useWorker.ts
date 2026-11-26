@@ -6,7 +6,6 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { WorkerStatus } from '@/api/types/monitoring.types';
 import * as monitoringService from '@/api/services/monitoring.service';
 
 export type { WorkerConcurrencyResponse, GroupInfo } from '@/api/services/monitoring.service';
@@ -45,17 +44,6 @@ export function useSetWorkerConcurrency() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (concurrency: number) => monitoringService.setWorkerConcurrency(concurrency),
-    onMutate: async (concurrency) => {
-      await queryClient.cancelQueries({ queryKey: ['worker-status'] });
-      const previousStatus = queryClient.getQueryData<WorkerStatus>(['worker-status']);
-      if (previousStatus) {
-        queryClient.setQueryData<WorkerStatus>(['worker-status'], {
-          ...previousStatus,
-          concurrency,
-        });
-      }
-      return { previousStatus };
-    },
     onSuccess: (data) => {
       if (data.success) {
         toast.success(data.message || '并发数已更新');
@@ -63,10 +51,7 @@ export function useSetWorkerConcurrency() {
         toast.error(data.message || '更新失败');
       }
     },
-    onError: (_err, _concurrency, context) => {
-      if (context?.previousStatus) {
-        queryClient.setQueryData(['worker-status'], context.previousStatus);
-      }
+    onError: () => {
       toast.error('设置并发数失败');
     },
     onSettled: () => {

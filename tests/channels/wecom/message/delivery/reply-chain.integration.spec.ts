@@ -3,8 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bull';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
-import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
+import { FeishuSendError } from '@infra/feishu/services/webhook.service';
+import { captureProviderFetch } from '@observability/context/model-invocations';
+import {
+  FollowUpSchedulerService,
+  type FollowUpJob,
+} from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import { ReengagementCommandService } from '@agent/reengagement/reengagement-command.service';
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecordsRepository } from '@biz/action-execution/action-records.repository';
@@ -22,6 +29,7 @@ import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyTurnsRepository } from '@biz/reply-execution/reply-turns.repository';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { OpsEventsRepository } from '@biz/ops-events/repositories/ops-events.repository';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RedisLeaseService } from '@infra/queue/redis-lease.service';
@@ -29,6 +37,9 @@ import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { HttpService } from '@infra/client-http/http.service';
 import { ApiConfigService } from '@infra/config/api-config.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { SessionFactsService } from '@memory/short-term/facts.service';
+import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
@@ -82,6 +93,10 @@ type SendCall = { url: string; body: Record<string, unknown> };
 
 isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   let client: RuntimePostgresClientFixture;
+  let sessionHashes: Map<string, Record<string, unknown>>;
+  let queuedFollowUps: Map<string, FollowUpJob>;
+  type FollowUpCommand = Parameters<ReengagementCommandService['process']>[0]['data'];
+  let queuedCommands: Map<string, FollowUpCommand>;
   let module: TestingModule | undefined;
   let groupToken: string;
   let directoryGroupId: string;
@@ -102,7 +117,12 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
 
   beforeEach(() => {
     // This database is explicitly disposable and separate from the SQL drill database.
-    client.query('TRUNCATE public.agent_action_records, public.agent_reply_turns CASCADE;');
+    client.query(
+      'TRUNCATE public.agent_action_records, public.agent_reply_turns, public.ops_events, public.message_processing_records CASCADE;',
+    );
+    sessionHashes = new Map();
+    queuedFollowUps = new Map();
+    queuedCommands = new Map();
     groupToken = 'fixture-group-credential-v1';
     directoryGroupId = groupId;
     sendCalls = [];
@@ -175,6 +195,76 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         'markFirstSegmentSent',
       ].map((name) => [name, jest.fn().mockResolvedValue(undefined)]),
     );
+    observability.buildMergedRequestContent = jest.fn().mockReturnValue('两条候选人消息');
+    // Recreate the services each start. Only the simulated Redis/Bull storage and the isolated SQL database survive.
+    const store = {
+      getHash: async (key: string) => structuredClone(sessionHashes.get(key) ?? null),
+      patchHash: async (key: string, patch: Record<string, unknown>) => {
+        sessionHashes.set(key, { ...sessionHashes.get(key), ...structuredClone(patch) });
+      },
+    };
+    const memoryConfig = { sessionFactsTtl: 129600 };
+    const facts = new SessionFactsService(
+      store as never,
+      memoryConfig as never,
+      undefined,
+      undefined,
+      undefined,
+    );
+    const session = new SessionStateService(
+      facts,
+      new SessionWorkbenchService(facts, store as never, memoryConfig as never),
+    );
+    const queuedJob = (id: string) =>
+      queuedFollowUps.has(id)
+        ? {
+            id,
+            data: queuedFollowUps.get(id),
+            getState: async () => 'delayed',
+            remove: async () => {
+              queuedFollowUps.delete(id);
+            },
+          }
+        : null;
+    const queue = {
+      getJobs: async () => [...queuedFollowUps.keys()].map(queuedJob),
+      getJob: async (id: string) => queuedJob(id),
+      add: async (_name: string, data: FollowUpJob, opts: { jobId: string }) => {
+        if (!queuedFollowUps.has(opts.jobId))
+          queuedFollowUps.set(opts.jobId, structuredClone(data));
+      },
+    };
+    const followUp = new FollowUpSchedulerService(
+      queue as never,
+      { getAgentReplyConfig: async () => ({ reengagementEnabled: true }) } as never,
+      {
+        trackScheduled: jest.fn(),
+        trackScheduleError: jest.fn(),
+        trackScheduleSkipped: jest.fn(),
+        trackSuperseded: jest.fn(),
+      } as never,
+      undefined,
+    );
+    const commands = new ReengagementCommandService(
+      {
+        add: async (_name: string, data: FollowUpCommand, opts: { jobId: string }) => {
+          if (!queuedCommands.has(opts.jobId))
+            queuedCommands.set(opts.jobId, structuredClone(data));
+        },
+        process: jest.fn(),
+        on: jest.fn(),
+      } as never,
+      followUp,
+      session,
+      undefined,
+      {
+        historicalBot: async (id: string) => (id === chatId ? botId : null),
+        resolve: async (sources: Array<{ botId?: string }>) =>
+          sources.map((source) => (source.botId === botId ? 'fixture-tenant' : null)),
+      } as never,
+    );
+    const anchors = new ReengagementAnchorService(commands, session);
+    jest.spyOn(anchors, 'handleToolAnchors').mockResolvedValue(undefined);
     module = await Test.createTestingModule({
       controllers: [MessageIngressController],
       providers: [
@@ -206,7 +296,10 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
             }),
           },
         },
-        { provide: SupabaseService, useValue: { getSupabaseClient: () => client } },
+        {
+          provide: SupabaseService,
+          useValue: { getSupabaseClient: () => client, isClientInitialized: () => true },
+        },
         {
           provide: ApiConfigService,
           useValue: {
@@ -273,6 +366,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
           useValue: {
             isAiReplyEnabled: () => true,
             isMessageMergeEnabled: () => false,
+            getMergeDelayMs: () => 0,
             syncSnapshot: jest.fn().mockResolvedValue(undefined),
             resolveWecomChatModelSelection: jest.fn().mockResolvedValue({}),
           },
@@ -312,31 +406,28 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         },
         {
           provide: SessionStateService,
-          useValue: { recordCandidateMessagesProcessed: jest.fn().mockResolvedValue(undefined) },
+          useValue: session,
         },
         { provide: AlertNotifierService, useValue: { sendSimpleAlert: jest.fn() } },
         {
           provide: TurnOutcomeInterventionService,
           useValue: { commit: jest.fn().mockResolvedValue(undefined) },
         },
+        OpsEventsRepository,
         {
           provide: OpsEventsRecorderService,
-          useValue: {
-            recordOpeningDurably: jest.fn().mockResolvedValue(true),
-            recordEventDurably: jest.fn().mockResolvedValue(undefined),
-          },
+          useFactory: (repository: OpsEventsRepository) =>
+            new OpsEventsRecorderService(
+              repository,
+              { resolve: () => null } as never,
+              undefined,
+              undefined,
+            ),
+          inject: [OpsEventsRepository],
         },
-        {
-          provide: FollowUpSchedulerService,
-          useValue: { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) },
-        },
-        {
-          provide: ReengagementAnchorService,
-          useValue: {
-            handleToolAnchors: jest.fn().mockResolvedValue(undefined),
-            handleDeliveredReplyAnchors: jest.fn().mockResolvedValue(undefined),
-          },
-        },
+        { provide: FollowUpSchedulerService, useValue: followUp },
+        { provide: ReengagementAnchorService, useValue: anchors },
+        { provide: ReengagementCommandService, useValue: commands },
       ],
     }).compile();
     const workflow = module.get(ReplyWorkflowService);
@@ -405,9 +496,9 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       'callbackEvidenceCount',(SELECT count(*) FROM agent_action_evidence WHERE completion->'result'->>'stage'='delivery_callback'));`);
   }
 
-  async function submitInput(route: Route) {
+  async function submitInput(route: Route, overrides?: Record<string, unknown>) {
     const expected = processCalls.length + 1;
-    await module!.get(MessageIngressController).receiveMessage(incoming(route));
+    await module!.get(MessageIngressController).receiveMessage(incoming(route, overrides));
     for (let tries = 0; tries < 10 && processCalls.length < expected; tries++)
       await new Promise((resolve) => setImmediate(resolve));
     expect(processCalls).toHaveLength(expected);
@@ -427,6 +518,37 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     );
     await module!.get(ActionRecoveryService).recoverDue();
     await module!.get(ReplyRecoveryService).recoverDue();
+  }
+
+  function expireOwner() {
+    client.query(
+      "UPDATE agent_reply_turns SET generation_until=now()-interval '1 second',next_check_at=now()-interval '1 second' WHERE status IN ('preparing','planned');",
+    );
+  }
+
+  function expireResumeWindow() {
+    client.query(
+      "UPDATE agent_reply_turns SET recovery=jsonb_set(recovery,'{resumeUntil}',to_jsonb(now()-interval '1 millisecond'));",
+    );
+  }
+
+  // Stop the live workflow at a durable boundary. The restarted Nest module only
+  // receives database state, current credentials and the original Redis input IDs.
+  function interruptDelivery(attempted: number) {
+    jest
+      .spyOn(module!.get(MessageDeliveryService), 'deliverReply')
+      .mockImplementationOnce(async (_reply, context) => {
+        const turn = context.replyTurn!;
+        if (attempted) {
+          const sending = await module!.get(ReplyTurnsService).startDelivery(turn);
+          for (let i = 0; i < attempted; i++) {
+            await module!
+              .get(DurableReplyDeliveryService)
+              .sendOrdinarySegment(sending, context, turn.recovery.replySegments![i], i);
+          }
+        }
+        throw new Error('fixture process stopped before recording a terminal delivery');
+      });
   }
 
   function assertAcceptedTurn() {
@@ -461,9 +583,9 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
   function interruptBeforeSecondAction() {
     const records = module!.get(ActionRecordsRepository);
     const prepare = records.prepare.bind(records);
-    return jest.spyOn(records, 'prepare').mockImplementation(async (intent, mode) => {
+    return jest.spyOn(records, 'prepare').mockImplementation(async (intent, mode, claim) => {
       if (intent.parameters.index === 1) throw new Error('fixture database unavailable');
-      return prepare(intent, mode);
+      return prepare(intent, mode, claim);
     });
   }
 
@@ -670,22 +792,803 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(pending).toEqual(new Set([newerInputId]));
   }, 30000);
 
-  it('keeps an accepted first segment and stops on a second-segment error without a saved plan', async () => {
+  const testJobs: RecommendedJobSummary[] = ['星桥东门店', '云川西站店', '未提及北岸店'].map(
+    (storeName, index) => ({
+      jobId: 7101 + index,
+      brandName: null,
+      jobName: null,
+      storeName,
+      storeAddress: null,
+      cityName: '上海',
+      regionName: null,
+      laborForm: null,
+      jobCategoryName: null,
+      salaryDesc: null,
+    }),
+  );
+  const jobSegments = ['可以看看星桥东门店', '云川西站店也在招人'];
+  function recommendJobs() {
+    runInboundTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: jobSegments.join('\n\n') },
+      toolCalls: [],
+      getReplyJobContext: () => ({
+        fetchedJobs: testJobs,
+        invalidatedJobIds: [],
+        attestedFocusJob: null,
+      }),
+    });
+  }
+  function sessionState() {
+    return module!
+      .get(SessionStateService)
+      .getSessionState('fixture-corp', 'fixture-contact', chatId);
+  }
+  function replyEvents() {
+    return client.query<
+      Array<{
+        event_name: string;
+        idempotency_key: string;
+        occurred_at: string;
+        payload: Record<string, unknown>;
+      }>
+    >(
+      "SELECT coalesce(json_agg(t), '[]') FROM (SELECT event_name,idempotency_key,occurred_at,payload FROM ops_events WHERE corp_id='fixture-corp' AND event_name IN ('agent.opening_sent','agent.replied') ORDER BY occurred_at) t;",
+    );
+  }
+
+  it('records only the accepted job prefix, then replays memory once when ACK fails after recovery', async () => {
+    await start();
+    recommendJobs();
+    interruptBeforeSecondAction();
+    await submitInput('enterprise');
+    expect(sendCalls).toHaveLength(1);
+    expect((await sessionState()).presentedJobs?.map((job) => job.jobId)).toEqual([7101]);
+    expect((await sessionState()).storePresentationRounds).toBe(1);
+    expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('未提及北岸店');
+    expect(replyEvents()).toEqual([]);
+    expect(queuedFollowUps.size).toBe(0);
+
+    await restart('execute');
+    expireOwner();
+    ackPendingMessageIds.mockRejectedValueOnce(
+      new Error('crash after writing job memory and before input ACK'),
+    );
+    await recoverStoredTurn();
+    expect(databaseState().turn.status).toBe('settled');
+    expect(pending.has(inboundId)).toBe(true);
+    expect((await sessionState()).presentedJobs?.map((job) => job.jobId)).toEqual([7101, 7102]);
+    await restart('execute');
+    await recoverStoredTurn();
+
+    assertAcceptedTurn();
+    expect((await sessionState()).presentedJobs?.map((job) => job.jobId)).toEqual([7101, 7102]);
+    expect((await sessionState()).storePresentationRounds).toBe(1);
+    expect(databaseState().turn.recovery.effects).not.toHaveProperty('deliveredReply');
+  }, 30000);
+
+  it.each([false, true])(
+    'retains only the accepted job and its focus if the rest stops (deadline=%s)',
+    async (expired) => {
+      await start();
+      recommendJobs();
+      interruptDelivery(1);
+      await submitInput('enterprise', { payload: { text: '星桥东门店的岗位怎么样' } });
+      expect((await sessionState()).presentedJobs).toBeNull();
+      await restart('execute');
+      expireOwner();
+      if (expired) {
+        client.query("UPDATE agent_reply_turns SET input_occurred_at=now()-interval '25 hours';");
+      } else {
+        (module!.get(ActionPermitService).evaluate as jest.Mock).mockResolvedValue({
+          allowed: false,
+          reason: 'user_paused',
+        });
+      }
+      await recoverStoredTurn();
+      expect(databaseState().turn).toMatchObject({
+        status: 'acked',
+        review_required: false,
+        delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
+      });
+      expect((await sessionState()).presentedJobs?.map((job) => job.jobId)).toEqual([7101]);
+      expect((await sessionState()).currentFocusJob?.jobId).toBe(7101);
+      expect(sendCalls).toHaveLength(1);
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+      expect(replyEvents()).toEqual([]);
+      expect(queuedFollowUps.size).toBe(0);
+    },
+    30000,
+  );
+
+  it('repairs a recovered opening across queue failure and a second restart with the original event time', async () => {
+    await start();
+    const inputAt = Date.now() - 120_000;
+    runInboundTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '你好，方便发一下定位吗' },
+      toolCalls: [],
+    });
+    interruptDelivery(0);
+    await submitInput('enterprise', { timestamp: inputAt });
+    expect(sendCalls).toHaveLength(0);
+    expect(replyEvents()).toEqual([]);
+    await restart('execute');
+    expireOwner();
+    jest
+      .spyOn(module!.get(FollowUpSchedulerService), 'scheduleFollowUp')
+      .mockResolvedValueOnce({ scheduled: false, reason: 'enqueue_error' });
+    await recoverStoredTurn();
+    expect(sendCalls).toHaveLength(1);
+    expect(replyEvents()).toHaveLength(1);
+    expect(queuedFollowUps.size).toBe(0);
+    expect(pending.has(inboundId)).toBe(true);
+    await restart('execute');
+    ackPendingMessageIds.mockRejectedValueOnce(new Error('crash after enqueue, before input ACK'));
+    await recoverStoredTurn();
+    expect(databaseState().turn.status).toBe('settled');
+    await restart('observe');
+    await recoverStoredTurn();
+    await recoverStoredTurn();
+
+    const events = replyEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      event_name: 'agent.opening_sent',
+      idempotency_key: chatId + ':opening',
+      payload: { logical_turn_id: expect.any(String) },
+    });
+    expect(Date.parse(events[0].occurred_at)).toBe(inputAt);
+    expect([...queuedFollowUps.values()]).toEqual([
+      expect.objectContaining({
+        scenarioCode: 'opening_no_reply',
+        anchorEventId: 'opening',
+        anchorAt: inputAt,
+        sessionRef: { corpId: 'fixture-corp', userId: 'fixture-contact', sessionId: chatId },
+      }),
+    ]);
+    expect((await sessionState()).lastProcessedCandidateMessageAt).toBe(
+      new Date(inputAt).toISOString(),
+    );
+    expect(databaseState().turn.status).toBe('acked');
+    expect(sendCalls).toHaveLength(1);
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    expect(pending).toEqual(new Set([newerInputId]));
+  }, 30000);
+
+  it('repairs the address follow-up for a later reply using its own turn and skips a second opening', async () => {
+    await start();
+    await submitInput('enterprise');
+    const inputAt = Date.now();
+    runInboundTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '方便发一下定位吗' },
+      toolCalls: [],
+    });
+    interruptDelivery(0);
+    await submitInput('enterprise', { messageId: newerInputId, timestamp: inputAt });
+    await restart('execute');
+    expireOwner();
+    await recoverStoredTurn();
+    expect(replyEvents().map((event) => event.event_name)).toEqual([
+      'agent.opening_sent',
+      'agent.replied',
+    ]);
+    expect(queuedCommands.size).toBe(2);
+    for (const command of queuedCommands.values()) {
+      await module!.get(ReengagementCommandService).process({ data: command } as never);
+    }
+    const jobs = [...queuedFollowUps.values()];
+    expect(jobs.filter((job) => job.scenarioCode === 'address_missing')).toEqual([
+      expect.objectContaining({
+        anchorAt: inputAt,
+        anchorEventId: expect.stringMatching(/:address_missing$/),
+      }),
+    ]);
+    expect(pending.size).toBe(0);
+    expect(sendCalls).toHaveLength(3);
+    expect(runInboundTurn).toHaveBeenCalledTimes(2);
+  }, 30000);
+
+  it.each(['group chat', 'permission withdrawn'])(
+    'creates no private opening or follow-up after a restart for %s',
+    async (scenario) => {
+      await start();
+      runInboundTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '你好，方便发一下定位吗' },
+        toolCalls: [],
+      });
+      interruptDelivery(0);
+      await submitInput(
+        'enterprise',
+        scenario === 'group chat' ? { imRoomId: 'fixture-room' } : {},
+      );
+      await restart('execute');
+      if (scenario === 'permission withdrawn') {
+        (module!.get(ActionPermitService).evaluate as jest.Mock).mockResolvedValue({
+          allowed: false,
+          reason: 'user_paused',
+        });
+      }
+      expireOwner();
+      await recoverStoredTurn();
+      expect(databaseState().turn.status).toBe('acked');
+      expect(sendCalls).toHaveLength(scenario === 'group chat' ? 1 : 0);
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+      expect(replyEvents()).toEqual([]);
+      expect(queuedCommands.size).toBe(0);
+      expect(queuedFollowUps.size).toBe(0);
+    },
+    30000,
+  );
+
+  it('recognizes all accepted receipts past the deadline and completes the opening without dispatch', async () => {
+    await start();
+    interruptDelivery(2);
+    await submitInput('enterprise');
+    await restart('execute');
+    expireOwner();
+    client.query("UPDATE agent_reply_turns SET input_occurred_at=now()-interval '25 hours';");
+    await recoverStoredTurn();
+    assertAcceptedTurn();
+    expect(databaseState().turn.review_required).toBe(false);
+    expect(replyEvents()).toHaveLength(1);
+    expect(queuedFollowUps.size).toBe(1);
+  }, 30000);
+
+  it('resumes the unsent suffix when the action store was unavailable before dispatch', async () => {
     await start();
     const failure = interruptBeforeSecondAction();
     await submitInput('enterprise');
     failure.mockRestore();
     expect(sendCalls).toHaveLength(1);
     expect(databaseState().turn).toMatchObject({
-      status: 'acked',
-      delivery_result: { outcome: 'incomplete', accepted: 1, total: 2 },
+      status: 'planned',
+      recovery: { replySegments: parts },
     });
     await restart('observe');
+    expireOwner();
     await recoverStoredTurn();
     await submitInput('enterprise');
+    expect(sendCalls).toHaveLength(2);
+    assertAcceptedTurn();
+  }, 30000);
+
+  it.each([
+    ['enterprise', 0],
+    ['group', 1],
+    ['enterprise', 2],
+  ] as const)(
+    'recovers %s after %i accepted segments with one provider request per original segment',
+    async (route, accepted) => {
+      await start();
+      interruptDelivery(accepted);
+      await submitInput(route);
+      expect(sendCalls).toHaveLength(accepted);
+      const firstRequests = sendCalls.map((call) => call.body.externalRequestId);
+      expect(databaseState().turn.recovery.replySegments).toEqual(parts);
+      expect(ackPendingMessageIds).not.toHaveBeenCalled();
+      await restart('observe');
+      groupToken = 'fixture-rotated-credential';
+      expireOwner();
+      await recoverStoredTurn();
+      await recoverStoredTurn();
+      await submitInput(route);
+      expect(sendCalls.map((call) => (call.body.payload as { text: string }).text)).toEqual(parts);
+      expect(sendCalls.slice(0, accepted).map((call) => call.body.externalRequestId)).toEqual(
+        firstRequests,
+      );
+      expect(new Set(sendCalls.map((call) => call.body.externalRequestId)).size).toBe(parts.length);
+      if (route === 'group')
+        expect(sendCalls[1]).toMatchObject({
+          url: fixtureOrigin + '/group-send',
+          body: { token: groupToken },
+        });
+      assertAcceptedTurn();
+      expect(databaseState().turn.recovery).not.toHaveProperty('replySegments');
+    },
+    30000,
+  );
+
+  it.each(['unknown', 'executing'])(
+    'holds the suffix behind an %s request until its authenticated callback, then sends only the second segment',
+    async (status) => {
+      await start();
+      interruptDelivery(1);
+      if (status === 'unknown') {
+        onSend = async () => {
+          throw new Error('simulated missing provider response');
+        };
+      } else {
+        // Stop after the provider accepted the request but before its local receipt was committed.
+        jest
+          .spyOn(module!.get(ActionRecordsRepository), 'settle')
+          .mockRejectedValue(new Error('fixture process lost before receipt commit'));
+      }
+      await submitInput('enterprise');
+      const requestId = sendCalls[0].body.externalRequestId;
+      expect(databaseState().actions[0].status).toBe(status);
+      onSend = undefined;
+      await restart('execute');
+      expireOwner();
+      await recoverStoredTurn();
+      expect(sendCalls).toHaveLength(1);
+      expect(pending.has(inboundId)).toBe(true);
+      expect(databaseState().turn.recovery.replySegments).toEqual(parts);
+      await module!.get(MessageIngressController).receiveMessage(
+        incoming('enterprise', {
+          isSelf: true,
+          source: MessageSource.API_SEND,
+          messageId: 'fixture-recovered-callback',
+          externalRequestId: requestId,
+          payload: { text: parts[0] },
+        }),
+      );
+      expireOwner();
+      await recoverStoredTurn();
+      expect(sendCalls.map((call) => (call.body.payload as { text: string }).text)).toEqual(parts);
+      expect(sendCalls.filter((call) => call.body.externalRequestId === requestId)).toHaveLength(1);
+      expect(databaseState().turn).toMatchObject({
+        status: 'acked',
+        delivery_result: { outcome: 'complete', accepted: 2, total: 2 },
+      });
+      expect(databaseState().callbackEvidenceCount).toBe(1);
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+      expect(pending).toEqual(new Set([newerInputId]));
+    },
+    30000,
+  );
+
+  it('uses two database requests per new segment and settles the successful turn once', async () => {
+    await start();
+    const rpc = jest.spyOn(client, 'rpc');
+    await submitInput('enterprise');
+    assertAcceptedTurn();
+    const segmentCalls = rpc.mock.calls
+      .filter(
+        ([name, args]) =>
+          name === 'transition_agent_reply_segment' ||
+          name === 'transition_agent_action' ||
+          (name === 'transition_agent_reply_turn' && args.p_operation === 'check_delivery'),
+      )
+      .map(([name, args]) => [name, args.p_operation]);
+    const oneSegment = [
+      ['transition_agent_reply_segment', 'claim'],
+      ['transition_agent_action', 'settle'],
+    ];
+    expect(segmentCalls).toEqual([...oneSegment, ...oneSegment]);
+    expect(
+      client.query(
+        `SELECT count(*)::integer FROM agent_action_records a
+         WHERE a.kind='wecom.reply_segment' AND a.status='succeeded' AND a.local_sync='complete'
+           AND 1=(SELECT count(*) FROM agent_action_evidence e
+             WHERE (e.corp_id,e.action_id,e.attempt_id)=(a.corp_id,a.action_id,a.dispatch_attempt_id)
+               AND e.completion->>'status'=a.status AND e.completion->'result'=a.result
+               AND e.completion->'evidence'=a.evidence
+               AND e.evidence_hash=encode(sha256(convert_to(e.completion::text,'UTF8')),'hex'))`,
+      ),
+    ).toBe(2);
+    expect(
+      rpc.mock.calls.filter(
+        ([name, args]) => name === 'transition_agent_reply_turn' && args.p_operation === 'settle',
+      ),
+    ).toHaveLength(1);
+  }, 30000);
+
+  it.each([0, 1, 2])(
+    'stops all new dispatch after five minutes with %i segments already accepted',
+    async (accepted) => {
+      await start();
+      interruptDelivery(accepted);
+      await submitInput('enterprise');
+      await restart('execute');
+      expireOwner();
+      expireResumeWindow();
+      await recoverStoredTurn();
+      await recoverStoredTurn();
+      expect(sendCalls).toHaveLength(accepted);
+      expect(databaseState().turn).toMatchObject({
+        status: 'acked',
+        review_required: false,
+        delivery_result: { outcome: accepted === 2 ? 'complete' : 'skipped', accepted, total: 2 },
+      });
+      expect(databaseState().turn.recovery).not.toHaveProperty('replySegments');
+      expect(pending).toEqual(new Set([newerInputId]));
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    },
+    30000,
+  );
+
+  it.each(['before claim', 'in the claim response'] as const)(
+    'stops when the recovery window expires %s',
+    async (boundary) => {
+      await start();
+      interruptDelivery(1);
+      await submitInput('enterprise');
+      await restart('execute');
+      expireOwner();
+      const records = module!.get(ActionRecordsRepository);
+      const prepare = records.prepare.bind(records);
+      jest.spyOn(records, 'prepare').mockImplementation(async (intent, mode, claim) => {
+        if (intent.parameters.index !== 1) return prepare(intent, mode, claim);
+        if (boundary === 'before claim') expireResumeWindow();
+        const result = await prepare(intent, mode, claim);
+        if (boundary === 'in the claim response' && result.dispatchUntil) {
+          expireResumeWindow();
+          return { ...result, dispatchUntil: new Date(Date.now() - 1).toISOString() };
+        }
+        return result;
+      });
+      await recoverStoredTurn();
+      await recoverStoredTurn();
+      expect(sendCalls).toHaveLength(1);
+      expect(databaseState().turn).toMatchObject({
+        status: 'acked',
+        review_required: false,
+        delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
+      });
+    },
+    30000,
+  );
+
+  it('counts a durable callback even when startup closes the turn before action reconciliation', async () => {
+    await start();
+    interruptDelivery(1);
+    onSend = async () => {
+      throw new Error('simulated unknown provider result');
+    };
+    await submitInput('enterprise');
+    await restart('execute');
+    await module!.get(MessageIngressController).receiveMessage(
+      incoming('enterprise', {
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        messageId: 'accepted-before-reconciliation',
+        externalRequestId: sendCalls[0].body.externalRequestId,
+        payload: { text: parts[0] },
+      }),
+    );
+    expect(databaseState().actions[0].status).toBe('unknown');
+    expireOwner();
+    expireResumeWindow();
+    await module!.get(ReplyRecoveryService).recoverOnStartup();
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      review_required: false,
+      delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
+    });
+    expect(sendCalls).toHaveLength(1);
+    expect(pending).toEqual(new Set([newerInputId]));
+  }, 30000);
+
+  it('keeps a late receipt after the cutoff without reopening the unsent suffix', async () => {
+    await start();
+    interruptDelivery(1);
+    onSend = async () => {
+      throw new Error('simulated unknown provider result');
+    };
+    await submitInput('enterprise');
+    await restart('execute');
+    expireOwner();
+    expireResumeWindow();
+    await recoverStoredTurn();
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      review_required: true,
+      delivery_result: { outcome: 'unknown', accepted: 0, total: 2 },
+    });
+    await module!.get(MessageIngressController).receiveMessage(
+      incoming('enterprise', {
+        isSelf: true,
+        source: MessageSource.API_SEND,
+        messageId: 'late-five-minute-receipt',
+        externalRequestId: sendCalls[0].body.externalRequestId,
+        payload: { text: parts[0] },
+      }),
+    );
+    await recoverStoredTurn();
+    expect(databaseState().callbackEvidenceCount).toBe(1);
+    expect(sendCalls).toHaveLength(1);
+    expect(pending).toEqual(new Set([newerInputId]));
+  }, 30000);
+
+  it('honors a hosting pause made during downtime before dispatching the suffix', async () => {
+    await start();
+    interruptDelivery(1);
+    await submitInput('enterprise');
+    await restart('execute');
+    (module!.get(ActionPermitService).evaluate as jest.Mock).mockResolvedValue({
+      allowed: false,
+      reason: 'user_paused',
+    });
+    expireOwner();
+    const rpc = jest.spyOn(client, 'rpc');
+    await recoverStoredTurn();
+    expect(sendCalls).toHaveLength(1);
+    expect(databaseState().actions).toHaveLength(1);
+    const operations = rpc.mock.calls
+      .filter(([name]) => name === 'transition_agent_reply_segment')
+      .map(([, args]) => args.p_operation);
+    expect(operations).toContain('inspect');
+    expect(operations).not.toContain('claim');
+    expect(databaseState().turn).toMatchObject({
+      status: 'acked',
+      delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
+    });
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('continues one merged reply and ACKs exactly the two original inputs after restarting', async () => {
+    await start();
+    const second = 'fixture-second-input';
+    pending.add(second);
+    interruptDelivery(1);
+    const adapter = module!.get(MessageCallbackAdapterService);
+    const batch = [inboundId, second].map((messageId) =>
+      adapter.normalizeCallback(incoming('enterprise', { messageId })),
+    );
+    await module!.get(ReplyWorkflowService).processMergedMessages(batch, 'fixture-batch');
+    expect(sendCalls).toHaveLength(1);
+    await restart('execute');
+    expireOwner();
+    await recoverStoredTurn();
+    await module!
+      .get(MessageIngressController)
+      .receiveMessage(incoming('enterprise', { messageId: second }));
+    await Promise.all(processCalls);
+    expect(sendCalls.map((call) => (call.body.payload as { text: string }).text)).toEqual(parts);
+    expect(ackPendingMessageIds).toHaveBeenCalledWith(chatId, [inboundId, second]);
+    expect(pending).toEqual(new Set([newerInputId]));
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+  }, 30000);
+
+  it('resumes through the original group only after credentials resolve for the original bot', async () => {
+    await start();
+    interruptDelivery(1);
+    await submitInput('group');
+    await restart('execute');
+    directoryGroupId = 'different-group';
+    expireOwner();
+    await recoverStoredTurn();
+    expect(sendCalls).toHaveLength(1);
+    expect(pending.has(inboundId)).toBe(true);
+    directoryGroupId = groupId;
+    expireOwner();
+    await recoverStoredTurn();
+    assertAcceptedTurn();
+  }, 30000);
+
+  it('closes an accepted group reply even if the bot left its original group after both segments', async () => {
+    await start();
+    interruptDelivery(2);
+    await submitInput('group');
+    await restart('execute');
+    directoryGroupId = 'different-group';
+    expireOwner();
+    await recoverStoredTurn();
+    expect(sendCalls).toHaveLength(2);
+    assertAcceptedTurn();
+  }, 30000);
+
+  it('completes the original promised handoff after recovery and retries its local commit without resending', async () => {
+    await start();
+    const intent = {
+      kind: 'general_handoff',
+      source: 'agent_tool',
+      origin: 'promise_reconciliation',
+      idempotencyKey: 'fixture-promise',
+      reasonCode: 'other',
+      reason: '已承诺人工跟进',
+      alertLabel: '人工跟进',
+      workOrderId: 123,
+    };
+    runInboundTurn.mockResolvedValue({
+      kind: 'reply',
+      reply: { text: '会有同事跟进' },
+      toolCalls: [],
+      sideEffects: [{ ...intent, recentMessages: [{ content: 'fixture-private-history' }] }],
+    });
+    interruptDelivery(0);
+    await submitInput('enterprise');
+    expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('fixture-private-history');
+    await restart('execute');
+    const commit = module!.get(TurnOutcomeInterventionService).commit as jest.Mock;
+    commit.mockRejectedValueOnce(new Error('fixture intervention service unavailable'));
+    expireOwner();
+    await recoverStoredTurn();
+    expect(databaseState().turn.status).toBe('settled');
+    expect(sendCalls).toHaveLength(1);
+    await recoverStoredTurn();
+    expect(commit).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'reply', sideEffects: [expect.objectContaining(intent)] }),
+      expect.objectContaining({ corpId: 'fixture-corp', chatId, userId: 'fixture-contact' }),
+    );
+    expect(databaseState().turn.status).toBe('acked');
+    expect(databaseState().turn.recovery.effects).not.toHaveProperty('afterReply');
     expect(sendCalls).toHaveLength(1);
     expect(runInboundTurn).toHaveBeenCalledTimes(1);
   }, 30000);
+
+  it.each([
+    ['collect_fields', 'collection_started', false],
+    ['confirm_collection', 'collection_awaiting_confirmation', true],
+  ] as const)(
+    'recovers the original %s precheck before acknowledging its input',
+    async (nextAction, stage, awaiting) => {
+      await start();
+      const inputAt = Date.now() - 3500;
+      runInboundTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '请核对一下资料' },
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            result: { success: true, nextAction, fullName: 'fixture-private-form' },
+          },
+        ],
+      });
+      (module!.get(ReengagementAnchorService).handleToolAnchors as jest.Mock).mockRejectedValueOnce(
+        new Error('stopped before scheduling'),
+      );
+      await submitInput('enterprise', { timestamp: inputAt });
+      expect(databaseState().turn.recovery.effects).toMatchObject({ collectionPrecheck: stage });
+      expect(JSON.stringify(databaseState().turn.recovery.effects)).not.toContain(
+        'fixture-private-form',
+      );
+      expect(queuedCommands.size).toBe(0);
+      await restart('execute');
+      (module!.get(ReengagementAnchorService).handleToolAnchors as jest.Mock).mockRestore();
+      expireOwner();
+      await recoverStoredTurn();
+      await recoverStoredTurn();
+      expect(databaseState().turn.status).toBe('acked');
+      const appointments = [...queuedCommands.values()].filter(
+        (cmd) => cmd.kind === 'schedule' && cmd.input.scenarioCode === 'booking_incomplete',
+      );
+      expect(appointments).toHaveLength(1);
+      expect(appointments[0]).toMatchObject({
+        input: {
+          anchorAt: inputAt,
+          anchorEventId: expect.stringContaining(stage),
+          ...(awaiting ? { collectionAwaitingConfirmation: true } : {}),
+        },
+      });
+      expect(sendCalls).toHaveLength(1);
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    },
+    30000,
+  );
+
+  it('retains the original provider bytes and closes timed-out monitoring from the recovered receipt', async () => {
+    await start();
+    const send = captureProviderFetch('fixture', async () => new Response('wire response\n'));
+    runInboundTurn.mockImplementationOnce(async ({ context }) => {
+      await context.onPreparedRequest({ messages: [{ role: 'user', content: 'fixture request' }] });
+      await (await send(fixtureOrigin, { method: 'POST', body: 'wire request\n' })).text();
+      return { kind: 'reply', reply: { text: parts.join('\n\n') }, toolCalls: [] };
+    });
+    interruptDelivery(1);
+    await submitInput('enterprise');
+    const read = () =>
+      client.query(`SELECT json_build_object('status',m.status, 'preview',m.reply_preview,
+      'sdk',s.request->'agentRequest', 'delivery',s.response->'delivery',
+      'wire',(SELECT json_agg(json_build_array(convert_from(request_body,'UTF8'),convert_from(response_body,'UTF8')))
+        FROM message_processing_invocations WHERE message_id=m.message_id))
+      FROM message_processing_records m JOIN message_processing_turn_snapshots s USING(message_id) WHERE m.message_id='fixture-input'`);
+    const intake = () =>
+      client.query(`SELECT to_json(save_processing_snapshot(jsonb_build_object(
+      'status','processing','message_id','fixture-input','chat_id','fixture-chat','received_at',now()),NULL,NULL))`);
+    intake();
+    const wire = [['wire request\n', 'wire response\n']];
+    expect(read()).toMatchObject({
+      status: 'processing',
+      wire,
+      sdk: { messages: [{ role: 'user', content: 'fixture request' }] },
+    });
+    client.query(
+      "UPDATE message_processing_records SET status='timeout' WHERE message_id='fixture-input';",
+    );
+    await restart('execute');
+    expireOwner();
+    await recoverStoredTurn();
+    intake();
+    expect(read()).toMatchObject({
+      status: 'success',
+      wire,
+      delivery: { outcome: 'complete', deliveredSegments: 2, segmentCount: 2 },
+    });
+    expect(sendCalls).toHaveLength(2);
+    expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    expect(databaseState().turn.status).toBe('acked');
+  }, 30000);
+
+  it.each([false, true])(
+    'keeps the handoff until its own receipt and reuses it after a task failure (unknown=%s)',
+    async (unknown) => {
+      await start();
+      runInboundTurn.mockResolvedValue({
+        kind: 'reply',
+        reply: { text: '我会请同事跟进' },
+        toolCalls: [],
+        sideEffects: [
+          {
+            kind: 'general_handoff',
+            source: 'agent_tool',
+            origin: 'promise_reconciliation',
+            idempotencyKey: 'fixture-ops-handoff',
+            reasonCode: 'other',
+            reason: '需要同事跟进',
+            alertLabel: '人工跟进',
+          },
+        ],
+      });
+      interruptDelivery(0);
+      await submitInput('enterprise');
+      const pause = jest.fn().mockResolvedValue(true);
+      const notify = jest
+        .fn()
+        .mockRejectedValueOnce(
+          unknown ? new Error('reply lost') : new FeishuSendError('provider rejected', true, true),
+        )
+        .mockResolvedValue(true);
+      const task = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('queue down'))
+        .mockResolvedValue(undefined);
+      // Represents a previously committed ticket. Its presence does not prove dispatch.
+      const ticket = jest.fn().mockResolvedValue('duplicate');
+      const attach = () => {
+        const service = new InterventionService(
+          { confirmHandoffPause: pause } as never,
+          {} as never,
+          { notify } as never,
+          { submit: task } as never,
+          module!.get(ActionExecutorService),
+        );
+        const finalizer = new TurnOutcomeInterventionService(service, { record: ticket } as never);
+        (module!.get(TurnOutcomeInterventionService).commit as jest.Mock).mockImplementation(
+          finalizer.commit.bind(finalizer),
+        );
+      };
+      await restart('execute');
+      attach();
+      expireOwner();
+      await recoverStoredTurn();
+      expect(databaseState().turn).toMatchObject({
+        status: 'settled',
+        recovery: { effects: { afterReply: expect.any(Array) } },
+      });
+      expect(notify).toHaveBeenCalledTimes(1);
+      await restart('execute');
+      attach();
+      await recoverStoredTurn();
+      if (unknown) {
+        expect(databaseState().turn.status).toBe('settled');
+        expect(notify).toHaveBeenCalledTimes(1);
+        expect(task).not.toHaveBeenCalled();
+      } else {
+        expect(task).toHaveBeenCalledTimes(1);
+        await restart('execute');
+        attach();
+        await recoverStoredTurn();
+        expect(databaseState().turn.status).toBe('acked');
+        expect(notify).toHaveBeenCalledTimes(2);
+        expect(task).toHaveBeenCalledTimes(2);
+        expect(task.mock.calls[1][1]).toBe(task.mock.calls[0][1]);
+        expect(ticket).toHaveBeenCalledWith(
+          expect.objectContaining({
+            idempotencyKey: 'fixture-ops-handoff',
+            requireMatchingScope: true,
+          }),
+        );
+      }
+      expect(sendCalls).toHaveLength(1);
+      expect(runInboundTurn).toHaveBeenCalledTimes(1);
+    },
+    30000,
+  );
 
   it('repairs only the original input ACK after a restart', async () => {
     await start();
@@ -702,7 +1605,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     assertAcceptedTurn();
   }, 30000);
 
-  it('closes an expired live send after a service restart without generating or continuing its text', async () => {
+  it('closes a legacy live send with no persisted text after restart', async () => {
     await start();
     const turns = module!.get(ReplyTurnsService);
     const turn = await turns.open(
@@ -796,10 +1699,11 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     anchors.mockRejectedValue(new Error('Redis admission unavailable'));
     await submitInput('enterprise');
     expect(sendCalls).toHaveLength(0);
-    expect(databaseState().turn).toMatchObject({ status: 'settled' });
+    expect(databaseState().turn).toMatchObject({ status: 'preparing' });
     expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('not-retained');
-    expect(JSON.stringify(databaseState().turn.recovery)).not.toContain('报名已提交');
+    expect(databaseState().turn.recovery.replySegments).toEqual(['报名已提交']);
     await restart('observe');
+    expireOwner();
     await recoverStoredTurn();
     expect(module!.get(ReengagementAnchorService).handleToolAnchors).toHaveBeenCalledWith(
       {
@@ -818,7 +1722,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     );
     expect(databaseState().turn.status).toBe('acked');
     expect(runInboundTurn).toHaveBeenCalledTimes(1);
-    expect(sendCalls).toHaveLength(0);
+    expect(sendCalls).toHaveLength(1);
   }, 30000);
 
   it.each(['once', 'persistent'] as const)(
@@ -840,13 +1744,17 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       const transition = repository.transition.bind(repository);
       let failures = 0;
       jest.spyOn(repository, 'transition').mockImplementation(async (operation, input) => {
-        if (operation === 'save_effects' && (failure === 'persistent' || failures++ === 0))
+        if (operation === 'save_reply' && (failure === 'persistent' || failures++ === 0))
           throw new Error('RPC failed before commit');
         return transition(operation, input);
       });
       await submitInput('enterprise');
       expect(sendCalls).toHaveLength(0);
       if (failure === 'once') {
+        expect(databaseState().turn.recovery.replySegments).toEqual(['报名已提交']);
+        await restart('observe');
+        expireOwner();
+        await recoverStoredTurn();
         expect(databaseState().turn).toMatchObject({
           status: 'acked',
           projection_status: 'complete',
@@ -895,7 +1803,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         expect(module!.get(IncidentReporterService).notify).toHaveBeenCalledTimes(1);
       }
       expect(runInboundTurn).toHaveBeenCalledTimes(1);
-      expect(sendCalls).toHaveLength(0);
+      expect(sendCalls).toHaveLength(failure === 'once' ? 1 : 0);
     },
     30000,
   );

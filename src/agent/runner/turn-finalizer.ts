@@ -53,12 +53,16 @@ export class TurnFinalizer {
    * `delivered=false`（守卫拦截 / 主动沉默 / 投递失败 / 托管暂停）时只记用户侧记忆，不把
    * 未送达的回复投影成助手轮次，避免下一轮「幽灵复聊」。
    */
-  settle(opts: { delivered: boolean; acceptedText?: string }): void {
+  settle(opts: {
+    delivered: boolean;
+    acceptedText?: string;
+    durableJobProjection?: boolean;
+  }): void {
     const run = this.run;
     if (!run) return;
     this.run = undefined;
     this.pending = run({
-      includeAssistantText: opts.delivered,
+      includeAssistantText: opts.delivered && !opts.durableJobProjection,
       ...(opts.acceptedText !== undefined ? { assistantTextOverride: opts.acceptedText } : {}),
     }).catch((error) => {
       this.onError?.(error);

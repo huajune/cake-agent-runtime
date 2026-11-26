@@ -493,9 +493,6 @@ export class WecomMessageObservabilityService {
                 usage: agentResult?.reply.usage,
               },
               messages: agentResult?.responseMessages,
-              toolCalls: agentResult?.toolCalls,
-              // agentSteps / memorySnapshot 已作为顶层 metadata 字段写入独立列，
-              // 不再嵌入 agent_invocation.response 避免每行 jsonb 体积翻倍。
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
               timings: buildWecomTimingSummary(

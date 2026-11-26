@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Layout from '@/components/Layout';
@@ -11,6 +12,8 @@ import {
   Dashboard,
   Hosting,
   MessageProcessing,
+  MessageProcessingDetail,
+  MESSAGE_PROCESSING_DETAIL_PATH,
   Reengagement,
   Strategy,
   System,
@@ -45,6 +48,14 @@ function App() {
         }}
       />
       <Routes>
+        <Route
+          path={MESSAGE_PROCESSING_DETAIL_PATH}
+          element={
+            <Suspense fallback={<p role="status">正在加载处理详情…</p>}>
+              <MessageProcessingDetail />
+            </Suspense>
+          }
+        />
         <Route path="/" element={<Layout />}>
           <Route path="accounts" element={<Accounts />} />
           <Route index element={<Dashboard />} />

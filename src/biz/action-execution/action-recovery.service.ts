@@ -8,7 +8,7 @@ import { ActionRecordsRepository } from './action-records.repository';
 import { ActionRecoveryRegistry } from './action-recovery.registry';
 import type { ActionRecord } from './action-execution.types';
 import { CRON_JOB } from '@infra/queue/cron.constants';
-import { ACTION_STATE } from '@shared-types/action-execution.contract';
+import { ACTION_STATE, LOCAL_SYNC_STATE } from '@shared-types/action-execution.contract';
 
 @Injectable()
 export class ActionRecoveryService {
@@ -83,6 +83,7 @@ export class ActionRecoveryService {
         late.completion ?? (await this.queryWithinBudget(() => handler!.reconcile(record)));
       const settled = await this.records.settle(record, completion);
       if (settled.status === ACTION_STATE.SUCCEEDED) {
+        if (settled.localSync === LOCAL_SYNC_STATE.COMPLETE) return;
         if (!handler) {
           await this.requestReview(settled);
           return;

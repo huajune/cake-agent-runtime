@@ -8,4 +8,9 @@ export class FeishuAlertChannel {
   async send(card: Record<string, unknown>): Promise<boolean> {
     return this.webhookService.sendMessage('ALERT', card);
   }
+
+  async sendOnce(card: Record<string, unknown>): Promise<boolean> {
+    await this.webhookService.sendMessageOrThrow('ALERT', card);
+    return true;
+  }
 }

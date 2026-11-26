@@ -1,3 +1,4 @@
+import { captureProviderFetch } from '@observability/context/model-invocations';
 import { FollowUpProcessor } from '@agent/reengagement/follow-up.processor';
 import {
   REENGAGEMENT_JOB_NAME,
@@ -413,6 +414,27 @@ describe('FollowUpProcessor', () => {
       await buildProcessor().process(makeJob());
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
       expect(delivery.deliver).not.toHaveBeenCalled();
+    });
+
+    it('records the proactive provider body under its own batch', async () => {
+      const compose = reengagementAgent.compose.getMockImplementation()!;
+      const send = captureProviderFetch('qwen', async () => new Response('proactive original'));
+      reengagementAgent.compose.mockImplementationOnce(async (...args) => {
+        await (await send('https://model.invalid', { method: 'POST', body: '{}' })).text();
+        return compose(...args);
+      });
+      await buildProcessor().process(makeJob());
+      expect(messageTracking.recordProactiveTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: expect.stringMatching(/^batch_/),
+          modelInvocations: [
+            expect.objectContaining({
+              responseBody: Buffer.from('proactive original').toString('base64'),
+              complete: true,
+            }),
+          ],
+        }),
+      );
     });
 
     it('400101 明确零发送进入恢复，而非 unknown 终态', async () => {

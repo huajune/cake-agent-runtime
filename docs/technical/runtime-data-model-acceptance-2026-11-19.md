@@ -1,8 +1,8 @@
 # 运行时与业务数据模型改造方案及验收记录
 
-本文保留 2026 年 11 月 19 日的设计基线、五个工作包与候选版本验收结果。五个工作包已随 v11.18.0 交付。11 月 23 日核对生产配置时，五个新写开关均已开启。生产效果、外部读者与旧列清理见[数据库治理待办](../todo/database-followup.md)。[发布记录](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.18.0)
+**11 月 26 日维护说明**　下文保留 11 月 19 日的盘点、样本和当时的实施计划。当前快照默认保留 90 天，联合版本改为回合快照与逐次 HTTP 原文分别存储，普通回复可在五分钟窗口内按已受理分段续发。发布请使用[联合迁移手册](../technical/runtime-storage-batch.md)。
 
-以下为 2026 年 11 月 19 日的方案基线，范围为 Cake 生产 `public` 中的 27 张业务表及其读写方。五个工作包集中开发，分别验收，在测试库用同一候选版本联调后，统一发布一个应用版本。生产先扩展数据库，再部署兼容读，最后逐项启用新写入。[统一发版安排](#统一发版安排)
+原计划编制于 2026-11-19。范围为 Cake 生产 `public` 中的 27 张业务表及其读写方。五个工作包集中开发，分别验收，在测试库用同一候选版本联调后，统一发布一个应用版本。生产先扩展数据库，再部署兼容读，最后逐项启用新写入。[统一发版安排](#统一发版安排)
 
 11 月 19 日生产核验时运行 `v11.17.1`。主聊已于 11 月 11 日切到 `execute`，普通回复只接受 `single_pass`。旧冻结回复计划及其确认函数已经退役。群任务和复聊各自恢复。治理期间沿用现行执行模式。[已发布的退役迁移](../../supabase/migrations/20261112020000_retire_main_reply_compat.sql) · [现行回合租约与核实逻辑](../../supabase/migrations/20261118010000_reply_lease_and_manual_review.sql)
 
@@ -38,7 +38,7 @@
 | --- | --- |
 | `chat_messages` | 保留渠道消息及回调原始身份。仅对可无损还原的纯文本载荷消除重复。保留引用、媒体、语音、系统消息、出站回调等原始差异。 |
 | `message_processing_records` | 一行代表一次处理尝试。顶层 `tool_calls` 作为该次完整工具序列来源，供消息详情和按小时统计工具的 SQL 读取。保留步骤顺序、来源输入和预览各自语义。主表旧 `agent_invocation` 列单独退役。 |
-| `message_processing_invocations` | 一次处理的短期请求/响应快照。保留模型看到的输入、原始消息/响应、快照存在性与过期策略，按版本去除完全相等的副本。暂用原名。 |
+| `message_processing_invocations` | 一次实际模型 HTTP 请求一行，保留本次完整请求与供应商响应。回合上下文与投递结果保存在 `message_processing_turn_snapshots`。 |
 | `agent_execution_events`、`guardrail_review_records` | 分别保留诊断事件、守卫判定及修订前后内容。样本 6 条守卫记录中有 2 条修订文本不同。两类记录继续关联对应尝试。 |
 | `ops_events`、`handoff_events` | 前者保存已发生的业务事件，后者承载一次转人工的建议、序号、结局、解决时间。转化统计读事件，处理进度读工单。通过稳定事件键关联。 |
 | `daily_ops_report` | 保留日报统计与增量投影。单独审查 `candidate_summary`、`booking_brands` 的来源、历史与导出用途。 |
@@ -49,7 +49,7 @@
 | `test_batches`、`test_conversation_snapshots`、`test_executions` | 分别保留批次进度、冻结的测试输入和一次测试结果。仅在结果内部精简可精确还原的字段，保留评测断言、工具摘要、来源、对比与复跑能力。 |
 | `agent_action_records` | 每个语义动作一行，持有稳定身份、资源/载荷校验、模式、派发尝试、当前结论、本地补账状态、租约与到期查询字段。具备可靠引用后才移除主行重复的完成正文。 |
 | `agent_action_evidence`、`agent_action_reviews` | 前者记录各次派发证据，后者可追加人工核实的操作者、依据、结论和时间。目前保留表及受限裁定函数，人工核实工单留待有业务需求时设计。 |
-| `agent_reply_turns`、`agent_reply_inputs` | 分别保存主聊逻辑回合、投递策略、业务结局及恢复进度，和每条输入的唯一回合归属。当前按 `single_pass` 投递。部分 ACK 后 `[A,B]` 与 `[B,C]` 重组时仍能认出 B。群任务和复聊使用自己的任务身份。两表保留。 |
+| `agent_reply_turns`、`agent_reply_inputs` | 分别保存主聊逻辑回合、投递策略、业务结局及恢复进度，和每条输入的唯一回合归属。当时按 `single_pass` 在当前进程投递。部分 ACK 后 `[A,B]` 与 `[B,C]` 重组时仍能认出 B。群任务和复聊使用自己的任务身份。两表保留。 |
 
 跨表追踪时，渠道 `message_id` 标识原消息，流水的 `messageId/batchId` 或 trace 标识处理尝试，同一逻辑回合可有多次尝试。`logical_turn_id` 标识主聊逻辑回合，`action_id` 标识语义动作，`dispatch_attempt_id` 和 `request_id` 分别标识派发尝试及对外请求。所有关联保留现有企业、账号、会话作用域；群任务和复聊按各自任务身份追踪，不强制接入主聊账本。[回复身份与恢复约定](../../src/biz/reply-execution/README.md)
 

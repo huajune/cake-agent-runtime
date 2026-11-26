@@ -1,6 +1,15 @@
 import { z } from 'zod';
+import type { TurnSideEffectIntent } from '@agent/runner/turn-side-effect.types';
+import { readTurnSideEffectIntent } from '@agent/runner/turn-outcome';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
-import type { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import {
+  deliveredReplyAnchorsSchema,
+  collectionPrecheckSchema,
+  planCollectionPrecheck,
+  type CollectionPrecheck,
+  type AnchorContext,
+} from '@agent/reengagement/anchor.service';
+import { replyJobProjectionSchema } from '@memory/short-term/assistant-job-projection';
 
 /** Business follow-up obligations survive even when ordinary reply text is abandoned. */
 const TOOL_EFFECT_NAMES = [
@@ -10,7 +19,19 @@ const TOOL_EFFECT_NAMES = [
   'invite_to_group',
 ] as const;
 
+export const deliveredReplySchema = z.object({
+  anchors: deliveredReplyAnchorsSchema.optional(),
+  jobs: replyJobProjectionSchema.optional(),
+  lastInputAt: z.string().datetime({ offset: true }).optional(),
+});
+export type DeliveredReplyEffects = z.infer<typeof deliveredReplySchema>;
+
 const effectsSchema = z.object({
+  collectionPrecheck: collectionPrecheckSchema.optional(),
+  deliveredReply: deliveredReplySchema.optional(),
+  afterReply: z
+    .array(z.custom<TurnSideEffectIntent>((item) => readTurnSideEffectIntent(item) !== null))
+    .optional(),
   toolCalls: z
     .array(
       z.object({
@@ -43,12 +64,25 @@ const effectsSchema = z.object({
   }),
 });
 
-type AnchorContext = Parameters<ReengagementAnchorService['handleToolAnchors']>[1];
-
 export function ordinaryReplyEffects(
   calls: AgentToolCall[] | undefined,
   context: AnchorContext,
+  afterReply?: { intents: TurnSideEffectIntent[]; userMessage: string },
+  canFollowUp = true,
 ): Record<string, unknown> {
+  // Preserve the original handoff key, reason, work order and candidate's question.
+  // The alert can reconstruct its context without a copy of the chat or session state.
+  const intents = afterReply?.intents
+    .filter((intent) => !intent.alreadyDispatched)
+    .map((intent) => {
+      const copy = {
+        ...intent,
+        currentMessageContent: intent.currentMessageContent ?? afterReply.userMessage,
+      };
+      delete copy.recentMessages;
+      delete copy.sessionState;
+      return copy;
+    });
   const toolCalls = (calls ?? [])
     .filter((call) => (TOOL_EFFECT_NAMES as readonly string[]).includes(call.toolName))
     .map((call) => {
@@ -72,6 +106,9 @@ export function ordinaryReplyEffects(
       };
     });
   return effectsSchema.parse({
+    collectionPrecheck:
+      canFollowUp && !context.isGroupChat ? planCollectionPrecheck(calls) : undefined,
+    ...(intents?.length ? { afterReply: intents } : {}),
     // 空集合也是生成已结束、无需业务补账的证据；不能和保存失败混为一谈。
     toolCalls: context.isGroupChat ? [] : toolCalls,
     context: { ...context, isGroupChat: Boolean(context.isGroupChat) },
@@ -79,8 +116,11 @@ export function ordinaryReplyEffects(
 }
 
 export function readOrdinaryReplyEffects(value: unknown): {
+  collectionPrecheck?: CollectionPrecheck;
   toolCalls: AgentToolCall[];
   context: AnchorContext;
+  afterReply?: TurnSideEffectIntent[];
+  deliveredReply?: DeliveredReplyEffects;
 } {
   return effectsSchema.parse(value);
 }

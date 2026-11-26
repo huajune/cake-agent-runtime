@@ -1,4 +1,10 @@
 import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
+import {
+  captureReplyGeneration,
+  takeModelInvocations,
+  withProcessingTurn,
+  type ModelInvocation,
+} from '@observability/context/model-invocations';
 import { isHumanHandledHistoryReason } from '@enums/message-filter.enum';
 import { CandidateProgressService } from '@biz/candidate-progress/services/candidate-progress.service';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
@@ -134,7 +140,7 @@ export class ReengagementDeliveryService
 const BOOKING_SCHEDULE_TOLERANCE_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-type ProactiveTurnExecution = ReengagementAgentExecution;
+type ProactiveTurnExecution = ReengagementAgentExecution & { modelInvocations?: ModelInvocation[] };
 
 interface ProactiveDeliveryResult {
   success: boolean;
@@ -945,7 +951,7 @@ export class FollowUpProcessor implements OnModuleInit {
     jobData: FollowUpJob,
     state: ReengagementSessionState,
     scenario: NonNullable<ReturnType<typeof getScenario>>,
-    messageId?: string,
+    messageId: string,
     options?: { rolloutEnabled?: boolean; shadow?: boolean },
     bookingContext?: ReengagementBookingContext,
   ): Promise<ProactiveTurnExecution> {
@@ -962,26 +968,31 @@ export class FollowUpProcessor implements OnModuleInit {
       });
     // 主动回合不经 Runner，没有人替它进请求上下文：复聊的 llm_execution 等事件此前
     // trace/chat/user 三维全空。traceId = batchId，与主动回合流水行（message_id = batchId）同源。
-    const result = this.requestContext
-      ? await this.requestContext.run(
-          {
-            traceId: messageId,
-            chatId: jobData.sessionRef.sessionId,
-            userId: jobData.sessionRef.userId,
-            corpId: jobData.sessionRef.corpId,
-            scenario: scenario.code,
-            callerKind: CallerKind.REENGAGEMENT,
-          },
-          compose,
-        )
-      : await compose();
-    if ((result as ProactiveTurnExecution).outcome) return result;
+    return withProcessingTurn(messageId, async () => {
+      const generate = () => captureReplyGeneration(compose);
+      const result = this.requestContext
+        ? await this.requestContext.run(
+            {
+              traceId: messageId,
+              chatId: jobData.sessionRef.sessionId,
+              userId: jobData.sessionRef.userId,
+              corpId: jobData.sessionRef.corpId,
+              scenario: scenario.code,
+              callerKind: CallerKind.REENGAGEMENT,
+            },
+            generate,
+          )
+        : await generate();
+      const modelInvocations = takeModelInvocations(messageId);
+      if ((result as ProactiveTurnExecution).outcome) return { ...result, modelInvocations };
 
-    return {
-      outcome: result as unknown as TurnOutcome,
-      aiStartAt: Date.now(),
-      aiEndAt: Date.now(),
-    };
+      return {
+        outcome: result as unknown as TurnOutcome,
+        aiStartAt: Date.now(),
+        aiEndAt: Date.now(),
+        modelInvocations,
+      };
+    });
   }
 
   /** 主动回合的消息处理流水行（message_id = batchId，供追溯页跳转排障） */
@@ -1039,7 +1050,6 @@ export class FollowUpProcessor implements OnModuleInit {
           usage: outcome.usage,
         },
         messages: outcome.responseMessages,
-        toolCalls: outcome.toolCalls,
         delivery: params.deliveryResult,
         timings: {
           timestamps: {
@@ -1090,6 +1100,7 @@ export class FollowUpProcessor implements OnModuleInit {
     };
     return {
       messageId: batchId,
+      modelInvocations: execution.modelInvocations,
       batchId,
       chatId: identity.sessionId,
       userId: identity.userId,

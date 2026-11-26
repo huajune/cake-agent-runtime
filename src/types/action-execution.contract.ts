@@ -44,6 +44,7 @@ export const ACTION_KIND = {
   WECOM_REPLY_SEGMENT: 'wecom.reply_segment',
   BOOKING_NOTIFICATION: 'booking_notification',
   CANCELLATION_NOTIFICATION: 'cancellation_notification',
+  HANDOFF_NOTIFICATION: 'handoff_notification',
 } as const;
 export type BuiltInActionKind = (typeof ACTION_KIND)[keyof typeof ACTION_KIND];
 

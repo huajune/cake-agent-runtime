@@ -28,6 +28,19 @@ export class UserHostingRepository extends BaseRepository {
     super(supabaseService);
   }
 
+  /** A recovery worker must confirm a shared pause even after a previous local-only failure. */
+  async hasActivePause(userId: string): Promise<boolean> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('is_permanent,pause_expires_at')
+      .eq('user_id', userId)
+      .eq('is_paused', true)
+      .abortSignal(AbortSignal.timeout(5000))
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data && (data.is_permanent || Date.parse(data.pause_expires_at) > Date.now()));
+  }
+
   // ==================== user_hosting_status 操作 ====================
 
   async setTenantHosting(

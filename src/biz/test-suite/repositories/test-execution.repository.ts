@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sleep } from '@infra/utils/async.util';
-import { BaseRepository, type QueryModifier } from '@infra/supabase/base.repository';
+import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ExecutionStatus, ReviewStatus, ReviewerSource } from '../enums/test.enum';
 import { TestExecution } from '../entities/test-execution.entity';
@@ -37,27 +37,6 @@ export class TestExecutionRepository extends BaseRepository {
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
     this.logger.log('TestExecutionRepository 初始化完成');
-  }
-
-  protected override select<T>(columns = '*', modifier?: QueryModifier): Promise<T[]> {
-    return this.selectFrom<T>(
-      columns === '*' ? 'test_execution_results' : this.tableName,
-      columns,
-      modifier,
-    );
-  }
-
-  private readReturnedExecution(
-    row: TestExecution & { response_text_v1?: number | null },
-  ): TestExecution {
-    const { response_text_v1: marker, ...execution } = row;
-    if (marker === 1) {
-      execution.agent_response = {
-        ...(execution.agent_response as Record<string, unknown>),
-        text: execution.actual_output,
-      };
-    }
-    return execution;
   }
 
   // ==================== 基础 CRUD ====================
@@ -232,7 +211,6 @@ export class TestExecutionRepository extends BaseRepository {
       test_input: data.testInput,
       expected_output: data.expectedOutput || null,
       agent_request: this.sanitizeAgentRequest(data.agentRequest),
-      response_text_v1: -1,
       agent_response: this.sanitizeAgentResponse(data.agentResponse),
       actual_output: data.actualOutput,
       tool_calls: this.sanitizeToolCalls(data.toolCalls),
@@ -258,7 +236,7 @@ export class TestExecutionRepository extends BaseRepository {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const execution = await this.insert<TestExecution>(insertPayload as Partial<TestExecution>);
       if (execution) {
-        return this.readReturnedExecution(execution);
+        return execution;
       }
 
       const existing = await this.findExistingAfterCreateRetry(data);
@@ -542,7 +520,6 @@ export class TestExecutionRepository extends BaseRepository {
   ): Promise<void> {
     const payload: Record<string, unknown> = {
       agent_request: this.sanitizeAgentRequest(data.agentRequest) || null,
-      response_text_v1: -1,
       agent_response: this.sanitizeAgentResponse(data.agentResponse) || null,
       actual_output: data.actualOutput || '',
       tool_calls: this.sanitizeToolCalls(data.toolCalls || []),
@@ -585,7 +562,7 @@ export class TestExecutionRepository extends BaseRepository {
       (q) => q.eq('id', executionId),
     );
 
-    return results[0] && this.readReturnedExecution(results[0]);
+    return results[0];
   }
 
   /**
@@ -607,7 +584,7 @@ export class TestExecutionRepository extends BaseRepository {
       },
       (q) => q.in('id', executionIds),
     );
-    return updated.map((row) => this.readReturnedExecution(row));
+    return updated;
   }
 
   // ==================== 回归验证相关查询 ====================
@@ -664,13 +641,12 @@ export class TestExecutionRepository extends BaseRepository {
     }>,
   ): Promise<TestExecution> {
     // 如果包含 agent_request，清理大字段
-    const sanitizedData: typeof data & { response_text_v1?: number } =
+    const sanitizedData: typeof data =
       data.agent_request !== undefined
         ? { ...data, agent_request: this.sanitizeAgentRequest(data.agent_request) }
         : { ...data };
 
     if (sanitizedData.agent_response !== undefined) {
-      sanitizedData.response_text_v1 = -1;
       sanitizedData.agent_response = this.sanitizeAgentResponse(sanitizedData.agent_response);
     }
 
@@ -708,6 +684,6 @@ export class TestExecutionRepository extends BaseRepository {
     if (!results[0]) {
       throw new Error(`更新执行记录失败: ${id}`);
     }
-    return this.readReturnedExecution(results[0]);
+    return results[0];
   }
 }

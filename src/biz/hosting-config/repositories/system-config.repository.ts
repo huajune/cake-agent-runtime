@@ -36,6 +36,23 @@ export class SystemConfigRepository extends BaseRepository {
     return result.value as T;
   }
 
+  /** 配置回源专用：仅缺失记录返回 null，读取失败抛错，避免将故障当作未配置。 */
+  async getConfigValueOrThrow<T>(key: string): Promise<T | null> {
+    const rows = await this.selectFromOrNull<SystemConfigRecord>(this.tableName, 'value', (q) =>
+      q.eq('key', key).limit(1),
+    );
+    if (rows === null) throw new Error(`读取系统配置失败: ${key}`);
+    return rows.length ? (rows[0].value as T) : null;
+  }
+
+  async setConfigValueOrThrow(key: string, value: unknown, description: string): Promise<void> {
+    const row = await this.upsert<SystemConfigRecord>(
+      { key, value, description },
+      { onConflict: 'key' },
+    );
+    if (!row) throw new Error(`写入系统配置失败: ${key}`);
+  }
+
   /**
    * 写入指定键的配置值（不存在时插入，已存在时更新）
    *

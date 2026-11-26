@@ -18,7 +18,6 @@ interface ControlPanelProps {
   stats: Stats;
   activeTab: ViewTab;
   onTabChange: (tab: ViewTab) => void;
-  realtimeCount: number;
   slowestCount: number;
   timeRange: TimeRange;
   onTimeRangeChange: (range: TimeRange) => void;
@@ -87,7 +86,6 @@ export default function ControlPanel({
   stats,
   activeTab,
   onTabChange,
-  realtimeCount,
   slowestCount,
   timeRange,
   onTimeRangeChange,
@@ -222,8 +220,6 @@ export default function ControlPanel({
         <div className={styles.viewSwitch} role="tablist" aria-label="视图切换">
           {TAB_OPTIONS.map((option) => {
             const isActive = activeTab === option.key;
-            const count = option.key === 'realtime' ? realtimeCount : slowestCount;
-            const showCount = option.key === 'realtime' || count > 0;
             return (
               <button
                 key={option.key}
@@ -234,7 +230,9 @@ export default function ControlPanel({
                 className={`${styles.viewBtn} ${isActive ? styles.viewBtnActive : ''}`}
               >
                 {option.label}
-                {showCount && <span className={styles.viewCount}>{formatLocaleNumber(count)}</span>}
+                {option.key === 'slowest' && slowestCount > 0 && (
+                  <span className={styles.viewCount}>{formatLocaleNumber(slowestCount)}</span>
+                )}
               </button>
             );
           })}

@@ -1,3 +1,4 @@
+import type { ModelInvocation } from '@observability/context/model-invocations';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -35,6 +36,7 @@ export interface ChatMessageInput {
   isSelf?: boolean;
   payload?: Record<string, unknown>;
   avatar?: string;
+  /** 渠道提供的外部联系人 ID，与会话 ID、联系人系统 ID 分别保存。 */
   externalUserId?: string;
   /** 候选人消息只存历史、交给真人处理的原因；已交给 Agent 的消息不填。 */
   historyOnlyReason?: HistoryOnlyReason;
@@ -93,6 +95,7 @@ export interface ChatSessionPage {
  * 消息处理记录输入
  */
 export interface MessageProcessingRecordInput {
+  /** 本次处理的流水标识。渠道输入见调用快照 request.sourceMessageIds。 */
   messageId: string;
   chatId: string;
   userId?: string;
@@ -119,6 +122,7 @@ export interface MessageProcessingRecordInput {
   isFallback?: boolean;
   fallbackSuccess?: boolean;
   agentInvocation?: unknown;
+  modelInvocations?: ModelInvocation[];
   batchId?: string;
   /** 工具调用详情：[{ name, args, result, resultCount, status, durationMs }, ...] */
   toolCalls?: AgentToolCall[];

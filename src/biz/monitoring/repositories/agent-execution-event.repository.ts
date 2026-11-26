@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
+import { executionObservationReason } from '@observability/execution-event-policy';
 import type { AgentEvent } from '@observability/observer.interface';
 
 interface AgentExecutionEventDbRecord {
@@ -20,6 +21,7 @@ export interface AgentExecutionEventRecord {
   id: number;
   type: string;
   traceId: string;
+  observationReason?: string;
   userId?: string;
   corpId?: string;
   chatId?: string;
@@ -101,6 +103,7 @@ export class AgentExecutionEventRepository extends BaseRepository {
       scenario: row.scenario ?? undefined,
       callerKind: row.caller_kind ?? undefined,
       payload: row.payload,
+      observationReason: executionObservationReason(row.event_type, row.payload),
       createdAt: row.created_at,
     };
   }

@@ -1,10 +1,29 @@
 import { readGuardrailTrace } from './guardrail-review-read.util';
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { isUtf8 } from 'node:buffer';
+import { isRecord } from '@infra/utils/object.util';
+import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { MessageProcessingDbRecord } from '../entities/message-processing.entity';
 import { MessageProcessingRecordInput } from '../types/message.types';
 import type { MessageProcessingStatus } from '@enums/message.enum';
+
+export interface ModelCallSummary {
+  id: string;
+  provider: string;
+  startedAt: string;
+  httpStatus: number | null;
+  complete: boolean;
+}
+
+function readHttpBody(hex: string | null) {
+  if (hex === null) return null;
+  // PostgREST serializes bytea as PostgreSQL hex. Keep non-UTF-8 error bodies downloadable as base64.
+  const bytes = Buffer.from(hex.slice(2), 'hex');
+  const encoding = isUtf8(bytes) ? 'utf8' : 'base64';
+  return { encoding, body: bytes.toString(encoding) };
+}
 
 interface MessageProcessingFilters {
   /** 会话主体检索词：同时对 user_name 与 chat_id 做子串匹配（运营常直接粘贴 chatId 排障）。 */
@@ -33,8 +52,8 @@ export class MessageProcessingRepository extends BaseRepository {
     'manager_name',
     'bot_im_id',
     'received_at',
-    'message_preview',
-    'reply_preview',
+    'message_preview:processing_list_message_preview',
+    'reply_preview:processing_list_reply_preview',
     'reply_segments',
     'status',
     'error',
@@ -48,12 +67,12 @@ export class MessageProcessingRepository extends BaseRepository {
     'is_fallback',
     'fallback_success',
     'batch_id',
-    // 守卫徽标（表格"处理状态"列）依赖这两个紧凑摘要列；体积远小于 agent_invocation，可进首屏投影。
+    // 守卫徽标（表格"处理状态"列）依赖这两个紧凑摘要列；体积远小于完整模型请求，可进首屏投影。
     'guardrail_input',
     'guardrail_output',
   ].join(',');
 
-  // 内部诊断/聚合查询用投影（不拉 agent_invocation 这个最大 jsonb 字段）
+  // 内部诊断/聚合查询用投影（仅查询主流水）
   private readonly listSelectedColumns = [
     'message_id',
     'chat_id',
@@ -76,7 +95,7 @@ export class MessageProcessingRepository extends BaseRepository {
     'ttft_ms',
     'send_duration',
     'tool_calls',
-    'agent_steps:processing_read_steps',
+    'agent_steps',
     'anomaly_flags',
     'guardrail_input',
     'guardrail_output',
@@ -88,8 +107,8 @@ export class MessageProcessingRepository extends BaseRepository {
     'batch_id',
   ].join(',');
 
-  // 详情抽屉按需读取子表的完整请求与响应，数据库会还原工具引用并屏蔽已替代快照。
-  private readonly detailSelectedColumns = `${this.listSelectedColumns},message_processing_invocations(agent_invocation:processing_read_invocation)`;
+  private readonly detailSelectedColumns = `${this.listSelectedColumns},message_processing_turn_snapshots(request:processing_request_context,response)`;
+  private readonly fullSelectedColumns = `${this.listSelectedColumns},message_processing_turn_snapshots(request,response)`;
 
   // Dashboard 业务趋势只需要时间、用户和预约工具调用结果，避免为图表拉取大块快照字段。
   private readonly businessTrendSelectedColumns = [
@@ -116,10 +135,13 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
+      const snapshot = isRecord(record.agentInvocation) ? record.agentInvocation : undefined;
       return (
         (await this.rpc<boolean>('save_processing_snapshot', {
           p_record: this.toDbRecord(record),
-          p_invocation: record.agentInvocation ?? null,
+          p_request: snapshot?.request ?? null,
+          p_response: snapshot?.response ?? null,
+          ...(record.modelInvocations?.length ? { p_invocations: record.modelInvocations } : {}),
         })) === true
       );
     } catch (error) {
@@ -372,6 +394,7 @@ export class MessageProcessingRepository extends BaseRepository {
    */
   async getMessageProcessingRecordById(
     messageId: string,
+    projection: 'full' | 'detail' = 'full',
   ): Promise<MessageProcessingRecordInput | null> {
     if (!this.isAvailable()) {
       this.logger.warn('[消息处理记录] Supabase 未初始化，跳过查询');
@@ -380,7 +403,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
     try {
       const results = await this.select<MessageProcessingDbRecord>(
-        this.detailSelectedColumns,
+        projection === 'detail' ? this.detailSelectedColumns : this.fullSelectedColumns,
         (q) => q.eq('message_id', messageId).limit(1),
       );
 
@@ -394,6 +417,49 @@ export class MessageProcessingRepository extends BaseRepository {
       this.logger.error(`[消息处理记录] 查询详情失败 (messageId: ${messageId}):`, error);
       return null;
     }
+  }
+
+  async getCapturedRequest(messageId: string): Promise<unknown> {
+    const rows = await this.selectFrom<{ request: unknown }>(
+      'message_processing_turn_snapshots',
+      'request',
+      (q) => q.eq('message_id', messageId).limit(1),
+    );
+    return rows[0]?.request ?? null;
+  }
+
+  async listModelCalls(messageId: string, offset: number) {
+    const pageSize = 25;
+    const rows = await this.selectFromOrNull<ModelCallSummary>(
+      'message_processing_invocations',
+      'id,provider,startedAt:started_at,httpStatus:http_status,complete',
+      (q) =>
+        q
+          .eq('message_id', messageId)
+          .order('started_at')
+          .order('id')
+          .range(offset, offset + pageSize),
+    );
+    if (!rows) throw new ServiceUnavailableException('模型调用清单读取失败');
+    return {
+      calls: rows.slice(0, pageSize),
+      nextOffset: rows.length > pageSize ? offset + pageSize : null,
+    };
+  }
+
+  async getModelCall(messageId: string, id: string) {
+    const rows = await this.selectFromOrNull<{
+      request_body: string | null;
+      response_body: string | null;
+    }>('message_processing_invocations', 'request_body,response_body', (q) =>
+      q.eq('message_id', messageId).eq('id', id).limit(1),
+    );
+    if (!rows) throw new ServiceUnavailableException('模型调用原文读取失败');
+    if (!rows[0]) throw new NotFoundException('该流水下没有这次模型调用');
+    return {
+      request: readHttpBody(rows[0].request_body),
+      response: readHttpBody(rows[0].response_body),
+    };
   }
 
   // ==================== 聚合查询 ====================
@@ -418,7 +484,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
     try {
       if (this.hasTextFilters(filters)) {
-        return this.getFilteredMessageStats(startTime, endTime, filters);
+        return await this.getFilteredMessageStats(startTime, endTime, filters);
       }
 
       const result = await this.rpc<
@@ -1011,17 +1077,11 @@ export class MessageProcessingRepository extends BaseRepository {
     avgDuration: number;
     avgTtft: number;
   }> {
-    const rows = await this.select<MessageProcessingDbRecord>(
-      ['status', 'total_duration', 'ttft_ms'].join(','),
-      (q) => {
-        let r = q
-          .gte('received_at', new Date(startTime).toISOString())
-          .lt('received_at', new Date(endTime).toISOString());
-        r = this.applyTextFilters(r, filters);
-        return r;
-      },
-    );
-
+    const start = new Date(startTime).toISOString();
+    const end = new Date(endTime).toISOString();
+    const pageSize = 1000;
+    let after: string | undefined;
+    let total = 0;
     let success = 0;
     let failed = 0;
     let durationSum = 0;
@@ -1029,25 +1089,44 @@ export class MessageProcessingRepository extends BaseRepository {
     let ttftSum = 0;
     let ttftCount = 0;
 
-    for (const row of rows) {
-      if (row.status === 'success') success += 1;
-      else failed += 1;
+    // PostgREST limits each response. Use the unique message ID to resume without shifting offsets.
+    for (;;) {
+      const rows = await this.selectFromOrNull<MessageProcessingDbRecord>(
+        this.tableName,
+        'message_id,status,total_duration,ttft_ms',
+        (query) => {
+          const filtered = this.applyTextFilters(
+            query.gte('received_at', start).lt('received_at', end),
+            filters,
+          );
+          const page = filtered.order('message_id', { ascending: true }).limit(pageSize);
+          return after === undefined ? page : page.gt('message_id', after);
+        },
+      );
+      if (rows === null) throw new Error('筛选消息统计分页读取失败');
+      total += rows.length;
+      for (const row of rows) {
+        if (row.status === 'success') success += 1;
+        else if (row.status === 'failure' || row.status === 'timeout') failed += 1;
 
-      const duration = this.parseNumber(row.total_duration);
-      if (duration !== undefined && duration > 0) {
-        durationSum += duration;
-        durationCount += 1;
-      }
+        const duration = this.parseNumber(row.total_duration);
+        if (duration !== undefined && duration > 0) {
+          durationSum += duration;
+          durationCount += 1;
+        }
 
-      const ttft = this.extractTtftMs(row);
-      if (ttft !== undefined && ttft > 0) {
-        ttftSum += ttft;
-        ttftCount += 1;
+        const ttft = this.parseNumber(row.ttft_ms);
+        if (ttft !== undefined && ttft > 0) {
+          ttftSum += ttft;
+          ttftCount += 1;
+        }
       }
+      if (rows.length < pageSize) break;
+      after = rows[rows.length - 1].message_id;
     }
 
     return {
-      total: rows.length,
+      total,
       success,
       failed,
       avgDuration: durationCount > 0 ? Math.round(durationSum / durationCount) : 0,
@@ -1058,7 +1137,7 @@ export class MessageProcessingRepository extends BaseRepository {
   /**
    * 转换为数据库记录格式
    */
-  private toDbRecord(record: MessageProcessingRecordInput): MessageProcessingDbRecord {
+  private toDbRecord(record: MessageProcessingRecordInput) {
     return {
       message_id: record.messageId,
       chat_id: record.chatId,
@@ -1101,7 +1180,15 @@ export class MessageProcessingRepository extends BaseRepository {
    * 从数据库记录格式转换
    */
   private fromDbRecord(record: MessageProcessingDbRecord): MessageProcessingRecordInput {
-    const ttftMs = this.extractTtftMs(record);
+    const child = record.message_processing_turn_snapshots;
+    const steps = record.agent_steps?.map((step) => ({
+      ...step,
+      toolCalls: [] as AgentToolCall[],
+    }));
+    const calls = record.tool_calls?.map(({ stepPosition, ...call }) => {
+      if (stepPosition !== undefined) steps?.[stepPosition]?.toolCalls.push(call);
+      return call;
+    });
 
     return {
       messageId: record.message_id,
@@ -1125,15 +1212,21 @@ export class MessageProcessingRepository extends BaseRepository {
       queueDuration: record.queue_duration,
       prepDuration: record.prep_duration,
       aiDuration: record.ai_duration,
-      ttftMs,
+      ttftMs: this.parseNumber(record.ttft_ms),
       sendDuration: record.send_duration,
       tokenUsage: record.token_usage,
       isFallback: record.is_fallback,
       fallbackSuccess: record.fallback_success,
-      agentInvocation: this.readInvocation(record),
+      agentInvocation: child
+        ? {
+            request: child.request,
+            response: child.response,
+            isFallback: record.is_fallback ?? false,
+          }
+        : undefined,
       batchId: record.batch_id,
-      toolCalls: record.tool_calls as MessageProcessingRecordInput['toolCalls'],
-      agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
+      toolCalls: calls,
+      agentSteps: steps,
       anomalyFlags: record.anomaly_flags as MessageProcessingRecordInput['anomalyFlags'],
       guardrailInput: record.guardrail_input as MessageProcessingRecordInput['guardrailInput'],
       guardrailOutput: readGuardrailTrace(record.guardrail_output),
@@ -1141,20 +1234,6 @@ export class MessageProcessingRepository extends BaseRepository {
       postProcessingStatus:
         record.post_processing_status as MessageProcessingRecordInput['postProcessingStatus'],
     };
-  }
-
-  private extractTtftMs(record: MessageProcessingDbRecord): number | undefined {
-    const fromColumn = this.parseNumber(record.ttft_ms);
-    if (fromColumn !== undefined) return fromColumn;
-
-    // 兼容存量未回填 ttft_ms 的记录：详情查询带 agent_invocation 时仍可现场提取
-    return this.extractTtftFromInvocation(this.readInvocation(record));
-  }
-
-  private readInvocation(record: MessageProcessingDbRecord): unknown {
-    const embedded = record.message_processing_invocations;
-    const child = Array.isArray(embedded) ? embedded[0] : embedded;
-    return child?.agent_invocation ?? undefined;
   }
 
   private extractTtftFromInvocation(invocation: unknown): number | undefined {

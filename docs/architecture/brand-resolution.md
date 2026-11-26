@@ -439,7 +439,7 @@ export interface NormalizedBrandQueryMeta {
 
 ## 10. 可观测性
 
-复用 observability 体系（AgentTracer → CompositeObserver → PersistingObserver），落 `agent_execution_events`，与 `message_processing_records` 同 `trace_id` 可 join。
+复用 observability 体系（AgentTracer → CompositeObserver → PersistingObserver），落 `agent_execution_events`，事件 `trace_id` 对应 `message_processing_records.message_id`。
 
 | 事件                         | 触发                                 | 内容                                                                                 |
 | ---------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------ |
@@ -453,7 +453,7 @@ export interface NormalizedBrandQueryMeta {
 **刻意不落的两类**（事件表「只存不可再得的结构化事实、不当日志表」纪律）：
 
 - **解析结果不单独落事件**——`resolve()` 是纯函数，拿候选人原文 + 品牌目录离线重放即可精确复现；
-- **queryMeta 不单独落事件**——已随 `agent_invocation` 落在流水表中。
+- 查看岗位工具的查询依据时，按处理 ID 在 `message_processing_records.tool_calls` 找到该次调用，查看返回结果中 `details.queryMeta` 的品牌判定。独立事件用于记录有埋点的执行节点。[岗位工具返回结构](../../src/tools/duliday-job-list.tool.ts)
 
 补写的「过期丢弃」与「锁竞争放弃」两类设计上罕见的异常升级为**飞书告警**；漏调净残留用数据侧兜底查询（`chat_messages` 中裸 `[图片消息]` 占位计数）。Logger 仅作辅助排障。
 

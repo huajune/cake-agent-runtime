@@ -13,7 +13,7 @@ export interface ReplyTurnScope {
   chatId: string;
 }
 
-/** Summary only: no generated reply body, model result or resumable send plan. */
+/** Delivery summary retained after the pending segments have been removed. */
 export interface ReplyDeliverySummary {
   outcome: ReplyDeliveryOutcome;
   accepted?: number;
@@ -32,7 +32,7 @@ export interface ReplyTurn extends ReplyTurnScope {
   status: ReplyTurnStatus;
   owner: string | null;
   fence: number;
-  recovery: Record<string, unknown>;
+  recovery: Record<string, unknown> & { replySegments?: string[]; resumeUntil?: string };
   projectionStatus?: ReplyProjectionStatus;
   reviewRequired?: boolean;
   reviewReason?: ReplyReviewReason;
@@ -47,5 +47,15 @@ export class ReplyDeferredError extends Error {
   ) {
     super(`reply_deferred:${reason}`);
     this.name = 'ReplyDeferredError';
+  }
+}
+
+/** The sending worker has receipts for this prefix, while the remaining segments are pending. */
+export class ReplyDeliveryDeferredError extends ReplyDeferredError {
+  constructor(
+    error: unknown,
+    public readonly accepted: number,
+  ) {
+    super(error instanceof ReplyDeferredError ? error.reason : 'reply_delivery_pending', error);
   }
 }

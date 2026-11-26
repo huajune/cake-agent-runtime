@@ -1,10 +1,12 @@
 import { LLM_THINKING_EFFORTS, type LlmThinkingEffort } from '@/llm/llm.types';
 
+export const MESSAGE_WORKER_CONCURRENCY = { min: 1, max: 100, default: 4 } as const;
+
 /**
  * 系统配置接口
  */
 export interface SystemConfig {
-  workerConcurrency?: number; // Worker 并发数 (1-20)
+  workerConcurrency?: number; // 单实例企微主聊 Bull 消费槽数
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { ToolExecutionObservations } from '@observability/context/tool-observation';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { MemoryConfig } from '@memory/memory.config';
 import { AlertLevel } from '@enums/alert.enum';
@@ -42,8 +43,8 @@ export interface WorkingMemory {
   memorySnapshot?: AgentMemorySnapshot;
   /** 与 skip_reply 使用同一份真实工具上下文；缺失时不得推断可静默。 */
   confirmationClosureEligible?: boolean;
-  /** toolCallId → 工具 execute 的真实执行耗时（毫秒）。 */
-  toolExecutionTimings: Map<string, number>;
+  /** SDK 调用 ID 对应的实测结果与实际分支。 */
+  toolObservations: ToolExecutionObservations;
 }
 
 /**
@@ -174,7 +175,7 @@ export class PreparationService {
         memorySnapshot: resolved.memorySnapshot,
         confirmationClosureEligible:
           getConfirmationClosureRejection(resolved.toolModel.turnInput) === null,
-        toolExecutionTimings: runtime.toolExecutionTimings,
+        toolObservations: runtime.toolObservations,
       };
     } catch (error) {
       this.tracer?.emit({

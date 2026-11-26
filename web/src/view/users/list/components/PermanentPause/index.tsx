@@ -62,7 +62,7 @@ export default function PermanentPause({
         <input
           value={targetId}
           onChange={(e) => setTargetId(e.target.value)}
-          placeholder="微信 / 会话ID（chatId / imContactId / externalUserId）"
+          placeholder="会话 ID、联系人系统 ID 或渠道外部联系人 ID"
           aria-label="永久禁止托管对象"
         />
         <input
