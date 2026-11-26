@@ -120,7 +120,7 @@ Bull 按启动时读到的 `currentConcurrency` 注册工作任务。应用层�
 
 渠道按最终 `TurnOutcome` 执行。`reply` 经审核、分段和权限检查后发送，`skipped` 结束本轮，`handoff` 按业务意图转人工。与回复绑定的人工跟进工单在投递结局确定后，按原工单幂等键提交。发送接口返回 `errcode=0` 表示企微已受理该段，候选人是否已读仍是未知。[投递实现](../../src/channels/wecom/message/delivery/delivery.service.ts) · [各段受理凭证](../../src/channels/wecom/message/delivery/durable-reply-delivery.service.ts)
 
-首次成功发送普通文本时，每段有三次串行数据库往返。第一次同时核对回合并领取分段，第二次在权限检查后复核两个执行权，第三次在企微受理后一起保存回执和动作结果。两段合计六次，整轮发送结果另外写一次。每段有独立回执，因而服务可以在两段之间重启。[分段读写与代码入口](../../src/biz/reply-execution/README.md#发一段文本要等几次数据库)
+普通文本每段首次发送成功需要两次数据库往返。路由、会话锁和托管权限检查结束后，一次数据库请求同时核对回合并领取分段。企微受理后，一次请求保存本段回执和动作结果。两段合计四次，整轮结果另写一次。服务在两段之间重启时，恢复任务按已受理的段接着发。[分段读写与代码入口](../../src/biz/reply-execution/README.md#发一段文本要等几次数据库)
 
 `TurnFinalizer` 对丢弃的生成版本调用 `discard()`，对最终版本调用 `settle(...)`。部分受理时使用实际受理的文本更新助手记忆，零受理时仍可吸收用户事实。主处理路径在释放聊天锁前等待 `whenSettled()`。[记忆收尾](../../src/agent/runner/turn-finalizer.ts)
 

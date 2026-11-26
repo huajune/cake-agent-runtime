@@ -19,7 +19,8 @@ create trigger action_finish_ordinary_reply before update of status on public.ag
     and new.status='succeeded' and new.local_sync='pending')
   execute function public.finish_ordinary_reply_action();
 
--- Claim or validate one ordinary text segment. Like the callback, lock the action before its turn.
+-- The final pre-send claim locks the action before its turn, in callback lock order.
+-- An inspect after a failed precheck may return an existing receipt but never grants a send.
 -- Each transaction ends before WeCom is called. Existing/ambiguous attempts keep
 -- the ordinary action executor's receipt, retry and resource-conflict semantics.
 create or replace function public.transition_agent_reply_segment(p_operation text,p_input jsonb,p_turn jsonb)
@@ -36,14 +37,11 @@ declare
   prepared jsonb;
   idx integer;
 begin
-  if p_operation='claim' and nullif(resource,'') is not null then
-    perform pg_advisory_xact_lock(hashtextextended((p_turn->>'corpId')||':'||resource,0));
-    select * into a from public.agent_action_records where corp_id=p_turn->>'corpId' and action_id=id for update;
-  elsif p_operation='validate_claim' then
-    select * into a from public.agent_action_records where corp_id=p_turn->>'corpId' and action_id=id for share;
-  else
+  if p_operation not in ('claim','inspect') or p_operation is null or nullif(resource,'') is null then
     raise exception 'invalid reply segment operation';
   end if;
+  perform pg_advisory_xact_lock(hashtextextended((p_turn->>'corpId')||':'||resource,0));
+  select * into a from public.agent_action_records where corp_id=p_turn->>'corpId' and action_id=id for update;
   select * into t from public.agent_reply_turns where corp_id=p_turn->>'corpId'
     and account_id=p_turn->>'accountId' and chat_id=p_turn->>'chatId'
     and logical_turn_id=p_turn->>'logicalTurnId' for share;
@@ -55,14 +53,6 @@ begin
     return jsonb_build_object('conflict','ordinary_reply_fence_lost');
   end if;
 
-  if p_operation='validate_claim' then
-    return jsonb_build_object('valid',coalesce(a.mode='execute' and a.kind='wecom.reply_segment'
-      and a.account_id=t.account_id and a.chat_id=t.chat_id and a.logical_turn_id=t.logical_turn_id
-      and a.owner=claimant and a.fence=(p_input->>'fence')::integer and a.status='executing'
-      and a.dispatch_attempt_id=p_input->>'dispatchAttemptId' and a.next_check_at>clock_timestamp()
-      and a.recovery_deadline>clock_timestamp() and t.generation_until>clock_timestamp()
-      and (t.fence=1 or (t.recovery->>'resumeUntil')::timestamptz>=clock_timestamp()),false));
-  end if;
   idx:=(intent#>>'{parameters,index}')::integer;
   deadline:=(p_input->>'recoveryDeadline')::timestamptz;
   if p_input->>'mode' is distinct from 'execute' or idx is null or idx<0
@@ -76,26 +66,46 @@ begin
     or nullif(resource,'') is null or deadline is null then
     return jsonb_build_object('conflict','identity_payload_mismatch');
   end if;
-  if a.action_id is not null then
-    prepared:=public.transition_agent_action('prepare',p_input);
-    if prepared->>'conflict' is not null or a.mode<>'execute'
-      or not (a.status='registered' or (a.status='failed' and a.retryable)) then return prepared; end if;
-    return public.transition_agent_action('claim',p_input);
+  if a.action_id is not null and (a.resource_hash is distinct from resource
+    or a.payload_hash is distinct from p_input->>'payloadHash' or a.request_id is distinct from p_input->>'requestId'
+    or (a.account_id,a.chat_id,a.logical_turn_id,a.kind) is distinct from
+       (t.account_id,t.chat_id,t.logical_turn_id,'wecom.reply_segment'::text)) then
+    return jsonb_build_object('conflict','identity_payload_mismatch');
   end if;
-  if deadline<=clock_timestamp() then return jsonb_build_object('conflict','expired_action'); end if;
+  if a.action_id is not null and (a.mode<>'execute'
+    or not (a.status='registered' or (a.status='failed' and a.retryable))) then
+    return jsonb_build_object('record',public.action_record_json(a));
+  end if;
   if exists(select from public.agent_action_records where corp_id=t.corp_id and resource_hash=resource
-      and mode='execute' and status in ('executing','unknown')) then
+      and action_id<>id and mode='execute' and status in ('executing','unknown')) then
     return jsonb_build_object('conflict','unresolved_resource_action');
   end if;
-  select action_id into previous_id from public.agent_action_records where corp_id=t.corp_id and resource_hash=resource
-    order by created_at desc,action_id desc limit 1;
-  insert into public.agent_action_records(corp_id,action_id,account_id,chat_id,logical_turn_id,kind,
-    resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,recovery_deadline,previous_action_id,created_at,
-    status,owner,dispatch_attempt_id,fence,attempts,next_check_at)
-  values(t.corp_id,id,t.account_id,t.chat_id,t.logical_turn_id,'wecom.reply_segment',resource,p_input->>'payloadHash',
-    p_input->>'requestId',intent,t.input_occurred_at,'execute',deadline,previous_id,clock_timestamp(),
-    'executing',claimant,claimant,1,1,now()+interval '10 minutes') returning * into a;
-  return jsonb_build_object('record',public.action_record_json(a));
+  if p_operation='inspect' then
+    return jsonb_build_object('record',case when a.action_id is not null then public.action_record_json(a) end);
+  end if;
+  if least(deadline,a.recovery_deadline)<=clock_timestamp() then
+    return jsonb_build_object('conflict','expired_action');
+  end if;
+  if a.action_id is not null then
+    prepared:=public.transition_agent_action('claim',p_input);
+    if prepared->>'conflict' is not null or prepared#>>'{record,dispatch_attempt_id}' is distinct from claimant then
+      return prepared;
+    end if;
+  else
+    select action_id into previous_id from public.agent_action_records where corp_id=t.corp_id and resource_hash=resource
+      order by created_at desc,action_id desc limit 1;
+    insert into public.agent_action_records(corp_id,action_id,account_id,chat_id,logical_turn_id,kind,
+      resource_hash,payload_hash,request_id,intent,input_occurred_at,mode,recovery_deadline,previous_action_id,created_at,
+      status,owner,dispatch_attempt_id,fence,attempts,next_check_at)
+    values(t.corp_id,id,t.account_id,t.chat_id,t.logical_turn_id,'wecom.reply_segment',resource,p_input->>'payloadHash',
+      p_input->>'requestId',intent,t.input_occurred_at,'execute',deadline,previous_id,clock_timestamp(),
+      'executing',claimant,claimant,1,1,now()+interval '10 minutes') returning * into a;
+    prepared:=jsonb_build_object('record',public.action_record_json(a));
+  end if;
+  -- Only the transaction which changed this attempt to executing issues a grant.
+  return prepared||jsonb_build_object('dispatchUntil',least(t.generation_until,
+    (prepared#>>'{record,next_check_at}')::timestamptz,(prepared#>>'{record,recovery_deadline}')::timestamptz,
+    case when t.fence>1 then (t.recovery->>'resumeUntil')::timestamptz end));
 end $$;
 revoke all on function public.transition_agent_reply_segment(text,jsonb,jsonb) from public, anon, authenticated;
 grant execute on function public.transition_agent_reply_segment(text,jsonb,jsonb) to service_role;

@@ -29,11 +29,14 @@ export class ActionRecordsRepository extends BaseRepository {
   async prepare(
     intent: ActionIntent,
     mode: ActionMode,
-    replyClaim?: { turn: ReplySegmentFence; owner: string },
-  ): Promise<{ record: ActionRecord | null; conflict?: string }> {
+    replyClaim?: { turn: ReplySegmentFence; owner: string; inspectOnly: boolean },
+  ): Promise<{ record: ActionRecord | null; conflict?: string; dispatchUntil?: string }> {
     const identity = identifyAction(intent);
+    const operation = replyClaim?.inspectOnly
+      ? ACTION_RECORD_OPERATION.INSPECT
+      : ACTION_RECORD_OPERATION.CLAIM;
     return this.transition(
-      replyClaim ? ACTION_RECORD_OPERATION.CLAIM : ACTION_RECORD_OPERATION.PREPARE,
+      replyClaim ? operation : ACTION_RECORD_OPERATION.PREPARE,
       {
         ...(replyClaim && { owner: replyClaim.owner }),
         ...identity,
@@ -73,14 +76,12 @@ export class ActionRecordsRepository extends BaseRepository {
     return result.record;
   }
 
-  async validateClaim(record: ActionRecord, turn?: ReplySegmentFence): Promise<boolean> {
+  async validateClaim(record: ActionRecord): Promise<boolean> {
     const dispatchAttemptId = this.requireDispatchAttemptId(record);
     const result = await this.transition(
       ACTION_RECORD_OPERATION.VALIDATE_CLAIM,
       this.ownership(record),
-      turn,
     );
-    if (turn) return result.valid === true;
     return (
       result.record?.owner === record.owner &&
       result.record.dispatchAttemptId === dispatchAttemptId &&
@@ -203,7 +204,7 @@ export class ActionRecordsRepository extends BaseRepository {
     operation: ActionRecordOperation,
     input: Record<string, unknown>,
     turn?: ReplySegmentFence,
-  ): Promise<{ record: ActionRecord | null; conflict?: string; valid?: boolean }> {
+  ): Promise<{ record: ActionRecord | null; conflict?: string; dispatchUntil?: string }> {
     if (this.circuitBlocked('action_transition')) throw new Error('Action store unavailable');
     const scope = turn && {
       corpId: turn.corpId,
@@ -229,7 +230,7 @@ export class ActionRecordsRepository extends BaseRepository {
     return {
       record: data.record ? this.fromDb(data.record) : null,
       conflict: data.conflict ?? undefined,
-      valid: data.valid,
+      dispatchUntil: data.dispatchUntil,
     };
   }
 

@@ -1132,7 +1132,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     30000,
   );
 
-  it('uses three database requests per new segment and settles the successful turn once', async () => {
+  it('uses two database requests per new segment and settles the successful turn once', async () => {
     await start();
     const rpc = jest.spyOn(client, 'rpc');
     await submitInput('enterprise');
@@ -1147,10 +1147,16 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       .map(([name, args]) => [name, args.p_operation]);
     const oneSegment = [
       ['transition_agent_reply_segment', 'claim'],
-      ['transition_agent_reply_segment', 'validate_claim'],
       ['transition_agent_action', 'settle'],
     ];
     expect(segmentCalls).toEqual([...oneSegment, ...oneSegment]);
+    expect(
+      client.query(
+        'SELECT count(*)::integer FROM agent_action_records a JOIN agent_action_evidence e ' +
+          'ON (a.corp_id,a.action_id,a.accepted_attempt_id,a.accepted_evidence_hash)=' +
+          '(e.corp_id,e.action_id,e.attempt_id,e.evidence_hash)',
+      ),
+    ).toBe(2);
     expect(
       rpc.mock.calls.filter(
         ([name, args]) => name === 'transition_agent_reply_turn' && args.p_operation === 'settle',
@@ -1182,27 +1188,37 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     30000,
   );
 
-  it('stops when the window closes between claiming a segment and making the HTTP request', async () => {
-    await start();
-    interruptDelivery(1);
-    await submitInput('enterprise');
-    await restart('execute');
-    expireOwner();
-    const records = module!.get(ActionRecordsRepository);
-    const validate = records.validateClaim.bind(records);
-    jest.spyOn(records, 'validateClaim').mockImplementationOnce((record, turn) => {
-      expireResumeWindow();
-      return validate(record, turn);
-    });
-    await recoverStoredTurn();
-    await recoverStoredTurn();
-    expect(sendCalls).toHaveLength(1);
-    expect(databaseState().turn).toMatchObject({
-      status: 'acked',
-      review_required: false,
-      delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
-    });
-  }, 30000);
+  it.each(['before claim', 'in the claim response'] as const)(
+    'stops when the recovery window expires %s',
+    async (boundary) => {
+      await start();
+      interruptDelivery(1);
+      await submitInput('enterprise');
+      await restart('execute');
+      expireOwner();
+      const records = module!.get(ActionRecordsRepository);
+      const prepare = records.prepare.bind(records);
+      jest.spyOn(records, 'prepare').mockImplementation(async (intent, mode, claim) => {
+        if (intent.parameters.index !== 1) return prepare(intent, mode, claim);
+        if (boundary === 'before claim') expireResumeWindow();
+        const result = await prepare(intent, mode, claim);
+        if (boundary === 'in the claim response' && result.dispatchUntil) {
+          expireResumeWindow();
+          return { ...result, dispatchUntil: new Date(Date.now() - 1).toISOString() };
+        }
+        return result;
+      });
+      await recoverStoredTurn();
+      await recoverStoredTurn();
+      expect(sendCalls).toHaveLength(1);
+      expect(databaseState().turn).toMatchObject({
+        status: 'acked',
+        review_required: false,
+        delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },
+      });
+    },
+    30000,
+  );
 
   it('counts a durable callback even when startup closes the turn before action reconciliation', async () => {
     await start();
@@ -1275,8 +1291,15 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       reason: 'user_paused',
     });
     expireOwner();
+    const rpc = jest.spyOn(client, 'rpc');
     await recoverStoredTurn();
     expect(sendCalls).toHaveLength(1);
+    expect(databaseState().actions).toHaveLength(1);
+    const operations = rpc.mock.calls
+      .filter(([name]) => name === 'transition_agent_reply_segment')
+      .map(([, args]) => args.p_operation);
+    expect(operations).toContain('inspect');
+    expect(operations).not.toContain('claim');
     expect(databaseState().turn).toMatchObject({
       status: 'acked',
       delivery_result: { outcome: 'skipped', accepted: 1, total: 2 },

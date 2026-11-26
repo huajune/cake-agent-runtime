@@ -61,7 +61,7 @@ export class ActionExecutorService {
     /** Only inherit execute from an already persisted parent input; never from input. */
     options?: {
       persistedMode: typeof ACTION_MODE.EXECUTE;
-      replySegment?: { turn: ReplySegmentFence; beforeDispatch: () => Promise<void> };
+      replySegment?: { turn: ReplySegmentFence; beforeClaim: () => Promise<void> };
     },
   ): Promise<ActionExecution<T>> {
     const mode = options?.persistedMode ?? this.mode;
@@ -93,16 +93,13 @@ export class ActionExecutorService {
     if (mode === ACTION_MODE.EXECUTE && (!intent.identityReliable || occurredAt < this.cutoverAt!))
       return blocked('input_before_cutover_or_identity_not_persisted');
 
-    const segment = options?.replySegment;
-    const replyClaim = segment && { turn: segment.turn, owner: randomUUID() };
+    if (options?.replySegment)
+      return this.executeReplySegment(intent, callbacks, options.replySegment, blocked);
     let record: ActionRecord | null = null;
     try {
-      const prepared = replyClaim
-        ? await this.records.prepare(intent, mode, replyClaim)
-        : await this.records.prepare(intent, mode);
+      const prepared = await this.records.prepare(intent, mode);
       record = prepared.record;
       if (prepared.conflict) {
-        if (segment) return blocked(prepared.conflict);
         if (
           prepared.conflict === 'identity_payload_mismatch' &&
           mode === ACTION_MODE.OBSERVE &&
@@ -129,8 +126,7 @@ export class ActionExecutorService {
     const enforce = record?.mode === ACTION_MODE.EXECUTE || mode === ACTION_MODE.EXECUTE;
     if (enforce && record?.mode !== ACTION_MODE.EXECUTE)
       return blocked('observation_record_requires_cutover_review');
-    if (!record)
-      return segment ? blocked('reply_claim_unconfirmed') : this.untracked(intent, callbacks);
+    if (!record) return this.untracked(intent, callbacks);
     if (enforce && !intent.identityReliable) return blocked('identity_not_persisted');
 
     if (record.status === ACTION_STATE.SUCCEEDED) {
@@ -140,10 +136,8 @@ export class ActionExecutorService {
       }
       return this.synchronize(record, callbacks, false);
     }
-    const claimedHere =
-      replyClaim && record.owner === replyClaim.owner && record.status === ACTION_STATE.EXECUTING;
     if (
-      (record.status === ACTION_STATE.EXECUTING && !claimedHere) ||
+      record.status === ACTION_STATE.EXECUTING ||
       record.status === ACTION_STATE.UNKNOWN ||
       record.status === ACTION_STATE.CANCELLED ||
       (record.status === ACTION_STATE.FAILED && !record.retryable)
@@ -154,41 +148,30 @@ export class ActionExecutorService {
       }
       return this.existing<T>(record, false);
     }
-    let claimed: ActionRecord | null = record;
-    if (segment) {
-      if (!claimedHere) return blocked('dispatch_owned_elsewhere');
-      try {
-        // Credentials and the Redis lease must be checked before the final SQL fence.
-        await segment.beforeDispatch();
-      } catch {
-        await this.recordUnsentReply(claimed);
-        return blocked(REPLY_SEGMENT_PRECHECK_PENDING);
-      }
-    } else {
-      if (!(await this.authorized(callbacks))) {
-        const cancelled = await this.records.cancel(record).catch(() => false);
-        return {
-          ...blocked('permission_or_freshness_changed'),
-          ...(cancelled
-            ? {
-                evidence: {
-                  kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
-                  requestTerminated: true,
-                  detail: 'registered_action_cancelled',
-                },
-              }
-            : {}),
-        };
-      }
-
-      try {
-        claimed = await this.records.claim(record, randomUUID());
-      } catch {
-        return enforce ? blocked('claim_not_confirmed') : this.untracked(intent, callbacks);
-      }
-      if (!claimed)
-        return enforce ? blocked('dispatch_owned_elsewhere') : this.untracked(intent, callbacks);
+    let claimed: ActionRecord | null;
+    if (!(await this.authorized(callbacks))) {
+      const cancelled = await this.records.cancel(record).catch(() => false);
+      return {
+        ...blocked('permission_or_freshness_changed'),
+        ...(cancelled
+          ? {
+              evidence: {
+                kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+                requestTerminated: true,
+                detail: 'registered_action_cancelled',
+              },
+            }
+          : {}),
+      };
     }
+
+    try {
+      claimed = await this.records.claim(record, randomUUID());
+    } catch {
+      return enforce ? blocked('claim_not_confirmed') : this.untracked(intent, callbacks);
+    }
+    if (!claimed)
+      return enforce ? blocked('dispatch_owned_elsewhere') : this.untracked(intent, callbacks);
     // Authorization may have changed while waiting for the database claim.
     if (!(await this.authorized(callbacks))) {
       const completion: ActionCompletion<T> = {
@@ -205,16 +188,77 @@ export class ActionExecutorService {
     }
 
     try {
-      if (!(await this.records.validateClaim(claimed, segment?.turn))) {
-        if (segment) await this.recordUnsentReply(claimed);
+      if (!(await this.records.validateClaim(claimed))) {
         return enforce ? blocked('dispatch_lease_expired') : this.untracked(intent, callbacks);
       }
     } catch {
-      if (segment) await this.recordUnsentReply(claimed);
       return enforce
         ? blocked('dispatch_ownership_unconfirmed')
         : this.untracked(intent, callbacks);
     }
+    return this.dispatchAndSettle(claimed, callbacks, enforce);
+  }
+
+  private async executeReplySegment<T>(
+    intent: ActionIntent,
+    callbacks: ActionCallbacks<T>,
+    segment: { turn: ReplySegmentFence; beforeClaim: () => Promise<void> },
+    blocked: (reason: string) => ActionExecution<T>,
+  ): Promise<ActionExecution<T>> {
+    let denial: string | undefined;
+    try {
+      await segment.beforeClaim();
+      if (callbacks.authorize && !(await callbacks.authorize()))
+        denial = 'permission_or_freshness_changed';
+    } catch {
+      denial = REPLY_SEGMENT_PRECHECK_PENDING;
+    }
+
+    const owner = randomUUID();
+    let grant: Awaited<ReturnType<ActionRecordsRepository['prepare']>>;
+    try {
+      grant = await this.records.prepare(intent, ACTION_MODE.EXECUTE, {
+        turn: segment.turn,
+        owner,
+        inspectOnly: Boolean(denial),
+      });
+    } catch {
+      return blocked('action_store_unavailable');
+    }
+    if (grant.conflict) return blocked(grant.conflict);
+    const record = grant.record;
+    if (!record) return blocked(denial ?? 'reply_claim_unconfirmed');
+    if (record.mode !== ACTION_MODE.EXECUTE)
+      return blocked('observation_record_requires_cutover_review');
+    // Even after a pause or a routing failure, preserve work already accepted or in flight.
+    if (record.status === ACTION_STATE.SUCCEEDED) return this.synchronize(record, callbacks, false);
+    if (
+      !grant.dispatchUntil ||
+      record.status !== ACTION_STATE.EXECUTING ||
+      record.owner !== owner ||
+      record.dispatchAttemptId !== owner
+    ) {
+      if (
+        record.status === ACTION_STATE.REGISTERED ||
+        (record.status === ACTION_STATE.FAILED && record.retryable)
+      )
+        return blocked(denial ?? 'dispatch_owned_elsewhere');
+      return this.existing<T>(record, false);
+    }
+    if (denial) return blocked(denial);
+    // The transaction may have succeeded before a slow response crossed the lease or cutoff.
+    if (!(Date.parse(grant.dispatchUntil) > Date.now())) {
+      await this.recordUnsentReply(record);
+      return blocked(REPLY_SEGMENT_PRECHECK_PENDING);
+    }
+    return this.dispatchAndSettle(record, callbacks, true);
+  }
+
+  private async dispatchAndSettle<T>(
+    claimed: ActionRecord,
+    callbacks: ActionCallbacks<T>,
+    enforce: boolean,
+  ): Promise<ActionExecution<T>> {
     const completion = await this.dispatch(claimed.requestId, callbacks, claimed.mode);
     const saved = await this.save(claimed, completion);
     if (completion.status === ACTION_STATE.SUCCEEDED) {

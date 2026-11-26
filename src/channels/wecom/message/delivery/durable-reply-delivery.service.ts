@@ -183,7 +183,7 @@ export class DurableReplyDeliveryService implements OnModuleInit {
           persistedMode: turn.mode,
           replySegment: {
             turn,
-            beforeDispatch: async () => {
+            beforeClaim: async () => {
               if ('resolveToken' in context) token = await context.resolveToken();
               await context.assertOwned?.();
             },

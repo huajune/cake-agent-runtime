@@ -1,6 +1,7 @@
-/** Operations accepted by transition_agent_action; values are part of the SQL protocol. */
+/** Database action operations. INSPECT is specific to ordinary reply segments. */
 export const ACTION_RECORD_OPERATION = {
   PREPARE: 'prepare',
+  INSPECT: 'inspect',
   CLAIM: 'claim',
   RECONCILE_CLAIM: 'reconcile_claim',
   SETTLE: 'settle',
