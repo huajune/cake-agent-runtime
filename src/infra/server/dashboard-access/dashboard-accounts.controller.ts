@@ -15,16 +15,13 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { z } from 'zod';
+import { dashboardPasswordSchema } from './dashboard-password.schema';
 import { hostingSelection, readHostingSelection } from './hosting-binding.schema';
 import { normalizeDashboardPhone, TenantRole } from '@/types/dashboard-account';
 import { DashboardAccessService } from './dashboard-access.service';
 import { DashboardAccountsService } from './dashboard-accounts.service';
 import { DashboardAdminOnly } from '../guards/api-token.guard';
 
-const passwordSchema = z
-  .string()
-  .min(8)
-  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72);
 const organizationSchema = z.string().trim().min(1);
 const createSchema = z
   .object({
@@ -33,11 +30,11 @@ const createSchema = z
     organization: organizationSchema,
     tenantRole: z.enum(TenantRole).optional(),
     memberId: z.uuid().optional(),
-    password: passwordSchema,
+    password: dashboardPasswordSchema,
     hostingBinding: hostingSelection.transform(readHostingSelection).optional(),
   })
   .strict();
-const resetSchema = z.object({ password: passwordSchema }).strict();
+const resetSchema = z.object({ password: dashboardPasswordSchema }).strict();
 const organizationChange = z.object({ organization: organizationSchema }).strict();
 
 @Controller('dashboard/accounts')

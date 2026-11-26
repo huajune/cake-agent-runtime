@@ -1,5 +1,5 @@
 /** One-time release job. The only durable cleartext credentials live in the private handoff directory. */
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { mkdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -7,6 +7,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { readGroupDirectory } from '../channels/wecom/group/read-group-directory';
 import { readBotDirectory } from '../channels/wecom/bot/read-bot-directory';
+import { dashboardPasswordSchema } from '../infra/server/dashboard-access/dashboard-password.schema';
 import { STRIDE_PRIMARY_CONNECTION } from '../types/hosting-route';
 import {
   initializeDashboardAdministrator,
@@ -26,8 +27,22 @@ const workFile = 'credentials.work.json';
 const stateSchema = z.object({
   fingerprint: z.string(),
   batchId: z.uuid(),
-  passwords: z.record(z.string(), z.string().min(24)),
+  passwords: z.record(z.string(), dashboardPasswordSchema),
 });
+
+export function generateStaffPasswords(phones: string[]): Record<string, string> {
+  const issued = new Set<string>();
+  return Object.fromEntries(
+    phones.map((phone) => {
+      let password: string;
+      do {
+        password = randomInt(100_000_000).toString().padStart(8, '0');
+      } while (issued.has(password));
+      issued.add(password);
+      return [phone, password];
+    }),
+  );
+}
 
 async function verifyPrivateDirectory(directory: string): Promise<void> {
   const info = await stat(directory);
@@ -145,9 +160,7 @@ export async function activateStaffAccounts(
   const pending = members.length - ready.length;
   const working = join(directory, workFile);
   if (!(await exists(working))) {
-    const passwords = Object.fromEntries(
-      ready.map((m) => [m.phone, 'Aa1!' + randomBytes(24).toString('base64url')]),
-    );
+    const passwords = generateStaffPasswords(ready.map((member) => member.phone));
     await writePrivateOnce(working, { fingerprint, batchId: randomUUID(), passwords });
   }
   const state = await readBatchState(working, fingerprint, ready);

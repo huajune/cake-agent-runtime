@@ -1,11 +1,11 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { AdminUserAttributes, SupabaseClient } from '@supabase/supabase-js';
 import { activateStaffAccounts } from '../../src/cli/dashboard-onboarding';
 import { TenantRole } from '../../src/types/dashboard-account';
 
-it('开户中断后沿用已开户成员的密码，只向总部交付本批新账号', async () => {
+it.each(['自动生成', '预先准备'])('%s密码的开户批次可在中断后原样交付', async (source) => {
   const dir = await mkdtemp(join(tmpdir(), 'dashboard-onboarding-'));
   const members = ['001', '002', '003', '004'].map((suffix) => ({
     name: '测试成员' + suffix,
@@ -32,7 +32,7 @@ it('开户中断后沿用已开户成员的密码，只向总部交付本批新�
     ['existing', { phone: members[2].phone, phone_confirmed_at: 'confirmed', app_metadata: {} }],
   ]);
   let interrupted = true;
-  const createUser = jest.fn(async ({ phone, app_metadata }) => {
+  const createUser = jest.fn(async ({ phone, app_metadata }: AdminUserAttributes) => {
     if (phone === members[1].phone && interrupted) {
       interrupted = false;
       return { error: { code: 'temporary_error' } };
@@ -59,9 +59,28 @@ it('开户中断后沿用已开户成员的密码，只向总部交付本批新�
   } as unknown as SupabaseClient;
   const current = () => activateStaffAccounts(client, dir, members, 'fixture-batch');
   try {
-    await expect(current()).rejects.toThrow('开户未完成');
     const working = join(dir, 'credentials.work.json');
+    const prepared = ['01234567', 'legacy-password-'.repeat(2), '23456789', '34567890'];
+    if (source === '预先准备') {
+      await writeFile(
+        working,
+        JSON.stringify({
+          fingerprint: 'fixture-batch',
+          batchId: '10000000-0000-4000-8000-000000000001',
+          passwords: Object.fromEntries(members.map((member, i) => [member.phone, prepared[i]])),
+        }),
+        { mode: 0o600 },
+      );
+    }
+    await expect(current()).rejects.toThrow('开户未完成');
     const original = JSON.parse(await readFile(working, 'utf8'));
+    const passwords = members.map((member) => original.passwords[member.phone]);
+    if (source === '自动生成') {
+      expect(passwords).toEqual(members.map(() => expect.stringMatching(/^\d{8}$/)));
+      expect(new Set(passwords).size).toBe(members.length);
+    } else {
+      expect(passwords).toEqual(prepared);
+    }
     await expect(stat(join(dir, 'complete.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(activateStaffAccounts(client, dir, members, 'different-batch')).rejects.toThrow(
       '批次',
@@ -77,13 +96,18 @@ it('开户中断后沿用已开户成员的密码，只向总部交付本批新�
       })),
     );
     expect(new Set(result.members.map((member) => member.password)).size).toBe(2);
-    expect(createUser.mock.calls[0][0].app_metadata.cake_dashboard_account.tenant_role).toBe(
-      TenantRole.TenantAdmin,
-    );
+    expect(createUser.mock.calls[0][0].app_metadata).toMatchObject({
+      cake_dashboard_account: { tenant_role: TenantRole.TenantAdmin },
+    });
     expect(createUser.mock.calls.map(([input]) => input.phone)).toEqual([
       members[0].phone,
       members[1].phone,
       members[1].phone,
+    ]);
+    expect(createUser.mock.calls.map(([input]) => input.password)).toEqual([
+      passwords[0],
+      passwords[1],
+      passwords[1],
     ]);
     expect((await stat(handoff)).mode & 0o777).toBe(0o600);
     expect(JSON.parse(await readFile(join(dir, 'complete.json'), 'utf8'))).toMatchObject({

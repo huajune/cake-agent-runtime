@@ -82,7 +82,9 @@ GitHub Actions                        远程服务器 /data/cake/
 3. 飞书企微私域监控群通知部署结果
 ```
 
-11 月 26 日，Supabase 测试库已验过聊天、消息流水及两类快照的归属、托管开关和租户查询。员工手机号密码实登仍被 `phone_provider_disabled` 拦住。测试项目已关闭自行注册；控制台即使关闭短信确认，启用 Phone 仍要求填写短信服务凭据。首次发布前须在测试项目用虚拟员工完成密码实登。外部供应商启用海绵等业务能力时另行验收对应路由。[租户隔离与登录验收](../product/organization-members-and-business-accounts.md#实现与上线边界)
+11 月 26 日，Supabase 测试项目已验过聊天、消息流水及两类快照的归属、托管开关和租户查询。4 个虚拟员工完成手机号和密码实登，核对了租户范围、重置和停用。外部供应商启用海绵等业务能力时另行验收对应路由。[租户隔离与登录验收](../product/organization-members-and-business-accounts.md#实现与上线边界)
+
+在授权的发布窗口内，先核对目标项目引用、自助注册已关闭（`disable_signup=true`）、Email 已启用。通过 `PATCH /v1/projects/{ref}/config/auth` 单独提交 `{"external_phone_enabled":true}`。回读目标项目的 `/auth/v1/settings`，核对 `external.phone=true`、`external.email=true`、`disable_signup=true`。总部开户时逐个确认已核实的手机号，员工登录走密码校验，整个流程无需配置短信服务。[Supabase Auth 配置接口](https://supabase.com/docs/reference/api/v1-update-auth-service-config)
 
 v11.22.1 已先行应用日期较晚的消息存储迁移。发布窗口使用 `pnpm exec supabase db push --db-url "$SUPABASE_DB_URL_PROD" --include-all --dry-run` 对照迁移清单。本 PR 有 18 份先前的组织迁移和 1 份 `20261126090000_tenant_processing_snapshots.sql`。如有额外待推迁移，先核对所属版本。正式执行时沿用同一份已核实的清单。
 
