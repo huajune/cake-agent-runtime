@@ -33,7 +33,7 @@ Redis 在入口按消息 ID 去重，把等候处理的消息放在队列里，�
 
 若托管已关闭或路由暂时不可用，`inspect` 只核对已有动作。已经受理的段仍计入整轮，结果未知的段继续等回执。创建回合、保存原文、权限查询、输入确认和故障重试另计。[分段数据库函数](../../../supabase/migrations/20261125100000_ordinary_reply_segment_io.sql) · [两段回复的请求计数测试](../../../tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts)
 
-分段请求的数据库耗时、20 个 worker 下的首条回复等待时间和队列积压量，见[200 倍峰值隔离压测](../../../docs/technical/ordinary-reply-peak-load.md)。
+在 200 倍峰值的隔离回放中，50 个处理槽同时工作，95% 的回合从入队到首段获模拟企微受理不超过 37.1 秒。回复原文已预先生成，计时包含排队和投递。数据库耗时、队列积压和此前 20 槽的结果见[峰值压测报告](../../../docs/technical/ordinary-reply-peak-load.md)。
 
 ## 服务重启后怎样接着发
 
