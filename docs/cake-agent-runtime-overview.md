@@ -266,7 +266,7 @@ Prompt 组装时再按 procedural / semantic / episodic / working 类型组织�
   │   ├─ SimpleMerge             Debounce 聚合（Redis + Bull）
   │   ├─ MessageProcessor        Bull Worker + per-chat 锁
   │   ├─ Deduplication           Redis SET NX EX (300s)
-  │   └─ WorkerManager           应用层 semaphore (默认 4，上限 20)
+  │   └─ WorkerManager           按配置注册 Bull 并发，切换时排空在途任务
   │
   └─ Delivery
       ├─ TypingPolicy            段落间隔 + 每字符速率
@@ -313,8 +313,7 @@ Agent 产出 TurnOutcome + TurnFinalizer
 
 | 维度            | 配置       | 说明                                  |
 | --------------- | ---------- | ------------------------------------- |
-| Bull 注册并发   | 启动时的并发配置 | 按当前 worker 并发数注册     |
-| 真正执行并发    | 默认 4，可调 1–20 | 应用层并发槽                |
+| 单实例领取并发 | 默认 4，可调 1–100 | Bull 按保存值注册，运行中调整时先排空本机任务。后台显示实际注册数。 |
 | per-chat 处理锁 | 90 秒租约 | 聚合任务每 30 秒续租                |
 | 去重 TTL        | 默认 300 秒，可调 | 按消息 ID 去重，多实例共享  |
 
@@ -642,7 +641,7 @@ FollowUpTaskProcessor
 | ---------------------------------------------------- | ------ | ---------------------- |
 | `initialMergeWindowMs`                               | 3000   | 消息聚合 debounce 窗口 |
 | `typingSpeedCharsPerSec` / `paragraphGapMs`          | -      | 拟人化打字策略         |
-| `workerConcurrency`                                  | 4      | 实际执行并发           |
+| `workerConcurrency`                                  | 4      | 单实例 Bull 领取上限   |
 | `wecomCallbackModelId` / `wecomCallbackThinkingMode` | -      | 渠道侧模型选择         |
 
 ### 16.3 关键 Agent 行为变量

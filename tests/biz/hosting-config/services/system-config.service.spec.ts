@@ -12,6 +12,7 @@ describe('SystemConfigService', () => {
     getConfigValue: jest.fn(),
     getConfigValueOrThrow: jest.fn(),
     setConfigValue: jest.fn(),
+    setConfigValueOrThrow: jest.fn(),
   };
 
   const mockConfigService = {
@@ -665,12 +666,9 @@ describe('SystemConfigService', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null when DB throws error', async () => {
-      mockSystemConfigRepository.getConfigValue.mockRejectedValue(new Error('DB error'));
-
-      const result = await service.getSystemConfig();
-
-      expect(result).toBeNull();
+    it('propagates a DB error so consumers retain their last known configuration', async () => {
+      mockSystemConfigRepository.getConfigValueOrThrow.mockRejectedValueOnce(new Error('DB error'));
+      await expect(service.getSystemConfig()).rejects.toThrow('DB error');
     });
   });
 
@@ -680,7 +678,7 @@ describe('SystemConfigService', () => {
     it('should merge new config with existing config', async () => {
       const existingConfig = { workerConcurrency: 3 };
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(existingConfig);
-      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockResolvedValue(undefined);
 
       const result = await service.updateSystemConfig({ workerConcurrency: 10 });
 
@@ -689,7 +687,7 @@ describe('SystemConfigService', () => {
 
     it('should create config from scratch when no existing config', async () => {
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
-      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockResolvedValue(undefined);
 
       const result = await service.updateSystemConfig({ workerConcurrency: 5 });
 
@@ -698,14 +696,30 @@ describe('SystemConfigService', () => {
 
     it('should persist to DB', async () => {
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
-      mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockResolvedValue(undefined);
 
       await service.updateSystemConfig({ workerConcurrency: 5 });
 
-      expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
+      expect(mockSystemConfigRepository.setConfigValueOrThrow).toHaveBeenCalledWith(
         'system_config',
         expect.objectContaining({ workerConcurrency: 5 }),
         '系统配置（Worker 并发数等）',
+      );
+    });
+    it('propagates unconfirmed writes and does not overwrite an unreadable config', async () => {
+      mockSystemConfigRepository.getConfigValueOrThrow.mockRejectedValueOnce(
+        new Error('read failed'),
+      );
+      await expect(service.updateSystemConfig({ workerConcurrency: 50 })).rejects.toThrow(
+        'read failed',
+      );
+      expect(mockSystemConfigRepository.setConfigValueOrThrow).not.toHaveBeenCalled();
+      mockSystemConfigRepository.getConfigValueOrThrow.mockResolvedValueOnce(null);
+      mockSystemConfigRepository.setConfigValueOrThrow.mockRejectedValueOnce(
+        new Error('write failed'),
+      );
+      await expect(service.updateSystemConfig({ workerConcurrency: 50 })).rejects.toThrow(
+        'write failed',
       );
     });
   });

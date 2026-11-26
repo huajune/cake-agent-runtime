@@ -1,5 +1,6 @@
 export interface WorkerStatus {
   concurrency: number;
+  registeredConcurrency?: number;
   activeJobs: number;
   minConcurrency: number;
   maxConcurrency: number;
@@ -9,7 +10,9 @@ export interface WorkerStatus {
 export interface WorkerConcurrencyResponse {
   success: boolean;
   message: string;
-  concurrency: number;
+  previousConcurrency: number;
+  currentConcurrency: number;
+  registeredConcurrency?: number;
 }
 
 export interface GroupInfo {

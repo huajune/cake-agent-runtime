@@ -312,7 +312,8 @@ describe('MessageProcessor', () => {
       concurrency: 4,
       activeJobs: 0,
       minConcurrency: 1,
-      maxConcurrency: 20,
+      maxConcurrency: 100,
+      registeredConcurrency: 0,
       messageMergeEnabled: true,
     });
   });

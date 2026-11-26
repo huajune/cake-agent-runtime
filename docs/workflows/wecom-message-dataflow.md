@@ -59,7 +59,7 @@ WeCom callback
 `MessageProcessor` 到点后先取得 chat 级租约锁，再确认静默窗口已满。满足条件时，
 `SimpleMergeService` 原子取得当前 pending 快照；主编排把多条消息合成一个 batch，合并源 trace 的准备耗时，并删除只用于 intake 的源 `processing` 行。
 
-同一 `chatId` 的聚合任务由租约锁串行，应用层并发槽限制同时执行的任务数。读取快照保留原消息，处理结束后按本轮消息 ID 确认，后续任务接手剩余输入。
+Bull 按实例的注册槽数领取任务，同一 `chatId` 的聚合任务由租约锁串行。读取快照保留原消息，处理结束后按本轮消息 ID 确认，后续任务接手剩余输入。
 
 ### 2.3 Agent 回合
 

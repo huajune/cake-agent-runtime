@@ -96,7 +96,7 @@ export default function HealthGrid({ health, workerStatus }: HealthGridProps) {
           </div>
           <div className={styles.healthDesc}>
             {workerStatus
-              ? `并发 ${workerStatus.concurrency} / 活跃 ${workerStatus.activeJobs}`
+              ? `已注册 ${workerStatus.registeredConcurrency ?? '未知'} / 活跃 ${workerStatus.activeJobs}`
               : '检查中...'}
           </div>
         </div>

@@ -37,6 +37,8 @@
 
 在线分批还原使用已确认的目标库连接，执行 `psql -X -v ON_ERROR_STOP=1 -f scripts/backfill-runtime-bodies.sql`。切换完成后抽查一条带媒体的聊天和一条测试执行，核对渠道正文与测试响应。
 
+本批生产主聊首档为 **每实例 50 槽**。正式发版流程在新容器健康检查通过后调用后台接口设置 50，再读取该实例状态。完成条件是配置值 50、Bull 已注册 50、上限 100。已领取的任务先处理完，新消息可继续入队。此项沿用现有 `system_config`，适用于五份数据库迁移完成后的新应用。[生产首档与复核](../workflows/deploy-guide.md#主聊并发首档) · [并发设计](../architecture/message-service-architecture.md#42-worker-并发)
+
 ## 验收与回滚
 
 - 用一条升级前的流水核对回合快照与原创建时间。用一条升级后发生重试或换供应商的流水，分别核对每次 HTTP 状态和请求、响应字节。中心账号只能读授权 BOT 的摘要，总部才可按需读请求和模型原文。两类快照默认保留 90 天，共用每批行数上限。回合按 `created_at`，模型请求按 `started_at`，主流水删除时均级联清理。[监控与接口](../architecture/monitoring-system-architecture.md#api-端点列表)
@@ -48,6 +50,8 @@
 在一次性 PostgreSQL 上运行联合迁移核验。历史数据升级用例从 `20261124100200` 的相关依赖起步，分别演练直接升级及先分批还原（`-v prebackfill=1`）。分段并发和队列压测运行在删列后的结构上。[冷启动入口](../../tests/biz/action-execution/verify-runtime-postgres.py) · [历史升级用例](../../tests/supabase/storage-cutover.integration.sql) · [流水、权限与回执用例](../../tests/supabase/runtime-data-governance.sql) · [中心与预约用例](../../tests/supabase/runtime-storage-batch.sql)
 
 2026 年 11 月 26 日的两条隔离升级路径均通过。预约样例里，第一次派发有工单 101、102 两份回执，另一尝试报告 103。升级后动作主表仍采信 101，证据表保留三份。260 条历史聊天的原载荷、测试响应以及可读快照的创建时间也逐项核对通过。[升级前的造数与升级后断言](../../tests/supabase/storage-cutover.integration.sql)
+
+并发回归在一次性 Redis 上分别运行普通连接和生产使用的 Upstash 逐槽连接方式。按 20 → 50 → 100 → 2 逐档核对 Bull 的 active 与 waiting，每组 282 个任务各完成一次，包含切换期间入队及队列空闲后的延迟任务。重启后读回保存的 50。复测时将 `ISOLATED_MESSAGE_WORKER_REDIS_PORT` 指向一次性 Redis 的本机端口，然后运行 `pnpm exec jest --runInBand --watchman=false tests/channels/wecom/message/runtime/message-worker-concurrency.redis.spec.ts`。[实队列回归](../../tests/channels/wecom/message/runtime/message-worker-concurrency.redis.spec.ts)
 
 ## 发布与历史清理
 

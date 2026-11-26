@@ -80,7 +80,7 @@ sequenceDiagram
 | [AcceptInboundMessageService](../../src/channels/wecom/message/application/accept-inbound-message.service.ts)         | self 消息归档、过滤、去重、历史和图片准备                      |
 | [ReplyWorkflowService](../../src/channels/wecom/message/application/reply-workflow.service.ts)                        | `runInboundTurn`、有界 replay、最终副作用、投递、TurnFinalizer |
 | [SimpleMergeService](../../src/channels/wecom/message/runtime/simple-merge.service.ts)                                | Redis pending list、静默窗口 delayed job、租约锁与 follow-up   |
-| [MessageProcessor](../../src/channels/wecom/message/runtime/message.processor.ts)                                     | Bull worker、应用层并发槽、chat 串行、锁心跳                   |
+| [MessageProcessor](../../src/channels/wecom/message/runtime/message.processor.ts)                                     | Bull 消费者、chat 串行、锁心跳                   |
 | [MessageRuntimeConfigService](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts)             | 托管配置快照与聚合/投递/模型选择                               |
 | [MessageDeliveryService](../../src/channels/wecom/message/delivery/delivery.service.ts)                               | 最终文本分段、延迟和发送失败聚合                               |
 | [ReplyTurnsService](../../src/biz/reply-execution/reply-turns.service.ts) | 持久化输入归属、原回复分段、执行权和投递结局 |
@@ -106,7 +106,12 @@ sequenceDiagram
 
 ### 4.2 Worker 并发
 
-企微主聊聚合队列的并发按应用实例计算。`workerConcurrency` 默认 4，可设整数 1 至 20。Bull 启动时用当时的配置注册 `process` 处理器，应用在每个任务开始时再领一个执行槽，同一聊天仍由 Redis 锁串行。运行中调整会保存配置，并立即更新接收请求实例的执行槽。能同时处理的任务数取 Bull 启动注册值和当前执行槽两者的较小值。例如，以 4 启动后调到 20，该实例可同时领取的任务仍为 4，重启读取 20 后才能用足。[Bull 注册](../../src/channels/wecom/message/runtime/message.processor.ts) · [并发配置和调整](../../src/channels/wecom/message/runtime/message-worker-manager.service.ts) · [后台控件范围](../../web/src/view/config/list/components/WorkerPanel/index.tsx)
+企微的 `message-merge` 队列按实例限制同时领取的任务数。`system_config` 中的 `workerConcurrency` 可设 **1 至 100 的整数**，缺省 4。实例启动时按保存值注册 Bull 消费者。同一个聊天的任务仍要取得同一把 Redis 锁。[配置读写](../../src/biz/hosting-config/services/system-config.service.ts) · [消息处理](../../src/channels/wecom/message/runtime/message.processor.ts)
+
+例如，后台将 20 改成 50。保存成功后，接收请求的实例立即停止领取新任务，继续完成已领取的任务。新消息照常入队。旧消费者排空后，新消费者按 50 个槽领取任务。其余实例每 30 秒读取一次共享配置，按相同步骤调整。切换中再次修改时使用最后保存的值。[切换与排空](../../src/channels/wecom/message/runtime/message-worker-manager.service.ts)
+
+后台和 `GET /message/worker-status` 分别显示已保存目标 `concurrency`、本实例已注册槽数 `registeredConcurrency` 和正在处理的任务数 `activeJobs`。排空或准备连接时，已注册槽数为 0，处理中可以大于 0。上例完成时前两个数都为 50。Upstash 每个槽用独立阻塞连接领取任务，另共享普通命令和订阅两条连接，50 槽共用 52 条消费者连接。普通 Redis 用一个 Bull 消费者注册目标并发。[消费者连接](../../src/channels/wecom/message/runtime/message-worker-consumer.ts) · [后台面板](../../web/src/view/config/list/components/WorkerPanel/index.tsx)
+
 
 ## 5. Agent、Outcome 与 replay
 
@@ -130,7 +135,7 @@ sequenceDiagram
 | ---------------- | ------------------------------------------------------------------------ | -------------- |
 | 环境变量         | AI/聚合默认开关、去重 TTL 等启动配置                                     | 重启           |
 | `system_config`  | `initialMergeWindowMs`、typing、WeCom 模型与 thinking | 运行时快照刷新 |
-| `system_config`  | `workerConcurrency` | 启动时注册 Bull，运行时可调执行槽 |
+| `system_config`  | `workerConcurrency` | 启动按保存值注册，修改后排空并重新注册 Bull |
 | 代码常量         | pending TTL、锁租约/心跳、follow-up 最小延迟、replay 上限                | 发版           |
 
 托管配置的 `initialMergeWindowMs` 默认 3 秒。配置尚未加载时，消息服务的 `mergeDelayMs` 初始值为 2 秒。[托管默认配置](../../src/biz/hosting-config/types/hosting-config.types.ts) · [配置读取](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts)
