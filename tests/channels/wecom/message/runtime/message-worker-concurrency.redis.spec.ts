@@ -90,6 +90,14 @@ isolated('message-merge concurrency with real Bull and loopback Redis', () => {
           redis: { host, port: redisPort, connectionName: fixture, Connector: LoopbackConnector },
           prefix: resolveBullPrefix(env),
         });
+      const commandStates = new Set<string>();
+      const nameWorker = Bull.prototype.setWorkerName;
+      const naming = jest.spyOn(Bull.prototype, 'setWorkerName').mockImplementation(function (
+        this: Bull.Queue,
+      ) {
+        commandStates.add(this.client.status);
+        return nameWorker.call(this);
+      });
       const producer = queue();
       const runningJobs = new Map<string, () => void>();
       const started: string[] = [];
@@ -199,7 +207,9 @@ isolated('message-merge concurrency with real Bull and loopback Redis', () => {
           registeredConcurrency: 50,
           activeJobs: 0,
         });
+        if (host.endsWith('.upstash.io')) expect([...commandStates]).toEqual(['ready']);
       } finally {
+        naming.mockRestore();
         freeRun = true;
         releaseJobs();
         await processor.onModuleDestroy();

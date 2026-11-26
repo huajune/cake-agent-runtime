@@ -71,8 +71,11 @@ export function createMessageWorkerConsumer(
   });
   let closing: Promise<void> | undefined;
   return {
-    ready: () =>
-      Promise.all([subscriber.ping(), ...workers.map((worker) => worker.setWorkerName())]),
+    ready: async () => {
+      // 共享命令连接先就绪，避免所有槽同时在同一连接上安装临时的 ready/error 监听器。
+      await Promise.all([commands.ping(), subscriber.ping()]);
+      await Promise.all(workers.map((worker) => worker.setWorkerName()));
+    },
     process: async (handler) => {
       await Promise.all(workers.map((worker) => worker.process('process', 1, handler)));
     },
