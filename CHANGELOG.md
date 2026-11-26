@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.22.0] - 2026-11-26
 
-**预计版本**: `v11.22.0`
-**最近更新**: `2026-11-26`
 **来源分支**: `develop`
-**累计 PR**: 4
 
 ### 运营说明
 **消息处理详情** ✅ 已完成
@@ -169,7 +165,6 @@
 - PR #1589 联合迁移基线 `038ff969` 本地全量 CI 通过。常规 Jest 9,411 例通过，56 例按运行条件跳过。Jest 退出时提示有工作进程未自然结束，独立执行上述 45 个数据库用例均通过。另核对联合文档新增或改写的本地链接和章节锚点、用于冷启动的 61 项源码摘要，以及生产表结构文档与 develop 一致。
 - PR #1589 并发改造的 103 项定向回归通过。真实 Bull 和隔离 Redis 按普通连接和 Upstash 逐槽连接两条路径实测 20 → 50 → 100 → 2，两组各 282 个任务全部完成一次，切换中可入队、延迟任务可唤醒、重启读回 50。逐槽路径在 50 档核到 52 条消费者连接，关停后余下测试投递端一条连接。发布脚本通过回环 HTTP 验证。本机用两个 Jest 进程完整执行推送前检查，9,432 项通过、56 项按条件跳过。[实队列用例](https://github.com/huajune/cake-agent-runtime/blob/dcff52a7a0307dc9ad98545c9d24d3ef43aa3428/tests/channels/wecom/message/runtime/message-worker-concurrency.redis.spec.ts) · [CI 记录](https://github.com/huajune/cake-agent-runtime/actions/runs/45759033549)
 - PR #1589 Linux 快速关停复现定位到 Bull 4 异步执行的 `CLIENT SETNAME`。调整为收到同一份阻塞连接登记回执后才注册消费槽。180 次注册后立即关闭，修复前观测到 7 次未处理的异常，修复后为 0。另用延迟回执的回归核对后台状态，20 个开启句柄检测的队列用例通过。共享命令连接就绪后才登记各槽。100 槽启动时未出现监听器数量告警。[登记回执与连接生命周期](https://github.com/huajune/cake-agent-runtime/blob/dcff52a7a0307dc9ad98545c9d24d3ef43aa3428/src/channels/wecom/message/runtime/message-worker-consumer.ts)
-<!-- release:pending:end -->
 
 ## [11.21.2] - 2026-11-25
 
