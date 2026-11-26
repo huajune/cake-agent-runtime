@@ -1223,12 +1223,14 @@ export class ReplyWorkflowService {
         )}`,
       );
 
-      const prepared = await this.prepareRuntimeCompatibilityDescriptions({
-        imageUrls,
-        imageMessageIds,
-        visualMessageTypes: params.visualMessageTypes,
-        contactName: params.contactName ?? params.sessionId,
-      });
+      const prepared = await captureReplyGeneration(() =>
+        this.prepareRuntimeCompatibilityDescriptions({
+          imageUrls,
+          imageMessageIds,
+          visualMessageTypes: params.visualMessageTypes,
+          contactName: params.contactName ?? params.sessionId,
+        }),
+      );
       if (!prepared) {
         throw error;
       }

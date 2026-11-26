@@ -768,8 +768,30 @@ describe('ReplyWorkflowService', () => {
       usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
     });
 
+    const caption = captureProviderFetch('qwen', async () => new Response('image description'));
+    let imageReady: Promise<string>;
+    imageDescription.describeAndUpdateAsync.mockImplementationOnce(() => {
+      imageReady = caption('https://model.invalid', {
+        method: 'POST',
+        body: 'vision request',
+      }).then((r) => r.text());
+    });
+    imageDescription.awaitVision.mockImplementationOnce(async () => {
+      await imageReady;
+    });
+    const captured = jest.fn();
+    monitoringService.recordSuccess.mockImplementationOnce((id: string) =>
+      captured(takeModelInvocations(id)),
+    );
+
     await service.processSingleMessage(message);
 
+    expect(captured).toHaveBeenCalledWith([
+      expect.objectContaining({
+        requestBody: Buffer.from('vision request').toString('base64'),
+        complete: true,
+      }),
+    ]);
     expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
       'msg-1',
       'https://example.com/original-job-card.jpg',
