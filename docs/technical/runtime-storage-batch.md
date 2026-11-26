@@ -6,9 +6,9 @@
 
 前期改造已经进入 `develop`。#1546 引入流水与快照同事务写入、工单与动作回执治理，#1562 将快照默认保留期对齐到 90 天并退役主表旧列和策略变更表，#1568 收拢聊天与采信回执正文，#1584 按生产验收回写表结构。#1587 的处理详情与消息标识调整也在本次基线内。[一期治理](https://github.com/huajune/cake-agent-runtime/pull/1546) · [保留期与旧表退役](https://github.com/huajune/cake-agent-runtime/pull/1562) · [二期治理](https://github.com/huajune/cake-agent-runtime/pull/1568) · [生产验收](https://github.com/huajune/cake-agent-runtime/pull/1584) · [处理详情](https://github.com/huajune/cake-agent-runtime/pull/1587)
 
-本手册按 #1588 与 #1589 的联合代码说明消息排障和普通回复的目标结构。另一个 PR 负责组织开户、托管绑定与租户隔离。[组织与租户改造 #1561](https://github.com/huajune/cake-agent-runtime/pull/1561)
+新加坡生产现行结构包含 #1588 的消息排障存储与 #1589 的普通回复续发。组织开户、托管绑定与租户隔离由独立的 #1561 跟进。[消息排障](https://github.com/huajune/cake-agent-runtime/pull/1588) · [普通回复续发](https://github.com/huajune/cake-agent-runtime/pull/1589) · [组织与租户改造](https://github.com/huajune/cake-agent-runtime/pull/1561)
 
-发布 PR #1586 从 `develop` 发布到 `master`，实际包含的功能随 `develop` 提交变化。2026 年 11 月 26 日 11:38（北京）只读核对新加坡生产目录，最新登记为 `20261124100200`，下列五份迁移均未登记。生产当时仍使用每条流水至多一份的旧调用快照及动作采信指针。[消息排障](https://github.com/huajune/cake-agent-runtime/pull/1588) · [普通回复续发](https://github.com/huajune/cake-agent-runtime/pull/1589) · [发布 PR](https://github.com/huajune/cake-agent-runtime/pull/1586) · [已验收的生产结构](../db/database-schema.md)
+2026 年 11 月 26 日 16:16（北京时间），五份迁移全部登记，最新为 `20261125100000`。16:19，v11.22.1 部署验收完成。`ACTION_EXECUTION_MODE=execute` 已生效。主聊每实例配置 50 槽、Bull 实际注册 50 槽、上限 100。流水和两类快照的生产保留期均为 90 天。[v11.22.1](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.22.1) · [生产部署](https://github.com/huajune/cake-agent-runtime/actions/runs/45776715708) · [已验收的表结构](../db/database-schema.md)
 
 ## 数据怎么写、怎么查
 
@@ -31,7 +31,7 @@
 | --- | --- | --- |
 | 1 | [20261125075900](../../supabase/migrations/20261125075900_prepare_storage_cutover.sql) | 停止写旧压缩格式。旧应用此时仍能读写完整正文。可先按主键每批至多还原 250 行，脚本支持中断重跑。核对聊天、测试和动作标记剩余量。采信凭证不匹配会中止当批。[分批还原脚本](../../scripts/backfill-runtime-bodies.sql) |
 | 2 | [20261125080000](../../supabase/migrations/20261125080000_resume_ordinary_replies.sql) | 暂停旧写入后安装回合函数。原进程租约 3 分钟，续发窗口 5 分钟。缺少可信截止时间的旧回合只核对已受理部分。 |
-| 3 | [20261125080100](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql) | 原快照迁至回合表，保留可用历史上下文与创建时间，旧表名用于逐次 HTTP 原文。确已被替代或旧引用无法校验的快照会退出详情，对应主流水保留。 |
+| 3 | [20261125080100](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql) | 将有效的旧快照迁到回合表，保留创建时间，旧表名用于逐次 HTTP 原文。无法校验或已被替代的快照会退出详情，保留主流水。这次生产实际跳过 0 份。历史转换这条 SQL 的限时为 15 分钟，生产实测 319.3 秒。等锁上限 3 秒，其余语句限时 5 分钟。 |
 | 4 | [20261125081000](../../supabase/migrations/20261125081000_retire_body_storage_markers.sql) | 还原剩余正文，删除旧字段、触发器和写入开关。以同次派发存在多个回执的预约核对主表采信的结果、工单号及历史回执。 |
 | 5 | [20261125100000](../../supabase/migrations/20261125100000_ordinary_reply_segment_io.sql) | 安装分段领取和受理结算。部署同时包含两项功能的应用后恢复流量。两段成功发送应产生四次分段数据库请求，另有一次整轮结算。 |
 
@@ -41,9 +41,13 @@
 
 ## 验收与回滚
 
+停写后在新加坡项目内保存并验证 694,265 行受影响记录的原值。升级后比对了 96,378 条主流水的业务键、6,408 份回合快照的请求、迁移后的响应和创建时间、585,055 条聊天载荷及 6,423 条受保护动作的采信结果，差异均为 0。6,410 条动作正文从原派发回执还原，测试响应待还原数为 0。旧字段、旧写入开关和旧测试读取视图均已退役。
+
+验证新写入时，在生产的一笔独立事务里为同一轮写入两次模拟模型请求（HTTP 503、200），逐字节读回后回滚，三张表的测试残留均为 0。应用上线后，已通过总部详情读取一份历史 SDK 请求和一轮新产生的真实 HTTP 原文。页面、完整请求接口和单次调用详情均返回 200。[生产验收结构](../db/database-schema.md)
+
 - 用一条升级前的流水核对回合快照与原创建时间。用一条升级后发生重试或换供应商的流水，分别核对每次 HTTP 状态和请求、响应字节。中心账号只能读授权 BOT 的摘要，总部才可按需读请求和模型原文。两类快照默认保留 90 天，共用每批行数上限。回合按 `created_at`，模型请求按 `started_at`，主流水删除时均级联清理。[监控与接口](../architecture/monitoring-system-architecture.md#api-端点列表)
 - 模拟第一段受理后重启，核对第一段的原派发回执、第二段的发送次数，以及超时或关闭托管后的结局。回执不明时等待原尝试的可信证据。有已受理内容时按原回合补齐记忆和跟进，再确认输入。[宕机回归](../../tests/channels/wecom/message/delivery/reply-chain.integration.spec.ts) · [容量复测](ordinary-reply-peak-load.md)
-- 删列前旧应用可读已经还原的正文。删列后回滚需要匹配的应用和数据库备份。恢复流量后又要回滚时，先停派发，核对备份时点之后企微已经受理的请求和晚到回执，避免重放外部动作。生产验收后再回写表结构、实际迁移版本和清理结果。[生产结构](../db/database-schema.md)
+- 删列前旧应用可读已经还原的正文。删列后回滚需要匹配的应用和数据库备份。恢复流量后又要回滚时，先停派发，核对备份时点之后企微已经受理的请求和晚到回执，避免重放外部动作。[生产结构](../db/database-schema.md)
 
 ## 本地回归
 
