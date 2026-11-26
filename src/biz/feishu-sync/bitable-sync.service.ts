@@ -308,11 +308,12 @@ export class FeishuBitableSyncService {
         }
       }
 
-      if (feedback.messageId) {
+      const channelMessageId = sourceTrace?.anchorMessageIds?.[0];
+      if (channelMessageId) {
         if (messageIdField) {
-          recordFields[messageIdField] = feedback.messageId;
+          recordFields[messageIdField] = channelMessageId;
         } else if (remarkField) {
-          remarkParts.push(`messageId: ${feedback.messageId}`);
+          remarkParts.push(`messageId: ${channelMessageId}`);
         }
       }
 

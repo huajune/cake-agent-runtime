@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { describeHttpFailure, readHttpFailureCodes } from '@infra/client-http/http-request-error';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { REPLY_SEGMENT_PRECHECK_PENDING, type ReplySegmentFence } from './action-execution.types';
 import { ActionRecordsRepository } from './action-records.repository';
 import { identifyAction } from './action-identity';
 import { ActionRepairQueue } from './action-repair.queue';
@@ -58,7 +59,10 @@ export class ActionExecutorService {
     intent: ActionIntent,
     callbacks: ActionCallbacks<T>,
     /** Only inherit execute from an already persisted parent input; never from input. */
-    options?: { persistedMode: typeof ACTION_MODE.EXECUTE },
+    options?: {
+      persistedMode: typeof ACTION_MODE.EXECUTE;
+      replySegment?: { turn: ReplySegmentFence; beforeClaim: () => Promise<void> };
+    },
   ): Promise<ActionExecution<T>> {
     const mode = options?.persistedMode ?? this.mode;
     let identity: ReturnType<typeof identifyAction>;
@@ -89,6 +93,8 @@ export class ActionExecutorService {
     if (mode === ACTION_MODE.EXECUTE && (!intent.identityReliable || occurredAt < this.cutoverAt!))
       return blocked('input_before_cutover_or_identity_not_persisted');
 
+    if (options?.replySegment)
+      return this.executeReplySegment(intent, callbacks, options.replySegment, blocked);
     let record: ActionRecord | null = null;
     try {
       const prepared = await this.records.prepare(intent, mode);
@@ -142,6 +148,7 @@ export class ActionExecutorService {
       }
       return this.existing<T>(record, false);
     }
+    let claimed: ActionRecord | null;
     if (!(await this.authorized(callbacks))) {
       const cancelled = await this.records.cancel(record).catch(() => false);
       return {
@@ -158,7 +165,6 @@ export class ActionExecutorService {
       };
     }
 
-    let claimed: ActionRecord | null;
     try {
       claimed = await this.records.claim(record, randomUUID());
     } catch {
@@ -182,13 +188,77 @@ export class ActionExecutorService {
     }
 
     try {
-      if (!(await this.records.validateClaim(claimed)))
+      if (!(await this.records.validateClaim(claimed))) {
         return enforce ? blocked('dispatch_lease_expired') : this.untracked(intent, callbacks);
+      }
     } catch {
       return enforce
         ? blocked('dispatch_ownership_unconfirmed')
         : this.untracked(intent, callbacks);
     }
+    return this.dispatchAndSettle(claimed, callbacks, enforce);
+  }
+
+  private async executeReplySegment<T>(
+    intent: ActionIntent,
+    callbacks: ActionCallbacks<T>,
+    segment: { turn: ReplySegmentFence; beforeClaim: () => Promise<void> },
+    blocked: (reason: string) => ActionExecution<T>,
+  ): Promise<ActionExecution<T>> {
+    let denial: string | undefined;
+    try {
+      await segment.beforeClaim();
+      if (callbacks.authorize && !(await callbacks.authorize()))
+        denial = 'permission_or_freshness_changed';
+    } catch {
+      denial = REPLY_SEGMENT_PRECHECK_PENDING;
+    }
+
+    const owner = randomUUID();
+    let grant: Awaited<ReturnType<ActionRecordsRepository['prepare']>>;
+    try {
+      grant = await this.records.prepare(intent, ACTION_MODE.EXECUTE, {
+        turn: segment.turn,
+        owner,
+        inspectOnly: Boolean(denial),
+      });
+    } catch {
+      return blocked('action_store_unavailable');
+    }
+    if (grant.conflict) return blocked(grant.conflict);
+    const record = grant.record;
+    if (!record) return blocked(denial ?? 'reply_claim_unconfirmed');
+    if (record.mode !== ACTION_MODE.EXECUTE)
+      return blocked('observation_record_requires_cutover_review');
+    // Even after a pause or a routing failure, preserve work already accepted or in flight.
+    if (record.status === ACTION_STATE.SUCCEEDED) return this.synchronize(record, callbacks, false);
+    if (
+      !grant.dispatchUntil ||
+      record.status !== ACTION_STATE.EXECUTING ||
+      record.owner !== owner ||
+      record.dispatchAttemptId !== owner
+    ) {
+      if (
+        record.status === ACTION_STATE.REGISTERED ||
+        (record.status === ACTION_STATE.FAILED && record.retryable)
+      )
+        return blocked(denial ?? 'dispatch_owned_elsewhere');
+      return this.existing<T>(record, false);
+    }
+    if (denial) return blocked(denial);
+    // The transaction may have succeeded before a slow response crossed the lease or cutoff.
+    if (!(Date.parse(grant.dispatchUntil) > Date.now())) {
+      await this.recordUnsentReply(record);
+      return blocked(REPLY_SEGMENT_PRECHECK_PENDING);
+    }
+    return this.dispatchAndSettle(record, callbacks, true);
+  }
+
+  private async dispatchAndSettle<T>(
+    claimed: ActionRecord,
+    callbacks: ActionCallbacks<T>,
+    enforce: boolean,
+  ): Promise<ActionExecution<T>> {
     const completion = await this.dispatch(claimed.requestId, callbacks, claimed.mode);
     const saved = await this.save(claimed, completion);
     if (completion.status === ACTION_STATE.SUCCEEDED) {
@@ -213,6 +283,18 @@ export class ActionExecutorService {
       },
       true,
     );
+  }
+
+  private async recordUnsentReply(record: ActionRecord): Promise<void> {
+    await this.save(record, {
+      status: ACTION_STATE.FAILED,
+      retryable: true,
+      evidence: {
+        kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+        requestTerminated: true,
+        detail: REPLY_SEGMENT_PRECHECK_PENDING,
+      },
+    });
   }
 
   private async untracked<T>(

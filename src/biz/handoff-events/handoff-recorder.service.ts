@@ -8,7 +8,7 @@ import type { HandoffWriteOutcome, RecordHandoffInput } from './handoff-events.t
  * 转人工记录统一入口。
  *
  * 一次 record 同时落两条：
- * 1. handoff_events 底账（转人工原因/阶段分析的数据源，幂等）
+ * 1. handoff_events 转人工工单，保存建议、处理进度与结果
  * 2. ops_events(handoff.triggered)（投影 daily_ops_report.handoff_count + cohort）
  *
  * 两者共用同一 idempotencyKey，保证重复触发不重复计数。绝不阻断主流程：失败只 warn。
@@ -24,7 +24,7 @@ export class HandoffRecorderService {
 
   async record(input: RecordHandoffInput): Promise<HandoffWriteOutcome> {
     try {
-      const outcome = await this.repository.insertHandoffEvent(
+      const outcome = await this.repository.recordHandoffTicket(
         { ...input, occurredAt: input.occurredAt ?? new Date() },
         this.botGroups.resolve(input.botImId),
       );

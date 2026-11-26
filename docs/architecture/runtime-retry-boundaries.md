@@ -5,7 +5,7 @@
 | 层 | 既有上限 | 允许条件 / 失败出口 |
 | --- | --- | --- |
 | 崩溃 / Bull batch | 3 次尝试，stalled 恢复上限 2 | 复用持久逻辑回合；执行档由 action journal 防跨进程重复派发。进程崩溃后的未知交核实恢复。|
-| pending input replay | 3 次重放 | 首版无不可重放动作；成功、未知、在途、blocked/cancelled 不吸收旧轮重做。后来的 staleInput 不抹掉先前动作。|
+| pending input replay | 未建立持久回合时最多 3 次重放 | 已登记回合固定输入成员。可重放路径会检查此前动作，成功、未知、在途或 blocked/cancelled 的动作继续约束后续生成，晚到的 staleInput 保留此前动作证据。|
 | 图片兼容降级 | 1 次重跑 | 错误上没有 replayBlockedBy 动作证据；生成、审查、格式化、遥测失败均保留该证据。|
 | 出站 repair/replan | 1 次修复 | 存在动作围栏时只能无工具 rewrite；blocked/unknown 不进入“已成功执行”清单。|
 | 文本化工具 / 零工具空响应 | 各 1 次 | 首版零工具；重试内产生动作后发生异常必须保留证据上抛，不能回退成旧的零工具结果。|

@@ -98,7 +98,7 @@ describe('PreparationService orchestration', () => {
     const runtime = {
       tools: { duliday_job_list: {} },
       ledger: createTurnLedger({}),
-      toolExecutionTimings: new Map<string, number>(),
+      toolObservations: new Map(),
       availableToolCount: 3,
       activeToolCount: 1,
     };

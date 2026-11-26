@@ -2,7 +2,9 @@
 
 > Cake Agent Runtime - 监控数据采集、投影与查询架构
 
-**最后更新**：2026-08-12（全文对代码核实：服务清单 / 表名 / RPC / 前端路径）
+**最后更新** 2026-11-26（核对消息存储、查询及保留期）
+
+本文的消息排障路径按 #1588 和 #1589 联合代码说明。生产迁移进度见[联合迁移手册](../technical/runtime-storage-batch.md#基线与生产现状)。
 
 ---
 
@@ -81,7 +83,7 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-`AnalyticsController` 暴露 `/analytics/**` API，是监控数据对外的唯一路由前缀。
+看板指标由 `AnalyticsController` 提供，聊天与处理流水详情由 `MessageController` 提供。两者都使用 `/analytics` 路径。
 
 ---
 
@@ -91,8 +93,8 @@
 
 | 层级 | 技术 | 生命周期 | 主要用途 |
 |------|------|----------|----------|
-| **事实层** | Supabase `message_processing_records` / `monitoring_error_logs` | 14 / 30 天 (可配置) | 真正的数据源；Dashboard 热路径 + 小时聚合输入 |
-| **投影层** | Supabase `monitoring_hourly_stats` / `monitoring_daily_stats` | 永久保留 | 历史 Dashboard 查询；节省原始表扫描 |
+| **事实层** | Supabase `message_processing_records` / `monitoring_error_logs` | 两表默认均为 90 天，可分别配置 | 真正的数据源；Dashboard 热路径 + 小时聚合输入 |
+| **投影层** | Supabase `monitoring_hourly_stats` / `monitoring_daily_stats` | 默认跟随处理流水，90 天 | 历史 Dashboard 查询，减少原始表扫描 |
 | **实时层** | Redis `monitoring:active_requests` / `:peak_active_requests` | 持久 (INCRBY) | 多实例共享在途请求计数、峰值 |
 
 ### 为什么以 Supabase 为真相源
@@ -100,7 +102,7 @@
 1. **可靠性**：监控数据不能因为进程重启归零，运维看板需要长期趋势。
 2. **多实例一致性**：Supabase 作为 SoT + Redis 计数器天然支持水平扩展。
 3. **查询能力**：SQL/RPC 直接支持分位数、窗口切片、JSONB 聚合，比自己维护 Map 更灵活。
-4. 模型调用快照在 `message_processing_invocations` 单独存储，详情按需读取。列表和统计使用主流水的小字段。
+4. 消息收尾时将回合快照和这轮的模型 HTTP 调用随主流水一次提交。列表和统计读取主流水的小字段，总部在详情选中一次调用后才会加载对应的 HTTP 正文。[消息留档与示例](../knowledge-base/10-可观测性体系.md#一轮回复可以有三次模型调用)
 
 ### Redis Key 清单
 
@@ -131,9 +133,9 @@ MessageTrackingService.recordMessageReceived()
     … Agent 调用链路执行（由 wecom-observability 收集时间线） …
 
 MessageTrackingService.recordSuccess / recordFailure()
-    ├── 从 metadata.agentInvocation 还原终态记录（timings / toolCalls / memorySnapshot / anomalyFlags …）
+    ├── 从进程内 metadata.agentInvocation 提取终态记录（timings / toolCalls / memorySnapshot / anomalyFlags …）
     ├── applyTerminalCounters（success/failure/fallback 计数器）
-    ├── upsert message_processing_records (status=success|failure)
+    ├── save_processing_snapshot → 同事务保存终态主流水、可用回合快照及已采集的模型 HTTP 调用
     ├── user_activity 补写 tokenUsage（如果 > 0）
     └── incrementActiveRequests(-1)
 ```
@@ -172,7 +174,7 @@ AnalyticsMaintenanceService.aggregateDailyStats()
     │
     ▼
 DataCleanupService.cleanupExpiredData()
-    ├── deleteExpiredAgentInvocations           删除到期的子表快照（默认 90 天）
+    ├── deleteExpiredAgentInvocations           两类快照共用一批清理额度（默认保留 90 天）
     ├── cleanupGuardrailReviewRecords           清理守卫审查档案
     ├── cleanupAgentExecutionEvents             清理执行事件
     ├── cleanupMessageProcessingRecords         删除到期流水，级联删除关联快照
@@ -297,9 +299,16 @@ AnalyticsDashboardService
 | GET | `/analytics/users?date=YYYY-MM-DD` | 活跃用户 | 10s |
 | GET | `/analytics/user-trend` | 咨询用户趋势 | 30s |
 | GET | `/analytics/recent-messages?limit=50` | 最近消息 | 5s（或 Realtime） |
+| GET | `/analytics/message-processing-records` | 流水列表，输入与回复预览最多 50 / 120 字符 | 列表 |
+| GET | `/analytics/message-processing-records/:messageId?requestView=context` | 总部详情首屏读主流水、回合上下文及回合响应，中心只返回授权 BOT 的运营摘要 | 打开详情 |
+| GET | `/analytics/message-processing-records/:messageId/request` | 总部按需读 Cake 为本轮准备的完整请求 | 展开请求 |
+| GET | `/analytics/message-processing-records/:messageId/model-calls` | 总部分页读这一轮的 HTTP 调用清单 | 打开原文列表 |
+| GET | `/analytics/message-processing-records/:messageId/model-calls/:id` | 总部读选中尝试的请求、响应字节及完整性标记 | 选中一次调用 |
 | GET | `/analytics/system` | 运行时版本 / 启动时间 | - |
 | POST | `/analytics/clear` | 清空所有监控数据 | - |
 | POST | `/analytics/cache/clear?type=all\|metrics\|history\|agent` | 清除缓存 | - |
+
+中心访问回合完整请求、模型调用清单及单次原文均返回 HTTP 403。[消息接口](../../src/biz/message/message.controller.ts) · [中心访问范围](../../src/biz/center-dashboard/README.md#可见范围)
 
 > API 默认启用 `ApiTokenGuard`，需要 Bearer `API_GUARD_TOKEN`；Dashboard 前端注入鉴权头后调用。
 
@@ -307,55 +316,15 @@ AnalyticsDashboardService
 
 ## 数据结构定义
 
-### MessageProcessingRecord（主事实表）
+### 消息处理的三张表
 
-迁移 [20260417130223_enrich_message_processing_observability.sql](../../supabase/migrations/20260417130223_enrich_message_processing_observability.sql)
-之后新增 `agent_invocation` / `agent_steps` / `memory_snapshot` / `tool_calls` / `anomaly_flags` / `post_processing_status` 等字段。
+| 表 | 一行记录什么 | 常用字段与读取时机 |
+| --- | --- | --- |
+| `message_processing_records` | 一次处理尝试 | `message_id` 定位流水，列表读状态、预览、耗时和 token 数。详情读 `tool_calls` 的参数与结果，按 `stepPosition` 归入 `agent_steps` 中对应步骤。 |
+| `message_processing_turn_snapshots` | 一次处理至多一份 Cake 回合快照 | `message_id` 关联流水。`request` 保存回合请求和上下文，`response` 保存回合级响应。 |
+| `message_processing_invocations` | 一次供应商 HTTP 请求，重试也单算 | `message_id` 找同轮调用，`id` 定位一次调用。清单读 `provider`、`started_at`、`http_status`、`complete`，点开才取 `request_body` 和 `response_body`。 |
 
-```typescript
-interface MessageProcessingRecordInput {
-  messageId: string;
-  chatId: string;
-  userId?: string;
-  userName?: string;
-  managerName?: string;
-  receivedAt: number;
-  status: 'processing' | 'success' | 'failure' | 'timeout';
-
-  // 时序
-  aiStartAt?: number;
-  aiEndAt?: number;
-  queueDuration?: number;   // accepted → workerStart
-  prepDuration?: number;    // workerStart → aiStart
-  aiDuration?: number;
-  sendDuration?: number;
-  totalDuration?: number;
-
-  // 业务
-  scenario?: ScenarioType;
-  tokenUsage?: number;
-  messagePreview?: string;
-  replyPreview?: string;
-  replySegments?: number;
-  batchId?: string;                     // 聚合 trace
-
-  // Agent 可观测性
-  toolCalls?: AgentToolCall[];
-  agentSteps?: AgentStepDetail[];
-  memorySnapshot?: AgentMemorySnapshot;
-  agentInvocation?: AgentInvocationSnapshot; // JSONB，清理时会被置 NULL 释放 TOAST
-  anomalyFlags?: AnomalyFlag[];
-  postProcessingStatus?: string;
-
-  // 降级
-  isFallback?: boolean;
-  fallbackSuccess?: boolean;
-
-  // 错误
-  error?: string;
-  alertType?: AlertErrorType;
-}
-```
+若在接收响应时中断，只能查看已捕获的部分。若在收尾事务提交前进程退出，该轮 HTTP 原文可能缺失。老流水只保留当时实际采集过的内容。[仓储字段与查询](../../src/biz/message/repositories/message-processing.repository.ts) · [存储事务](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql)
 
 ### HourlyStats（小时投影）
 
@@ -497,8 +466,9 @@ CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat
 | 变量 | 默认值 | 动作 |
 |------|--------|------|
 | `DATA_CLEANUP_PROCESSING_DAYS` | 90 | 删除过期处理流水 |
-| `DATA_CLEANUP_AGENT_INVOCATION_DAYS` | 跟随处理流水 | 按创建时间删除子表中的调用快照 |
+| `DATA_CLEANUP_AGENT_INVOCATION_DAYS` | 跟随处理流水 | 回合快照按 `created_at`、HTTP 调用按 `started_at` 到期，两表合计受同一批量上限约束 |
 | `DATA_CLEANUP_ERROR_LOGS_DAYS` | 跟随处理流水 | 删除过期错误日志 |
+| `DATA_CLEANUP_MONITORING_STATS_DAYS` | 跟随处理流水 | 清理小时与日投影 |
 
 聊天消息和用户活动永久保留。
 
@@ -522,9 +492,8 @@ CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat
 
 ### 场景 3：Supabase 写入失败
 
-- `saveRecordToDatabase` 使用指数退避重试（最多 3 次，500ms → 2000ms）。
-- 重试仍失败只记录 `logger.error`，不会抛到上游——消息回包优先级高于可观测数据。
-- 下一次小时/日聚合触发时会从事实表自动补回最新状态。
+- 收尾事务失败时，`saveRecordToDatabase` 默认最多尝试 3 次，沿用原调用 ID，避免重复记一次 HTTP 请求。
+- 重试耗尽时记录错误并触发 `message_processing_terminal_persist_failed` 告警。流水可能停在 `processing`，小时与日聚合只能使用已提交的数据。排查缺失原文时先核对这条告警。[终态写入与告警](../../src/biz/monitoring/services/tracking/message-tracking.service.ts)
 
 ### 场景 4：聚合 RPC 失败
 
@@ -541,13 +510,13 @@ CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat
 | 对象 | 行数 | 平均大小 | 30 天占用 |
 |------|------|----------|-----------|
 | `monitoring_error_logs` | 波动 | 1 KB | <1 MB |
-| `monitoring_hourly_stats` | 8,760/年 | ~500 B | ~4.3 MB/年（永久） |
-| `monitoring_daily_stats` | 365/年 | ~500 B | ~180 KB/年（永久） |
+| `monitoring_hourly_stats` | 约 720/30 天 | ~500 B | ~360 KB |
+| `monitoring_daily_stats` | 30/30 天 | ~500 B | ~15 KB |
 | `user_activity` | 波动 | <1 KB | <5 MB |
 
-调用快照的绝大部分字节来自 JSONB 大字段。2026 年 11 月 17 日至 24 日连续七天的 4,860 条快照中，正文与版本相关字段共 455 MiB。[生产核实记录](../technical/runtime-storage-followup-2026-11-24.md)
+11 月 17 日至 24 日的旧格式生产样本中，4,860 条回合快照的四个正文与版本字段合计 455.3 MiB。联合迁移后，单次 HTTP 的请求与响应按字节另存，容量估算需要重新采样。[升级前的采样记录](https://github.com/huajune/cake-agent-runtime/blob/abd6fa4d20974fd844a59da2de36ca0959e3a5ce/docs/technical/runtime-storage-followup-2026-11-24.md)
 
-⚠️ **不要从 `agent_invocation` 里现算指标**：从该 JSONB 提取字段会逐行解压 TOAST，月级统计 RPC 实测曾达 52.6s。首字延迟已固化为独立列 `ttft_ms`（迁移 `20260612032136_add_ttft_ms_column.sql`），读取一律走该列。同理，按时间过滤 `message_processing_records` 要用 **`received_at`**（`created_at` 无索引），大范围聚合走 MATERIALIZED 两段式。
+统计首字延迟读主流水的 `ttft_ms`，时间过滤使用 `received_at`，工具统计读 `tool_calls`。列表和统计都无需展开模型原文。
 
 ### Redis 命令估算
 

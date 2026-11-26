@@ -725,39 +725,7 @@ async cleanStuckJobs() {
 
 ### 2. Redis 连接问题
 
-**症状**：`bclient.status` 未就绪导致任务无法添加。
-
-**解决方案**：等待 `bclient` 就绪。
-
-```typescript
-private async waitForBclientReady(): Promise<void> {
-  const queue = this.queue as any;
-  const maxWaitTime = 30000;
-  const checkInterval = 100;
-  const startTime = Date.now();
-
-  return new Promise((resolve) => {
-    const checkBclient = () => {
-      const bclientStatus = queue.bclient?.status;
-
-      if (bclientStatus === 'ready') {
-        resolve();
-        return;
-      }
-
-      if (Date.now() - startTime > maxWaitTime) {
-        this.logger.warn('bclient 连接超时，继续运行');
-        resolve();
-        return;
-      }
-
-      setTimeout(checkBclient, checkInterval);
-    };
-
-    checkBclient();
-  });
-}
-```
+企微主聊在注册前确认 Redis 连接可用。生产 Upstash 的每个槽有独立阻塞连接，普通命令和订阅连接由本组共享。后台已保存新值而注册数为 0 时，检查正在处理的任务数和 Bull 连接日志。排空或连接重试期间新消息会继续入队。[单实例并发与状态字段](../architecture/message-service-architecture.md#42-worker-并发) · [消费者注册](../../src/channels/wecom/message/runtime/message-worker-consumer.ts)
 
 ### 3. 任务无法取消
 

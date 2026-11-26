@@ -1,3 +1,4 @@
+import type { ReplyJobContext } from '@memory/short-term/assistant-job-projection';
 import type { CallerKind } from '@/enums/agent.enum';
 import type {
   AgentToolCall,
@@ -78,6 +79,8 @@ export interface InboundTurnRequest {
  * - handoff     ：入站分流、业务/工具或出站审查后转人工——不投递，由 sideEffects 提交暂停与通知
  */
 export interface TurnOutcome {
+  /** In-process only, like runTurnEnd. Trace serialization must not retain this candidate pool. */
+  getReplyJobContext?: () => ReplyJobContext;
   kind: 'reply' | 'handoff' | 'skipped';
   reply?: { text: string };
   /**

@@ -1,6 +1,8 @@
 import { ReengagementCommandService } from './reengagement-command.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
+import { z } from 'zod';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { extractPresentedJobs } from '@resolution/job';
 import type { ReengagementSessionState } from '@memory/recall.types';
@@ -8,7 +10,15 @@ import { SessionStateService } from '@memory/short-term/session-state.service';
 import { type ReengagementChannelIdentity } from './follow-up-scheduler.service';
 import { type FollowUpScenarioCode } from './scenario-registry';
 
-interface AnchorContext {
+export const deliveredReplyAnchorsSchema = z.object({
+  collectionContinued: z.boolean(),
+  presentedJobIds: z.array(z.number().int()),
+  asksForLocation: z.boolean(),
+  previousPresentationRounds: z.number().int().nonnegative().optional(),
+});
+export type DeliveredReplyAnchors = z.infer<typeof deliveredReplyAnchorsSchema>;
+
+export interface AnchorContext {
   assertOwned?: () => Promise<void>;
   traceId: string;
   logicalTurnId?: string;
@@ -28,6 +38,33 @@ interface AnchorAgentResult {
   text?: string;
   toolCalls?: AgentToolCall[];
   outcome?: { kind: string };
+  collectionPrecheck?: CollectionPrecheck;
+}
+
+export const collectionPrecheckSchema = z.enum([
+  'collection_started',
+  'collection_awaiting_confirmation',
+]);
+export type CollectionPrecheck = z.infer<typeof collectionPrecheckSchema>;
+
+/** Only the follow-up stage is needed to replay a precheck. Candidate form fields stay in the tool. */
+export function planCollectionPrecheck(
+  calls: AgentToolCall[] = [],
+): CollectionPrecheck | undefined {
+  let awaitingConfirmation = false;
+  for (const call of calls) {
+    if (call.toolName !== 'duliday_interview_precheck') continue;
+    const result = asRecord(call.result);
+    const missing = asRecord(result?.bookingChecklist)?.missingFields;
+    if (result?.nextAction === 'collect_fields' || (Array.isArray(missing) && missing.length > 0))
+      return 'collection_started';
+    if (
+      result?.success === true &&
+      (result.nextAction === 'confirm_collection' || result.nextAction === 'select_interview_time')
+    )
+      awaitingConfirmation = true;
+  }
+  return awaitingConfirmation ? 'collection_awaiting_confirmation' : undefined;
 }
 
 type ReengagementState = ReengagementSessionState & { interviewAt?: number };
@@ -63,16 +100,14 @@ export class ReengagementAnchorService {
     // 比在这里（Agent 生成完成后）更早且带真实消息时间，此处不再重复写。
     const toolCalls = result.toolCalls ?? [];
     const deliverable = this.isDeliverable(result);
-    if (deliverable && toolCalls.some((call) => this.isCollectionStarted(call))) {
+    const precheck = result.collectionPrecheck ?? planCollectionPrecheck(toolCalls);
+    if (deliverable && precheck === 'collection_started') {
       await this.schedule(
         'booking_incomplete',
         `${context.logicalTurnId ?? context.traceId}:collection_started`,
         context,
       );
-    } else if (
-      deliverable &&
-      toolCalls.some((call) => this.isCollectionAwaitingConfirmation(call))
-    ) {
+    } else if (deliverable && precheck === 'collection_awaiting_confirmation') {
       // 资料已收齐、复述已发出：收资锚点刷新为"待确认"子态，到点只请候选人确认，
       // 不能再按"还缺资料"催填（badcase 0iepqqf5：复述发出 30 分钟后主动跟进说"还有几项资料
       // 需要再补充"，候选人反问"还要补什么"，随后又被完整复述一遍）。
@@ -208,16 +243,63 @@ export class ReengagementAnchorService {
     context: AnchorContext,
   ): Promise<void> {
     if (context.isGroupChat) return;
+    const plan = await this.planDeliveredReplyAnchors(result, async () => {
+      try {
+        const state = await this.session.getSessionState(
+          context.corpId,
+          context.userId,
+          context.chatId,
+        );
+        return state.lastCandidatePool ?? [];
+      } catch (error) {
+        this.logFailure('match recalled pool presentation', context, error);
+        return [];
+      }
+    });
+    await this.applyDeliveredReplyAnchors(plan, context);
+  }
+
+  /** Classify once against the original result. Queuing the resulting commands
+   * later requires neither the model response nor the raw tool payloads. */
+  async planDeliveredReplyAnchors(
+    result: AnchorAgentResult,
+    recalledPool: () => Promise<RecommendedJobSummary[]>,
+  ): Promise<DeliveredReplyAnchors> {
     const reply = (result.reply?.content ?? result.text ?? '').trim();
     const toolCalls = result.toolCalls ?? [];
 
     // 候选人进入收资后仍可能追问薪资、排班、福利。回复若继续明确索要资料，应刷新
     // 收资锚点，不能因为同轮补查岗位详情而降级成“推店未回”。首次 precheck 已由
     // handleToolAnchors 排程，避免同一回合重复创建第二个收资锚点。
-    const collectionStartedThisTurn = toolCalls.some((call) => this.isCollectionStarted(call));
+    const collectionStartedThisTurn = planCollectionPrecheck(toolCalls) === 'collection_started';
     const collectionContinued = !collectionStartedThisTurn && this.asksForCollectionDetails(reply);
     const groupInvitedThisTurn = toolCalls.some((call) => this.isGroupInviteSucceeded(call));
-    if (collectionContinued) {
+    const presentedStoreCalls =
+      collectionContinued || groupInvitedThisTurn
+        ? []
+        : toolCalls.filter((call) => this.presentedStore(call, reply));
+    let presentedJobIds: number[] = [];
+    if (presentedStoreCalls.length) {
+      presentedJobIds = this.extractPresentedStores(presentedStoreCalls).map(
+        (store) => store.jobId,
+      );
+    } else if (
+      !collectionContinued &&
+      !groupInvitedThisTurn &&
+      !toolCalls.some((call) => call.toolName === 'duliday_job_list') &&
+      (this.containsJobCard(reply) || this.containsPositiveHandoff(reply))
+    ) {
+      presentedJobIds = extractPresentedJobs(reply, await recalledPool()).map((job) => job.jobId);
+    }
+    return { collectionContinued, presentedJobIds, asksForLocation: this.asksForLocation(reply) };
+  }
+
+  async applyDeliveredReplyAnchors(
+    plan: DeliveredReplyAnchors,
+    context: AnchorContext,
+  ): Promise<void> {
+    if (context.isGroupChat) return;
+    if (plan.collectionContinued) {
       await this.schedule(
         'booking_incomplete',
         `${context.logicalTurnId ?? context.traceId}:collection_continued`,
@@ -225,27 +307,15 @@ export class ReengagementAnchorService {
       );
     }
 
-    const presentedStoreCalls =
-      collectionContinued || groupInvitedThisTurn
-        ? []
-        : toolCalls.filter((call) => this.presentedStore(call, reply));
-    if (presentedStoreCalls.length > 0) {
+    if (plan.presentedJobIds.length) {
       await this.scheduleStorePresentation(
         `${context.logicalTurnId ?? context.traceId}:store_presented`,
         context,
-        this.extractPresentedStores(presentedStoreCalls),
+        plan.presentedJobIds.map((jobId) => ({ jobId })),
+        plan.previousPresentationRounds,
       );
-    } else if (
-      !collectionContinued &&
-      !groupInvitedThisTurn &&
-      !toolCalls.some((call) => call.toolName === 'duliday_job_list')
-    ) {
-      // 候选人追问“还有别的吗”时，Agent 可以直接复用上轮候选岗位池，不必重复查岗。
-      // 这类回合没有 duliday_job_list toolCall，但仍真实展示了新岗位；从持久化候选池
-      // 映射回复中的门店/岗位，给本次投递建立新的推店未回锚点。
-      await this.scheduleRecalledPoolPresentation(reply, context);
     }
-    if (!context.suppressAddressMissing && this.asksForLocation(reply)) {
+    if (!context.suppressAddressMissing && plan.asksForLocation) {
       await context.assertOwned?.();
       await this.scheduler.removeSupersededPendingJobs({
         commandId: `${context.logicalTurnId ?? context.traceId}:supersede-opening-follow-up`,
@@ -313,6 +383,7 @@ export class ReengagementAnchorService {
     anchorEventId: string,
     context: AnchorContext,
     presentedStores: ReengagementSessionState['presentedStores'],
+    previousPresentationRounds?: number,
   ): Promise<void> {
     try {
       const state = await this.loadState(context);
@@ -328,7 +399,7 @@ export class ReengagementAnchorService {
         anchorAt: this.anchorTime(context),
         state: { ...state, presentedStores },
         channelIdentity: context.channelIdentity,
-        ...(state.storePresentationRounds != null && state.storePresentationRounds >= 1
+        ...((previousPresentationRounds ?? state.storePresentationRounds ?? 0) >= 1
           ? { escalateToGroupInvite: true }
           : {}),
       });
@@ -355,25 +426,6 @@ export class ReengagementAnchorService {
       presentedStores: [],
       stage: null,
     };
-  }
-
-  private isCollectionStarted(call: AgentToolCall): boolean {
-    if (call.toolName !== 'duliday_interview_precheck') return false;
-    const result = this.asRecord(call.result);
-    if (!result) return false;
-    if (result.nextAction === 'collect_fields') return true;
-    const checklist = this.asRecord(result.bookingChecklist);
-    return Array.isArray(checklist?.missingFields) && checklist.missingFields.length > 0;
-  }
-
-  /** precheck 已进入"资料齐全、待候选人确认复述或选时段"的子态。 */
-  private isCollectionAwaitingConfirmation(call: AgentToolCall): boolean {
-    if (call.toolName !== 'duliday_interview_precheck') return false;
-    const result = this.asRecord(call.result);
-    if (!result || result.success !== true) return false;
-    return (
-      result.nextAction === 'confirm_collection' || result.nextAction === 'select_interview_time'
-    );
   }
 
   private isBookingSucceeded(call: AgentToolCall): boolean {
@@ -425,31 +477,6 @@ export class ReengagementAnchorService {
     this.collectPresentationLabels(call.result, labels);
     const mentionsResult = [...labels].some((label) => label.length >= 2 && reply.includes(label));
     return this.containsJobCard(reply) || (mentionsResult && this.containsPositiveHandoff(reply));
-  }
-
-  private async scheduleRecalledPoolPresentation(
-    reply: string,
-    context: AnchorContext,
-  ): Promise<void> {
-    if (!this.containsJobCard(reply) && !this.containsPositiveHandoff(reply)) return;
-
-    try {
-      const state = await this.session.getSessionState(
-        context.corpId,
-        context.userId,
-        context.chatId,
-      );
-      const presentedJobs = extractPresentedJobs(reply, state.lastCandidatePool ?? []);
-      if (presentedJobs.length === 0) return;
-
-      await this.scheduleStorePresentation(
-        `${context.logicalTurnId ?? context.traceId}:store_presented`,
-        context,
-        presentedJobs.map((job) => ({ jobId: job.jobId })),
-      );
-    } catch (error) {
-      this.logFailure('match recalled pool presentation', context, error);
-    }
   }
 
   private containsJobCard(reply: string): boolean {

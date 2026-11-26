@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AgentEventContext } from '../observer.interface';
 
-export type RequestContext = Omit<AgentEventContext, 'timestamp'>;
+export type RequestContext = Omit<AgentEventContext, 'timestamp' | 'toolCallId'>;
 
 @Injectable()
 export class RequestContextService {

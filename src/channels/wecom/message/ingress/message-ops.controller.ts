@@ -1,10 +1,12 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { IsInt, Min } from 'class-validator';
+import { IsInt, Max, Min } from 'class-validator';
+import { MESSAGE_WORKER_CONCURRENCY } from '@biz/hosting-config/types/hosting-config.types';
 import { MessageProcessor } from '../runtime/message.processor';
 
 class SetWorkerConcurrencyDto {
   @IsInt()
-  @Min(1)
+  @Min(MESSAGE_WORKER_CONCURRENCY.min)
+  @Max(MESSAGE_WORKER_CONCURRENCY.max)
   concurrency: number;
 }
 

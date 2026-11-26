@@ -50,16 +50,6 @@ function isAssistantMessage(message: ChatMessage): boolean {
   return message.role === 'assistant';
 }
 
-function getMessageId(message: ChatMessage, fallbackIndex?: number): string | undefined {
-  return (
-    message.id ||
-    message.messageId ||
-    (fallbackIndex !== undefined
-      ? `${message.chatId || 'chat'}-${message.timestamp}-${fallbackIndex}`
-      : undefined)
-  );
-}
-
 const PROCESSING_MATCH_WINDOW_MS = 5 * 60 * 1000;
 
 function toTimestamp(value: string | number): number | undefined {
@@ -162,11 +152,11 @@ export default function MessageDetail({
     [messages],
   );
   const lastUserMessage = lastUserMessageRecord?.content;
-  const lastUserMessageId = lastUserMessageRecord ? getMessageId(lastUserMessageRecord) : undefined;
+  const lastUserMessageId = lastUserMessageRecord?.messageId;
   const sourceTrace = useMemo<FeedbackSourceTrace | undefined>(() => {
     if (!selectedChatId) return undefined;
     const relatedMessageIds = messages
-      .map((msg) => getMessageId(msg))
+      .map((msg) => msg.messageId)
       .filter((id): id is string => Boolean(id));
 
     return {
@@ -271,7 +261,8 @@ export default function MessageDetail({
               const processingRecord = !isAssistant
                 ? findNearestProcessingRecord(processingRecords, msg.timestamp)
                 : undefined;
-              const messageKey = getMessageId(msg, index);
+              const messageKey =
+                msg.messageId || msg.id || `${msg.chatId}-${msg.timestamp}-${index}`;
               const displayName = isAssistant
                 ? msg.managerName || currentSession?.managerName || '招募经理'
                 : msg.candidateName || currentSession?.candidateName || '候选人';
@@ -330,9 +321,9 @@ export default function MessageDetail({
                             to={`${MESSAGE_PROCESSING_DETAIL_PATH}?messageId=${encodeURIComponent(processingRecord.messageId)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            title={`在新页签打开流水 ${processingRecord.messageId}`}
+                            title={`在新页签查看该会话时间最近的处理流水 ${processingRecord.messageId}`}
                           >
-                            查看处理详情
+                            查看附近流水
                           </Link>
                         ) : (
                           <button
@@ -345,7 +336,7 @@ export default function MessageDetail({
                                 : '该消息前后 5 分钟内未匹配到处理流水'
                             }
                           >
-                            查看处理详情
+                            查看附近流水
                           </button>
                         ))}
                     </div>

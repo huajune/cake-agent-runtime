@@ -49,6 +49,8 @@ export interface AgentReply {
 }
 
 export interface AgentInvokeResult {
+  /** SDK input prepared for this generation, used by the durable ordinary-reply checkpoint. */
+  preparedRequest?: Record<string, unknown>;
   reply: AgentReply;
   isFallback: boolean;
   /** 本轮为非 reply 终态（skip_reply 主动沉默/handoff/工具短路），reply.content 可能为空 */
@@ -83,6 +85,8 @@ export interface DeliveryContext {
   logicalTurnId?: string;
   inputOccurredAt?: string;
   replyTurn?: ReplyTurn;
+  /** Return the committed turn to the caller without including it in delivery telemetry. */
+  onSettled?: (turn: ReplyTurn) => void;
   /** Whitelisted task metadata only; never credentials or message history. */
   assertOwned?: () => Promise<void>;
   action?: PermittedAction;
@@ -101,6 +105,11 @@ export interface DeliveryContext {
   externalRequestId?: string;
   _apiType?: WecomApiType;
 }
+
+/** A completed action can be reconciled without credentials for another send. */
+export type RecoveryDeliveryContext = Omit<DeliveryContext, 'token'> & {
+  resolveToken: () => Promise<string>;
+};
 
 export interface DeliveryResult {
   /** 仅携带已确认的渠道失败分类；续发还必须检查已发送/未知片段数。 */

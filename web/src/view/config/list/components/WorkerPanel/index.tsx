@@ -1,12 +1,6 @@
 import { TriangleAlert } from 'lucide-react';
+import type { WorkerStatus } from '@/api/types/monitoring.types';
 import styles from './index.module.scss';
-
-interface WorkerStatus {
-  concurrency: number;
-  minConcurrency: number;
-  maxConcurrency: number;
-  activeJobs: number;
-}
 
 interface WorkerPanelProps {
   isLoading: boolean;
@@ -39,7 +33,12 @@ export default function WorkerPanel({
     return <div className={styles.errorText}>无法获取 Worker 状态</div>;
   }
 
+  const registered = workerStatus.registeredConcurrency;
   const currentValue = editingConcurrency ?? workerStatus.concurrency;
+  const valid =
+    Number.isInteger(currentValue) &&
+    currentValue >= workerStatus.minConcurrency &&
+    currentValue <= workerStatus.maxConcurrency;
   const hasChanges = editingConcurrency !== null && editingConcurrency !== workerStatus.concurrency;
   const averageE2ESeconds = averageE2EMs !== null ? averageE2EMs / 1000 : null;
   const throughputPerMinute =
@@ -65,14 +64,24 @@ export default function WorkerPanel({
       <div className={styles.restartNotice} role="note">
         <TriangleAlert className={styles.restartNoticeIcon} size={16} aria-hidden="true" />
         <span>
-          <strong>修改后需重启：</strong>
-          页面修改 Worker 数后，需要手动执行优雅重启，并验证实际并发已生效。
+          {registered === undefined ? (
+            '当前服务版本只返回配置值，升级后可查看实际注册数。'
+          ) : (
+            <>
+              <strong>本实例 Bull 已注册 {registered} 个槽。</strong>{' '}
+              {registered === workerStatus.concurrency
+                ? '应用新配置时会先处理完已领取的任务。'
+                : `目标为 ${workerStatus.concurrency}，等待消费者就绪后生效。`}
+            </>
+          )}
         </span>
       </div>
 
       <div className={styles.formula}>
         <div>理论吞吐量 = 并发数 × (时间 / 平均 E2E 时延)</div>
-        {averageE2ESeconds !== null && throughputPerMinute !== null && throughputPerHour !== null ? (
+        {averageE2ESeconds !== null &&
+        throughputPerMinute !== null &&
+        throughputPerHour !== null ? (
           <div className={styles.formulaExample}>
             基于最近 {e2eSampleCount} 条成功请求的平均 E2E{' '}
             <strong className={styles.highlight}>{averageE2ESeconds.toFixed(1)}s</strong>：
@@ -81,7 +90,9 @@ export default function WorkerPanel({
             <strong className={styles.highlight}>{throughputPerHour.toFixed(0)}</strong> 条/小时
           </div>
         ) : (
-          <div className={styles.formulaExample}>暂无可用的 E2E 生产数据，暂时无法估算真实吞吐。</div>
+          <div className={styles.formulaExample}>
+            暂无可用的 E2E 生产数据，暂时无法估算真实吞吐。
+          </div>
         )}
       </div>
 
@@ -118,7 +129,7 @@ export default function WorkerPanel({
             <button className={styles.btnGhost} onClick={onCancel}>
               取消
             </button>
-            <button className={styles.btnPrimary} onClick={onApply} disabled={isPending}>
+            <button className={styles.btnPrimary} onClick={onApply} disabled={isPending || !valid}>
               {isPending ? '应用中...' : '应用'}
             </button>
           </div>

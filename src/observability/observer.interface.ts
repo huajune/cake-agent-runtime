@@ -52,6 +52,8 @@ export interface TurnSourceLoadTrace {
 
 export interface AgentEventContext {
   traceId?: string;
+  /** 仅工具执行期间发出的事件携带 SDK 调用标识。 */
+  toolCallId?: string;
   logicalTurnId?: string;
   chatId?: string;
   userId?: string;
@@ -242,7 +244,7 @@ export type AgentEvent = AgentEventContext &
          */
         apiCode?: string | number;
       }
-    | { type: 'tool_error'; toolName: string; error: string; durationMs?: number }
+    | { type: 'tool_error'; toolName: string; error: string; durationMs?: number; status?: 'error' }
     /**
      * 会话品牌状态迁移（§12 长期事件）：前后快照 + 触发它的解析结果。
      * 仅状态实际变化时发射；它是品牌链路上不可重放信息之一（另一类见 brand_resolution_ambiguous），承担历史回放职责。

@@ -1,3 +1,5 @@
+import { planReplyJobProjection } from '@memory/short-term/assistant-job-projection';
+import { EMPTY_SESSION_STATE } from '@memory/short-term/short-term.types';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 
 describe('SessionWorkbenchService stage pointer', () => {
@@ -91,6 +93,39 @@ describe('SessionWorkbenchService attested focus job', () => {
       mockRedisStore as never,
       mockConfig as never,
     );
+  });
+
+  it('restores the accepted prefix from the checkpoint, even when the original tool pool is gone', async () => {
+    const east = { ...summary(101), storeName: '星桥东门店' };
+    const west = { ...summary(102), storeName: '云川西站店' };
+    const dead = { ...summary(103), storeName: '已关闭北岸店' };
+    const state = { ...EMPTY_SESSION_STATE, storePresentationRounds: 3 };
+    const plan = planReplyJobProjection(
+      ['星桥东门店', '云川西站店，已关闭北岸店'],
+      '星桥东门店怎么样',
+      state,
+      {
+        fetchedJobs: [east, west, dead],
+        invalidatedJobIds: [103],
+        attestedFocusJob: null,
+      },
+    );
+    expect(plan.jobs.map((job) => job.jobId)).toEqual([101, 102]);
+    mockFacts.getSessionState.mockImplementation(async () => state);
+    mockFacts.patchSessionState.mockImplementation(async (_corp, _user, _session, patch) => {
+      Object.assign(state, patch);
+    });
+    await service.applyReplyJobProjection('corp', 'user', 'chat', plan, 1);
+    expect(state).toMatchObject({
+      presentedJobs: [east],
+      currentFocusJob: east,
+      storePresentationRounds: 4,
+    });
+    await service.applyReplyJobProjection('corp', 'user', 'chat', plan, 2);
+    await service.applyReplyJobProjection('corp', 'user', 'chat', plan, 2);
+    expect(state.presentedJobs.map((job) => job.jobId)).toEqual([101, 102]);
+    expect(state.storePresentationRounds).toBe(4);
+    mockFacts.patchSessionState.mockReset().mockResolvedValue(undefined);
   });
 
   it('候选池已过期时直接把 precheck 投影写成焦点岗位', async () => {

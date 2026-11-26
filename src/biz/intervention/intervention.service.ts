@@ -1,4 +1,15 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
+import type { ActionCompletion } from '@biz/action-execution/action-execution.types';
+import {
+  ACTION_EVIDENCE_KIND,
+  ACTION_KIND,
+  ACTION_MODE,
+  ACTION_STATE,
+  LOCAL_SYNC_STATE,
+} from '@shared-types/action-execution.contract';
+import { FeishuSendError } from '@infra/feishu/services/webhook.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { InterventionTaskService } from '@notification/feishu-task/intervention-task.service';
@@ -55,6 +66,13 @@ export interface GeneralHandoffInterventionPayload extends InterventionBase {
 
 export type InterventionPayload = RiskInterventionPayload | GeneralHandoffInterventionPayload;
 
+export interface ReplyHandoffIdentity {
+  logicalTurnId: string;
+  accountId: string;
+  occurredAt: string;
+  key: string;
+}
+
 export interface InterventionResult {
   dispatched: boolean;
   paused: boolean;
@@ -80,6 +98,7 @@ export class InterventionService {
     private readonly riskNotifier: ConversationRiskNotifierService,
     private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
     @Optional() private readonly interventionTaskService?: InterventionTaskService,
+    @Optional() private readonly actions?: ActionExecutorService,
   ) {}
 
   async dispatch(payload: InterventionPayload): Promise<InterventionResult> {
@@ -143,8 +162,93 @@ export class InterventionService {
     }
   }
 
-  private notifyRisk(payload: RiskInterventionPayload): Promise<boolean> {
-    return this.riskNotifier.notifyConversationRisk({
+  /** The ticket records demand for a handoff. Only the webhook receipt confirms its dispatch. */
+  async dispatchRecorded(
+    payload: InterventionPayload,
+    identity: ReplyHandoffIdentity,
+  ): Promise<InterventionResult> {
+    if (!this.actions || !this.interventionTaskService || !payload.pauseTargetId)
+      throw new Error('handoff_dispatch_unavailable');
+    const action = await this.actions.execute<{ taskToken: string }>(
+      {
+        corpId: payload.corpId,
+        accountId: identity.accountId,
+        chatId: payload.chatId,
+        logicalTurnId: identity.logicalTurnId,
+        occurredAt: identity.occurredAt,
+        intentId: identity.key,
+        target: `handoff:${payload.chatId}:${identity.key}`,
+        kind: ACTION_KIND.HANDOFF_NOTIFICATION,
+        parameters: { kind: payload.kind, reason: payload.reason },
+        identityReliable: true,
+      },
+      { dispatch: () => this.sendRecordedNotification(payload) },
+      { persistedMode: ACTION_MODE.EXECUTE },
+    );
+    if (
+      action.status !== ACTION_STATE.SUCCEEDED ||
+      action.localSync !== LOCAL_SYNC_STATE.COMPLETE ||
+      !action.result?.taskToken
+    )
+      throw new Error('handoff_notification_unconfirmed');
+    await this.interventionTaskService.submit(payload, action.result.taskToken);
+    return { dispatched: true, paused: true, alerted: true, reason: payload.reason };
+  }
+
+  private async sendRecordedNotification(
+    payload: InterventionPayload,
+  ): Promise<ActionCompletion<{ taskToken: string }>> {
+    let notificationStarted = false;
+    try {
+      const paused = await this.userHostingService.confirmHandoffPause(payload.pauseTargetId, {
+        source: 'intervention',
+        permanent: false,
+        handoffScope: { corpId: payload.corpId, botImId: payload.botImId, chatId: payload.chatId },
+        reason: payload.kind === 'conversation_risk' ? '会话风险人工介入' : '人工介入暂停',
+      });
+      if (!paused) throw new Error('handoff_pause_unconfirmed');
+      notificationStarted = true;
+      const accepted =
+        payload.kind === 'conversation_risk'
+          ? await this.notifyRisk(payload, true)
+          : await this.notifyGeneralHandoff(payload, true);
+      if (!accepted) throw new Error('handoff_notification_unconfirmed');
+      return {
+        status: ACTION_STATE.SUCCEEDED,
+        result: { taskToken: randomUUID() },
+        evidence: {
+          kind: ACTION_EVIDENCE_KIND.ACCEPTED,
+          requestTerminated: true,
+          detail: 'handoff_webhook_accepted',
+        },
+      };
+    } catch (error) {
+      if (
+        !notificationStarted ||
+        (error instanceof FeishuSendError && error.rejectedBeforeAcceptance)
+      )
+        return {
+          status: ACTION_STATE.FAILED,
+          retryable: true,
+          evidence: {
+            kind: ACTION_EVIDENCE_KIND.DEFINITIVE_NO_EFFECT,
+            requestTerminated: true,
+            detail: 'handoff_notification_not_accepted',
+          },
+        };
+      return {
+        status: ACTION_STATE.UNKNOWN,
+        evidence: {
+          kind: ACTION_EVIDENCE_KIND.INDETERMINATE,
+          requestTerminated: false,
+          detail: 'handoff_webhook_result_unknown',
+        },
+      };
+    }
+  }
+
+  private notifyRisk(payload: RiskInterventionPayload, singleAttempt = false): Promise<boolean> {
+    const card = {
       corpId: payload.corpId,
       riskLabel: payload.riskLabel,
       summary: payload.summary,
@@ -157,11 +261,17 @@ export class InterventionService {
       currentMessageContent: payload.currentMessageContent,
       recentMessages: payload.recentMessages,
       sessionState: payload.sessionState,
-    });
+    };
+    return singleAttempt
+      ? this.riskNotifier.notifyConversationRisk(card, true)
+      : this.riskNotifier.notifyConversationRisk(card);
   }
 
-  private notifyGeneralHandoff(payload: GeneralHandoffInterventionPayload): Promise<boolean> {
-    return this.generalHandoffNotifier.notify({
+  private notifyGeneralHandoff(
+    payload: GeneralHandoffInterventionPayload,
+    singleAttempt = false,
+  ): Promise<boolean> {
+    const card = {
       alertLabel: payload.alertLabel,
       reasonCode: payload.reasonCode,
       reason: payload.reason,
@@ -177,6 +287,9 @@ export class InterventionService {
       currentMessageContent: payload.currentMessageContent,
       recentMessages: payload.recentMessages,
       sessionState: payload.sessionState,
-    });
+    };
+    return singleAttempt
+      ? this.generalHandoffNotifier.notify(card, true)
+      : this.generalHandoffNotifier.notify(card);
   }
 }

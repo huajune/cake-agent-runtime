@@ -85,7 +85,7 @@ export interface MonitoringMetadata {
   postProcessingStatus?: PostProcessingStatus;
   /** 异常信号标签（tracking 层根据 toolCalls 自动计算，调用方无需传） */
   anomalyFlags?: AnomalyFlag[];
-  /** Agent 调用记录（完整的请求/响应，用于排障） */
+  /** Cake 回合上下文和处理结果。供应商原文按每次 HTTP 调用单独留存 */
   agentInvocation?: AgentInvocationRecord;
 }
 

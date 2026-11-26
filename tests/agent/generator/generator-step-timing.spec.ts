@@ -1,6 +1,15 @@
 import { GeneratorAgent } from '@agent/generator/generator.agent';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@/enums/agent.enum';
+import { wrapToolsWithTiming } from '@agent/generator/preparation/tool-context.builder';
+import { AgentTracerService } from '@observability/agent-tracer.service';
+import { RequestContextService } from '@observability/context/request-context.service';
+import {
+  recordToolDecision,
+  type ToolExecutionObservations,
+} from '@observability/context/tool-observation';
+import { tool } from 'ai';
+import { z } from 'zod';
 
 /**
  * agent_steps 墙钟锚随 llm-executor 每次尝试重置：失败尝试同样触发 onStepFinish，
@@ -24,7 +33,131 @@ describe('GeneratorAgent step timing across executor retries', () => {
     memoryLoadWarning: undefined,
     entryStage: undefined,
     ledger: createTurnLedger(),
-    toolExecutionTimings: new Map<string, number>(),
+    toolObservations: new Map(),
+  });
+
+  it('pairs concurrent calls with their own measurements, decisions and nested events in both ledger views', async () => {
+    const context = new RequestContextService();
+    const observer = { emit: jest.fn() };
+    const tracer = new AgentTracerService(context, observer);
+    const observations: ToolExecutionObservations = new Map();
+    const tools = wrapToolsWithTiming(
+      {
+        duliday_job_list: tool({
+          inputSchema: z.object({ count: z.number() }),
+          execute: async ({ count }) => {
+            await delay(count ? 1 : 10);
+            recordToolDecision('筛选', `命中 ${count} 个`);
+            tracer.emit({ type: 'collection_form_audit', kind: 'rejected', jobId: count });
+            return { resultCount: count };
+          },
+        }),
+      },
+      observations,
+      tracer,
+    );
+    const ctx = { ...makeCtx(), tools, toolObservations: observations };
+    const toolCalls = [0, 1].map((count) => ({
+      toolCallId: `call-${count}`,
+      toolName: 'duliday_job_list',
+      input: { count },
+    }));
+    const llm = {
+      supportsVisionInput: jest.fn().mockResolvedValue(false),
+      generate: async () => {
+        const toolResults = await Promise.all(
+          toolCalls.map(async (call) => ({
+            toolCallId: call.toolCallId,
+            output: await tools.duliday_job_list.execute!(call.input, {
+              toolCallId: call.toolCallId,
+              messages: [],
+              context: undefined,
+            }),
+          })),
+        );
+        return { text: '完成', steps: [{ toolCalls, toolResults }], usage: { totalTokens: 1 } };
+      },
+    };
+    const service = new GeneratorAgent(
+      { get: (_key, fallback) => fallback } as never,
+      { prepare: async () => ctx } as never,
+      {} as never,
+      llm as never,
+    );
+    const result = await context.run({ traceId: 'turn' }, () =>
+      service.invoke({
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '查岗位' }],
+        userId: 'u',
+        corpId: 'c',
+        sessionId: 's',
+      }),
+    );
+    expect(result.agentSteps[0].toolCalls).toEqual(result.toolCalls);
+    for (const [count, call] of result.toolCalls.entries()) {
+      expect(call).toMatchObject({
+        toolCallId: `call-${count}`,
+        result: { resultCount: count },
+        decisions: [{ label: '筛选', detail: `命中 ${count} 个` }],
+        status: count ? 'narrow' : 'empty',
+      });
+      expect(call.result).not.toHaveProperty('decisions');
+      expect(observer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'tool_call',
+          traceId: 'turn',
+          toolCallId: call.toolCallId,
+          durationMs: call.durationMs,
+          status: call.status,
+          resultCount: call.resultCount,
+        }),
+      );
+      expect(observer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'collection_form_audit',
+          toolCallId: call.toolCallId,
+          jobId: count,
+        }),
+      );
+    }
+    tracer.emit({ type: 'agent_end', durationMs: 1 });
+    expect(observer.emit.mock.lastCall[0]).not.toHaveProperty('toolCallId');
+  });
+
+  it('keeps a thrown tool error independently and marks reused IDs as ambiguous', async () => {
+    const observations: ToolExecutionObservations = new Map();
+    const observer = { emit: jest.fn() };
+    const tracer = new AgentTracerService(new RequestContextService(), observer);
+    const tools = wrapToolsWithTiming(
+      {
+        lookup: tool({
+          inputSchema: z.object({}),
+          execute: async (): Promise<{ success: boolean }> => {
+            throw new Error('provider timeout');
+          },
+        }),
+      },
+      observations,
+      tracer,
+    );
+    const execute = () =>
+      tools.lookup.execute!({}, { toolCallId: 'same', messages: [], context: undefined });
+    await expect(execute()).rejects.toThrow('provider timeout');
+    expect(observations.get('same')).toMatchObject({
+      status: 'error',
+      durationMs: expect.any(Number),
+    });
+    await expect(execute()).rejects.toThrow('provider timeout');
+    expect(observations.get('same')).toBeNull();
+    expect(observer.emit).toHaveBeenCalledTimes(2);
+    expect(observer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tool_error',
+        toolCallId: 'same',
+        status: 'error',
+        error: 'provider timeout',
+      }),
+    );
   });
 
   it('resets the step wallclock anchor on each executor attempt', async () => {
@@ -187,6 +320,7 @@ describe('GeneratorAgent step timing across executor retries', () => {
     });
     // 续接步的墙钟不被尝试 2 重置：步 0 只计工具步窗口（~30ms）
     expect(result.agentSteps[0].durationMs).toBeLessThan(FAILED_TAIL_MS / 2);
+    expect(result.toolCalls[0].durationMs).toBeUndefined();
     // 末步从步 0 结束算起，涵盖失败尝试的等待窗口
     expect(result.agentSteps[1].durationMs).toBeGreaterThanOrEqual(FAILED_TAIL_MS);
   });

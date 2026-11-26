@@ -1,5 +1,6 @@
 import type { ModuleRef } from '@nestjs/core';
 import { PersistingObserver } from '@observability/persisting-observer';
+import { executionObservationReason } from '@observability/execution-event-policy';
 import { AGENT_EVENT_PERSISTER } from '@observability/persistence/agent-event-persister.interface';
 import type { AgentEventPersister } from '@observability/persistence/agent-event-persister.interface';
 
@@ -27,6 +28,22 @@ describe('PersistingObserver', () => {
     makeObserver();
 
     expect(moduleRef.get).toHaveBeenCalledWith(AGENT_EVENT_PERSISTER, { strict: false });
+  });
+
+  it('explains successful external actions and normal model attempts without assigning a failure', () => {
+    expect(
+      executionObservationReason('tool_call', { status: 'ok', sideEffect: true, durationMs: 3000 }),
+    ).toBe('涉及外部业务动作、工具耗时达到 3 秒');
+    expect(
+      executionObservationReason('llm_execution', { status: 'success', attemptCount: 1 }),
+    ).toContain('模型实际尝试');
+    expect(
+      executionObservationReason('tool_call', { status: 'ok', durationMs: 2999 }),
+    ).toBeUndefined();
+    expect(
+      executionObservationReason('turn_data_sources', { sources: [null, 'legacy'] }),
+    ).toBeUndefined();
+    expect(executionObservationReason('historical-only', {})).toBeUndefined();
   });
 
   it('persists terminal and error-oriented event types', () => {
@@ -200,7 +217,7 @@ describe('PersistingObserver', () => {
     );
   });
 
-  it('persists empty / narrow tool calls（观测 P1-4：假无岗与窄召回趋势的唯一长期来源）', () => {
+  it('persists empty / narrow tool calls for recall diagnostics', () => {
     const observer = makeObserver();
 
     observer.emit({ type: 'tool_call', toolName: 'job-search', status: 'empty', durationMs: 800 });

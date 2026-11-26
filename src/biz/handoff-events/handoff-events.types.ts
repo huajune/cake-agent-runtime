@@ -1,7 +1,7 @@
 /**
- * 转人工触发底账（handoff_events）写入侧类型。
+ * 转人工工单与经营事件的事务写入类型。
  *
- * 读取侧（转人工原因/阶段分析）由 conversion-analytics 模块独立实现。
+ * 转化分析按经营事件统计触发次数，工单记录后续处理。
  */
 export type HandoffWriteOutcome = 'inserted' | 'duplicate' | 'failed';
 
@@ -57,4 +57,6 @@ export interface RecordHandoffInput {
   /** 去重键：同 (corpId, idempotencyKey) 仅记一次。 */
   idempotencyKey: string;
   occurredAt?: Date;
+  /** A recovered promise must distinguish another account's key from an existing matching ticket. */
+  requireMatchingScope?: boolean;
 }

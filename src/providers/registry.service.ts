@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { type LanguageModel, wrapProvider } from 'ai';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { captureProviderFetch } from '@observability/context/model-invocations';
 import { jsonSchemaInPromptMiddleware } from './json-schema-prompt.middleware';
 import {
   MODEL_DICTIONARY,
@@ -36,7 +37,7 @@ export class RegistryService implements OnModuleInit {
           provider: createOpenAICompatible({
             name: ModelProvider.Qwen,
             apiKey: qwenKey,
-            fetch: fetchModel,
+            fetch: captureProviderFetch(ModelProvider.Qwen, fetchModel),
             baseURL:
               this.config.get<string>('QWEN_BASE_URL') ??
               'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -52,7 +53,7 @@ export class RegistryService implements OnModuleInit {
         ModelProvider.DeepSeek,
         createDeepSeek({
           apiKey: deepseekKey,
-          fetch: fetchModel,
+          fetch: captureProviderFetch(ModelProvider.DeepSeek, fetchModel),
           baseURL: this.config.get<string>('DEEPSEEK_BASE_URL') ?? 'https://api.deepseek.com',
         }),
       );

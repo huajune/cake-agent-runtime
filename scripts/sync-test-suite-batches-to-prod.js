@@ -63,7 +63,7 @@ async function main() {
   const [batchesRes, snapshotsRes, executionsRes] = await Promise.all([
     testDb.from('test_batches').select('*').in('id', batchIds),
     testDb.from('test_conversation_snapshots').select('*').in('batch_id', batchIds),
-    testDb.from('test_execution_results').select('*').in('batch_id', batchIds),
+    testDb.from('test_executions').select('*').in('batch_id', batchIds),
   ]);
 
   const batches = await must(batchesRes, '读取测试环境 test_batches 失败');

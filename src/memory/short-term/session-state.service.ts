@@ -89,4 +89,7 @@ export class SessionStateService {
   projectAssistantTurn(...args: Parameters<SessionWorkbenchService['projectAssistantTurn']>) {
     return this.workbench.projectAssistantTurn(...args);
   }
+  applyReplyJobProjection(...args: Parameters<SessionWorkbenchService['applyReplyJobProjection']>) {
+    return this.workbench.applyReplyJobProjection(...args);
+  }
 }

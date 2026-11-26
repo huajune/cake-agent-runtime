@@ -5,6 +5,10 @@ import { createActionExecutorFixture } from '../../../helpers/action-executor.fi
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
+import {
+  observeToolExecution,
+  type ToolExecutionObservation,
+} from '@observability/context/tool-observation';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
@@ -187,6 +191,28 @@ describe('GroupInviteService', () => {
       groupName: '上海餐饮兼职群',
     });
     expect(memoryService.saveInvitedGroup).toHaveBeenCalled();
+  });
+
+  it('retains the refused room when the next one sends an invitation card, outside the model result', async () => {
+    groupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ groupName: '群 A', memberCount: 20 }),
+      makeGroup({ groupName: '群 B', imRoomId: 'room-2', memberCount: 60 }),
+    ]);
+    roomService.addMemberEnterprise
+      .mockResolvedValueOnce({ errcode: 400400, errmsg: 'room not found' })
+      .mockResolvedValueOnce({ errcode: -12 });
+    const observed: ToolExecutionObservation = { toolName: 'invite_to_group', status: 'unknown' };
+    const result = await observeToolExecution('one', observed, () => service.invite(input));
+    expect(observed.decisions).toEqual([
+      { label: '群 A', detail: '企微未找到群（400400），改试下一候选群' },
+    ]);
+    expect(result).toMatchObject({
+      success: true,
+      groupName: '群 B',
+      inviteDelivery: 'invite_card',
+      inviteCardPendingConsent: true,
+    });
+    expect(result).not.toHaveProperty('decisions');
   });
 
   it('treats errcode -12 as one delivered invite card instead of retrying other groups', async () => {

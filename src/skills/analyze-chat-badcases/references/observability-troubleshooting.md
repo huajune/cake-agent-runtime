@@ -14,14 +14,14 @@
 
 测试流为了不污染“今日托管”等生产指标，会跳过 `message_processing_records` 等生产 tracking 写入；`guardrail_review_records` 也只在带生产 `traceId` 的回合落库。因此测试排障应以这些字段为主：
 
-按执行 ID 查询 `test_execution_results`。这个视图会还原精简存储的回复正文，历史记录也使用同一查询。
+按执行 ID 查询 `test_executions` 的 `actual_output`、`agent_response` 和 `tool_calls`。
 
 - `agent_request` 保存实际测试入参和历史。
 - `agent_response` 和 `actual_output` 用于核对原始回复与展示文本。业务评审另看 `review_status`。
 - `tool_calls` 保存工具输入、输出和错误。
 - `execution_trace` 保存步骤、守卫和投递终态证据。
 - `memory_setup` 和 `memory_trace` 保存记忆夹具与执行前后状态。
-- `agent_execution_events`：若能从执行 trace 取得运行时 traceId，可补查模型、工具、语义评审事件；不要假设每条测试都存在生产主流水或守卫档案。
+- 有运行时 traceId 时，可查模型尝试、入选的工具调用及守卫等排障观测事件。成功的外部动作也会入选；是否构成 bad case 要结合业务回执和候选人看到的回复判断。
 
 ## 2. 表的职责与关联方式
 
@@ -29,7 +29,9 @@
 | ---------------------------- | --------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
 | `chat_messages`              | 候选人和 Agent 实际说了什么                               | `chat_id`, `message_id`                              | 对话事实，不解释运行原因                                 |
 | `message_processing_records` | 本 turn 的主链终态、工具、步骤、记忆、守卫摘要和后处理    | `message_id = trace_id`                              | 主账本；大字段按单 trace 读取                            |
-| `agent_execution_events`     | 模型、工具、语义评审、memory、error/end 的结构化时间线    | `trace_id`                                           | 一条 trace 多行；`payload` 随 event_type 变化            |
+| `message_processing_turn_snapshots` | 回合上下文、SDK 消息、投递回执和时序 | `message_id` | 一条主流水至多一份 |
+| `message_processing_invocations` | 每次调用供应商的 HTTP 状态、请求和响应原文 | `message_id` 和调用 `id` | 一轮可有多行，先读清单，再点查一行正文 |
+| `agent_execution_events`     | 回合、模型、工具、记忆及守卫留下的排障线索 | `trace_id`，工具内事件可再按 `payload.toolCallId` 关联 | 按条件留存；工具次数取主流水，失败数按处理状态统计 |
 | `guardrail_review_records`   | 首版回复、首审、修复版、二审和最终裁决                    | `trace_id`                                           | 稀疏表，仅守卫有信号的生产回合写；写入是异步 best-effort |
 | `monitoring_error_logs`      | 渠道、外部依赖、观测持久化、告警与投递基础设施是否异常    | `message_id`；无 ID 时用时间窗 + subsystem/component | 系统级告警可以没有 message_id                            |
 | `handoff_events`             | 是否真实触发转人工及 reason/stage                         | `chat_id`, `user_id`, 时间窗                         | 没有 trace_id，需用业务时间对齐                          |
@@ -49,7 +51,7 @@
 - `reply_preview / is_fallback / fallback_success`
 - 各阶段 duration 与 `ttft_ms`
 
-需要核实模型实际输入时，按单条流水读取 `GET /analytics/message-processing-records/:messageId` 的 `agentInvocation.request.agentRequest`。该详情会还原工具引用并兼容历史快照。快照过期时，主流水仍可提供步骤与工具。
+需要核实模型实际输入时，先查 `GET /analytics/message-processing-records/:messageId/model-calls`，再按调用 ID 查同一路径下的 `/:id`。旧记录的 `/request` 提供 Cake 当时保存的生成上下文。快照过期时，主流水仍可提供步骤与工具。
 
 ## 4. 分层查询模板
 
@@ -61,7 +63,7 @@
 SELECT
   message_id, chat_id, received_at, status, error, scenario,
   reply_segments, reply_preview, anomaly_flags,
-  tool_calls, public.processing_read_steps(r) AS agent_steps, memory_snapshot,
+  tool_calls, agent_steps, memory_snapshot,
   guardrail_input, guardrail_output, post_processing_status,
   is_fallback, fallback_success, total_duration, ttft_ms
 FROM public.message_processing_records AS r
@@ -155,7 +157,7 @@ ORDER BY created_at;
 
 | 症状                             | 最少证据组合                                                                   |
 | -------------------------------- | ------------------------------------------------------------------------------ |
-| 重复追问、遗忘已给信息           | `chat_messages + memory_snapshot + agent_steps + agent_invocation(单 trace)`   |
+| 重复追问、遗忘已给信息           | 按会话读 `chat_messages`，按处理 ID 查流水 `memory_snapshot`、`agent_steps` 和回合快照 `request`。核对模型实际输入时再按调用 ID 读 `request_body`。   |
 | 工具没调、参数错、动态事实错     | `tool_calls + agent_execution_events(tool_*) + agent_steps`                    |
 | 回复被改写、拦截或静默           | `guardrail_output + guardrail_review_records + reply_segments`                 |
 | Output 是否执行及如何收敛        | `guardrail_output + guardrail_review_records + reply_segments`                |

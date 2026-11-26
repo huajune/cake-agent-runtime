@@ -2,6 +2,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OBSERVER, type AgentEvent, type Observer } from './observer.interface';
 import { RequestContextService } from './context/request-context.service';
+import { getObservedToolCallId } from './context/tool-observation';
 
 @Injectable()
 export class AgentTracerService {
@@ -21,8 +22,10 @@ export class AgentTracerService {
     const explicit = Object.fromEntries(
       Object.entries(event).filter(([, value]) => value !== undefined),
     ) as AgentEvent;
+    const toolCallId = getObservedToolCallId();
     const enriched = {
       ...this.requestContext.get(),
+      ...(toolCallId ? { toolCallId } : {}),
       timestamp: Date.now(),
       ...explicit,
     };

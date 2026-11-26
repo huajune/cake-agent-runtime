@@ -55,27 +55,48 @@ export class RuntimePostgresClientFixture {
   rpc(name: string, input: Record<string, unknown>) {
     const parameters: Record<string, string[]> = {
       transition_agent_action: ['p_operation', 'p_input'],
+      transition_agent_reply_segment: ['p_operation', 'p_input', 'p_turn'],
       transition_agent_reply_turn: ['p_operation', 'p_input'],
       append_agent_reply_callback: ['p_input'],
       action_terminal_evidence: ['p_corp', 'p_action', 'p_attempt'],
+      upsert_ops_event: [
+        'p_corp_id',
+        'p_event_name',
+        'p_idempotency_key',
+        'p_occurred_at',
+        'p_bot_im_id',
+        'p_manager_name',
+        'p_group_name',
+        'p_source_channel',
+        'p_user_id',
+        'p_chat_id',
+        'p_payload',
+      ],
     };
     const names = parameters[name];
     if (!names || Object.keys(input).some((key) => !names.includes(key)))
       throw new Error('Unsupported runtime fixture RPC');
     const values = names.map((key) => {
       const value = input[key];
-      return `${key} => ${typeof value === 'object' ? `${sql(JSON.stringify(value))}::jsonb` : sql(value)}`;
+      return `${key} => ${value !== null && typeof value === 'object' ? `${sql(JSON.stringify(value))}::jsonb` : sql(value)}`;
     });
-    return {
-      abortSignal: async (_signal: AbortSignal) => ({
-        data: this.query(`SELECT public.${name}(${values.join(',')})::text;`),
-        error: null,
-      }),
-    };
+    const execute = async () => ({
+      data: this.query(`SELECT public.${name}(${values.join(',')})::text;`),
+      error: null,
+    });
+    // OpsEventsRepository awaits the RPC directly; turn/action repositories set an abort signal.
+    return name === 'upsert_ops_event' ? execute() : { abortSignal: execute };
   }
 
   from(table: string) {
-    if (!['agent_action_records', 'agent_action_evidence', 'agent_reply_turns'].includes(table))
+    if (
+      ![
+        'agent_action_records',
+        'agent_action_evidence',
+        'agent_reply_turns',
+        'ops_events',
+      ].includes(table)
+    )
       throw new Error('Unsupported runtime fixture table');
     return new RuntimePostgresSelect(this, table);
   }

@@ -1,7 +1,7 @@
 import { CronRunnerService } from '@infra/queue/cron-runner.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
-import { Cron } from '@nestjs/schedule';
+import { Cron, Timeout } from '@nestjs/schedule';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyWorkflowService } from '../application/reply-workflow.service';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
@@ -14,7 +14,7 @@ import {
 } from '@biz/reply-execution/reply-execution.constants';
 import { CRON_JOB } from '@infra/queue/cron.constants';
 
-/** Repairs input ACKs and local business effects without generating or resending replies. */
+/** Takes over expired ordinary deliveries and repairs their original input and business effects. */
 @Injectable()
 export class ReplyRecoveryService {
   private readonly logger = new Logger(ReplyRecoveryService.name);
@@ -27,6 +27,12 @@ export class ReplyRecoveryService {
     private readonly incidents: IncidentReporterService,
   ) {}
 
+  /** A restarted instance should not spend its remaining sending window waiting for a cron tick. */
+  @Timeout(0)
+  recoverOnStartup(): Promise<void> {
+    return this.recoverDue();
+  }
+
   @Cron('*/1 * * * *')
   async recoverDue(): Promise<void> {
     if (this.running) return;
@@ -38,16 +44,7 @@ export class ReplyRecoveryService {
         // Historical proactive turns have no primary input; their domain owns follow-up.
         if (!turn.recovery.primary) continue;
         await this.leases
-          .run(turn.chatId, async (assertOwned) => {
-            await assertOwned();
-            try {
-              await this.resumeTurn(turn, assertOwned);
-            } catch (error) {
-              this.logger.warn(`reply.recovery_pending ${turn.logicalTurnId}: ${String(error)}`);
-              await assertOwned();
-              await this.turns.defer(turn);
-            }
-          })
+          .run(turn.chatId, (assertOwned) => this.resumeTurn(turn, assertOwned))
           .catch((error: unknown) => {
             this.logger.warn(
               `reply.recovery_lease_or_store_unavailable ${turn.logicalTurnId}: ${String(error)}`,
@@ -63,7 +60,31 @@ export class ReplyRecoveryService {
 
   private async resumeTurn(turn: ReplyTurn, assertOwned: () => Promise<void>): Promise<void> {
     // Re-read under the SQL lock. A live owner may have renewed or completed since due() ran.
-    let terminal = await this.turns.interrupt(turn);
+    await assertOwned();
+    let current = turn;
+    try {
+      if (
+        turn.recovery.replySegments &&
+        (turn.status === REPLY_TURN_STATUS.PLANNED || turn.status === REPLY_TURN_STATUS.PREPARING)
+      ) {
+        current = await this.turns.resumeDelivery(turn);
+        if (current.status === REPLY_TURN_STATUS.PLANNED)
+          current = await this.workflow.resumeDelivery(current, assertOwned);
+      } else {
+        current = await this.turns.interrupt(turn);
+      }
+      await this.finishRecovery(current, assertOwned);
+    } catch (error) {
+      this.logger.warn(`reply.recovery_pending ${turn.logicalTurnId}: ${String(error)}`);
+      await assertOwned();
+      await this.turns.defer(current);
+    }
+  }
+
+  private async finishRecovery(
+    terminal: ReplyTurn,
+    assertOwned: () => Promise<void>,
+  ): Promise<void> {
     const unknown = terminal.projectionStatus === REPLY_PROJECTION_STATUS.NONE;
     const reason = unknown
       ? REPLY_REVIEW_REASON.BUSINESS_EFFECTS_UNCONFIRMED
@@ -106,7 +127,7 @@ export class ReplyRecoveryService {
         '回复已中断，业务结果未保存。请核对本轮的工单、群邀请及发送记录',
       [REPLY_REVIEW_REASON.INTERRUPTED]: '回复在投递完成前中断。请核对已受理的消息分段',
       [REPLY_REVIEW_REASON.RECOVERY_DEADLINE]:
-        '回复的本地收尾持续失败。请核对业务补账和输入确认记录',
+        '回复超过自动恢复期限。请核对原回复、分段受理凭证和本轮业务补账，确认是否需要人工接续',
     };
     const reason = turn.reviewReason!;
     const delivered = await this.incidents.notify({

@@ -389,8 +389,17 @@ describe('MessageController (biz/message)', () => {
 
       expect(messageProcessingService.getMessageProcessingRecordById).toHaveBeenCalledWith(
         messageId,
+        'full',
       );
       expect(result).toEqual(mockResult);
+    });
+
+    it('loads only the request context for the processing drawer', async () => {
+      await controller.getMessageProcessingRecordDetail('msg-1', 'context');
+      expect(messageProcessingService.getMessageProcessingRecordById).toHaveBeenCalledWith(
+        'msg-1',
+        'detail',
+      );
     });
 
     it('should propagate errors when record not found', async () => {

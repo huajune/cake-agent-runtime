@@ -64,6 +64,18 @@ describe('SystemConfigRepository', () => {
     expect(repository).toBeDefined();
   });
 
+  it('persists a worker change in one upsert and requires a returned row', async () => {
+    const row = { key: 'system_config', value: { workerConcurrency: 50 }, description: 'Worker' };
+    const query = makeQueryMock({ data: [row], error: null });
+    mockSupabaseClient.from.mockReturnValue(query);
+    await repository.setConfigValueOrThrow(row.key, row.value, row.description);
+    expect(query.upsert).toHaveBeenCalledWith(row, { onConflict: 'key' });
+    mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [], error: null }));
+    await expect(
+      repository.setConfigValueOrThrow(row.key, row.value, row.description),
+    ).rejects.toThrow('写入系统配置失败');
+  });
+
   // ==================== getConfigValue ====================
 
   describe('getConfigValue', () => {
