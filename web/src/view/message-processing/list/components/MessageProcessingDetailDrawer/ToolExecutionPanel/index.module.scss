@@ -1,6 +1,8 @@
+@use 'sass:color';
 @use '@/assets/styles/variables' as *;
 
 .panel {
+  container: tool-panel / inline-size;
   margin-top: $spacing-lg;
 }
 
@@ -8,22 +10,21 @@
   margin: 0 0 $spacing-sm;
   color: $text-primary;
   font-size: $font-size-sm;
-  font-weight: $font-weight-bold;
 }
 
 .toolList {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-xs;
+  display: grid;
+  gap: $spacing-sm;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .toolItem {
+  min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba($primary, 0.14);
-  border-radius: $radius-md;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
   background: $bg-primary;
 }
 
@@ -32,100 +33,178 @@
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  gap: $spacing-sm;
-  padding: $spacing-sm $spacing-md;
+  gap: $spacing-md;
+  padding: 10px 14px;
+  min-height: 44px;
   border: 0;
   background: transparent;
   color: inherit;
+  text-align: left;
   cursor: pointer;
 
-  &:disabled {
-    cursor: default;
+  &:hover,
+  &[aria-expanded='true'] {
+    background: $primary-04;
   }
+}
+
+.toolHeader:focus-visible {
+  outline: 2px solid $primary-dark;
+  outline-offset: -2px;
+}
+
+.chevron {
+  flex: none;
+  color: $text-secondary;
+}
+.toolHeader[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
 }
 
 .toolIdentity,
 .toolMeta {
   display: flex;
   align-items: center;
-  gap: $spacing-xs;
-}
-
-.toolIdentity {
+  gap: $spacing-sm;
   min-width: 0;
-  color: $primary;
 }
-
 .toolName {
-  overflow: hidden;
+  min-width: 0;
+  color: $text-primary;
   font-family: $font-family-mono;
-  font-size: $font-size-xs;
-  font-weight: $font-weight-semibold;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: $font-weight-medium;
+  font-size: $font-size-sm;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
-
+.outcome {
+  margin: 0;
+  color: $text-primary;
+  font-family: $font-family-sans;
+  font-size: $font-size-base;
+  font-weight: $font-weight-semibold;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 .toolMeta {
   flex-wrap: wrap;
   justify-content: flex-end;
-  color: $text-muted;
+  color: $text-secondary;
   font-size: $font-size-xs;
-}
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 
+  > span {
+    max-width: 100%;
+  }
+}
 .statusBadge {
-  display: inline-flex;
-  padding: 2px $spacing-xs;
+  padding: 1px 7px;
   border-radius: $radius-full;
   font-family: $font-family-mono;
-  font-size: $font-size-xs;
-  font-weight: $font-weight-bold;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+  line-height: 1.6;
 }
-
 .statusSuccess {
   background: $success-soft;
-  color: $success;
+  color: color.scale($success-text, $lightness: -40%);
 }
-
 .statusWarning {
-  border: 1px solid rgba($warning, 0.4);
   background: $warning-soft;
-  color: $warning;
-  box-shadow: 0 0 0 2px rgba($warning, 0.1);
+  color: color.scale($warning-text, $lightness: -42%);
 }
-
 .statusError {
   background: $danger-soft;
-  color: $danger;
+  color: color.scale($danger-text, $lightness: -27%);
 }
-
 .statusUnknown {
   background: $bg-secondary;
-  color: $text-muted;
+  color: $text-secondary;
 }
 
 .toolDetails {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: $spacing-sm;
-  padding: 0 $spacing-md $spacing-md;
-
-  pre {
-    max-height: 240px;
-    margin: $spacing-xs 0 0;
-    padding: $spacing-sm;
-    overflow: auto;
-    border-radius: $radius-md;
-    background: $text-primary;
-    color: $border;
-    font-family: $font-family-mono;
-    font-size: $font-size-xs;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid $border;
 }
-
+.diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  overflow-wrap: anywhere;
+}
+.evidence {
+  min-width: 0;
+}
 .detailLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
   color: $text-secondary;
   font-size: $font-size-xs;
   font-weight: $font-weight-semibold;
+}
+.evidenceList {
+  display: grid;
+  margin: 0;
+  font-size: $font-size-sm;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  > div {
+    display: grid;
+    grid-template-columns: 5.5em minmax(0, 1fr);
+    align-items: baseline;
+    gap: $spacing-sm;
+    padding: 5px 0;
+    + div {
+      border-top: 1px solid $primary-06;
+    }
+  }
+  dt {
+    color: $text-secondary;
+    font-size: $font-size-xs;
+  }
+  dd {
+    margin: 0;
+    color: $text-primary;
+  }
+}
+.emptyEvidence {
+  margin: 0;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+}
+.payload {
+  min-width: 0;
+  pre {
+    margin: 0;
+    max-height: 240px;
+    padding: 12px;
+    overflow: auto;
+    border-radius: $radius-sm;
+    background: $bg-secondary;
+    color: $text-body;
+    font-family: $font-family-mono;
+    font-size: $font-size-xs;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+@container tool-panel (max-width: 440px) {
+  .toolHeader {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .toolMeta {
+    justify-content: flex-start;
+    padding-inline-start: 24px;
+  }
 }

@@ -111,6 +111,8 @@
 
   .toolHeader {
     display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-xs $spacing-sm;
     align-items: center;
     justify-content: space-between;
     padding: $spacing-sm $spacing-md;
@@ -127,6 +129,8 @@
 
   .toolHeaderRight {
     display: flex;
+    flex-shrink: 0;
+    white-space: nowrap;
     align-items: center;
     gap: $spacing-sm;
   }
@@ -149,6 +153,9 @@
 
   .toolName {
     display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
     align-items: center;
     gap: 6px;
     padding: 5px 10px;

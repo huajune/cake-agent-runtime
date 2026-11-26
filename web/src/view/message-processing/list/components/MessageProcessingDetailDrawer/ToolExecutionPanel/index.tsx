@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { formatDuration, formatJson } from '@/utils/format';
+import { ChevronRight, ListChecks } from 'lucide-react';
+import { formatJson } from '@/utils/format';
 import type { MessageRecord, MessageRecordToolCallStatus } from '@/api/types/chat.types';
 import { describeToolExecution } from '@/view/message-processing/tool-execution';
 import { getToolCalls, type ToolCallInfo } from '../utils';
@@ -42,63 +42,72 @@ function ToolExecutionItem({ toolCall }: { toolCall: ToolCallInfo }) {
         onClick={() => setExpanded((value) => !value)}
       >
         <span className={styles.toolIdentity}>
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span className={styles.toolName} title={outcome}>
-            {toolCall.name}
-            {outcome && ` · ${outcome}`}
-          </span>
+          <ChevronRight size={16} className={styles.chevron} aria-hidden="true" />
+          <code className={styles.toolName}>{toolCall.name}</code>
         </span>
-        <span className={styles.toolMeta}>
+        <span className={styles.toolMeta} lang="en">
           {toolCall.durationMs !== undefined ? (
-            <span title={`${toolCall.durationMs} ms`}>{formatDuration(toolCall.durationMs)}</span>
+            <span title={`${toolCall.durationMs} ms`}>
+              {(toolCall.durationMs / 1000).toFixed(2)} s
+            </span>
           ) : null}
-          {toolCall.resultCount !== undefined ? <span>{toolCall.resultCount} 条</span> : null}
-          {toolCall.errorType ? <span>{toolCall.errorType}</span> : null}
-          {toolCall.apiCode !== undefined ? <span>apiCode={toolCall.apiCode}</span> : null}
+          {toolCall.resultCount !== undefined && (
+            <span>
+              {toolCall.resultCount} {toolCall.resultCount === 1 ? 'result' : 'results'}
+            </span>
+          )}
           <span className={`${styles.statusBadge} ${getStatusClass(toolCall.status)}`}>
             {STATUS_LABELS[toolCall.status] ?? toolCall.status}
           </span>
         </span>
       </button>
       {expanded ? (
-        <>
-          <div className={styles.toolDetails}>
-            <div>
-              <div className={styles.detailLabel}>本次判断</div>
-              {judgments.length > 0 ? (
-                <ul className={styles.toolList}>
-                  {judgments.map((judgment, index) => (
-                    <li key={index}>{judgment}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div>{toolCall.output == null ? '未记录工具返回值' : '仅记录最终结果'}</div>
-              )}
-            </div>
-          </div>
-          {(toolCall.input !== undefined || toolCall.output !== undefined) && (
-            <div className={styles.toolDetails}>
-              {toolCall.input !== undefined ? (
-                <div>
-                  <div className={styles.detailLabel}>输入参数</div>
-                  <pre>{formatJson(toolCall.input)}</pre>
-                </div>
-              ) : null}
-              {toolCall.output !== undefined ? (
-                <div>
-                  <div className={styles.detailLabel}>返回结果</div>
-                  <pre>
-                    {typeof toolCall.output === 'string'
-                      ? toolCall.output
-                      : formatJson(toolCall.output)}
-                  </pre>
-                </div>
-              ) : null}
+        <div className={styles.toolDetails}>
+          {outcome && <p className={styles.outcome}>{outcome}</p>}
+          {(toolCall.errorType || toolCall.apiCode !== undefined) && (
+            <div className={styles.diagnostics}>
+              {toolCall.errorType && <code>{toolCall.errorType}</code>}
+              {toolCall.apiCode !== undefined && <code>apiCode={toolCall.apiCode}</code>}
             </div>
           )}
-        </>
+          {judgments.length > 0 ? (
+            <div className={styles.evidence}>
+              <h5 className={styles.detailLabel}>
+                <ListChecks size={15} aria-hidden="true" />
+                判断依据
+              </h5>
+              <dl className={styles.evidenceList}>
+                {judgments.map(([label, detail], index) => (
+                  <div key={index}>
+                    <dt>{label}</dt>
+                    <dd>{detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : (
+            <p className={styles.emptyEvidence}>
+              {toolCall.output == null ? '未记录工具返回值' : '仅记录最终结果'}
+            </p>
+          )}
+          {toolCall.input !== undefined && (
+            <ReceiptPayload label="输入参数" value={toolCall.input} />
+          )}
+          {toolCall.output !== undefined && (
+            <ReceiptPayload label="返回结果" value={toolCall.output} />
+          )}
+        </div>
       ) : null}
     </li>
+  );
+}
+
+function ReceiptPayload({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className={styles.payload}>
+      <h5 className={styles.detailLabel}>{label}</h5>
+      <pre>{typeof value === 'string' ? value : formatJson(value)}</pre>
+    </div>
   );
 }
 

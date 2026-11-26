@@ -272,7 +272,7 @@ describe('FeishuBitableSyncService', () => {
       mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
       mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_new' });
       mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
-        messageId: 'msg_anchor',
+        messageId: 'batch_input',
         chatId: 'chat_trace',
         userId: 'user_001',
         userName: '候选人',
@@ -298,7 +298,11 @@ describe('FeishuBitableSyncService', () => {
           },
         ],
         agentInvocation: {
-          request: { modelId: 'test-model', messages: [{ role: 'user', content: 'hi' }] },
+          request: {
+            modelId: 'test-model',
+            sourceMessageIds: ['channel-a', 'channel-b'],
+            messages: [{ role: 'user', content: 'hi' }],
+          },
           response: { traceId: 'trace_from_record', finishReason: 'stop' },
           isFallback: false,
         },
@@ -309,10 +313,12 @@ describe('FeishuBitableSyncService', () => {
         chatHistory: '用户: 想找附近门店',
         userMessage: '想找附近门店',
         chatId: 'chat_trace',
-        messageId: 'msg_anchor',
+        messageId: 'batch_input',
         sourceTrace: {
           badcaseIds: ['bad_001'],
           badcaseRecordIds: ['rec_bad_001'],
+          messageProcessingIds: ['batch_input'],
+          raw: { source: 'message-processing-detail-drawer' },
         },
       });
 
@@ -320,8 +326,8 @@ describe('FeishuBitableSyncService', () => {
       const fields = mockBitableApi.createRecord.mock.calls[0][2];
       expect(fields.SourceTrace).toContain('"badcaseIds"');
       expect(fields.SourceTrace).toContain('"trace_from_record"');
-      expect(fields['来源MessageID']).toBe('msg_anchor');
-      expect(fields['处理流水ID']).toBe('msg_anchor');
+      expect(fields['来源MessageID']).toBe('channel-b');
+      expect(fields['处理流水ID']).toBe('batch_input');
       expect(fields['来源TraceID']).toBe('trace_from_record');
     });
 

@@ -15,6 +15,7 @@ const SNAPSHOT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const SAFE_TARGET_ID_PATTERN = /^[\w@\-.:]+$/;
 
 interface ChatMessageSnapshotRow {
+  org_id: string | null;
   chat_id: string | null;
   im_contact_id: string | null;
   candidate_name: string | null;
@@ -128,7 +129,7 @@ export class CandidateBlacklistRepository extends BaseRepository {
    * 候选人 ID 只能取自候选人发的行。
    */
   async findContactSnapshot(targetId: string): Promise<CandidateContactSnapshot | null> {
-    const columns = 'chat_id,im_contact_id,candidate_name,manager_name,im_bot_id,is_self';
+    const columns = 'org_id,chat_id,im_contact_id,candidate_name,manager_name,im_bot_id,is_self';
 
     let rows = await this.selectFrom<ChatMessageSnapshotRow>('chat_messages', columns, (q) =>
       q.eq('chat_id', targetId).order('timestamp', { ascending: false }).limit(10),
@@ -139,11 +140,17 @@ export class CandidateBlacklistRepository extends BaseRepository {
       const sinceIso = new Date(Date.now() - SNAPSHOT_LOOKBACK_MS).toISOString();
       rows = await this.selectFrom<ChatMessageSnapshotRow>('chat_messages', columns, (q) =>
         q
+          .eq('is_self', false)
           .or(`im_contact_id.eq.${targetId},external_user_id.eq.${targetId}`)
           .gte('timestamp', sinceIso)
           .order('timestamp', { ascending: false })
           .limit(10),
       );
+      // 渠道外部联系人 ID 可能出现在多个账号或会话里。遇到歧义时保留运营录入的原 ID。
+      const scopes = new Set(
+        rows.map((row) => JSON.stringify([row.org_id, row.im_bot_id, row.chat_id])),
+      );
+      if (scopes.size > 1) return null;
     }
 
     if (rows.length === 0) {

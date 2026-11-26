@@ -26,10 +26,10 @@ export default function HandoffPieChart({
         <div>
           <span className={styles.sectionKicker}>转人工原因</span>
           <h2>转人工原因榜单</h2>
-          <span>按原因统计</span>
+          <span>按转人工触发事件统计</span>
         </div>
         <div className={styles.panelTotal}>
-          <span>转人工次数</span>
+          <span>触发次数</span>
           <strong>{loading ? '-' : (data?.total ?? 0)}</strong>
         </div>
       </div>
