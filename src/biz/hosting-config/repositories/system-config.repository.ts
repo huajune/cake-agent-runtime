@@ -45,6 +45,14 @@ export class SystemConfigRepository extends BaseRepository {
     return rows.length ? (rows[0].value as T) : null;
   }
 
+  async setConfigValueOrThrow(key: string, value: unknown, description: string): Promise<void> {
+    const row = await this.upsert<SystemConfigRecord>(
+      { key, value, description },
+      { onConflict: 'key' },
+    );
+    if (!row) throw new Error(`写入系统配置失败: ${key}`);
+  }
+
   /**
    * 写入指定键的配置值（不存在时插入，已存在时更新）
    *

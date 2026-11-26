@@ -157,11 +157,11 @@ export class InterventionTaskService implements OnApplicationBootstrap {
   // ==================== public ====================
 
   /** 等待任务持久化；实际创建由队列执行，外部结果未知时不盲目重发。 */
-  async submit(payload: InterventionPayload): Promise<void> {
+  async submit(payload: InterventionPayload, existingToken?: string): Promise<void> {
     try {
       if (this.isTestSession(payload.corpId, payload.chatId)) return;
       if (!(await this.isEnabled())) return;
-      const clientToken = randomUUID();
+      const clientToken = existingToken ?? randomUUID();
       await this.taskQueue.add(
         'create',
         { payload, clientToken, triggeredAt: new Date().toISOString() },

@@ -82,6 +82,19 @@ GitHub Actions                        远程服务器 /data/cake/
 3. 飞书企微私域监控群通知部署结果
 ```
 
+### 主聊并发首档
+
+包含 #1589 的首个正式发布通过容器健康检查后，发布任务在新容器内调用 `POST /message/worker-concurrency`，设置 `{"concurrency":50}`。随后轮询 `GET /message/worker-status`，核对 `maxConcurrency=100`、`concurrency=50`、`registeredConcurrency=50`。最后在部署主机写入 `/data/cake/.rollout-message-worker-50`。后续发版见到此标记就沿用管理员后来保存的值。[发布工作流](../../.github/workflows/deploy.yml) · [首档核验脚本](../../scripts/rollout-message-worker-50.cjs)
+
+若核验超过五分钟，发布任务会报告当时的注册数和在途数，容器继续处理已领取的任务。可在后台查看实际注册数和队列等待量，或重试核验。首次生产切换若采用手动部署，在部署主机使用与镜像相同版本的脚本执行同一步。以下命令适用于脚本已在 `source/` 的部署目录。[后台状态字段](../architecture/message-service-architecture.md#42-worker-并发)
+
+```sh
+cd /data/cake
+if [ ! -f .rollout-message-worker-50 ]; then
+  docker exec -i cake-agent node - < source/scripts/rollout-message-worker-50.cjs && touch .rollout-message-worker-50
+fi
+```
+
 ---
 
 ## 本地手动部署
@@ -122,6 +135,8 @@ pnpm run deploy other-host   # 部署到指定服务器
 ---
 
 ## 回滚机制
+
+消息存储与普通回复这批发布会迁表和删列。镜像备份只覆盖应用。维护窗口内还需保留相应的数据库备份，并在恢复流量前核对备份时点之后已发生的外部派发。[联合迁移的验收与回滚](../technical/runtime-storage-batch.md#验收与回滚)
 
 部署前会自动备份：
 - 当前 `docker-compose.yml`

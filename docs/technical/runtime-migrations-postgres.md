@@ -14,6 +14,10 @@ python3 tests/biz/action-execution/verify-runtime-postgres.py \
 
 每次使用新的输出目录；数据库名默认含执行时间。输出目录保存实际加载的每份 SQL、执行日志、源文件 SHA-256、仓库提交和 PostgreSQL 版本。数据库保留供复查。若最终 D 提交尚未并入当前分支，可显式传 `--delivery-ref <本地提交SHA>`，只从该提交读取 `100000` 迁移和它的 SQL 测试；其他文件仍读当前工作树。`--baseline-only` 仅核验真实旧依赖，不代表新迁移已通过。
 
+默认运行会从仓库迁移重建动作、回复、处理流水、旧快照及正文存储所需的表和函数。然后按 `075900 → 080000 → 080100 → 081000 → 100000` 应用 2026-11-25 的五份迁移，在最终结构上核对分段领取、回执及并发。
+
+演练历史回填时，传 `--before-storage-cutover`，让隔离库停在 `20261124100200`。从这个库复制两份，在各自的副本执行 `tests/supabase/storage-cutover.integration.sql`。一份直接切换，另一份给 psql 加 `-v prebackfill=1`，先运行可重入的分批回填。两个副本都验证旧快照、聊天原文及同次派发有多份回执时采信的工单号。[历史升级用例](../../tests/supabase/storage-cutover.integration.sql) · [操作顺序](runtime-storage-batch.md#发布顺序)
+
 ## 依赖来源
 
 基础部分从 `20260310000000_baseline.sql` 原样提取序列及完整 `chat_messages`、`message_processing_records` 建表段。随后按顺序执行以下原迁移全文：

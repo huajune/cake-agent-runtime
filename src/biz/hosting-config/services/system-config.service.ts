@@ -419,34 +419,23 @@ export class SystemConfigService {
    * 直接从数据库读取（低频调用，无需缓存）
    */
   async getSystemConfig(): Promise<SystemConfig | null> {
-    try {
-      return await this.systemConfigRepository.getConfigValue<SystemConfig>(
-        SystemConfigKey.SYSTEM_CONFIG,
-      );
-    } catch (error) {
-      this.logger.error('获取系统配置失败', error);
-      return null;
-    }
+    return this.systemConfigRepository.getConfigValueOrThrow<SystemConfig>(
+      SystemConfigKey.SYSTEM_CONFIG,
+    );
   }
 
   /**
    * 更新系统配置
    */
   async updateSystemConfig(config: Partial<SystemConfig>): Promise<SystemConfig> {
-    const existingConfig = (await this.getSystemConfig()) ?? {};
-    const newConfig: SystemConfig = { ...existingConfig, ...config };
-
-    try {
-      await this.systemConfigRepository.setConfigValue(
-        SystemConfigKey.SYSTEM_CONFIG,
-        newConfig,
-        '系统配置（Worker 并发数等）',
-      );
-      this.logger.log(`系统配置已更新: ${JSON.stringify(config)}`);
-    } catch (error) {
-      this.logger.error('更新系统配置到数据库失败', error);
-    }
-
+    const key = SystemConfigKey.SYSTEM_CONFIG;
+    const existingConfig = await this.getSystemConfig();
+    const newConfig = { ...existingConfig, ...config };
+    await this.systemConfigRepository.setConfigValueOrThrow(
+      key,
+      newConfig,
+      '系统配置（Worker 并发数等）',
+    );
     return newConfig;
   }
 

@@ -34,7 +34,10 @@ export class GeneralHandoffNotifierService {
     private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
-  async notify(payload: GeneralHandoffNotificationPayload): Promise<boolean> {
+  async notify(
+    payload: GeneralHandoffNotificationPayload,
+    singleAttempt = false,
+  ): Promise<boolean> {
     const isTest = isTestSession(payload.corpId, payload.chatId);
     const receiver = isTest
       ? undefined
@@ -46,9 +49,10 @@ export class GeneralHandoffNotifierService {
       ...(isTest ? {} : receiver ? { atUsers: [receiver] } : { atAll: true }),
     });
 
+    const method = singleAttempt ? 'sendOnce' : 'send';
     const success = isTest
-      ? await this.alertChannel.send(card)
-      : await this.privateChatChannel.send(card, payload.botImId);
+      ? await this.alertChannel[method](card)
+      : await this.privateChatChannel[method](card, payload.botImId);
     const tag = isTest ? '[测试]' : '';
     if (success) {
       this.logger.warn(

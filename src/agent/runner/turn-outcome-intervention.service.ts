@@ -1,6 +1,10 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
-import { InterventionService } from '@biz/intervention/intervention.service';
+import {
+  InterventionService,
+  type InterventionPayload,
+  type ReplyHandoffIdentity,
+} from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import type { HandoffWriteOutcome } from '@biz/handoff-events/handoff-events.types';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
@@ -21,6 +25,7 @@ export interface TurnOutcomeCommitContext {
   botImId?: string;
   botUserId?: string;
   userMessage: string;
+  replyReceipt?: Omit<ReplyHandoffIdentity, 'key'>;
 }
 
 /**
@@ -99,7 +104,14 @@ export class TurnOutcomeInterventionService {
     intent: Extract<TurnSideEffectIntent, { kind: 'conversation_risk' }>,
     context: TurnOutcomeCommitContext,
   ): Promise<void> {
-    const occurredAt = Date.now();
+    const occurredAt = context.replyReceipt
+      ? Date.parse(context.replyReceipt.occurredAt)
+      : Date.now();
+    const key = buildHandoffIdempotencyKey({
+      chatId: context.chatId,
+      turnId: context.logicalTurnId ?? context.traceId,
+      scope: 'input_risk',
+    });
     // 入站风险类介入此前只发群卡片、不落底账（10 天 9 条看不见）。底账原因码直接用风险类型
     // （abuse / complaint_risk / human_handoff_request / disability_disclosure / interview_result_inquiry
     // / escalation，均在权威目录 T7/T3），来源标记 input_guardrail（正则预检）或 risk_alert_tool（模型工具）。
@@ -115,40 +127,42 @@ export class TurnOutcomeInterventionService {
         stage: null,
       },
       context,
-      buildHandoffIdempotencyKey({
-        chatId: context.chatId,
-        turnId: context.logicalTurnId ?? context.traceId,
-        scope: 'input_risk',
-      }),
+      key,
       new Date(occurredAt),
     );
-    if (writeOutcome === OPS_EVENT_WRITE_RESULT.DUPLICATE) {
+    if (context.replyReceipt && writeOutcome === OPS_EVENT_WRITE_RESULT.FAILED)
+      throw new Error('handoff_ticket_unconfirmed');
+    if (!context.replyReceipt && writeOutcome === OPS_EVENT_WRITE_RESULT.DUPLICATE) {
       this.logger.warn(
         `[OutcomeSideEffect] duplicate conversation_risk，跳过重复 dispatch: chatId=${context.chatId}, type=${intent.riskType}`,
       );
       return;
     }
     try {
-      const result = await this.interventionService.dispatch({
-        kind: 'conversation_risk',
-        source: intent.source,
-        riskType: intent.riskType,
-        riskLabel: intent.riskLabel,
-        summary: intent.summary,
-        reason: intent.reason,
-        chatId: context.chatId,
-        corpId: context.corpId,
-        userId: context.userId,
-        pauseTargetId: context.chatId,
-        botImId: context.botImId,
-        botUserName: context.botUserId,
-        contactName: context.contactName,
-        currentMessageContent: intent.currentMessageContent ?? context.userMessage,
-        recentMessages: intent.recentMessages ?? [
-          { role: 'user', content: context.userMessage, timestamp: occurredAt },
-        ],
-        sessionState: intent.sessionState ?? null,
-      });
+      const result = await this.dispatchForTurn(
+        {
+          kind: 'conversation_risk',
+          source: intent.source,
+          riskType: intent.riskType,
+          riskLabel: intent.riskLabel,
+          summary: intent.summary,
+          reason: intent.reason,
+          chatId: context.chatId,
+          corpId: context.corpId,
+          userId: context.userId,
+          pauseTargetId: context.chatId,
+          botImId: context.botImId,
+          botUserName: context.botUserId,
+          contactName: context.contactName,
+          currentMessageContent: intent.currentMessageContent ?? context.userMessage,
+          recentMessages: intent.recentMessages ?? [
+            { role: 'user', content: context.userMessage, timestamp: occurredAt },
+          ],
+          sessionState: intent.sessionState ?? null,
+        },
+        context,
+        key,
+      );
       this.logger.warn(
         `[OutcomeSideEffect] conversation_risk dispatched: chatId=${context.chatId}, type=${intent.riskType}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
       );
@@ -156,6 +170,7 @@ export class TurnOutcomeInterventionService {
       this.logger.error(
         `[OutcomeSideEffect] conversation_risk dispatch 失败: chatId=${context.chatId}, error=${this.errorMessage(error)}`,
       );
+      if (context.replyReceipt) throw error;
     }
   }
 
@@ -163,7 +178,9 @@ export class TurnOutcomeInterventionService {
     intent: GeneralHandoffSideEffectIntent,
     context: TurnOutcomeCommitContext,
   ): Promise<void> {
-    const occurredAt = new Date();
+    const occurredAt = context.replyReceipt
+      ? new Date(context.replyReceipt.occurredAt)
+      : new Date();
     const idempotencyKey =
       intent.idempotencyKey ||
       buildHandoffIdempotencyKey({
@@ -174,7 +191,9 @@ export class TurnOutcomeInterventionService {
 
     if (shouldRecord) {
       const writeOutcome = await this.recordHandoff(intent, context, idempotencyKey, occurredAt);
-      if (writeOutcome === OPS_EVENT_WRITE_RESULT.DUPLICATE) {
+      if (context.replyReceipt && writeOutcome === OPS_EVENT_WRITE_RESULT.FAILED)
+        throw new Error('handoff_ticket_unconfirmed');
+      if (!context.replyReceipt && writeOutcome === OPS_EVENT_WRITE_RESULT.DUPLICATE) {
         this.logger.warn(
           `[OutcomeSideEffect] duplicate handoff，跳过重复 dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
         );
@@ -196,32 +215,36 @@ export class TurnOutcomeInterventionService {
     }
 
     try {
-      const result = await this.interventionService.dispatch({
-        kind: 'general_handoff',
-        source: intent.source,
-        alertLabel: intent.alertLabel,
-        reasonCode: intent.reasonCode,
-        reason: intent.reason,
-        actionAdvice: intent.actionAdvice,
-        missingJobInfo: intent.missingJobInfo,
-        workOrderId: intent.workOrderId ?? null,
-        chatId: context.chatId,
-        corpId: context.corpId,
-        userId: context.userId,
-        pauseTargetId: context.chatId,
-        botImId: intent.botImId ?? context.botImId,
-        botUserName: context.botUserId,
-        contactName: context.contactName,
-        currentMessageContent: intent.currentMessageContent ?? context.userMessage,
-        recentMessages: intent.recentMessages ?? [
-          {
-            role: 'user',
-            content: context.userMessage,
-            timestamp: occurredAt.getTime(),
-          },
-        ],
-        sessionState: intent.sessionState ?? null,
-      });
+      const result = await this.dispatchForTurn(
+        {
+          kind: 'general_handoff',
+          source: intent.source,
+          alertLabel: intent.alertLabel,
+          reasonCode: intent.reasonCode,
+          reason: intent.reason,
+          actionAdvice: intent.actionAdvice,
+          missingJobInfo: intent.missingJobInfo,
+          workOrderId: intent.workOrderId ?? null,
+          chatId: context.chatId,
+          corpId: context.corpId,
+          userId: context.userId,
+          pauseTargetId: context.chatId,
+          botImId: intent.botImId ?? context.botImId,
+          botUserName: context.botUserId,
+          contactName: context.contactName,
+          currentMessageContent: intent.currentMessageContent ?? context.userMessage,
+          recentMessages: intent.recentMessages ?? [
+            {
+              role: 'user',
+              content: context.userMessage,
+              timestamp: occurredAt.getTime(),
+            },
+          ],
+          sessionState: intent.sessionState ?? null,
+        },
+        context,
+        idempotencyKey,
+      );
       this.logger.warn(
         `[OutcomeSideEffect] general_handoff dispatched: chatId=${context.chatId}, reasonCode=${intent.reasonCode}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
       );
@@ -229,7 +252,18 @@ export class TurnOutcomeInterventionService {
       this.logger.error(
         `[OutcomeSideEffect] general_handoff dispatch 失败: chatId=${context.chatId}, error=${this.errorMessage(error)}`,
       );
+      if (context.replyReceipt) throw error;
     }
+  }
+
+  private dispatchForTurn(
+    payload: InterventionPayload,
+    context: TurnOutcomeCommitContext,
+    key: string,
+  ) {
+    return context.replyReceipt
+      ? this.interventionService.dispatchRecorded(payload, { ...context.replyReceipt, key })
+      : this.interventionService.dispatch(payload);
   }
 
   private async recordHandoff(
@@ -256,6 +290,7 @@ export class TurnOutcomeInterventionService {
           (intent.source === 'output_guardrail' ? 'output_guardrail' : 'agent_tool'),
         idempotencyKey,
         occurredAt,
+        ...(context.replyReceipt ? { requireMatchingScope: true } : {}),
       });
     } catch (error) {
       this.logger.error(

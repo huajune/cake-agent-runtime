@@ -150,6 +150,12 @@ jobs:
               --supabase-url "$NEXT_PUBLIC_SUPABASE_URL" \
               --supabase-anon-key "$NEXT_PUBLIC_SUPABASE_ANON_KEY"
 
+            # 首次部署包含此脚本的版本后设置生产首档。后续发布沿用管理员保存的配置。
+            if [ -f source/scripts/rollout-message-worker-50.cjs ] && [ ! -f /data/cake/.rollout-message-worker-50 ]; then
+              docker exec -i cake-agent node - < source/scripts/rollout-message-worker-50.cjs
+              touch /data/cake/.rollout-message-worker-50
+            fi
+
   # 3. 飞书企微私域监控群通知
   notify:
     needs: deploy

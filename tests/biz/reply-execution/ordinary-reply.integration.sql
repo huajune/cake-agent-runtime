@@ -64,7 +64,7 @@ begin
   r:=public.transition_agent_reply_turn('renew',base||'{"owner":"stale"}');
   assert r->>'conflict'='ordinary_reply_fence_lost';
   r:=public.transition_agent_reply_turn('renew',base);
-  assert (r->'turn'->>'generation_until')::timestamptz > now()+interval '9 minutes','only live owner extends the fence';
+  assert (r->'turn'->>'generation_until')::timestamptz = now()+interval '3 minutes','only live owner extends the fence';
   update public.agent_reply_turns set generation_until=now()-interval '1 second' where corp_id='single-pass-test' and logical_turn_id='long';
   r:=public.transition_agent_reply_turn('renew',base);
   assert r->>'conflict'='ordinary_reply_fence_lost','expired owner cannot revive';
@@ -122,5 +122,66 @@ begin
   exception when check_violation then null; end;
   assert not has_function_privilege('anon','public.transition_agent_reply_turn(text,jsonb)','EXECUTE');
   assert not has_function_privilege('authenticated','public.transition_agent_reply_turn(text,jsonb)','EXECUTE');
+end $$;
+
+do $$
+declare
+  base jsonb:=jsonb_build_object('corpId','resume','accountId','bot','chatId','chat','logicalTurnId','turn',
+    'inputIds',jsonb_build_array('m1','m2'),'inputOccurredAt',now(),'mode','execute','owner','original','fence',1,
+    'deliveryPolicy','single_pass','recovery','{"primary":{"chatId":"chat"}}'::jsonb);
+  plan jsonb:='{"segments":["one","two"],"effects":{"toolCalls":[],"context":{"logicalTurnId":"turn","corpId":"resume","chatId":"chat"}}}';
+  next_owner jsonb;
+  r jsonb;
+begin
+  r:=public.transition_agent_reply_turn('open',jsonb_set(base,'{recovery,replySegments}','["inbound"]'));
+  assert r->>'conflict'='unverified_reply_segments';
+  perform public.transition_agent_reply_turn('open',base);
+  r:=public.transition_agent_reply_turn('save_reply',base||plan||'{"segments":["one",null]}');
+  assert r->>'conflict'='invalid_reply_segments';
+  r:=public.transition_agent_reply_turn('save_reply',base||plan||'{"effects":null}');
+  assert r->>'conflict'='reply_effects_scope_mismatch';
+  plan:=jsonb_set(plan,'{effects,deliveredReply}','{}');
+  plan:=jsonb_set(plan,'{effects,afterReply}','[{"kind":"general_handoff","idempotencyKey":"original-promise"}]');
+  r:=public.transition_agent_reply_turn('save_reply',base||plan);
+  assert r#>'{turn,recovery,replySegments}'=plan->'segments';
+  r:=public.transition_agent_reply_turn('save_reply',base||plan||'{"segments":["different"]}');
+  assert r->>'conflict'='immutable_reply_segments';
+  r:=public.transition_agent_reply_turn('resume_delivery',base||'{"newOwner":"next"}');
+  assert r->>'conflict'='reply_delivery_takeover_unavailable','live lease protects the original worker';
+  update agent_reply_turns set generation_until=now()-interval '1 second' where corp_id='resume';
+  r:=public.transition_agent_reply_turn('open',base);
+  assert r->>'conflict'='reply_delivery_pending','ingress cannot replace original text or regenerate';
+  r:=public.transition_agent_reply_turn('interrupt',base);
+  assert r->>'conflict'='reply_delivery_pending','older binaries cannot discard a pending plan';
+  r:=public.transition_agent_reply_turn('defer',base);
+  assert (r#>>'{turn,recovery_attempts}')::integer=0,'a rolled-back scanner cannot postpone an expired plan';
+  r:=public.transition_agent_reply_turn('resume_delivery',base||'{"newOwner":"next"}');
+  assert r#>>'{turn,owner}'='next' and (r#>>'{turn,fence}')::integer=2;
+  next_owner:=base||'{"owner":"next","fence":2}';
+  r:=public.transition_agent_reply_turn('resume_delivery',base||'{"newOwner":"competing"}');
+  assert r->>'conflict'='reply_delivery_takeover_unavailable';
+  r:=public.transition_agent_reply_turn('check_delivery',base);
+  assert r->>'conflict'='ordinary_reply_fence_lost';
+  r:=public.transition_agent_reply_turn('defer',base);
+  assert (r#>>'{turn,recovery_attempts}')::integer=0,'stale scanner cannot defer the new owner';
+  r:=public.transition_agent_reply_turn('settle',base||'{"deliveryResult":{"outcome":"complete","accepted":2,"total":2}}');
+  assert r->>'conflict'='ordinary_reply_fence_lost';
+  r:=public.transition_agent_reply_turn('settle',next_owner);
+  assert r->>'conflict'='planned_delivery_result_required';
+  r:=public.transition_agent_reply_turn('settle',next_owner||'{"deliveryResult":{"outcome":"complete","accepted":2,"total":2}}');
+  assert r#>>'{turn,status}'='settled' and not ((r#>'{turn,recovery}') ? 'replySegments');
+  perform public.transition_agent_reply_turn('project',next_owner);
+  r:=public.transition_agent_reply_turn('ack',next_owner);
+  assert r->>'conflict'='reply_handoff_pending','old app cannot discard the promised handoff';
+  r:=public.transition_agent_reply_turn('ack',next_owner||'{"afterReplyHandled":true}');
+  assert r->>'conflict'='delivered_reply_effects_pending','do not discard uncommitted job memory or follow-up on rollback';
+  r:=public.transition_agent_reply_turn('ack',next_owner||'{"afterReplyHandled":true,"deliveredReplyHandled":true}');
+  assert r#>>'{turn,status}'='acked' and r#>'{turn,recovery,effects,afterReply}' is null and r#>'{turn,recovery,effects,deliveredReply}' is null;
+  base:=base||jsonb_build_object('inputOccurredAt',now()-interval '25 hours','inputIds',jsonb_build_array('m3'),'logicalTurnId','expired');
+  perform public.transition_agent_reply_turn('open',base);
+  perform public.transition_agent_reply_turn('save_reply',base||jsonb_set(plan,'{effects,context,logicalTurnId}','"expired"'));
+  update agent_reply_turns set generation_until=now()-interval '1 second' where corp_id='resume' and logical_turn_id='expired';
+  r:=public.transition_agent_reply_turn('resume_delivery',base||'{"newOwner":"next"}');
+  assert r#>>'{turn,delivery_result,outcome}'='skipped' and r#>>'{turn,status}'='settled' and not (r#>>'{turn,review_required}')::boolean;
 end $$;
 rollback;

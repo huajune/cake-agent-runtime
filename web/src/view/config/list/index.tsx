@@ -233,7 +233,9 @@ export default function Config() {
   const handleApplyConcurrency = () => {
     if (editingConcurrency !== null) {
       setConcurrency.mutate(editingConcurrency, {
-        onSuccess: () => setEditingConcurrency(null),
+        onSuccess: (result) => {
+          if (result.success) setEditingConcurrency(null);
+        },
       });
     }
   };

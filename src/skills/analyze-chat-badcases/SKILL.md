@@ -495,7 +495,7 @@ title/blockCount/insertionIndex）。不要把它当成“尚未启用”而跳�
 - 不要硬编码红线清单；业务规则在 `src/biz/strategy/`，要用时去读
 - 不要把 SQL 原始结果直接丢给用户——先按 chat_id 聚合成对话流水再分析
 - 不要在任何文件里写 `API_GUARD_TOKEN` 的值
-- 不要把 `agent_invocation` 列拉出来——90% 是重复 system prompt，爆 context 还没信息量
+- 批量排查先读流水摘要。定位具体回合后，查 `message_processing_turn_snapshots.request` 看 Cake 准备的上下文。核对供应商实际输入时，先列出该处理 ID 的模型调用，再点读选中调用的 `request_body`。
 
 ## 参考文件
 

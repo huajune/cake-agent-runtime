@@ -191,7 +191,7 @@ curl -X POST http://localhost:8585/agent/debug-chat \
 tail -f logs/combined-$(date +%Y-%m-%d).log   # 日志
 ```
 
-排障数据都在 Supabase：回合流水 `message_processing_records`、按 `message_id` 关联的回合快照 `message_processing_turn_snapshots`（Cake 准备的提示词在 `request.agentRequest`）与逐次模型 HTTP 原文 `message_processing_invocations`（按处理 ID 和调用 ID 点查）、执行事件 `agent_execution_events`、守卫档案 `guardrail_review_records`、复聊触达 `reengagement_touch_records`——同 `trace_id` 可互相 join。Dashboard 前端即 `web/`。
+从 `message_processing_records.message_id` 定位处理流水。按同一 `message_id` 读 `message_processing_turn_snapshots.request.agentRequest` 看 Cake 准备的提示词，在 `message_processing_invocations` 再按调用 `id` 点查供应商原文。执行事件和守卫档案用对应的 `trace_id` 查询。复聊触达按 `session_id`、`touch_key` 或 `anchor_event_id` 查。Dashboard 前端位于 `web/`。[排障表与关联键](src/skills/analyze-chat-badcases/references/observability-troubleshooting.md#2-表的职责与关联方式)
 
 ## Advanced Documentation
 

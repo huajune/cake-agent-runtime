@@ -149,8 +149,22 @@ export class ReplyTurnsService {
   reviewNotified(turn: ReplyTurn): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.REVIEW_NOTIFIED);
   }
-  async saveEffects(turn: ReplyTurn, effects: Record<string, unknown>): Promise<ReplyTurn> {
+  async saveEffects(
+    turn: ReplyTurn,
+    effects: Record<string, unknown>,
+    segments?: string[],
+    processingCapture?: Record<string, unknown>,
+  ): Promise<ReplyTurn> {
+    if (segments)
+      return this.update(turn, REPLY_TURN_OPERATION.SAVE_REPLY, {
+        effects,
+        segments,
+        ...(processingCapture ? { processingCapture } : {}),
+      });
     return this.update(turn, REPLY_TURN_OPERATION.SAVE_EFFECTS, { effects });
+  }
+  resumeDelivery(turn: ReplyTurn): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.RESUME_DELIVERY, { newOwner: randomUUID() });
   }
   saveLateEffects(turn: ReplyTurn, effects: Record<string, unknown>): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.SAVE_LATE_EFFECTS, { effects });
@@ -161,17 +175,21 @@ export class ReplyTurnsService {
   async assertInputActive(turn: ReplyTurn): Promise<void> {
     await this.update(turn, REPLY_TURN_OPERATION.CHECK_INPUT);
   }
-  async assertDeliveryActive(turn: ReplyTurn): Promise<void> {
-    await this.update(turn, REPLY_TURN_OPERATION.CHECK_DELIVERY);
-  }
   async interrupt(turn: ReplyTurn): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.INTERRUPT);
   }
   async settle(turn: ReplyTurn, deliveryResult?: ReplyDeliverySummary): Promise<ReplyTurn> {
     return this.update(turn, REPLY_TURN_OPERATION.SETTLE, { deliveryResult });
   }
-  async acked(turn: ReplyTurn): Promise<ReplyTurn> {
-    return this.update(turn, REPLY_TURN_OPERATION.ACK);
+  async acked(
+    turn: ReplyTurn,
+    afterReplyHandled = false,
+    deliveredReplyHandled = false,
+  ): Promise<ReplyTurn> {
+    return this.update(turn, REPLY_TURN_OPERATION.ACK, {
+      afterReplyHandled,
+      deliveredReplyHandled,
+    });
   }
   async defer(turn: ReplyTurn): Promise<void> {
     await this.update(turn, REPLY_TURN_OPERATION.DEFER);
@@ -198,7 +216,17 @@ export class ReplyTurnsService {
     extra: Record<string, unknown> = {},
   ): Promise<ReplyTurn> {
     try {
-      const next = await this.repository.transition(operation, { ...turn, ...extra });
+      const { corpId, accountId, chatId, logicalTurnId, owner, fence, reviewReason } = turn;
+      const next = await this.repository.transition(operation, {
+        corpId,
+        accountId,
+        chatId,
+        logicalTurnId,
+        owner,
+        fence,
+        reviewReason,
+        ...extra,
+      });
       if (!next) throw new Error('turn_missing');
       return next;
     } catch (cause) {

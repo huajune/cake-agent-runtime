@@ -77,6 +77,14 @@ export class ReplyTurnsRepository extends BaseRepository {
   private fromDb(row: Record<string, unknown>): ReplyTurn {
     if (!isReplyDeliveryPolicy(row.delivery_policy))
       throw new Error('reply_delivery_policy_schema_unconfirmed');
+    const recovery = row.recovery as ReplyTurn['recovery'];
+    if (
+      recovery.replySegments !== undefined &&
+      (!Array.isArray(recovery.replySegments) ||
+        !recovery.replySegments.length ||
+        !recovery.replySegments.every((segment) => typeof segment === 'string' && segment.trim()))
+    )
+      throw new Error('invalid_persisted_reply_segments');
     return {
       corpId: row.corp_id as string,
       accountId: row.account_id as string,
@@ -90,7 +98,7 @@ export class ReplyTurnsRepository extends BaseRepository {
       fence: row.fence as number,
       deliveryPolicy: row.delivery_policy as ReplyTurn['deliveryPolicy'],
       deliveryResult: row.delivery_result as ReplyTurn['deliveryResult'],
-      recovery: row.recovery as Record<string, unknown>,
+      recovery,
       reviewRequired: row.review_required === true,
       reviewReason: (row.review_reason ?? undefined) as ReplyTurn['reviewReason'],
       reviewNotifiedAt: (row.review_notified_at ?? undefined) as ReplyTurn['reviewNotifiedAt'],

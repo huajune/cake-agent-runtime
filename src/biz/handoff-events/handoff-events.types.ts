@@ -57,4 +57,6 @@ export interface RecordHandoffInput {
   /** 去重键：同 (corpId, idempotencyKey) 仅记一次。 */
   idempotencyKey: string;
   occurredAt?: Date;
+  /** A recovered promise must distinguish another account's key from an existing matching ticket. */
+  requireMatchingScope?: boolean;
 }

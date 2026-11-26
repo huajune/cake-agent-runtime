@@ -157,7 +157,7 @@ ORDER BY created_at;
 
 | 症状                             | 最少证据组合                                                                   |
 | -------------------------------- | ------------------------------------------------------------------------------ |
-| 重复追问、遗忘已给信息           | `chat_messages + memory_snapshot + agent_steps + agent_invocation(单 trace)`   |
+| 重复追问、遗忘已给信息           | 按会话读 `chat_messages`，按处理 ID 查流水 `memory_snapshot`、`agent_steps` 和回合快照 `request`。核对模型实际输入时再按调用 ID 读 `request_body`。   |
 | 工具没调、参数错、动态事实错     | `tool_calls + agent_execution_events(tool_*) + agent_steps`                    |
 | 回复被改写、拦截或静默           | `guardrail_output + guardrail_review_records + reply_segments`                 |
 | Output 是否执行及如何收敛        | `guardrail_output + guardrail_review_records + reply_segments`                |

@@ -21,6 +21,7 @@ describe('ReplyWorkflowService', () => {
     markMessageAsProcessedAsync: jest.fn(),
   };
   const deliveryService = {
+    prepareSegments: (content: string) => [content],
     deliverReply: jest.fn(),
   };
   const runner = {
@@ -113,6 +114,8 @@ describe('ReplyWorkflowService', () => {
     stopPendingJobsForSessionScenario: jest.fn(),
   };
   const session = {
+    getSessionState: jest.fn().mockResolvedValue({}),
+    applyReplyJobProjection: jest.fn().mockResolvedValue(undefined),
     saveTerminalState: jest.fn(),
     recordCandidateActivity: jest.fn(),
     recordCandidateMessagesProcessed: jest.fn(),
@@ -542,6 +545,53 @@ describe('ReplyWorkflowService', () => {
     expect(runner.runInboundTurn).not.toHaveBeenCalled();
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
   });
+  it('retries the original opening before acknowledging its input when follow-up admission fails', async () => {
+    const turn = persistedTurn('settled');
+    turn.deliveryResult = { outcome: 'complete', accepted: 1, total: 1 };
+    turn.recovery.effects = {
+      toolCalls: [],
+      context: {
+        corpId: turn.corpId,
+        chatId: turn.chatId,
+        userId: 'contact-1',
+        logicalTurnId: turn.logicalTurnId,
+        traceId: turn.logicalTurnId,
+        inputOccurredAt: turn.inputOccurredAt,
+        isGroupChat: false,
+      },
+      deliveredReply: {
+        anchors: { collectionContinued: false, presentedJobIds: [], asksForLocation: true },
+      },
+    };
+    followUpScheduler.scheduleFollowUp.mockResolvedValueOnce({
+      scheduled: false,
+      reason: 'enqueue_error',
+    });
+    await expect(service.resumeInputCompletion(turn)).rejects.toThrow('ack_repair_pending');
+    expect(simpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
+    await service.resumeInputCompletion(turn);
+    expect(opsEventsRecorder.recordOpeningDurably).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'chat-1:opening',
+        occurredAt: turn.inputOccurredAt,
+      }),
+      turn.logicalTurnId,
+      undefined,
+    );
+    expect(
+      followUpScheduler.scheduleFollowUp.mock.calls.map(([input]) => [
+        input.scenarioCode,
+        input.anchorEventId,
+        input.anchorAt,
+      ]),
+    ).toEqual([
+      ['opening_no_reply', 'opening', Date.parse(turn.inputOccurredAt)],
+      ['opening_no_reply', 'opening', Date.parse(turn.inputOccurredAt)],
+    ]);
+    expect(replyTurns.acked).toHaveBeenCalledWith(turn, false, true);
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+  });
+
   it('keeps unconfirmed business effects pending without ACK', async () => {
     await expect(
       service.resumeInputCompletion({ ...persistedTurn('settled'), projectionStatus: 'none' }),
