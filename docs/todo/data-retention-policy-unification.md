@@ -11,7 +11,7 @@
 
 各表阈值的唯一权威是 `src/biz/monitoring/services/cleanup/data-cleanup.service.ts` 的默认值与 `.env.example` 清理段。
 永久：`chat_messages`、`user_activity`、`ops_events`、`daily_ops_report`、`agent_long_term_memories`、`candidate_blacklist`、`user_hosting_status`、配置/测试表。
-90 天：`message_processing_records`（`agent_invocation` 子表 7 天）、`agent_execution_events`、`guardrail_review_records`、`monitoring_error_logs`、`monitoring_hourly_stats` / `monitoring_daily_stats`、`handoff_events`、`reengagement_touch_records`（`generated_text` 30 天置空）。
+90 天：`message_processing_records` 及其快照（默认跟随处理期，联合迁移后包含回合快照和逐次模型 HTTP 记录）、`agent_execution_events`、`guardrail_review_records`、`monitoring_error_logs`、`monitoring_hourly_stats` / `monitoring_daily_stats`、`handoff_events`、`reengagement_touch_records`（`generated_text` 30 天置空）。
 
 ## 一、运营口径与生产核验
 
@@ -40,7 +40,7 @@
 - `chat_messages.external_user_id` 的业务名为「渠道外部联系人 ID」，来源包括企微回调与历史对账。存储列和对外字段维持兼容。若要更改物理名称，先核对渠道对账脚本、黑名单、复聊及外部 SQL 读者。
 - [ ] `chat_messages` 一行 = 一个投递分段：长期应加 `segment_index` / `logical_message_id` 或投递另记，消除「消息数」2.2× 失真
 - [ ] `test_executions` 上 3 个 gin 索引（`execution_trace` / `memory_trace` / `source_trace`，10.7 MB，表仅 2.5k 行）：确认查询是否真用 `@>`，否则 DROP
-- [ ] 迁移里 `cleanup_message_processing_records` 定义了两次（默认 30 / 60）：保留一份
+- [x] 流水清理函数的现行默认值已由迁移 `20261124024050` 更新为 90 天。联合基线下两类快照共用单批清理上限。[保留期迁移](../../supabase/migrations/20261124024050_align_invocation_retention_with_processing.sql) · [联合迁移](../technical/runtime-storage-batch.md#验收与回滚)
 - [ ] `monitoring_error_logs` 与 `chat_messages` 同时有 `timestamp` 与 `created_at`：确认语义差异，否则去一列
 
 ## 五、待核（不改码，核完删本条）

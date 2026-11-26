@@ -9,7 +9,7 @@
 | `agent_reply_inputs` | 一条输入消息的归属 | 两行。地址提问 A 和班次提问 B 各有自己的 `message_id`，都指向回合 R（`logical_turn_id`）。任务再次拿到 B 时，用 B 找到 R。 |
 | `agent_reply_turns` | 一轮回复的进度 | 一行。R 的 `input_ids` 是 `[A, B]`，收尾时据此确认两条原消息。`recovery.replySegments` 保存待发原文，`delivery_result` 记录发送结果和已受理段数。 |
 
-Redis 在入口按消息 ID 去重，把等候处理的消息放在队列里，并用会话锁协调同一聊天的任务。具体到「地址这一段发出去了吗」，要看这段对应的 `agent_action_records` 发送动作和 `agent_action_evidence` 回执。企微发送接口返回成功表示平台已受理，候选人是否已读仍未知。[消息收发架构与时序图](../../../docs/architecture/message-service-architecture.md#主聊收发时序)
+Redis 在入口按消息 ID 去重，把等候处理的消息放在队列里，并用会话锁协调同一聊天的任务。具体到「地址这一段发出去了吗」，要看这段对应的 `agent_action_records` 发送动作和 `agent_action_evidence` 回执。动作表保存当前采信结果，回执表按派发尝试和内容摘要保留每份凭证。同次尝试收到不同结果时，两份凭证都能查到。企微发送接口返回成功表示平台已受理，候选人是否已读仍未知。[消息收发架构与时序图](../../../docs/architecture/message-service-architecture.md#主聊收发时序)
 
 ## 正常发送怎样走完一轮
 
@@ -67,4 +67,6 @@ Redis 在入口按消息 ID 去重，把等候处理的消息放在队列里，�
 
 ## 旧记录、切换与回滚
 
-新建持久回合需要开启 `ACTION_EXECUTION_MODE=execute`，消息时间须达到配置的切换时刻 `ACTION_EXECUTION_CUTOVER_AT`。先按顺序应用续发和分段读写两份迁移，再部署应用。新版切回 `observe` 或 `off` 后，恢复任务仍处理已登记的 `execute` 回合。回退期间保留已存原文与截止时刻，切回支持续发的版本时仍按原期限处理。旧回合如果有分段却缺少可信截止时间，只核对已受理的部分。没有分段原文时按已保存的业务结果收尾或转人工。[部署与回滚顺序](../../../docs/architecture/runtime-capabilities.md#开关与部署顺序) · [新旧版本兼容测试](../../../tests/biz/reply-execution/ordinary-reply.integration.sql)
+新建持久回合需要开启 `ACTION_EXECUTION_MODE=execute`，消息时间须达到配置的切换时刻 `ACTION_EXECUTION_CUTOVER_AT`。与消息排障一起发布时，按联合手册的顺序应用五份迁移，再部署应用。新版切回 `observe` 或 `off` 后，恢复任务仍处理已登记的 `execute` 回合。旧回合有分段却缺少可信截止时间时只核对已受理的部分。没有分段原文时按已有业务结果收尾或转人工。
+
+这批迁移会删除旧应用使用的存储字段。回滚先停止派发，使用匹配的备份与应用，核对备份之后企微实际受理过的请求，再恢复流量。[切换与回滚](../../../docs/technical/runtime-storage-batch.md#验收与回滚) · [旧回合回归](../../../tests/biz/reply-execution/ordinary-reply.integration.sql)

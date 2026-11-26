@@ -28,13 +28,8 @@ done
 python3 "$root/tests/biz/action-execution/verify-runtime-postgres.py" --container "$pg" \
   --database cake_projection_load_template --output "$out/schema" > "$out/schema.log"
 docker exec "$pg" createdb -U postgres -T cake_projection_load_template "$database"
-migrations="$root/supabase/migrations"
-{
-  awk '/^CREATE OR REPLACE FUNCTION public.action_body_storage_state/{keep=1}
-       /^REVOKE ALL ON FUNCTION public.chat_payload_text_mask/{keep=0} keep' \
-    "$migrations/20261124100000_runtime_body_compaction.sql"
-  cat "$migrations/20261124100100_booking_accepted_work_order.sql" "$suite/seed.sql"
-} | docker exec -i "$pg" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database" > "$out/seed.log"
+docker exec -i "$pg" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database" \
+  < "$suite/seed.sql" > "$out/seed.log"
 docker run --rm -d --name "$redis" --network "container:$pg" --cpus 1 --memory 256m \
   redis:6-alpine redis-server --bind 127.0.0.1 --appendonly no --save ''
 containers=("$redis" "$pg")

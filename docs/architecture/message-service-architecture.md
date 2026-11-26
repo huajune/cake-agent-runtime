@@ -1,12 +1,12 @@
 # 企微消息服务架构
 
-**最后更新** 2026-11-25
+**最后更新** 2026-11-26
 
 企微按消息推送，Cake 按回合组织回复，企微按分段受理发送。候选人连发两条提问，可以只生成一次回复，再发出两段文本。回调应答告诉托管平台「消息已收到」，企微的发送结果告诉 Cake「这一段已受理」，最后的队列确认才移除本轮处理过的输入。[Agent 运行时架构](agent-runtime-architecture.md) · [消息处理数据流](../workflows/wecom-message-dataflow.md) · [回复模块实现](../../src/biz/reply-execution/README.md)
 
 ## 主聊收发时序
 
-以下时序描述开启聚合的主聊执行回合。普通回复按段续发在 11 月 25 日的两份迁移和配套应用部署后生效。[迁移与回滚](../../src/biz/reply-execution/README.md#旧记录切换与回滚)
+以下时序描述开启聚合的主聊执行回合。普通回复按段续发需要回合恢复和分段领取两个数据库函数。本批和消息排障一起发布时，五份迁移交错执行，随后部署配套应用。[联合发布顺序](../technical/runtime-storage-batch.md#发布顺序)
 
 ### 两条提问合成一轮回复
 
@@ -106,7 +106,7 @@ sequenceDiagram
 
 ### 4.2 Worker 并发
 
-Bull 按启动时读到的 `currentConcurrency` 注册工作任务。应用层并发槽默认 4，可配置范围为 1 至 20。聚合任务先取并发槽，再取聊天锁，处理结束后释放。[并发配置](../../src/channels/wecom/message/runtime/message-worker-manager.service.ts)
+企微主聊聚合队列的并发按应用实例计算。`workerConcurrency` 默认 4，可设整数 1 至 20。Bull 启动时用当时的配置注册 `process` 处理器，应用在每个任务开始时再领一个执行槽，同一聊天仍由 Redis 锁串行。运行中调整会保存配置，并立即更新接收请求实例的执行槽。能同时处理的任务数取 Bull 启动注册值和当前执行槽两者的较小值。例如，以 4 启动后调到 20，该实例可同时领取的任务仍为 4，重启读取 20 后才能用足。[Bull 注册](../../src/channels/wecom/message/runtime/message.processor.ts) · [并发配置和调整](../../src/channels/wecom/message/runtime/message-worker-manager.service.ts) · [后台控件范围](../../web/src/view/config/list/components/WorkerPanel/index.tsx)
 
 ## 5. Agent、Outcome 与 replay
 
@@ -144,7 +144,8 @@ Bull 按启动时读到的 `currentConcurrency` 注册工作任务。应用层�
 | 一条输入属于哪一轮？ | `agent_reply_inputs`，每条被接纳的消息一行 | 以企业、机器人账号、聊天、消息 ID 找回合。A、B 各有一行，都指向 R。 |
 | 这一轮有哪些输入，做到哪一步？ | `agent_reply_turns`，每个回合一行 | R 保存原输入 ID 集合、执行权、待发分段、续发截止时间、结局和下次检查时间。即使重新处理时只看到 B，也能找全本轮应确认的 A、B。 |
 | 某一段是否已交给企微？ | `agent_action_records` 保存发送动作当前状态，`agent_action_evidence` 保存各次派发的凭证 | 恢复任务按原动作核对该段，决定跳过、继续发送或等待回执。 |
-| 当时聊了什么，系统如何处理？ | `chat_messages` 保存渠道历史，`message_processing_records` 保存处理流水 | 会话回看与运行排查读这些记录。是否续发由回合与分段受理凭证决定。 |
+| 当时聊了什么，工具返回了什么？ | `chat_messages` 保存渠道历史，`message_processing_records.tool_calls` 保存本次处理的工具调用 | 查看会话读取渠道历史，处理详情读取流水。 |
+| Cake 为这一轮准备了什么，供应商实际返回了什么？ | 每条流水至多一份 `message_processing_turn_snapshots`，每次捕获的模型 HTTP 请求各有一行 `message_processing_invocations` | 总部按处理 ID 看上下文，按调用 ID 看单次收发原文。续发只依赖回复回合和动作回执。[排障表与字段](monitoring-system-architecture.md#消息处理的三张表) |
 
 Redis 的键名和 TTL 见数据模型。输入归属的联合主键、回合状态迁移、恢复查询和代码入口见回复模块实现。[Redis 数据模型](../db/redis-schema.md) · [持久回合的读写实现](../../src/biz/reply-execution/README.md)
 

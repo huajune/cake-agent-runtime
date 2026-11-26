@@ -398,7 +398,7 @@ Bull Queue 使用独立的 Redis TCP 连接（`UPSTASH_REDIS_TCP_URL`），所�
 | `delay`            | `mergeDelayMs`       | 动态，取自 runtime 配置（默认 2000ms） |
 | `removeOnComplete` | true                 |                                        |
 | `removeOnFail`     | false                | 保留用于调试                           |
-| 并发数             | 动态                 | 由 `MessageWorkerManagerService` 管理  |
+| 单实例并发 | 默认 4，可设 1–20 | Bull 按启动值注册，运行中可调应用执行槽，实际受两者中较小值限制。[消息队列并发](../architecture/message-service-architecture.md#42-worker-并发) |
 
 **聚合参数**（来自 Supabase `hosting_config` / `system_config.agent_reply_config`，Dashboard 动态调整）：
 

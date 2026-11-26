@@ -1,11 +1,14 @@
--- Check the exact receipt selected by each successful action, including compacted bodies.
+-- Fresh successful segments must each have a receipt for the original dispatch and adopted result.
 WITH actions AS (
-  SELECT a.corp_id, count(*) AS actions,
-    count(e.action_id) FILTER (WHERE a.status = 'succeeded' AND a.local_sync = 'complete') AS matched
+  SELECT a.corp_id, count(*) AS actions, count(*) FILTER (
+    WHERE a.status = 'succeeded' AND a.local_sync = 'complete' AND EXISTS (
+      SELECT FROM public.agent_action_evidence e
+      WHERE (e.corp_id, e.action_id, e.attempt_id) = (a.corp_id, a.action_id, a.dispatch_attempt_id)
+        AND e.completion->>'status' = a.status
+        AND e.completion->'result' = a.result AND e.completion->'evidence' = a.evidence
+        AND e.evidence_hash = encode(sha256(convert_to(e.completion::text, 'UTF8')), 'hex')
+    )) AS matched
   FROM public.agent_action_records a
-  LEFT JOIN public.agent_action_evidence e
-    ON (a.corp_id, a.action_id, a.accepted_attempt_id, a.accepted_evidence_hash)
-     = (e.corp_id, e.action_id, e.attempt_id, e.evidence_hash)
   WHERE a.corp_id LIKE 'benchdb-%' OR a.corp_id LIKE 'benchq-%'
   GROUP BY a.corp_id
 ), receipts AS (

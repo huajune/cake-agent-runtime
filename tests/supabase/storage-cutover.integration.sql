@@ -47,8 +47,10 @@ CREATE TEMP TABLE old_capture_times AS SELECT message_id,created_at FROM public.
   \ir ../../scripts/backfill-runtime-bodies.sql
   \ir ../../scripts/backfill-runtime-bodies.sql
 \endif
+\ir ../../supabase/migrations/20261125080000_resume_ordinary_replies.sql
 \ir ../../supabase/migrations/20261125080100_processing_snapshot_storage.sql
 \ir ../../supabase/migrations/20261125081000_retire_body_storage_markers.sql
+\ir ../../supabase/migrations/20261125100000_ordinary_reply_segment_io.sql
 \ir ../../supabase/migrations/20261125080100_processing_snapshot_storage.sql
 \ir ../../supabase/migrations/20261125081000_retire_body_storage_markers.sql
 DO $verify$
@@ -75,6 +77,7 @@ BEGIN
   ASSERT NOT EXISTS(SELECT FROM system_config WHERE key='runtime_storage_writes');
   ASSERT NOT EXISTS (SELECT FROM message_processing_invocations);
   ASSERT to_regprocedure('public.action_record_json(public.agent_action_records)') IS NOT NULL;
+  ASSERT to_regprocedure('public.transition_agent_reply_segment(text,jsonb,jsonb)') IS NOT NULL;
   ASSERT (SELECT public.action_record_json(r)->'result'=r.result FROM agent_action_records r WHERE corp_id='cutover' AND action_id='action');
   ASSERT NOT has_function_privilege('anon','public.processing_request_context(public.message_processing_turn_snapshots)','EXECUTE');
 END $verify$;

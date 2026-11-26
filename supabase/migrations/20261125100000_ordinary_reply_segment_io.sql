@@ -3,8 +3,8 @@ set local lock_timeout='2s';
 set local statement_timeout='15s';
 
 -- Ordinary text has no per-action local projection. The turn owns memory, follow-up
--- and input acknowledgement. Finish the action in its receipt UPDATE, before the
--- existing action_pack_accepted_body trigger optionally compacts that same row.
+-- and input acknowledgement. Finish the action in the same UPDATE that records
+-- the accepted result on the action row. The original dispatch receipt is retained.
 create or replace function public.finish_ordinary_reply_action() returns trigger
 language plpgsql set search_path=public,pg_temp as $$
 begin

@@ -329,7 +329,7 @@ Agent 产出 TurnOutcome + TurnFinalizer
 ```
 事实层（SoT）  Supabase message_processing_records / monitoring_error_logs
       │ cron 投影
-投影层        monitoring_hourly_stats / monitoring_daily_stats（永久保留）
+投影层        monitoring_hourly_stats / monitoring_daily_stats（默认跟随处理流水，90 天）
       │
 实时层        Redis monitoring:active_requests / :peak_active_requests
 ```
@@ -339,7 +339,7 @@ Agent 产出 TurnOutcome + TurnFinalizer
 - 重启不丢数据
 - 多实例共享真相
 - SQL/RPC 直接支持分位数 / 窗口切片
-- 模型请求与响应快照单独存表，默认与处理流水一同保留 90 天，详情按需读取。
+- 每次处理至多一份 Cake 回合快照，一轮可有多次供应商 HTTP 调用，各自保存捕获的收发字节。总部详情先读回合上下文，再按需读取选中的调用原文。两类快照默认与流水一同保留 90 天。[联合基线的表与读取路径](technical/runtime-storage-batch.md#数据怎么写怎么查)
 
 **热路径分流**：`today` 走原始表直查 + Redis；`week / month` 走小时/日投影表。
 

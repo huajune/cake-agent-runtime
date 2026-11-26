@@ -15,6 +15,7 @@ parser.add_argument('--database', default='cake_projection_runtime_' + datetime.
 parser.add_argument('--delivery-ref', help='Exact local Git commit containing final D migration/tests; omit on merged checkout')
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--baseline-only', action='store_true', help='Validate real old dependencies before D final is ready')
+parser.add_argument('--before-storage-cutover', action='store_true', help='Leave the schema at 20261124100200 for historical storage upgrade fixtures')
 args = parser.parse_args()
 if not re.fullmatch(r'cake-runtime-pg-[a-zA-Z0-9_-]+', args.container):
     sys.exit('Only the explicitly isolated cake-runtime-pg-* container is permitted')
@@ -185,18 +186,44 @@ for path in [
     apply(Path(path).name, source(path, delivery='reply-execution' in path))
 apply('action-ops-projection.integration.sql', source('tests/biz/action-execution/action-ops-projection.integration.sql'))
 
-# The app drill also uses the production receipt RPC. Load its real switch and
-# action migrations without importing the unrelated processing/analytics schema.
+# Rebuild the old storage format before exercising the five interleaved cutover migrations.
 config_table = baseline[baseline.index('CREATE TABLE IF NOT EXISTS system_config'):baseline.index('-- 2.8 strategy_config')]
 apply('action-storage-config.sql', config_table)
-storage = source('supabase/migrations/20261119080000_processing_storage.sql')
-apply('action-storage-switch.sql', storage[storage.index('CREATE OR REPLACE FUNCTION public.runtime_storage_enabled'):storage.index('CREATE OR REPLACE FUNCTION public.processing_tools_digest')])
-for name in ['20261119084000_action_completion_source.sql', '20261119085000_compatible_reply_receipts.sql']:
+apply('baseline-test-executions.sql', baseline[baseline.index('-- 2.11 test_executions'):baseline.index('-- 2.12 test_conversation_snapshots')])
+daily_stats = source('supabase/migrations/20260416173000_add_monitoring_daily_stats.sql')
+apply('processing-alert-type.sql', daily_stats.split('ALTER TABLE monitoring_hourly_stats', 1)[0])
+tracking = source('supabase/migrations/20260417130223_enrich_message_processing_observability.sql')
+apply('processing-observability-columns.sql', tracking.split('-- 3. 重写', 1)[0])
+snapshots = source('supabase/migrations/20260902073727_retention_schema_audit.sql')
+apply('original-turn-snapshots.sql', snapshots[snapshots.index('CREATE TABLE IF NOT EXISTS message_processing_invocations'):snapshots.index('-- 7 天清理')])
+center = source('supabase/migrations/20261027160700_center_dashboard_existing_contracts.sql')
+apply('center-processing-read.sql', center[center.index('CREATE OR REPLACE FUNCTION public.center_dashboard_processing_read'):center.index('CREATE OR REPLACE FUNCTION public.center_dashboard_touch_read')])
+for name in [
+    '20260422093000_add_post_processing_status.sql', '20260605000000_add_bot_im_id_to_message_processing_records.sql',
+    '20260612032136_add_ttft_ms_column.sql', '20260701100000_add_guardrail_observability.sql',
+    '20260903130000_secure_message_processing_invocations_rls.sql', '20261119080000_processing_storage.sql',
+    '20261119081000_chat_test_storage.sql', '20261119084000_action_completion_source.sql',
+    '20261119085000_compatible_reply_receipts.sql', '20261124024050_align_invocation_retention_with_processing.sql',
+    '20261124032723_migrate_legacy_processing_snapshots.sql', '20261124032811_retire_parent_agent_invocation.sql',
+    '20261124100000_runtime_body_compaction.sql', '20261124100100_booking_accepted_work_order.sql',
+    '20261124100200_processing_list_previews.sql',
+]:
     apply(name, source('supabase/migrations/' + name))
 
+if args.before_storage_cutover:
+    (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2))
+    print('Pre-cutover dependencies ready for storage-cutover.integration.sql:', args.database)
+    sys.exit(0)
+
+prepare_storage = '20261125075900_prepare_storage_cutover.sql'
+apply(prepare_storage, source('supabase/migrations/' + prepare_storage))
 resume = source('supabase/migrations/20261125080000_resume_ordinary_replies.sql')
 apply('20261125080000_resume_ordinary_replies.sql', resume)
 apply('reply-resume-idempotence.sql', resume)
+for name in ['20261125080100_processing_snapshot_storage.sql', '20261125081000_retire_body_storage_markers.sql']:
+    sql = source('supabase/migrations/' + name)
+    apply(name, sql)
+    apply('reapply-' + name, sql)
 apply('ordinary-reply.integration.sql', source('tests/biz/reply-execution/ordinary-reply.integration.sql', delivery=True))
 
 segment_io = source('supabase/migrations/20261125100000_ordinary_reply_segment_io.sql')

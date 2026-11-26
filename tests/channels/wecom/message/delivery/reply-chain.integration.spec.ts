@@ -1152,9 +1152,13 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect(segmentCalls).toEqual([...oneSegment, ...oneSegment]);
     expect(
       client.query(
-        'SELECT count(*)::integer FROM agent_action_records a JOIN agent_action_evidence e ' +
-          'ON (a.corp_id,a.action_id,a.accepted_attempt_id,a.accepted_evidence_hash)=' +
-          '(e.corp_id,e.action_id,e.attempt_id,e.evidence_hash)',
+        `SELECT count(*)::integer FROM agent_action_records a
+         WHERE a.kind='wecom.reply_segment' AND a.status='succeeded' AND a.local_sync='complete'
+           AND 1=(SELECT count(*) FROM agent_action_evidence e
+             WHERE (e.corp_id,e.action_id,e.attempt_id)=(a.corp_id,a.action_id,a.dispatch_attempt_id)
+               AND e.completion->>'status'=a.status AND e.completion->'result'=a.result
+               AND e.completion->'evidence'=a.evidence
+               AND e.evidence_hash=encode(sha256(convert_to(e.completion::text,'UTF8')),'hex'))`,
       ),
     ).toBe(2);
     expect(

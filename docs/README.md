@@ -4,7 +4,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-10-23
+**最后更新** 2026-11-26（消息存储与普通回复的发布入口）
 
 ---
 
@@ -85,7 +85,8 @@
 
 ## 🗄️ 数据库 (db/)
 
-- **[数据库表设计与使用说明](db/database-schema.md)** — 表结构、索引、RPC 函数、数据生命周期
+- [已验收的生产数据库结构](db/database-schema.md) 涵盖表结构、索引、RPC 和数据生命周期。
+- [消息存储与普通回复联合迁移](technical/runtime-storage-batch.md) 说明候选结构、五份迁移顺序、历史数据核对和回滚。
 - **[Redis Key 设计与使用说明](db/redis-schema.md)** — Redis key 命名、TTL、Bull 队列前缀
 
 ---

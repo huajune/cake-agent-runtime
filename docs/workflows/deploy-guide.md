@@ -123,6 +123,8 @@ pnpm run deploy other-host   # 部署到指定服务器
 
 ## 回滚机制
 
+消息存储与普通回复这批发布会迁表和删列。镜像备份只覆盖应用。维护窗口内还需保留相应的数据库备份，并在恢复流量前核对备份时点之后已发生的外部派发。[联合迁移的验收与回滚](../technical/runtime-storage-batch.md#验收与回滚)
+
 部署前会自动备份：
 - 当前 `docker-compose.yml`
 - 当前 `.deploy.env`

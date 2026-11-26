@@ -1,4 +1,44 @@
 {
+  "baseline": {
+    "date": "2026-11-26",
+    "timezone": "Asia/Shanghai",
+    "featureHeads": {
+      "1588": "5241b9a4d4b17a98dd442eca8482c5bd3a61db38",
+      "1589BeforeIntegration": "bc4742ea70ed43aed1955eaf4e8b75c6f3510e4a"
+    },
+    "postgres": "PostgreSQL 16.15 on aarch64-unknown-linux-musl",
+    "vCPU": 2,
+    "memoryGiB": 2,
+    "postgrestPool": 24,
+    "queueConcurrency": 20,
+    "queueAddedRpcRttMs": 91,
+    "simulatedAcceptanceMs": 35,
+    "schemaMigrations": [
+      "20261125075900_prepare_storage_cutover.sql",
+      "20261125080000_resume_ordinary_replies.sql",
+      "20261125080100_processing_snapshot_storage.sql",
+      "20261125081000_retire_body_storage_markers.sql",
+      "20261125100000_ordinary_reply_segment_io.sql"
+    ],
+    "sha256": {
+      "supabase/migrations/20261125075900_prepare_storage_cutover.sql": "a12d682821055269897f843c616e462ea54b60655f340b0b1bbb5583ab5bd950",
+      "supabase/migrations/20261125080000_resume_ordinary_replies.sql": "1b08895138d19be0dd59091bf0a85034ef879b0b15915130694cdbf547663e83",
+      "supabase/migrations/20261125080100_processing_snapshot_storage.sql": "733e1fa4286e8339ca8154930debee90da41c330b40825bcba2552ef6996980c",
+      "supabase/migrations/20261125081000_retire_body_storage_markers.sql": "b82d7249f5ed362bb4b7ea3d90562e2df45567ff621dc7d6bb01fb398ee7b99b",
+      "supabase/migrations/20261125100000_ordinary_reply_segment_io.sql": "67525a7e39c846b223a82139816b71113bdf254480f1f71e9b8dcf53450695d3",
+      "tests/biz/reply-execution/load/database.cjs": "d34b294d9e82813255528f036ce3c8e31e42d9c17f3caa96f045ce49c7ef97d2",
+      "tests/biz/reply-execution/load/peak-minute.json": "8e1d43fbaab7e56df538714d233a91d8bfb07f69a420c19e29f661127412dd4f",
+      "tests/biz/reply-execution/load/peak-turn-starts.json": "5f94afdcfb64cc5ef8491e241205012c0589e189de6a600b439f817a89afad25",
+      "tests/biz/reply-execution/load/queue.cjs": "da5ec7f02afd968cd26b4ea66d548e38dfc4857b1521722a00859efac567ddba",
+      "tests/biz/reply-execution/load/queue_estimate.py": "b087a05b949ef837ad9cc87719ccc8c19bbb27e59a7ded5e85f215367c136339",
+      "tests/biz/reply-execution/load/run.sh": "e25d93440359c16cee1bfa5401e2d0159300670db3d85d15c26a78e5b6358a87",
+      "tests/biz/reply-execution/load/runtime.cjs": "603f569754db862956e4b0682891444bb11d7e8989bb363eccffff273369cd80",
+      "tests/biz/reply-execution/load/seed.sql": "8b978731b79657a0c0bef9cda642d71b4381941d93ab6380b1a692f30515e6ba",
+      "tests/biz/reply-execution/load/service-time.json": "d9bec5efa7d88414eef0afd8b7ed4ff9fc834033bd62197734ca4e38080e7467",
+      "tests/biz/reply-execution/load/verify-receipts.sql": "0f351bab6d93c784f0c368fe1053fe8ff511faefe2bb572edcdfedd2f25a6b3d",
+      "tests/biz/action-execution/verify-runtime-postgres.py": "a84bba03f8e2e55891e1cf4d9786d99c4c0daedecb688610aab17fe148c83d63"
+    }
+  },
   "databaseMinute": {
     "phase": "database",
     "scheduled": 23400,
@@ -7,34 +47,34 @@
     "errors": [],
     "elapsedSec": 60,
     "peakOfferedPerSec": 2400,
-    "peakCompletedPerSec": 1645,
+    "peakCompletedPerSec": 2106,
     "atEnd": {
       "offered": 23400,
-      "completed": 23380,
-      "outstanding": 20
+      "completed": 23399,
+      "outstanding": 1
     },
-    "maxOutstanding": 758,
+    "maxOutstanding": 314,
     "injectionDelayMs": {
       "n": 23400,
-      "p50": 2.5,
-      "p95": 4.8,
-      "p99": 14.2,
-      "max": 78.2
+      "p50": 2.2,
+      "p95": 4.6,
+      "p99": 15.9,
+      "max": 67.4
     },
     "offerToCompletionMs": {
       "n": 23400,
-      "p50": 4.9,
-      "p95": 189,
-      "p99": 518.9,
-      "max": 762.1
+      "p50": 4.4,
+      "p95": 61.8,
+      "p99": 145.6,
+      "max": 249.8
     },
     "rpc": {
       "ms": {
         "n": 23400,
-        "p50": 2.2,
-        "p95": 186,
-        "p99": 516.7,
-        "max": 760.5
+        "p50": 2,
+        "p95": 52.8,
+        "p99": 143.9,
+        "max": 248.6
       },
       "operations": {
         "transition_agent_reply_segment.claim": 9600,
@@ -51,16 +91,16 @@
     "db": {
       "cpuPctOfTwoCores": {
         "n": 60,
-        "p50": 16.9,
-        "p95": 77.1,
-        "p99": 101.2,
-        "max": 101.2
+        "p50": 13,
+        "p95": 58.9,
+        "p99": 101.4,
+        "max": 101.4
       },
-      "peakMemMiB": 579.9,
+      "peakMemMiB": 572.9,
       "deadlocks": 0,
       "maxClients": 26,
-      "maxObservedLockWaiters": 0,
-      "transactions": 22365
+      "maxObservedLockWaiters": 1,
+      "transactions": 22372
     }
   },
   "databaseThreeMinutes": {
@@ -69,36 +109,36 @@
     "completed": 70200,
     "failed": 0,
     "errors": [],
-    "elapsedSec": 180.1,
+    "elapsedSec": 180,
     "peakOfferedPerSec": 2400,
-    "peakCompletedPerSec": 1667,
+    "peakCompletedPerSec": 2384,
     "atEnd": {
       "offered": 70200,
-      "completed": 70041,
-      "outstanding": 159
+      "completed": 70198,
+      "outstanding": 2
     },
-    "maxOutstanding": 1167,
+    "maxOutstanding": 773,
     "injectionDelayMs": {
       "n": 70200,
       "p50": 2.1,
-      "p95": 4.7,
-      "p99": 23.7,
-      "max": 121
+      "p95": 4.5,
+      "p99": 86.3,
+      "max": 261.8
     },
     "offerToCompletionMs": {
       "n": 70200,
-      "p50": 4.6,
-      "p95": 260.7,
-      "p99": 777.8,
-      "max": 1682.3
+      "p50": 4.2,
+      "p95": 42.4,
+      "p99": 366.6,
+      "max": 580.9
     },
     "rpc": {
       "ms": {
         "n": 70200,
-        "p50": 2.1,
-        "p95": 257.4,
-        "p99": 775.2,
-        "max": 1674.3
+        "p50": 1.9,
+        "p95": 34.4,
+        "p99": 245.1,
+        "max": 461.2
       },
       "operations": {
         "transition_agent_reply_segment.claim": 28800,
@@ -115,16 +155,16 @@
     "db": {
       "cpuPctOfTwoCores": {
         "n": 180,
-        "p50": 16.6,
-        "p95": 74.3,
-        "p99": 100.8,
-        "max": 101.6
+        "p50": 13.2,
+        "p95": 51.4,
+        "p99": 76,
+        "max": 95.6
       },
-      "peakMemMiB": 1023.7,
+      "peakMemMiB": 1138.2,
       "deadlocks": 0,
       "maxClients": 26,
       "maxObservedLockWaiters": 0,
-      "transactions": 70368
+      "transactions": 69276
     }
   },
   "queueFromTurnStarts": {
@@ -133,49 +173,49 @@
     "expected": 7600,
     "firstFromEnqueueMs": {
       "n": 3600,
-      "p50": 64852.1,
-      "p95": 127453.5,
-      "p99": 135078.9,
-      "max": 136828.3
+      "p50": 65590,
+      "p95": 129619.9,
+      "p99": 137444.7,
+      "max": 139018.8
     },
     "waitForWorkerMs": {
       "n": 3600,
-      "p50": 64424,
-      "p95": 127031.5,
-      "p99": 134658.2,
-      "max": 136403.2
+      "p50": 65139.1,
+      "p95": 129196.1,
+      "p99": 137025.7,
+      "max": 138596.8
     },
     "firstFromWorkerMs": {
       "n": 3600,
-      "p50": 420.7,
-      "p95": 447,
-      "p99": 488,
-      "max": 602.6
+      "p50": 426.3,
+      "p95": 457,
+      "p99": 546.4,
+      "max": 723.4
     },
     "endToEndMs": {
       "n": 3600,
-      "p50": 65854.3,
-      "p95": 128109,
-      "p99": 135692.2,
-      "max": 137441
+      "p50": 66548.8,
+      "p95": 130296.9,
+      "p99": 138065.3,
+      "max": 139676.5
     },
-    "peakWaiting": 2389,
+    "peakWaiting": 2379,
     "atMinute": {
-      "elapsedMs": 60235.5,
-      "waiting": 2369,
+      "elapsedMs": 60456.5,
+      "waiting": 2359,
       "active": 20,
-      "finished": 1211,
-      "firstAccepted": 1222
+      "finished": 1221,
+      "firstAccepted": 1223
     },
     "injectionDelayMs": {
       "n": 3600,
-      "p50": 5.8,
-      "p95": 28.7,
-      "p99": 28.7,
-      "max": 28.7
+      "p50": 5.5,
+      "p95": 30.6,
+      "p99": 30.6,
+      "max": 30.6
     },
-    "drainAfterMinuteSec": 136.6,
-    "elapsedSec": 196.6,
+    "drainAfterMinuteSec": 138.8,
+    "elapsedSec": 198.8,
     "finished": 3600,
     "failed": 0,
     "errors": [],
@@ -187,25 +227,25 @@
     },
     "db": {
       "cpuPctOfTwoCores": {
-        "n": 388,
-        "p50": 14.1,
-        "p95": 19.9,
-        "p99": 30.2,
-        "max": 47.6
+        "n": 391,
+        "p50": 12.6,
+        "p95": 16.7,
+        "p99": 34.4,
+        "max": 46.7
       },
-      "peakMemMiB": 1120.4,
+      "peakMemMiB": 1224.3,
       "deadlocks": 0,
       "maxClients": 26,
       "maxObservedLockWaiters": 0,
-      "transactions": 37261
+      "transactions": 38349
     },
     "rpc": {
       "ms": {
         "n": 36800,
-        "p50": 95.5,
-        "p95": 104.8,
-        "p99": 116.4,
-        "max": 283.5
+        "p50": 96.2,
+        "p95": 106.4,
+        "p99": 118,
+        "max": 369.4
       },
       "operations": {
         "transition_agent_reply_turn.open": 3600,
@@ -226,49 +266,49 @@
     "expected": 9600,
     "firstFromEnqueueMs": {
       "n": 4200,
-      "p50": 109188.6,
-      "p95": 189771.3,
-      "p99": 195508.7,
-      "max": 197388.3
+      "p50": 108417.4,
+      "p95": 187472.3,
+      "p99": 193246.3,
+      "max": 195162.5
     },
     "waitForWorkerMs": {
       "n": 4200,
-      "p50": 108784,
-      "p95": 189343.2,
-      "p99": 195089,
-      "max": 196967.6
+      "p50": 107998.7,
+      "p95": 187042.2,
+      "p99": 192819.7,
+      "max": 194740.4
     },
     "firstFromWorkerMs": {
       "n": 4200,
-      "p50": 422.9,
-      "p95": 450.4,
-      "p99": 507.1,
-      "max": 687.9
+      "p50": 420.3,
+      "p95": 445.4,
+      "p99": 491,
+      "max": 632.8
     },
     "endToEndMs": {
       "n": 4200,
-      "p50": 109799.9,
-      "p95": 190411.5,
-      "p99": 196117.5,
-      "max": 198038.2
+      "p50": 109020.9,
+      "p95": 188096.7,
+      "p99": 193886,
+      "max": 195790.9
     },
-    "peakWaiting": 3557,
+    "peakWaiting": 3547,
     "atMinute": {
-      "elapsedMs": 60397.7,
+      "elapsedMs": 60372,
       "waiting": 3240,
       "active": 20,
       "finished": 940,
-      "firstAccepted": 945
+      "firstAccepted": 951
     },
     "injectionDelayMs": {
       "n": 4200,
       "p50": 3.3,
-      "p95": 6.5,
-      "p99": 9.2,
-      "max": 55.9
+      "p95": 6.6,
+      "p99": 13.7,
+      "max": 128.1
     },
-    "drainAfterMinuteSec": 182,
-    "elapsedSec": 242,
+    "drainAfterMinuteSec": 179.8,
+    "elapsedSec": 239.8,
     "finished": 4200,
     "failed": 0,
     "errors": [],
@@ -280,25 +320,25 @@
     },
     "db": {
       "cpuPctOfTwoCores": {
-        "n": 477,
-        "p50": 14.3,
-        "p95": 19.1,
-        "p99": 34.2,
-        "max": 58.4
+        "n": 473,
+        "p50": 12.2,
+        "p95": 14.8,
+        "p99": 31.1,
+        "max": 52.2
       },
-      "peakMemMiB": 793,
+      "peakMemMiB": 788.3,
       "deadlocks": 0,
       "maxClients": 26,
       "maxObservedLockWaiters": 0,
-      "transactions": 44953
+      "transactions": 46046
     },
     "rpc": {
       "ms": {
         "n": 44400,
-        "p50": 95.8,
-        "p95": 104.9,
-        "p99": 114.8,
-        "max": 369.7
+        "p50": 94.9,
+        "p95": 102.9,
+        "p99": 113.8,
+        "max": 278.8
       },
       "operations": {
         "transition_agent_reply_turn.open": 4200,
