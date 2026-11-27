@@ -183,12 +183,18 @@ run_staff_onboarding() {
     && ! -f "${STAFF_ROSTER_DIR}/credentials.work.json" && ! -f "${STAFF_ROSTER_DIR}/cakeadmin.work.json" ]]; then
     return 0
   fi
-  if [[ ! -f "${STAFF_ROSTER_DIR}/roster.json" ]]; then
-    project_url="$(read_env_value NEXT_PUBLIC_SUPABASE_URL "$RUNTIME_ENV_FILE")"
-    if [[ "${project_url%/}" == 'https://resexopnhpthuoxfwydx.supabase.co' ]]; then
+  project_url="$(read_env_value NEXT_PUBLIC_SUPABASE_URL "$RUNTIME_ENV_FILE")"
+  if [[ "${project_url%/}" == 'https://resexopnhpthuoxfwydx.supabase.co' ]]; then
+    if [[ ! -f "${STAFF_ROSTER_DIR}/roster.json" ]]; then
       echo "首次正式发布须在发版窗口交付全员后台账号名单：${STAFF_ROSTER_DIR}/roster.json" >&2
       return 1
     fi
+    if [[ ! -f "${STAFF_ROSTER_DIR}/complete.json" && ! -f "${STAFF_ROSTER_DIR}/credentials.work.json" ]] \
+      || [[ ! -f "${STAFF_ROSTER_DIR}/cakeadmin.ready.json" && ! -f "${STAFF_ROSTER_DIR}/cakeadmin.work.json" ]]; then
+      echo "正式开户缺少本批员工或管理员的私有初始密码文件，请核对后重试。" >&2
+      return 1
+    fi
+  elif [[ ! -f "${STAFF_ROSTER_DIR}/roster.json" ]]; then
     return 0
   fi
   owner="$(stat -c '%u:%g' "$STAFF_ROSTER_DIR")" || return 1

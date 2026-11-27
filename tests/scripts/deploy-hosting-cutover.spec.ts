@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -67,7 +75,10 @@ esac`,
         encoding: 'utf8',
       },
     );
-    return { status: result.status, trace: readFileSync(trace, 'utf8').trim().split('\n') };
+    return {
+      status: result.status,
+      trace: existsSync(trace) ? readFileSync(trace, 'utf8').trim().split('\n') : [],
+    };
   }
 
   it('binds before switching, and opens accounts only after health succeeds', () => {
@@ -92,4 +103,22 @@ esac`,
     expect(result.trace.slice(0, 3)).toEqual(['bind', 'switch', 'health']);
     expect(result.trace).not.toContain('accounts');
   });
+  it.each(['credentials.work.json', 'cakeadmin.work.json'])(
+    'requires the other production credential file before switching when only %s is present',
+    (oneFile) => {
+      writeFileSync(
+        join(work, '.env.production'),
+        'NEXT_PUBLIC_SUPABASE_URL=https://resexopnhpthuoxfwydx.supabase.co\n',
+      );
+      writeFileSync(join(roster, oneFile), '{}');
+      expect(deploy('success')).toEqual({ status: 1, trace: [] });
+      const other =
+        oneFile === 'credentials.work.json' ? 'cakeadmin.work.json' : 'credentials.work.json';
+      writeFileSync(join(roster, other), '{}');
+      expect(deploy('success')).toEqual({
+        status: 0,
+        trace: ['bind', 'switch', 'health', 'accounts'],
+      });
+    },
+  );
 });

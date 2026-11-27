@@ -39,11 +39,11 @@
 
 在本机用 `node --env-file=.env.production -r ts-node/register src/cli/dashboard-onboarding.ts prepare <私有目录> <原始名单>` 生成 `roster.json`。准备阶段保留姓名、组织、负责小组、已知手机号、可选的租户角色和用于对齐托管配置的飞书成员 ID，并记录目标 Supabase 项目。名单可用 `tenantRole` 指定 `tenant_admin`（租户管理员）或 `group_leader`（组长）。旧名单可以照常使用，新建员工档案默认是组长，重复导入未指定角色的名单会保留已有角色。发布前名单留在本机。
 
-进入正式发版窗口后，发布人通过部署 SSH 将 `roster.json` 放入仅部署用户可访问的 `/data/cake/private/dashboard-onboarding/staff`（0700）。如果已在本机准备好密码清单，首次办理时将同批的员工密码文件 `credentials.work.json` 和已准备的管理员密码文件 `cakeadmin.work.json` 一并放入该目录，文件权限均为 0600。首次办理缺少对应密码文件时，脚本会现场生成密码。中断后直接用服务器原目录重试。
+进入正式发版窗口后，发布人通过部署 SSH 将 `roster.json` 和本批核准的员工密码文件 `credentials.work.json`、管理员密码文件 `cakeadmin.work.json` 一并放入仅部署用户可访问的 `/data/cake/private/dashboard-onboarding/staff`（0700）。文件权限均为 0600。首批正式开户缺少对应的密码文件时，部署会在切换服务前提示补齐。中断后直接用服务器原目录重试。
 
 发布脚本先核对账号表、认证方式和开户名单，再把 Stride 已确认的小组、Bot 和生效时间登记到蛋糕。旧服务处理完登记前的待回复消息后才切换。归属冲突或队列超时会中止切换，可用同一名单重试。新服务健康检查通过后先创建独立的 `cakeadmin`，再建立全部成员档案，再按已核实的手机号开通登录。缺手机号的同事显示「待补手机号」，管理员收到号码后从该行点「开通」即可。上海智能体负责人归总部，上海自招员工只看上海自招团队，河南员工看整个河南中心。首次发布缺少名单会在切换前提示补齐。姓名或归属冲突需先核对，重复执行沿用已保存的密码和停用状态。
 
-开户成功后，专用管理员的强密码从 `cakeadmin.private.json` 私下交付给管理员保管人。员工批量开户为每人生成独立的 8 位随机数字密码，首位可以为零。总部从 `handoff.private.json` 核对本批实际新开的账号，逐人交付。管理员回执为 `cakeadmin.ready.json`。员工完成回执 `complete.json` 只保留数量和批次摘要，交付完可移走密码文件并保留回执。
+开户成功后，专用管理员的初始密码从 `cakeadmin.private.json` 私下交付给管理员保管人。总部从 `handoff.private.json` 核对本批实际新开的员工账号，按清单逐人交付。管理员回执为 `cakeadmin.ready.json`。员工完成回执 `complete.json` 只保留数量和批次摘要，交付完可移走密码文件并保留回执。
 
 ### 当前接通状态（2026-10-28）
 

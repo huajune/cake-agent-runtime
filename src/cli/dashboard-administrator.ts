@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { dashboardPasswordSchema } from '../infra/server/dashboard-access/dashboard-password.schema';
 import {
   DASHBOARD_ADMIN_EMAIL,
   DASHBOARD_ADMIN_LOGIN,
@@ -11,7 +12,11 @@ import {
 } from '../types/dashboard-account';
 import { readPrivateJson, writePrivateOnce } from './dashboard-roster';
 
-const batchSchema = z.object({ project: z.string(), id: z.uuid(), password: z.string().min(24) });
+const batchSchema = z.object({
+  project: z.string(),
+  id: z.uuid(),
+  password: dashboardPasswordSchema,
+});
 
 export async function readDashboardAdministrator(client: SupabaseClient): Promise<User | null> {
   const { data: row, error } = await client
@@ -29,7 +34,7 @@ export async function readDashboardAdministrator(client: SupabaseClient): Promis
   return auth.data.user;
 }
 
-/** Persist a random password before the Auth transaction, then hand it off only for the account this batch created. */
+/** Hand off the prepared password only when this batch created the Auth account. */
 export async function initializeDashboardAdministrator(
   client: SupabaseClient,
   directory: string,
