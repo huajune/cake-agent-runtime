@@ -110,43 +110,9 @@
 
 /* ── Filter selects ── */
 .selectWrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   width: 150px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid rgba($primary-light, 0.2);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #5b5a86;
-  flex-shrink: 1;
   min-width: 120px;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-
-  &:focus-within {
-    border-color: rgba($primary, 0.4);
-    box-shadow: 0 0 0 2px rgba($primary, 0.06);
-  }
-
-  svg {
-    flex: 0 0 auto;
-    color: #5b5a86;
-  }
-}
-
-.selectInput {
-  min-width: 0;
-  width: 100%;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
+  flex-shrink: 1;
 }
 
 .filterToggle {

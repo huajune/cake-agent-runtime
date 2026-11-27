@@ -152,11 +152,11 @@ export function useAddToBlacklist() {
     mutationFn: (params: { id: string; type: 'chatId' | 'groupId' }) =>
       configService.addToBlacklist(params),
     onSuccess: () => {
-      toast.success('已添加到黑名单');
+      toast.success('已停止托管');
       return queryClient.invalidateQueries({ queryKey: ['blacklist'] });
     },
     onError: () => {
-      toast.error('添加失败，请重试');
+      toast.error('停止托管失败，请重试');
     },
   });
 }
@@ -170,11 +170,11 @@ export function useRemoveFromBlacklist() {
     mutationFn: (params: { id: string; type: 'chatId' | 'groupId' }) =>
       configService.removeFromBlacklist(params),
     onSuccess: () => {
-      toast.success('已从黑名单移除');
+      toast.success('已恢复托管');
       return queryClient.invalidateQueries({ queryKey: ['blacklist'] });
     },
     onError: () => {
-      toast.error('移除失败，请重试');
+      toast.error('恢复托管失败，请重试');
     },
   });
 }

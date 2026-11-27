@@ -1,34 +1,47 @@
-@use 'sass:color';
+@use '@/assets/styles/account-controls' as controls;
 
 .page {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 24px 16px;
-  background: radial-gradient(ellipse at 24% 18%, $primary-10, transparent 55%), $gradient-page;
+  padding: $spacing-lg $spacing-md;
+  background:
+    radial-gradient(ellipse at 15% 69%, rgba($lilac, 0.26), transparent 32%),
+    radial-gradient(ellipse at 85% 29%, rgba($rose-light, 0.24), transparent 28%), $gradient-page;
   color: $text-primary;
 }
 .card {
-  width: min(100%, 420px);
-  padding: clamp(24px, 5vw, 40px);
-  background: $bg-card;
+  --inset: clamp(22px, 4vw, 36px);
+  width: min(100%, 428px);
+  overflow: hidden;
   border: 1px solid $border;
-  border-radius: 22px;
-  box-shadow: 0 12px 40px rgba($text-primary, 0.07);
-  h1 {
-    margin: 24px 0 20px;
-    font-size: 27px;
-    line-height: 1.3;
-  }
-  small {
-    display: block;
-    margin-top: 22px;
-    padding-top: 15px;
+  border-radius: $radius-xl;
+  background: $bg-card;
+
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-sm;
+    margin: $spacing-lg var(--inset) 0;
+    padding: $spacing-md 0 $spacing-lg;
     border-top: 1px solid $border;
     color: $text-secondary;
-    font-size: $font-size-sm;
+    font-size: $font-size-xs;
+    button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: $primary-dark;
+      font: inherit;
+      white-space: nowrap;
+      cursor: pointer;
+      &:hover {
+        text-decoration: underline;
+      }
+    }
   }
-  :is(input, button):focus-visible {
+  button:focus-visible {
     outline: 2px solid $primary-dark;
     outline-offset: 2px;
   }
@@ -37,42 +50,67 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: $text-body;
-  font-weight: 600;
+  padding: $spacing-md var(--inset);
+  border-bottom: 1px solid $border;
+  background: $gradient-dream;
+  color: $text-heading;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
   img {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: $radius-md;
   }
 }
-.form {
-  display: flex;
-  flex-direction: column;
+.workspaceTag {
+  padding: 2px 8px;
+  border: 1px solid $primary-12;
+  border-radius: 999px;
+  background: $primary-05;
+  color: $text-secondary;
+  font-size: 11px;
+  font-weight: $font-weight-medium;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.intro {
+  display: grid;
   gap: 6px;
-  label {
-    font-weight: 600;
-    font-size: $font-size-sm;
-    color: $text-body;
-  }
-  label:not(:first-child) {
-    margin-top: 10px;
-  }
-  input {
-    width: 100%;
-    min-height: 46px;
-    padding: 10px 12px;
-    font: inherit;
-    border: 1px solid $border-strong;
-    border-radius: $radius-md;
-    background: $bg-primary;
-    color: $text-primary;
+  margin: var(--inset) var(--inset) $spacing-lg;
+  h1 {
+    @include dashboard-heading;
+    margin: 0;
   }
   p {
-    margin-top: 6px;
-    padding: 9px 12px;
+    margin: 0;
+    color: #71717a;
+    font-size: $font-size-sm;
+    line-height: $line-height-normal;
+  }
+}
+.form {
+  display: grid;
+  gap: 6px;
+  margin-inline: var(--inset);
+  label {
+    color: $text-heading;
+    font-weight: $font-weight-medium;
+    font-size: $font-size-sm;
+  }
+  label:not(:first-child) {
+    margin-top: 12px;
+  }
+  input {
+    @include controls.field;
+    min-height: 46px;
+  }
+  p {
+    margin-top: $spacing-sm;
+    padding: 10px 12px;
     border-radius: $radius-md;
     background: $danger-bg;
-    color: color.mix($text-primary, $danger-text, 38%);
+    color: $danger-text;
     font-size: $font-size-sm;
   }
 }
@@ -83,13 +121,10 @@
   }
   button {
     position: absolute;
-    top: 50%;
-    right: 3px;
-    transform: translateY(-50%);
+    inset: 1px 1px 1px auto;
     display: grid;
     place-items: center;
-    width: 42px;
-    height: 40px;
+    width: 44px;
     border: 0;
     border-radius: $radius-md;
     background: transparent;
@@ -100,19 +135,16 @@
   }
 }
 .submit {
+  @include button-accent;
   min-height: 46px;
-  margin-top: 16px;
-  border: 0;
-  border-radius: $radius-md;
-  background: $primary-dark;
-  color: $text-on-primary;
-  font: inherit;
-  font-weight: 600;
-  &:hover:not(:disabled) {
-    background: color.mix($text-primary, $primary-dark, 14%);
-  }
-  &:disabled {
-    opacity: 0.6;
-    cursor: wait;
+  margin-top: $spacing-md;
+
+  @media (prefers-reduced-motion: no-preference) {
+    .arrow {
+      transition: transform $transition-fast;
+    }
+    &:hover:not(:disabled) .arrow {
+      transform: translateX(2px);
+    }
   }
 }

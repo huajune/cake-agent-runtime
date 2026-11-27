@@ -113,7 +113,8 @@ it.each(['自动生成', '预先准备'])('%s密码的开户批次可在中断�
     expect(JSON.parse(await readFile(join(dir, 'complete.json'), 'utf8'))).toMatchObject({
       created: 2,
       existing: 1,
-      disabled: 1,
+      disabled: 0,
+      cancelled: 1,
     });
     await expect(stat(working)).rejects.toMatchObject({ code: 'ENOENT' });
   } finally {

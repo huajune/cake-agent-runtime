@@ -17,6 +17,7 @@ import type {
 export {
   DASHBOARD_ACCOUNT_PAGE_SIZE,
   dashboardLoginIdentity,
+  formatDashboardPhone,
   normalizeDashboardPhone,
   TENANT_ROLE_LABELS,
   TenantRole,
@@ -38,6 +39,9 @@ export const loadAccounts = async (organization: string, page: number) =>
 export const registerTenant = async (name: string) =>
   (await api.post<Tenant>('/dashboard/accounts/organizations', { name })).data;
 
+export const deleteEmptyTenant = (id: string) =>
+  api.delete('/dashboard/accounts/organizations/' + encodeURIComponent(id));
+
 export const openAccount = (input: {
   memberId?: string;
   hostingBinding?: HostingGroupSelection;
@@ -50,8 +54,8 @@ export const openAccount = (input: {
 export const resetAccountPassword = (id: string, password: string) =>
   api.post('/dashboard/accounts/' + id + '/password', { password });
 export const disableAccount = (id: string) => api.post('/dashboard/accounts/' + id + '/disable');
-export const moveAccount = (id: string, organization: string) =>
-  api.patch('/dashboard/accounts/' + id + '/organization', { organization });
+export const restoreAccount = (id: string) => api.post('/dashboard/accounts/' + id + '/restore');
+export const deleteAccountLogin = (id: string) => api.delete('/dashboard/accounts/' + id);
 
 const bindingsPath = '/dashboard/hosting-bindings';
 export const loadHostingDirectory = async () =>

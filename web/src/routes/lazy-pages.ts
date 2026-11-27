@@ -49,21 +49,22 @@ export const AgentTest = lazy(agentTestLoader);
 export const TestSuite = lazy(testSuiteLoader);
 export const Strategy = lazy(strategyLoader);
 
-export const ALL_ROUTE_PATHS: AppRoutePath[] = [
-  '/',
-  '/conversion-analysis',
-  '/users',
-  '/hosting',
-  '/config',
-  '/system',
-  '/message-processing',
-  '/reengagement',
-  '/chat-records',
-  '/agent-test',
-  '/test-suite',
-  '/strategy',
-  '/accounts',
-];
+export const ROUTE_TITLES: Record<AppRoutePath, string> = {
+  '/': '仪表盘',
+  '/conversion-analysis': '转化分析',
+  '/users': '托管用户',
+  '/hosting': '托管开关',
+  '/config': '运行时配置',
+  '/system': '系统监控',
+  '/message-processing': '消息处理流水',
+  '/reengagement': '二次触发追溯',
+  '/chat-records': '聊天记录',
+  '/agent-test': '对话调试',
+  '/test-suite': '飞书评测集',
+  '/strategy': '策略配置',
+  '/accounts': '账号管理',
+};
+export const ALL_ROUTE_PATHS = Object.keys(ROUTE_TITLES) as AppRoutePath[];
 
 const routeLoaders: Record<AppRoutePath, RouteLoader> = {
   '/': dashboardLoader,

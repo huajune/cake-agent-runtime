@@ -2,11 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   bindHostingGroup,
   type ManagedHostingGroup,
+  deleteEmptyTenant,
+  deleteAccountLogin,
   disableAccount,
-  moveAccount,
+  formatDashboardPhone,
   normalizeDashboardPhone,
   openAccount,
   resetAccountPassword,
+  restoreAccount,
   registerTenant,
   TENANT_ROLE_LABELS,
   TenantRole,
@@ -14,19 +17,21 @@ import {
   type Tenant,
 } from '@/api/dashboard-accounts';
 import HostingGroupPicker from '../HostingGroupPicker';
-import styles from '../../styles/index.module.scss';
+import styles from './index.module.scss';
 
 export type AccountAction =
-  | { type: 'register'; account?: undefined }
-  | { type: 'open'; account?: DashboardAccount }
-  | { type: 'reset' | 'move' | 'disable' | 'bind'; account: DashboardAccount };
+  | { type: 'register' | 'open'; account?: undefined }
+  | { type: 'deleteTenant'; tenant: Tenant; account?: undefined }
+  | { type: 'reset' | 'disable' | 'restore' | 'deleteLogin' | 'bind'; account: DashboardAccount };
 const titles = {
   register: '登记组织',
+  deleteTenant: '删除组织',
   bind: '绑定托管小组',
   open: '开通账号',
   reset: '重置密码',
-  move: '调整所属组织',
   disable: '停用账号',
+  restore: '恢复账号',
+  deleteLogin: '删除账号',
 };
 
 export default function AccountDialog({
@@ -71,13 +76,15 @@ export default function AccountDialog({
     if (busy) return;
     const data = new FormData(event.currentTarget);
     const password = String(data.get('password') || '');
-    const organization = String(data.get('organization') || account?.organization || '');
     setBusy(true);
     setError('');
     try {
       switch (action.type) {
         case 'register':
           await registerTenant(String(data.get('name') ?? '').trim());
+          break;
+        case 'deleteTenant':
+          await deleteEmptyTenant(action.tenant.id);
           break;
         case 'bind':
           if (!binding || !account?.memberId) throw new Error('请选择托管小组');
@@ -87,7 +94,6 @@ export default function AccountDialog({
           const phone = normalizeDashboardPhone(String(data.get('phone') || ''));
           if (!phone) throw new Error('请输入有效的手机号');
           await openAccount({
-            ...(account?.memberId && { memberId: account.memberId }),
             name: String(data.get('name') || '').trim(),
             phone,
             organization,
@@ -103,11 +109,14 @@ export default function AccountDialog({
         case 'disable':
           await disableAccount(action.account.userId!);
           break;
-        case 'move':
-          await moveAccount(action.account.userId!, organization);
+        case 'restore':
+          await restoreAccount(action.account.userId!);
+          break;
+        case 'deleteLogin':
+          await deleteAccountLogin(action.account.userId!);
           break;
       }
-      onSaved(titles[action.type] + '成功');
+      onSaved(action.type === 'deleteLogin' ? '账号已注销' : titles[action.type] + '成功');
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作失败，请重试');
       setBusy(false);
@@ -126,89 +135,71 @@ export default function AccountDialog({
     >
       <form onSubmit={submit}>
         <h2 id="account-action-title">{titles[action.type]}</h2>
+        {action.type === 'deleteTenant' && (
+          <p>确认删除「{action.tenant.name}」？删除后无法恢复。</p>
+        )}
         {action.type === 'register' && (
           <label>
             组织名称
             <input name="name" required maxLength={100} autoFocus />
           </label>
         )}
-        {account && action.type !== 'open' && (
+        {account && (
           <p>
-            {account?.name} · {account?.loginName ?? account?.phone}
+            {account.name} · {account.loginName ?? formatDashboardPhone(account.phone)}
           </p>
         )}
         {action.type === 'open' && (
-          <div className={styles.identityFields}>
+          <>
             <label>
               姓名
-              <input
-                name="name"
-                defaultValue={account?.name}
-                readOnly={Boolean(account)}
-                maxLength={80}
-                required
-              />
+              <input name="name" maxLength={80} required />
             </label>
             <label>
               手机号
-              <input
-                name="phone"
-                type="tel"
-                defaultValue={account?.phone ?? ''}
-                readOnly={Boolean(account?.phone)}
-                required
-              />
+              <input name="phone" type="tel" required />
             </label>
-          </div>
-        )}
-        {(action.type === 'open' || action.type === 'move') && (
-          <label>
-            所属组织
-            <select
-              name="organization"
-              value={organization}
-              onChange={(e) => {
-                setOrganization(e.target.value);
-                setGroupId('');
-              }}
-              disabled={action.type === 'open' && Boolean(account)}
-              required
-            >
-              <option value="" disabled>
-                请选择组织
-              </option>
-              {tenants.map(({ id, name }) => (
-                <option key={id} value={id}>
-                  {name}
+            <label>
+              所属组织
+              <select
+                name="organization"
+                value={organization}
+                onChange={(e) => {
+                  setOrganization(e.target.value);
+                  setGroupId('');
+                }}
+                required
+              >
+                <option value="" disabled>
+                  请选择组织
                 </option>
-              ))}
-            </select>
-          </label>
+                {tenants.map(({ id, name }) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              角色
+              <select
+                name="tenantRole"
+                value={tenantRole}
+                onChange={(event) => {
+                  setTenantRole(event.target.value as TenantRole);
+                  setGroupId(account?.hostingGroupId ?? '');
+                }}
+                required
+              >
+                {Object.values(TenantRole).map((role) => (
+                  <option value={role} key={role}>
+                    {TENANT_ROLE_LABELS[role]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
         )}
-        {action.type === 'open' && (
-          <label>
-            租户角色
-            <select
-              name="tenantRole"
-              aria-label="租户角色"
-              value={tenantRole}
-              onChange={(event) => {
-                setTenantRole(event.target.value as TenantRole);
-                setGroupId(account?.hostingGroupId ?? '');
-              }}
-              required
-            >
-              {Object.values(TenantRole).map((role) => (
-                <option value={role} key={role}>
-                  {TENANT_ROLE_LABELS[role]}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {action.type === 'move' &&
-          account?.tenantRole === TenantRole.TenantAdmin &&
-          organization !== account.organization && <p>调入新组织后，角色为组长。</p>}
         {showGroupPicker && (
           <>
             {action.type === 'bind' && (
@@ -239,6 +230,12 @@ export default function AccountDialog({
           </label>
         )}
         {action.type === 'disable' && <p>停用后，该员工将失去后台访问权限。</p>}
+        {action.type === 'restore' && <p>恢复后，该员工可以用原密码登录。</p>}
+        {action.type === 'deleteLogin' && (
+          <p>
+            删除后，登录资格立即失效，账号将从名单中移除。成员档案、负责的小组和历史业务记录都会保留。
+          </p>
+        )}
         {error && (
           <p role="alert" className={styles.danger}>
             {error}

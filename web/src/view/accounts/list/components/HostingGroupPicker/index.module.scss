@@ -10,6 +10,15 @@
     display: flex;
     align-items: flex-start;
     gap: 8px;
+    padding: 10px 12px;
+    border-radius: $radius-md;
+    background: $warning-bg;
     font-size: $font-size-sm;
+    line-height: $line-height-normal;
+    input {
+      margin-top: 3px;
+      accent-color: $primary-dark;
+      flex: none;
+    }
   }
 }

@@ -61,7 +61,10 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
     listTenants: jest.fn(),
     create: jest.fn(),
     resetPassword: jest.fn(),
-    update: jest.fn(),
+    disable: jest.fn(),
+    restore: jest.fn(),
+    deleteLogin: jest.fn(),
+    deleteEmptyTenant: jest.fn(),
   };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -146,7 +149,12 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       .get('/dashboard/access')
       .set('Authorization', 'Bearer ' + token)
       .expect(200);
-    expect(result.body.data).toMatchObject({ userId: token, loginLabel, tenantRole });
+    expect(result.body.data).toMatchObject({
+      userId: token,
+      displayName: '测试',
+      loginLabel,
+      tenantRole,
+    });
     expect(result.text).not.toContain('+12025550118');
     expect(result.headers['cache-control']).toBe('no-store');
   });
@@ -253,7 +261,7 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       .expect(201);
     expect(hosting.bind).toHaveBeenCalledWith(id, 'henan', selection, 'admin');
   });
-  it('only the dedicated administrator can list, provision, reset, disable and transfer accounts', async () => {
+  it('only the dedicated administrator can list, provision, reset and disable accounts', async () => {
     const staffId = 'ab3c0191-8036-45b2-8296-b1d42d8dff81';
     const api = request(app.getHttpServer());
     const base = '/dashboard/accounts';
@@ -268,11 +276,13 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       for (const req of [
         api.get(base),
         api.get(base + '/organizations'),
+        api.delete(base + '/organizations/unused-fixture'),
         api.get(base).query({ organization: 'henan' }),
         api.post(base).send(account),
         api.post(base + '/' + staffId + '/password').send(reset),
         api.post(base + '/' + staffId + '/disable'),
-        api.patch(base + '/' + staffId + '/organization').send({ organization: 'headquarters' }),
+        api.post(base + '/' + staffId + '/restore'),
+        api.delete(base + '/' + staffId),
       ]) {
         await req.set('Authorization', 'Bearer ' + token).expect(403);
       }
@@ -280,6 +290,21 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
     expect(Object.values(operations).every((op) => op.mock.calls.length === 0)).toBe(true);
     operations.list.mockResolvedValue({ total: 0, accounts: [] });
     const administrator = 'Bearer admin';
+    await api
+      .delete(base + '/organizations/unused-fixture')
+      .set('Authorization', administrator)
+      .expect(200);
+    expect(operations.deleteEmptyTenant).toHaveBeenCalledWith('unused-fixture', 'admin');
+    await api
+      .post(base + '/' + staffId + '/restore')
+      .set('Authorization', administrator)
+      .expect(201);
+    expect(operations.restore).toHaveBeenCalledWith(staffId, 'admin');
+    await api
+      .delete(base + '/' + staffId)
+      .set('Authorization', administrator)
+      .expect(200);
+    expect(operations.deleteLogin).toHaveBeenCalledWith(staffId, 'admin');
     await api.get(base).set('Authorization', administrator).expect(200);
     expect(operations.list).toHaveBeenCalledWith(1, undefined);
     operations.listTenants.mockResolvedValue({ total: 1, tenants: [] });
@@ -328,20 +353,17 @@ describe('Real HTTP routing preserves HQ and scopes center before old handlers',
       .expect(201);
     expect(operations.resetPassword).toHaveBeenCalledWith(staffId, reset.password, 'admin');
     await api
-      .patch(base + '/' + staffId + '/organization')
-      .set('Authorization', administrator)
-      .send({ organization: 'headquarters' })
-      .expect(200);
-    expect(operations.update).toHaveBeenCalledWith(
-      staffId,
-      { organization: 'headquarters' },
-      'admin',
-    );
-    await api
       .post(base + '/' + staffId + '/disable')
       .set('Authorization', administrator)
       .expect(201);
-    expect(operations.update).toHaveBeenCalledWith(staffId, { disabled: true }, 'admin');
+    expect(operations.disable).toHaveBeenCalledWith(staffId, 'admin');
+  });
+  it('has no organization transfer route for existing accounts, even for the administrator', async () => {
+    await request(app.getHttpServer())
+      .patch('/dashboard/accounts/ab3c0191-8036-45b2-8296-b1d42d8dff81/organization')
+      .set('Authorization', 'Bearer admin')
+      .send({ organization: 'headquarters' })
+      .expect(404);
   });
   it('decodes detail identity for scoped lookup, without executing the legacy handler', async () => {
     await request(app.getHttpServer())

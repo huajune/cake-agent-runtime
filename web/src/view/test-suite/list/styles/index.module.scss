@@ -98,34 +98,7 @@
 
 // ==================== 按钮样式 ====================
 .primaryBtn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 18px;
-  border-radius: $radius-lg;
-  border: none;
-  background: linear-gradient(135deg, $accent 0%, $rose 100%);
-  color: $text-on-primary;
-  font-size: $font-size-sm;
-  font-weight: $font-weight-medium;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px $accent-30;
-
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px $accent-40;
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
+  @include button-accent;
 }
 
 .iconBtn {

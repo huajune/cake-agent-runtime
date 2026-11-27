@@ -1,3 +1,4 @@
+import FilterSelect from '@/components/FilterSelect';
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import { useMemo, useState } from 'react';
 import { ArrowUpDown, Bot, Info, Search, X } from 'lucide-react';
@@ -374,43 +375,36 @@ export default function Users() {
                 )}
               </label>
 
-              <label className={styles.selectControl}>
-                <ArrowUpDown aria-hidden="true" size={15} />
-                <select
-                  value={activeSortMode}
-                  onChange={(event) => setSortMode(event.target.value as SortMode)}
-                  aria-label="排序方式"
-                >
-                  {sortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className={styles.selectControl}>
-                <Bot aria-hidden="true" size={15} />
-                <select
-                  value={activeBotFilter}
-                  onChange={(event) => setBotFilter(event.target.value)}
-                  aria-label="托管 bot 过滤"
-                  disabled={isBotsLoading || botOptions.length === 0}
-                >
-                  <option value={ALL_BOTS}>
-                    {isBotsLoading
+              <FilterSelect
+                className={styles.selectControl}
+                label="排序方式"
+                icon={ArrowUpDown}
+                value={activeSortMode}
+                onChange={(value) => setSortMode(value as SortMode)}
+                options={sortOptions}
+              />
+              <FilterSelect
+                className={styles.selectControl}
+                label="托管账号筛选"
+                icon={Bot}
+                value={activeBotFilter}
+                onChange={setBotFilter}
+                disabled={isBotsLoading || botOptions.length === 0}
+                options={[
+                  {
+                    value: ALL_BOTS,
+                    label: isBotsLoading
                       ? '正在加载托管账号'
                       : botOptions.length === 0
                         ? '暂无托管账号'
-                        : '全部托管账号'}
-                  </option>
-                  {botOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label} ({option.count})
-                    </option>
-                  ))}
-                </select>
-              </label>
+                        : '全部托管账号',
+                  },
+                  ...botOptions.map((option) => ({
+                    value: option.value,
+                    label: `${option.label} (${option.count})`,
+                  })),
+                ]}
+              />
             </div>
 
             {/* 用户表格 */}

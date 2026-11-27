@@ -69,9 +69,7 @@ export default function Hosting() {
       />
 
       {/* 说明卡片 */}
-      <section className={styles.section}>
-        <InfoCard />
-      </section>
+      <InfoCard />
     </div>
   );
 }

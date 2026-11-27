@@ -10,9 +10,9 @@ interface GlobalSwitchProps {
 
 export default function GlobalSwitch({ enabled, isPending, onToggle }: GlobalSwitchProps) {
   return (
-    <section className={styles.section}>
+    <section className={styles.section} aria-labelledby="hosting-global-title">
       <div className={styles.sectionHeader}>
-        <h3>全局 AI 托管开关</h3>
+        <h2 id="hosting-global-title">全局 AI 托管开关</h2>
         <p className={styles.sectionDesc}>
           控制 Bot 是否响应所有用户消息，关闭后所有消息都不会触发 AI 回复
         </p>
@@ -34,7 +34,12 @@ export default function GlobalSwitch({ enabled, isPending, onToggle }: GlobalSwi
           </div>
         </div>
         <label className={styles.toggleSwitch}>
-          <Switch checked={enabled} onChange={onToggle} pending={isPending} />
+          <Switch
+            aria-labelledby="hosting-global-title"
+            checked={enabled}
+            onChange={onToggle}
+            pending={isPending}
+          />
           <span className={`${styles.statusText} ${enabled ? styles.enabled : styles.disabled}`}>
             {enabled ? '开启' : '关闭'}
           </span>

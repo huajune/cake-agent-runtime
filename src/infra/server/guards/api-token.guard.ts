@@ -48,7 +48,7 @@ export class ApiTokenGuard implements CanActivate {
     }
     const account = await this.access.authenticate(request, token);
     if (adminOnly && !isDashboardAdministrator(account))
-      throw new ForbiddenException('仅管理员 cakeadmin 可使用此功能');
+      throw new ForbiddenException('仅系统管理员可使用此功能');
     const route = centerRoute(request);
     if (requiresTenantScope(account, route)) authorizeCenterRequest(request, route);
     return true;

@@ -23,7 +23,7 @@ import {
 
 function App() {
   return (
-    <DashboardAccessBoundary>
+    <>
       <Toaster
         position="top-center"
         containerStyle={{ top: '50%', transform: 'translateY(-50%)' }}
@@ -47,32 +47,34 @@ function App() {
           },
         }}
       />
-      <Routes>
-        <Route
-          path={MESSAGE_PROCESSING_DETAIL_PATH}
-          element={
-            <Suspense fallback={<p role="status">正在加载处理详情…</p>}>
-              <MessageProcessingDetail />
-            </Suspense>
-          }
-        />
-        <Route path="/" element={<Layout />}>
-          <Route path="accounts" element={<Accounts />} />
-          <Route index element={<Dashboard />} />
-          <Route path="conversion-analysis" element={<ConversionAnalysis />} />
-          <Route path="users" element={<Users />} />
-          <Route path="hosting" element={<Hosting />} />
-          <Route path="config" element={<Config />} />
-          <Route path="system" element={<System />} />
-          <Route path="message-processing" element={<MessageProcessing />} />
-          <Route path="reengagement" element={<Reengagement />} />
-          <Route path="chat-records" element={<ChatRecords />} />
-          <Route path="agent-test" element={<AgentTest />} />
-          <Route path="test-suite" element={<TestSuite />} />
-          <Route path="strategy" element={<Strategy />} />
-        </Route>
-      </Routes>
-    </DashboardAccessBoundary>
+      <DashboardAccessBoundary>
+        <Routes>
+          <Route
+            path={MESSAGE_PROCESSING_DETAIL_PATH}
+            element={
+              <Suspense fallback={<p role="status">正在加载处理详情…</p>}>
+                <MessageProcessingDetail />
+              </Suspense>
+            }
+          />
+          <Route path="/" element={<Layout />}>
+            <Route path="accounts" element={<Accounts />} />
+            <Route index element={<Dashboard />} />
+            <Route path="conversion-analysis" element={<ConversionAnalysis />} />
+            <Route path="users" element={<Users />} />
+            <Route path="hosting" element={<Hosting />} />
+            <Route path="config" element={<Config />} />
+            <Route path="system" element={<System />} />
+            <Route path="message-processing" element={<MessageProcessing />} />
+            <Route path="reengagement" element={<Reengagement />} />
+            <Route path="chat-records" element={<ChatRecords />} />
+            <Route path="agent-test" element={<AgentTest />} />
+            <Route path="test-suite" element={<TestSuite />} />
+            <Route path="strategy" element={<Strategy />} />
+          </Route>
+        </Routes>
+      </DashboardAccessBoundary>
+    </>
   );
 }
 

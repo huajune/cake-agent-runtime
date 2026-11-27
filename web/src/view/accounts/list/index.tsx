@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, UserPlus } from 'lucide-react';
+import { ExternalLink, RefreshCw, UserPlus } from 'lucide-react';
 import {
+  DASHBOARD_ACCOUNT_PAGE_SIZE,
   loadAccountTenants,
   loadHostingDirectory,
   syncHostingDirectory,
@@ -19,18 +20,30 @@ export default function Accounts() {
   const [notice, setNotice] = useState('');
   const client = useQueryClient();
   const me = useDashboardAccess();
+  const canManage = me?.isAdministrator === true;
   const [syncing, setSyncing] = useState(false);
   const directory = useQuery({
+    enabled: canManage,
     queryKey: ['hosting-management'],
     queryFn: loadHostingDirectory,
     refetchInterval: 60_000,
   });
   const groups = directory.data?.groups ?? [];
   const groupNames = new Map(groups.map((g) => [g.id, g.name]));
-  const refresh = () => {
+  const tenantsWithGroups = new Set(groups.map((group) => group.tenantId));
+  const refresh = (saved: AccountAction) => {
+    if (saved.type === 'reset') return;
+    if (saved.type === 'disable' || saved.type === 'restore') {
+      void client.invalidateQueries({
+        queryKey: ['dashboard-accounts', 'members', saved.account.organization],
+      });
+      return;
+    }
     void client.invalidateQueries({ queryKey: ['dashboard-accounts'] });
+    if (saved.type === 'deleteLogin') return;
     void client.invalidateQueries({ queryKey: ['hosting-management'] });
-    void client.invalidateQueries({ queryKey: ['group-list'] });
+    if (saved.type === 'bind' || saved.type === 'open')
+      void client.invalidateQueries({ queryKey: ['group-list'] });
   };
   const sync = async () => {
     setSyncing(true);
@@ -39,7 +52,7 @@ export default function Accounts() {
       const fresh = await syncHostingDirectory();
       client.setQueryData(['hosting-management'], fresh);
       setNotice('Stride 目录已同步');
-      refresh();
+      void client.invalidateQueries({ queryKey: ['group-list'] });
     } catch (e) {
       setNotice(e instanceof Error ? e.message : '同步失败，请重试');
     } finally {
@@ -47,15 +60,35 @@ export default function Accounts() {
     }
   };
   const result = useQuery({
+    enabled: canManage,
     queryKey: ['dashboard-accounts', 'organizations', page],
     queryFn: () => loadAccountTenants(page),
   });
+  useEffect(() => {
+    if (result.data) {
+      const lastPage = Math.max(1, Math.ceil(result.data.total / DASHBOARD_ACCOUNT_PAGE_SIZE));
+      if (page > lastPage) setPage(lastPage);
+    }
+  }, [page, result.data]);
   return (
     <section className={styles.page} aria-labelledby="accounts-title">
       <header>
         <div>
           <h1 id="accounts-title">账号管理</h1>
-          <p>租户管理员负责整个组织。组长可绑定一个托管小组，管理组内的托管号。</p>
+          <p>组织管理员负责整个组织。组长可绑定一个托管小组，管理组内的托管号。</p>
+        </div>
+        {canManage && (
+          <div className={styles.headerActions}>
+            <button onClick={() => setAction({ type: 'register' })}>登记组织</button>
+            <button className={styles.primary} onClick={() => setAction({ type: 'open' })}>
+              <UserPlus size={16} aria-hidden="true" />
+              开通账号
+            </button>
+          </div>
+        )}
+      </header>
+      {canManage && (
+        <div className={styles.toolbar}>
           <a
             className={styles.guideLink}
             href={ACCOUNT_ONBOARDING_SOP_URL}
@@ -63,31 +96,25 @@ export default function Accounts() {
             rel="noopener noreferrer"
           >
             账号开通与托管绑定 SOP（飞书）
-            <ExternalLink size={14} aria-hidden="true" />
+            <ExternalLink size={13} aria-hidden="true" />
           </a>
+          <div className={styles.syncBar}>
+            <span>
+              {directory.data?.checkedAt
+                ? '上次同步 ' +
+                  new Date(directory.data.checkedAt).toLocaleString('zh-CN', { hour12: false })
+                : '托管小组目录'}
+            </span>
+            <button disabled={syncing} onClick={() => void sync()}>
+              <RefreshCw size={14} aria-hidden="true" />
+              {syncing ? '正在同步…' : '同步 Stride'}
+            </button>
+          </div>
         </div>
-        <div className={styles.headerActions}>
-          <button onClick={() => setAction({ type: 'register' })}>登记组织</button>
-          <button className={styles.primary} onClick={() => setAction({ type: 'open' })}>
-            <UserPlus size={17} />
-            开通账号
-          </button>
-        </div>
-      </header>
-      <div className={styles.syncBar}>
-        <span>
-          {directory.data?.checkedAt
-            ? '上次同步 ' +
-              new Date(directory.data.checkedAt).toLocaleString('zh-CN', { hour12: false })
-            : '托管小组目录'}
-        </span>
-        <button disabled={syncing} onClick={() => void sync()}>
-          {syncing ? '正在同步…' : '同步 Stride'}
-        </button>
-      </div>
+      )}
       {directory.isError && <p role="alert">托管目录暂不可用，请重新同步。</p>}
       {notice && <p role="status">{notice}</p>}
-      {result.isLoading ? (
+      {result.isPending ? (
         <p role="status">正在加载账号…</p>
       ) : result.isError ? (
         <p role="alert">
@@ -101,6 +128,7 @@ export default function Accounts() {
               tenant={tenant}
               initiallyExpanded={index === 0}
               groupNames={groupNames}
+              hasHostingGroups={tenantsWithGroups.has(tenant.id)}
               administratorId={me?.userId}
               onAction={setAction}
             />
@@ -123,7 +151,7 @@ export default function Accounts() {
           onSaved={(message) => {
             setAction(null);
             setNotice(message);
-            refresh();
+            refresh(action);
           }}
         />
       )}

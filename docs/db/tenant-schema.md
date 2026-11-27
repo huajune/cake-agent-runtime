@@ -18,7 +18,7 @@
 
 ### 逐字段说明
 
-类型采用 PostgreSQL 名称。必填表示数据库禁止 NULL。
+2026-11-27 已在测试库重新核对以下 7 张表，共 43 个字段。类型采用 PostgreSQL 名称。必填表示数据库禁止 NULL。
 
 #### tenants
 
@@ -39,10 +39,10 @@
 | 字段 | 类型 | 必填 | 默认值 | 含义 |
 | --- | --- | --- | --- | --- |
 | `phone` | `text` | 否 | — | 员工登录手机号，使用国际格式 |
-| `user_id` | `uuid` | 否 | — | Supabase Auth 用户 ID，待开通时为空 |
+| `user_id` | `uuid` | 否 | — | 当前登录账号的 Supabase Auth 用户 ID。首次注册前和注销后为空 |
 | `name` | `text` | 是 | — | 成员姓名 |
 | `organization` | `text` | 是 | — | 所属组织 ID |
-| `disabled` | `boolean` | 是 | `false` | 停用标记 |
+| `disabled` | `boolean` | 是 | `false` | 有登录账号时为停用标记。注销后保留为真，批量开户将跳过该成员 |
 | `hosting_group_id` | `text` | 否 | — | 负责的 Stride 小组 ID，可稍后绑定 |
 | `id` | `uuid` | 是 | `gen_random_uuid()` | 稳定成员 ID |
 | `feishu_open_id` | `text` | 否 | — | 可选的飞书人员标识 |

@@ -146,8 +146,8 @@
   border-radius: 4px;
 }
 
-// ========== 画布 ==========
-canvas {
+// ========== 后台图表画布 ==========
+:where(.app-layout) canvas {
   width: 100% !important;
   height: 280px !important;
   filter: drop-shadow(0 4px 8px rgba($text-muted, 0.15));

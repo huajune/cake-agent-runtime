@@ -1,30 +1,6 @@
-// Hosting 页面主样式
-@use '@/assets/styles/variables' as *;
-
 .page {
-  padding-bottom: 60px;
-}
-
-.pageHeader {
-  margin-bottom: $spacing-xl;
-}
-
-.pageTitle {
-  margin: 0;
-  color: #14132b;
-  font-size: 18px;
-  font-weight: $font-weight-medium;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-
-.pageDesc {
-  margin: 6px 0 0 0;
-  font-size: $font-size-xs;
-  color: #5b5a86;
-  max-width: 600px;
-}
-
-.section {
-  margin-top: $spacing-xl;
+  container-type: inline-size;
+  display: grid;
+  gap: $spacing-lg;
+  padding-bottom: $spacing-xl;
 }

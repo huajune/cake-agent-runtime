@@ -1,8 +1,9 @@
 import { useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight } from 'lucide-react';
+import { Building2, ChevronDown } from 'lucide-react';
 import {
   DASHBOARD_ACCOUNT_PAGE_SIZE,
+  formatDashboardPhone,
   loadAccounts,
   TENANT_ROLE_LABELS,
   TenantRole,
@@ -16,6 +17,7 @@ interface Props {
   tenant: TenantAccountSummary;
   initiallyExpanded: boolean;
   groupNames: ReadonlyMap<string, string>;
+  hasHostingGroups: boolean;
   administratorId?: string;
   onAction: (action: AccountAction) => void;
 }
@@ -24,6 +26,7 @@ export default function TenantAccounts({
   tenant,
   initiallyExpanded,
   groupNames,
+  hasHostingGroups,
   administratorId,
   onAction,
 }: Props) {
@@ -40,7 +43,7 @@ export default function TenantAccounts({
     enabled: expanded && tenant.accountCount > 0,
   });
   return (
-    <section className={styles.panel} aria-labelledby={id}>
+    <section className={styles.panel} aria-labelledby={id} data-expanded={expanded}>
       <h2>
         <button
           id={id}
@@ -49,15 +52,23 @@ export default function TenantAccounts({
           aria-controls={id + '-members'}
           onClick={() => setExpanded(!expanded)}
         >
-          <ChevronRight size={18} aria-hidden="true" />
-          <span>{tenant.name}</span>
+          <Building2 size={18} aria-hidden="true" />
+          <span className={styles.tenantName}>{tenant.name}</span>
           <small>{tenant.accountCount} 个账号</small>
+          <ChevronDown size={16} className={styles.chevron} aria-hidden="true" />
         </button>
       </h2>
       <div id={id + '-members'} hidden={!expanded}>
         {expanded &&
           (tenant.accountCount === 0 ? (
-            <p>该组织暂无账号。</p>
+            <div className={styles.empty}>
+              <p>{hasHostingGroups ? '该组织暂无账号，已关联托管小组。' : '该组织暂无账号。'}</p>
+              {!tenant.hasMembers && !hasHostingGroups && (
+                <button type="button" onClick={() => onAction({ type: 'deleteTenant', tenant })}>
+                  删除组织
+                </button>
+              )}
+            </div>
           ) : result.isError ? (
             <p role="alert">
               {result.error.message} <button onClick={() => void result.refetch()}>重试</button>
@@ -66,49 +77,52 @@ export default function TenantAccounts({
             <p role="status">正在加载账号…</p>
           ) : (
             <>
-              <div className={styles.scroll}>
-                <table aria-label={tenant.name + '账号'}>
-                  <thead>
-                    <tr>
-                      <th scope="col">姓名</th>
-                      <th scope="col">登录账号</th>
-                      <th scope="col">负责小组</th>
-                      <th scope="col">角色</th>
-                      <th scope="col">状态</th>
-                      <th scope="col">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.data.accounts.map((account) => (
-                      <tr key={account.memberId ?? account.phone}>
-                        <td>{account.name}</td>
-                        <td>{account.loginName ?? account.phone ?? '待补手机号'}</td>
-                        <td>
-                          {account.hostingGroupId
-                            ? (groupNames.get(account.hostingGroupId) ?? account.hostingGroupId)
+              <table role="table" aria-label={tenant.name + '账号'}>
+                <thead>
+                  <tr>
+                    <th scope="col">姓名</th>
+                    <th scope="col">登录账号</th>
+                    <th scope="col">负责小组</th>
+                    <th scope="col">角色</th>
+                    <th scope="col">状态</th>
+                    <th scope="col">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.data.accounts.map((account) => (
+                    <tr key={account.userId}>
+                      <td>{account.name}</td>
+                      <td>
+                        <span className={styles.mobileLabel} aria-hidden="true">
+                          登录账号
+                        </span>
+                        {account.loginName ?? formatDashboardPhone(account.phone)}
+                      </td>
+                      <td>
+                        <span className={styles.mobileLabel} aria-hidden="true">
+                          负责小组
+                        </span>
+                        {account.hostingGroupId
+                          ? (groupNames.get(account.hostingGroupId) ?? account.hostingGroupId)
+                          : '—'}
+                      </td>
+                      <td>
+                        <span className={styles.mobileLabel} aria-hidden="true">
+                          角色
+                        </span>
+                        {account.loginName
+                          ? '系统管理员'
+                          : account.tenantRole
+                            ? TENANT_ROLE_LABELS[account.tenantRole]
                             : '—'}
-                        </td>
-                        <td>
-                          {account.loginName
-                            ? '系统管理员'
-                            : account.tenantRole
-                              ? TENANT_ROLE_LABELS[account.tenantRole]
-                              : '—'}
-                        </td>
-                        <td>
-                          <span
-                            className={
-                              account.disabled
-                                ? styles.disabled
-                                : account.userId
-                                  ? styles.active
-                                  : styles.pending
-                            }
-                          >
-                            {account.disabled ? '已停用' : account.userId ? '已开通' : '待开通'}
-                          </span>
-                        </td>
-                        <td>
+                      </td>
+                      <td>
+                        <span className={account.disabled ? styles.disabled : styles.active}>
+                          {account.disabled ? '已停用' : '已开通'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={styles.actions}>
                           {!account.disabled &&
                             account.tenantRole === TenantRole.GroupLeader &&
                             account.memberId && (
@@ -117,37 +131,42 @@ export default function TenantAccounts({
                               </button>
                             )}
                           {account.disabled ? (
-                            '—'
-                          ) : !account.userId ? (
-                            <button onClick={() => onAction({ type: 'open', account })}>
-                              开通
-                            </button>
+                            !account.loginName ? (
+                              <>
+                                <button onClick={() => onAction({ type: 'restore', account })}>
+                                  恢复账号
+                                </button>
+                                <button
+                                  className={styles.danger}
+                                  onClick={() => onAction({ type: 'deleteLogin', account })}
+                                >
+                                  删除账号
+                                </button>
+                              </>
+                            ) : (
+                              '—'
+                            )
                           ) : (
                             <>
                               <button onClick={() => onAction({ type: 'reset', account })}>
                                 重置密码
                               </button>
                               {account.userId !== administratorId && (
-                                <>
-                                  <button onClick={() => onAction({ type: 'move', account })}>
-                                    调整组织
-                                  </button>
-                                  <button
-                                    className={styles.danger}
-                                    onClick={() => onAction({ type: 'disable', account })}
-                                  >
-                                    停用
-                                  </button>
-                                </>
+                                <button
+                                  className={styles.danger}
+                                  onClick={() => onAction({ type: 'disable', account })}
+                                >
+                                  停用
+                                </button>
                               )}
                             </>
                           )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
               <AccountPagination
                 label={tenant.name + '账号分页'}
                 page={page}

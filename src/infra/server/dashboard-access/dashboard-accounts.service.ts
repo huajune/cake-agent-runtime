@@ -17,8 +17,6 @@ import {
   Tenant,
   TenantAccountPage,
   TenantRole,
-  isConfirmedDashboardAdminUser,
-  isDashboardAdministrator,
 } from '@/types/dashboard-account';
 
 import type { HostingGroupSelection } from '@/types/hosting-binding';
@@ -39,23 +37,13 @@ export class DashboardAccountsService {
   }
 
   async identify(token: string): Promise<DashboardAccount> {
-    const { data, error } = await this.client.auth.getUser(token);
-    if (error && (!error.status || error.status >= 500 || error.status === 429))
-      throw new ServiceUnavailableException('暂时无法验证登录状态');
-    const user = data.user;
-    if (error || !user) throw new UnauthorizedException('请重新登录');
-    const account = await this.find('user_id', user.id);
-    if (
-      !account ||
-      !account.tenant?.name ||
-      account.disabled ||
-      !(isDashboardAdministrator(account)
-        ? isConfirmedDashboardAdminUser(user)
-        : !account.loginName &&
-          user.phone &&
-          user.phone_confirmed_at &&
-          account.phone === '+' + user.phone.replace(/^\+/, ''))
-    ) {
+    const { data, error, status } = await this.client
+      .rpc('current_dashboard_account')
+      .setHeader('Authorization', 'Bearer ' + token);
+    if (status === 401 || status === 403) throw new UnauthorizedException('请重新登录');
+    if (error) throw new ServiceUnavailableException('暂时无法验证登录状态');
+    const account = data as DashboardAccount | null;
+    if (!account?.userId || !account.tenant?.name || account.disabled) {
       throw new ForbiddenException({
         code: 'DASHBOARD_ACCOUNT_INACTIVE',
         message: '该账号尚未开通或已停用，请联系总部',
@@ -68,23 +56,33 @@ export class DashboardAccountsService {
     const offset = (page - 1) * DASHBOARD_ACCOUNT_PAGE_SIZE;
     const { data, error, count } = await this.client
       .from('tenants')
-      .select('id,name,members:tenant_members!tenant_members_tenant_fk(count)', {
-        count: 'exact',
-      })
+      .select(
+        'id,name,members:tenant_members!tenant_members_tenant_fk(count),accounts:tenant_members!tenant_members_tenant_fk(count)',
+        { count: 'exact' },
+      )
+      .not('accounts.user_id', 'is', null)
       .order('created_at')
       .order('id')
       .range(offset, offset + DASHBOARD_ACCOUNT_PAGE_SIZE - 1)
-      .returns<Array<Tenant & { members: [{ count: number }] }>>();
+      .returns<Array<Tenant & { members: [{ count: number }]; accounts: [{ count: number }] }>>();
     if (error) throw new ServiceUnavailableException('暂时无法读取组织名单');
     return {
-      tenants: data.map(({ id, name, members }) => ({ id, name, accountCount: members[0].count })),
+      tenants: data.map(({ id, name, members, accounts }) => ({
+        id,
+        name,
+        accountCount: accounts[0].count,
+        hasMembers: members[0].count > 0,
+      })),
       total: count ?? 0,
     };
   }
 
   async list(page: number, organization?: string): Promise<DashboardAccountPage> {
     const offset = (page - 1) * DASHBOARD_ACCOUNT_PAGE_SIZE;
-    const query = this.client.from(TABLE).select(ACCOUNT_COLUMNS, { count: 'exact' });
+    const query = this.client
+      .from(TABLE)
+      .select(ACCOUNT_COLUMNS, { count: 'exact' })
+      .not('user_id', 'is', null);
     if (organization !== undefined) query.eq('organization', organization);
     const { data, error, count } = await query
       .order('organization')
@@ -92,7 +90,7 @@ export class DashboardAccountsService {
       .order('phone')
       .order('id')
       .range(offset, offset + DASHBOARD_ACCOUNT_PAGE_SIZE - 1)
-      .returns<DashboardAccount[]>();
+      .returns<DashboardAccountPage['accounts']>();
     if (error) throw new ServiceUnavailableException('暂时无法读取账号名单');
     return { accounts: data, total: count ?? 0 };
   }
@@ -108,6 +106,15 @@ export class DashboardAccountsService {
     return data;
   }
 
+  async deleteEmptyTenant(id: string, actor: string): Promise<void> {
+    const { data, error } = await this.client.rpc('delete_empty_tenant', { p_tenant_id: id });
+    if (error?.code === '23503')
+      throw new ConflictException('该组织已关联账号、托管小组或历史业务数据，无法删除');
+    if (error) throw new ServiceUnavailableException('暂时无法删除组织，请稍后重试');
+    if (!data) throw new NotFoundException('该组织已不存在，请刷新名单');
+    this.logger.log(`删除空组织 actor=${actor} organization=${id}`);
+  }
+
   async create(
     input: {
       name: string;
@@ -120,28 +127,22 @@ export class DashboardAccountsService {
     },
     actor: string,
   ): Promise<void> {
-    const tenant = await this.client
-      .from('tenants')
-      .select('id')
-      .eq('id', input.organization)
-      .maybeSingle();
+    const [tenant, existing] = await Promise.all([
+      this.client.from('tenants').select('id').eq('id', input.organization).maybeSingle(),
+      input.memberId ? this.find('id', input.memberId) : this.find('phone', input.phone),
+    ]);
     if (tenant.error) throw new ServiceUnavailableException('暂时无法核对组织');
     if (!tenant.data) throw new BadRequestException('组织不存在，请刷新后选择');
-    const existing = input.memberId
-      ? await this.find('id', input.memberId)
-      : await this.find('phone', input.phone);
+    if (input.memberId && !existing) throw new ConflictException('成员资料已变化，请重新核对');
     if (
-      input.memberId &&
-      (!existing ||
+      existing &&
+      (existing.userId ||
+        existing.organization !== input.organization ||
         existing.name !== input.name ||
         (existing.phone && existing.phone !== input.phone))
     )
-      throw new ConflictException('待开通成员资料已变化，请刷新后核对');
-    if (
-      existing &&
-      (existing.userId || existing.disabled || existing.organization !== input.organization)
-    )
-      throw new ConflictException('该手机号已有账号或所属组织与待开通名单不一致');
+      throw new ConflictException('该成员已有账号，或填写的资料与成员档案不一致');
+    const memberId = input.memberId ?? existing?.memberId;
     const hostingBinding =
       (input.tenantRole ?? existing?.tenantRole) === TenantRole.TenantAdmin
         ? undefined
@@ -155,7 +156,7 @@ export class DashboardAccountsService {
           name: input.name,
           organization: input.organization,
           ...(input.tenantRole && { tenant_role: input.tenantRole }),
-          ...(input.memberId && { member_id: input.memberId }),
+          ...(memberId && { member_id: memberId }),
           ...(hostingBinding && { hosting_binding: { ...hostingBinding, actor } }),
         },
       },
@@ -180,38 +181,38 @@ export class DashboardAccountsService {
     this.logger.log(`重置后台密码 actor=${actor} user=${userId}`);
   }
 
-  async update(
-    userId: string,
-    changes: { organization: string } | { disabled: true },
-    actor: string,
-  ): Promise<void> {
-    if (userId === actor) throw new ConflictException('管理员账号固定归属总部并保持启用');
-    if ('disabled' in changes) {
-      const account = await this.find('user_id', userId);
-      if (!account) throw new NotFoundException('后台账号不存在');
-      if (account.disabled) return;
-      // GoTrue and the account-status trigger commit the ban in one database transaction.
-      const { error } = await this.client.auth.admin.updateUserById(userId, {
-        ban_duration: '876000h',
-      });
-      if (error) this.throwAdminError(error);
-      if (!(await this.find('user_id', userId))?.disabled)
-        throw new ServiceUnavailableException('请检查后台账号停用状态同步迁移');
-    } else {
-      const { data, error } = await this.client
-        .from(TABLE)
-        .update(changes)
-        .eq('user_id', userId)
-        .eq('disabled', false)
-        .select('user_id')
-        .maybeSingle();
-      if (error?.code === '23503') throw new BadRequestException('组织不存在，请刷新后选择');
-      if (error) throw new ServiceUnavailableException('暂时无法调整所属组织');
-      if (!data) throw new NotFoundException('找不到已启用的后台账号');
-    }
-    this.logger.log(
-      `更新后台账号 actor=${actor} user=${userId} action=${'disabled' in changes ? 'disable' : changes.organization}`,
-    );
+  disable(userId: string, actor: string): Promise<void> {
+    return this.setDisabled(userId, actor, true);
+  }
+
+  restore(userId: string, actor: string): Promise<void> {
+    return this.setDisabled(userId, actor, false);
+  }
+
+  private async setDisabled(userId: string, actor: string, disabled: boolean): Promise<void> {
+    if (disabled && userId === actor) throw new ConflictException('管理员不能停用自己的账号');
+    const account = await this.find('user_id', userId);
+    if (!account) throw new NotFoundException('后台账号不存在');
+    if (account.disabled === disabled) return;
+    const { error } = await this.client.auth.admin.updateUserById(userId, {
+      ban_duration: disabled ? '876000h' : 'none',
+    });
+    if (error) this.throwAdminError(error);
+    if ((await this.find('user_id', userId))?.disabled !== disabled)
+      throw new ServiceUnavailableException('暂时无法确认账号状态，请刷新名单后重试');
+    this.logger.log(`更新后台账号 actor=${actor} user=${userId} disabled=${disabled}`);
+  }
+
+  async deleteLogin(userId: string, actor: string): Promise<void> {
+    if (userId === actor) throw new ConflictException('管理员不能删除自己的账号');
+    const { data, error } = await this.client.rpc('delete_disabled_dashboard_login', {
+      p_user_id: userId,
+    });
+    if (error?.code === '23514')
+      throw new ConflictException('只能删除已停用的员工账号，请刷新名单');
+    if (error) throw new ServiceUnavailableException('暂时无法删除登录账号，请稍后重试');
+    if (!data) throw new NotFoundException('登录账号已不存在，请刷新名单');
+    this.logger.log(`删除员工登录资格 actor=${actor} user=${userId}`);
   }
 
   private async find(

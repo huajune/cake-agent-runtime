@@ -13,7 +13,7 @@ export type TenantRole = (typeof TenantRole)[keyof typeof TenantRole];
 
 export const TENANT_ROLE_LABELS: Record<TenantRole, string> = {
   [TenantRole.GroupLeader]: '组长',
-  [TenantRole.TenantAdmin]: '租户管理员',
+  [TenantRole.TenantAdmin]: '组织管理员',
 };
 
 export const DASHBOARD_ADMIN_LOGIN = 'cakeadmin';
@@ -50,6 +50,12 @@ export function normalizeDashboardPhone(input: string): string | null {
   return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
 }
 
+export function formatDashboardPhone(phone: string | null | undefined): string | null {
+  if (!phone?.startsWith('+86')) return phone ?? null;
+  const local = phone.slice(3);
+  return normalizeDashboardPhone(local) === phone ? local : phone;
+}
+
 export interface DashboardAccount {
   memberId?: string;
   loginName?: typeof DASHBOARD_ADMIN_LOGIN | null;
@@ -63,7 +69,7 @@ export interface DashboardAccount {
   disabled: boolean;
 }
 export interface DashboardAccountPage {
-  accounts: DashboardAccount[];
+  accounts: Array<DashboardAccount & { userId: string }>;
   total: number;
 }
 
@@ -71,6 +77,7 @@ export const DASHBOARD_ACCOUNT_PAGE_SIZE = 50;
 
 export interface TenantAccountSummary extends Tenant {
   accountCount: number;
+  hasMembers: boolean;
 }
 
 export interface TenantAccountPage {

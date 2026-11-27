@@ -1,259 +1,221 @@
-@use '@/assets/styles/variables' as *;
+@use '@/assets/styles/tenant-list' as tenant-list;
+
+$status-column-width: 7.25rem;
+// 总数、组织统计和状态控件共用一列，箭头单独占位。
+$status-inset: $spacing-md + $spacing-sm + tenant-list.$chevron-size;
 
 .section {
+  @include tenant-list.surface;
   container-type: inline-size;
-  padding: 18px 20px 20px;
-  margin-bottom: $spacing-lg;
-  border: 1px solid $border;
-  border-radius: $radius-xl;
-  background: $bg-card;
-  box-shadow: $shadow-sm;
-  color: $text-primary;
 }
-
 .header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px $spacing-md;
   margin-bottom: $spacing-md;
 
-  h3 {
+  h2 {
+    @include dashboard-heading;
     margin: 0;
-    font-size: $font-size-lg;
-    font-weight: $font-weight-semibold;
-  }
-
-  p {
-    margin: 4px 0 0;
-    color: $text-secondary;
-    font-size: $font-size-sm;
   }
 }
-
-.total,
-.counts,
-.orgTitle > span {
+.headerMeta {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-sm;
+  margin-top: $spacing-xs;
+  padding-inline-end: $status-inset;
   color: $text-secondary;
   font-size: $font-size-xs;
+  p {
+    margin: 0;
+  }
+}
+.total {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-xs;
+  flex: 0 0 $status-column-width;
+  margin-inline-start: auto;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-
 .organizations {
-  display: grid;
-  gap: $spacing-sm;
-}
-
-.organization {
   overflow: clip;
-  border: 1px solid $border;
-  border-radius: $radius-lg;
-
+  border-radius: tenant-list.$radius;
+}
+.organization {
+  & + & {
+    border-top: 1px solid $border;
+  }
   summary {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    min-height: 54px;
-    box-sizing: border-box;
-    background: $bg-secondary;
-    cursor: pointer;
+    @include tenant-list.heading;
     list-style: none;
-    transition: background $transition-fast;
     &::-webkit-details-marker {
       display: none;
     }
-    &:hover {
-      background: $bg-tint;
-    }
-    &:focus-visible {
-      outline: 2px solid $primary-dark;
-      outline-offset: -2px;
-      border-radius: $radius-lg;
-    }
   }
-
-  &[open] .chevron {
-    transform: rotate(180deg);
+  &[open] {
+    border-radius: tenant-list.$open-corners;
+  }
+  &[open] > summary {
+    @include tenant-list.expanded-heading;
   }
 }
-
 .orgIcon {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  color: $primary-dark;
-  background: $primary-soft;
-  border-radius: $radius-md;
+  color: $text-body;
 }
-
 .orgTitle {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 2px 8px;
   overflow-wrap: anywhere;
-
-  strong {
-    font-size: $font-size-base;
-    font-weight: $font-weight-semibold;
-  }
+  color: $text-heading;
+  font-size: $font-size-base;
+  font-weight: $font-weight-medium;
 }
-
 .counts {
-  display: flex;
-  gap: $spacing-md;
-  white-space: nowrap;
-
-  b {
-    font-weight: $font-weight-semibold;
-  }
-}
-
-.activeCount {
-  color: color-mix(in srgb, #{$success} 46%, #{$text-primary});
-}
-
-.chevron {
-  color: $text-secondary;
-  transition: transform $transition-fast;
-}
-
-.groups {
-  margin: 0;
-  padding: 0 14px 0 24px;
-  border-top: 1px solid $border;
-  list-style: none;
-
-  li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: $spacing-md;
-    padding: 6px 0;
-  }
-
-  li + li {
-    border-top: 1px solid $border;
-  }
-}
-
-.groupInfo {
-  min-width: 0;
   display: grid;
-  gap: 2px;
-  overflow-wrap: anywhere;
-
-  strong {
-    font-size: $font-size-base;
+  inline-size: $status-column-width;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-self: end;
+  gap: $spacing-sm;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  > span {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  b {
+    margin-inline-start: auto;
     font-weight: $font-weight-medium;
   }
 }
-
-.groupId,
-.note {
-  font-size: $font-size-xs;
+.activeCount {
+  color: $success-text;
+}
+.chevron {
   color: $text-secondary;
 }
-
-.groupId {
-  font-family: $font-family-mono;
+.tableWrapper {
+  overflow-x: auto;
 }
-
-.note {
+.table {
+  @include tenant-list.table;
+  --status-end: #{$status-inset};
+  th:first-child {
+    width: 45%;
+  }
+  th:last-child {
+    width: calc(#{$status-column-width + $spacing-xs} + var(--status-end));
+  }
+  :is(th, td):last-child {
+    padding-inline: $spacing-xs var(--status-end);
+  }
+}
+.groupName {
+  color: $text-heading;
+  font-weight: $font-weight-medium;
+}
+.groupId {
+  margin-top: 2px;
+  color: $text-muted;
+  font-family: $font-family-mono;
+  font-size: 11px;
+}
+.description {
   white-space: pre-line;
 }
-
 .toggle {
-  min-height: 44px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  flex-shrink: 0;
+  justify-content: space-between;
+  white-space: nowrap;
 }
-
+label.toggle {
+  cursor: pointer;
+}
 .readOnly {
   color: $text-secondary;
   font-size: $font-size-xs;
 }
-
 .active,
 .blocked {
+  min-width: 50px;
   padding: 2px 8px;
   border-radius: $radius-full;
   font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  text-align: center;
+  white-space: nowrap;
 }
-
 .active {
-  color: color-mix(in srgb, #{$success} 46%, #{$text-primary});
-  background: $success-bg;
+  color: $success;
+  background: rgba($success, 0.1);
 }
-
 .blocked {
-  color: $text-secondary;
-  background: $bg-secondary;
+  color: $text-muted;
+  background: rgba($text-muted, 0.1);
 }
-
 .message {
   margin: 0;
   padding: $spacing-lg;
-  text-align: center;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  background: $bg-card;
   color: $text-secondary;
-
+  text-align: center;
   button {
+    padding: 6px;
+    border: 0;
+    background: none;
     color: $primary-dark;
+    font: inherit;
     text-decoration: underline;
-    cursor: pointer;
+    &:focus-visible {
+      outline: 2px solid $primary-dark;
+    }
   }
 }
-
-@media (max-width: 600px) {
+@container (max-width: 26rem) {
   .section {
-    padding: 14px 12px;
+    padding-inline: $spacing-sm;
   }
-}
-
-@container (max-width: 420px) {
+  .headerMeta {
+    padding-inline-end: $spacing-sm;
+  }
   .organization summary {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 4px 8px;
-    padding: 10px 12px;
+    grid-template-columns: minmax(0, 1fr) tenant-list.$chevron-size;
+    gap: 2px $spacing-sm;
+    padding-inline: $spacing-sm;
   }
   .orgIcon {
     display: none;
   }
   .counts {
-    grid-row: 2;
-    grid-column: 1 / -1;
-    flex-wrap: wrap;
-    gap: 2px 12px;
+    grid-area: 2 / 1 / auto / -1;
   }
   .chevron {
-    grid-row: 1;
-    grid-column: 2;
+    grid-area: 1 / 2;
   }
-  .groups {
-    padding: 0 12px;
+  .table {
+    --status-end: #{$spacing-sm};
+    th,
+    td {
+      padding-inline: 6px;
+    }
+    th:first-child {
+      width: 6.5rem;
+    }
   }
 }
-
-@container (max-width: 230px) {
-  .groups li {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0;
+@container (max-width: 18rem) {
+  .table th:first-child {
+    width: auto;
   }
+  .table th {
+    white-space: normal;
+  }
+}
+@media (pointer: coarse) {
   .toggle {
-    align-self: flex-end;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chevron,
-  .organization summary {
-    transition: none;
+    min-height: 44px;
   }
 }

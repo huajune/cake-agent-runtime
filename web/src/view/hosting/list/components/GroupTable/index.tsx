@@ -1,4 +1,4 @@
-import { ChevronDown, FolderTree } from 'lucide-react';
+import { Building2, ChevronDown } from 'lucide-react';
 import Switch from '@/components/Switch';
 import type { summarizeHostingGroups } from '../../group-sections';
 import styles from './index.module.scss';
@@ -13,7 +13,7 @@ interface GroupTableProps {
 }
 
 export default function GroupTable({
-  summary: { sections, total, blockedCount },
+  summary: { sections, total },
   isLoading,
   isError,
   isPending,
@@ -24,15 +24,15 @@ export default function GroupTable({
   return (
     <section className={styles.section} aria-labelledby="hosting-groups-title">
       <header className={styles.header}>
-        <div>
-          <h3 id="hosting-groups-title">小组托管状态</h3>
+        <h2 id="hosting-groups-title">小组托管状态</h2>
+        <div className={styles.headerMeta}>
           <p>屏蔽小组后，AI 暂停回复，聊天记录仍会保留。</p>
+          {ready && total > 0 && (
+            <span className={styles.total}>
+              <span>小组总数</span> <span>{total}</span>
+            </span>
+          )}
         </div>
-        {ready && total > 0 && (
-          <span className={styles.total}>
-            共 {total} 个小组 · {blockedCount} 个已屏蔽
-          </span>
-        )}
       </header>
 
       {isError ? (
@@ -54,13 +54,8 @@ export default function GroupTable({
               open={sections.length === 1}
             >
               <summary>
-                <span className={styles.orgIcon}>
-                  <FolderTree size={17} aria-hidden="true" />
-                </span>
-                <span className={styles.orgTitle}>
-                  <strong>{section.name}</strong>
-                  <span>{section.groups.length} 个小组</span>
-                </span>
+                <Building2 size={18} className={styles.orgIcon} aria-hidden="true" />
+                <strong className={styles.orgTitle}>{section.name}</strong>
                 <span className={styles.counts}>
                   <span className={styles.activeCount}>
                     托管中 <b>{section.groups.length - section.blocked}</b>
@@ -71,33 +66,54 @@ export default function GroupTable({
                 </span>
                 <ChevronDown size={16} className={styles.chevron} aria-hidden="true" />
               </summary>
-              <ul className={styles.groups}>
-                {section.groups.map((group) => (
-                  <li key={group.id}>
-                    <div className={styles.groupInfo}>
-                      <strong>{group.name}</strong>
-                      <span className={styles.groupId}>{group.id}</span>
-                      {group.note && <span className={styles.note}>{group.note}</span>}
-                    </div>
-                    <div className={styles.toggle}>
-                      <span className={group.blocked ? styles.blocked : styles.active}>
-                        {group.blocked ? '已屏蔽' : '托管中'}
-                      </span>
-                      {group.canToggle ? (
-                        <Switch
-                          aria-label={group.name + '托管开关'}
-                          size="sm"
-                          checked={!group.blocked}
-                          onChange={(enabled) => onToggleBlacklist(group.id, enabled)}
-                          pending={isPending}
-                        />
-                      ) : (
-                        <span className={styles.readOnly}>仅查看</span>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className={styles.tableWrapper}>
+                <table className={styles.table} aria-label={section.name + '小组托管状态'}>
+                  <thead>
+                    <tr>
+                      <th scope="col">小组名称</th>
+                      <th scope="col">描述</th>
+                      <th scope="col">托管状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {section.groups.map((group) => {
+                      const status = (
+                        <span className={group.blocked ? styles.blocked : styles.active}>
+                          {group.blocked ? '已屏蔽' : '托管中'}
+                        </span>
+                      );
+                      return (
+                        <tr key={group.id}>
+                          <td>
+                            <div className={styles.groupName}>{group.name}</div>
+                            <div className={styles.groupId}>{group.id}</div>
+                          </td>
+                          <td className={styles.description}>{group.note || '—'}</td>
+                          <td>
+                            {group.canToggle ? (
+                              <label className={styles.toggle}>
+                                <Switch
+                                  aria-label={group.name + '托管开关'}
+                                  size="sm"
+                                  checked={!group.blocked}
+                                  onChange={(enabled) => onToggleBlacklist(group.id, enabled)}
+                                  pending={isPending}
+                                />
+                                {status}
+                              </label>
+                            ) : (
+                              <div className={styles.toggle}>
+                                <span className={styles.readOnly}>仅查看</span>
+                                {status}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </details>
           ))}
         </div>

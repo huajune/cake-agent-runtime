@@ -168,6 +168,7 @@ export async function activateStaffAccounts(
   const handoff: Array<StaffMember & { password: string }> = [];
   let existing = 0;
   let disabled = 0;
+  let cancelled = 0;
   for (const member of ready) {
     let row = await getMember(client, member);
     if (!row.disabled && !row.user_id) {
@@ -193,7 +194,8 @@ export async function activateStaffAccounts(
         );
     }
     if (row.disabled) {
-      disabled++;
+      if (row.user_id) disabled++;
+      else cancelled++;
       continue;
     }
     const { data, error } = await client.auth.admin.getUserById(row.user_id);
@@ -213,11 +215,11 @@ export async function activateStaffAccounts(
   await writePrivateOnce(output, delivery);
   if (!isDeepStrictEqual(await readPrivateJson(output), delivery))
     throw new Error('私下交付文件与已核对账号不符');
-  const receipt = { fingerprint, created: handoff.length, existing, disabled, pending };
+  const receipt = { fingerprint, created: handoff.length, existing, disabled, cancelled, pending };
   await writePrivateOnce(join(directory, 'complete.json'), receipt);
   await rm(working, { force: true });
   process.stdout.write(
-    `开户完成，新开 ${handoff.length}，沿用 ${existing}，已停用 ${disabled}，待补手机号 ${pending}。\n`,
+    `开户完成，新开 ${handoff.length}，沿用 ${existing}，已停用 ${disabled}，已注销 ${cancelled}，待补手机号 ${pending}。\n`,
   );
 }
 

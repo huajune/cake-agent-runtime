@@ -3,12 +3,12 @@ import {
   Body,
   Controller,
   DefaultValuePipe,
+  Delete,
   Get,
   Header,
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
-  Patch,
   Post,
   Query,
   Req,
@@ -35,7 +35,6 @@ const createSchema = z
   })
   .strict();
 const resetSchema = z.object({ password: dashboardPasswordSchema }).strict();
-const organizationChange = z.object({ organization: organizationSchema }).strict();
 
 @Controller('dashboard/accounts')
 @DashboardAdminOnly()
@@ -80,7 +79,7 @@ export class DashboardAccountsController {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success || !parsed.data.phone)
       throw new BadRequestException(
-        '请检查姓名、手机号、组织、租户角色及密码（至少 8 个字符，最多 72 字节）',
+        '请检查姓名、手机号、所属组织、角色及密码（至少 8 个字符，最多 72 字节）',
       );
     const { name, phone, password, organization, tenantRole, memberId, hostingBinding } =
       parsed.data;
@@ -99,6 +98,12 @@ export class DashboardAccountsController {
     return { message: '账号已开通' };
   }
 
+  @Delete('organizations/:id')
+  async deleteOrganization(@Req() req: Request, @Param('id') id: string) {
+    await this.accounts.deleteEmptyTenant(id, this.access.requireAccount(req).userId);
+    return { message: '组织已删除' };
+  }
+
   @Post(':id/password')
   async reset(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     const actor = this.access.requireAccount(req).userId;
@@ -110,20 +115,19 @@ export class DashboardAccountsController {
 
   @Post(':id/disable')
   async disable(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
-    await this.accounts.update(id, { disabled: true }, this.access.requireAccount(req).userId);
+    await this.accounts.disable(id, this.access.requireAccount(req).userId);
     return { message: '账号已停用' };
   }
 
-  @Patch(':id/organization')
-  async changeOrganization(
-    @Req() req: Request,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: unknown,
-  ) {
-    const actor = this.access.requireAccount(req).userId;
-    const parsed = organizationChange.safeParse(body);
-    if (!parsed.success) throw new BadRequestException('请选择有效组织');
-    await this.accounts.update(id, { organization: parsed.data.organization }, actor);
-    return { message: '组织已更新' };
+  @Post(':id/restore')
+  async restore(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+    await this.accounts.restore(id, this.access.requireAccount(req).userId);
+    return { message: '账号已恢复' };
+  }
+
+  @Delete(':id')
+  async deleteLogin(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
+    await this.accounts.deleteLogin(id, this.access.requireAccount(req).userId);
+    return { message: '登录资格已删除' };
   }
 }

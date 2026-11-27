@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Bot, ChevronDown, Search, X } from 'lucide-react';
+import FilterSelect from '@/components/FilterSelect';
+import { Bot, Search, X } from 'lucide-react';
 import { formatLocaleNumber } from '@/utils/format';
 import styles from './index.module.scss';
 
@@ -184,29 +185,15 @@ export default function ControlPanel({
           )}
         </div>
 
-        <label className={styles.select}>
-          <Bot size={14} strokeWidth={2} aria-hidden="true" className={styles.selectIcon} />
-          <select
-            value={botFilter}
-            onChange={(event) => onBotFilterChange(event.target.value)}
-            className={styles.selectInput}
-            aria-label="托管 BOT 筛选"
-            disabled={isBotsLoading || botOptions.length === 0}
-          >
-            <option value={allBotsValue}>{selectPlaceholder}</option>
-            {botOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={14}
-            strokeWidth={2}
-            aria-hidden="true"
-            className={styles.selectChevron}
-          />
-        </label>
+        <FilterSelect
+          className={styles.select}
+          label="托管账号筛选"
+          icon={Bot}
+          value={botFilter}
+          options={[{ value: allBotsValue, label: selectPlaceholder }, ...botOptions]}
+          disabled={isBotsLoading || botOptions.length === 0}
+          onChange={onBotFilterChange}
+        />
 
         <div className={styles.stats}>
           {statChips.map((chip) => (
