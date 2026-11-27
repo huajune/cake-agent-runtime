@@ -1,6 +1,12 @@
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
+import type { ActionRecord } from '@biz/action-execution/action-execution.types';
+import {
+  BusinessTenantResolver,
+  businessTenant,
+  runForTenant,
+} from '@infra/supabase/business-tenant';
 import { createActionExecutorFixture } from '../../../helpers/action-executor.fixture';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
@@ -34,6 +40,8 @@ describe('GroupInviteService', () => {
   };
 
   let service: GroupInviteService;
+  let registry: ActionRecoveryRegistry;
+  const tenants = { resolve: jest.fn() };
   const permits = { evaluate: jest.fn() };
   let actions: ReturnType<typeof createActionExecutorFixture>;
 
@@ -82,7 +90,8 @@ describe('GroupInviteService', () => {
           useValue: permits,
         },
         { provide: ActionExecutorService, useValue: actions },
-        { provide: ActionRecoveryRegistry, useValue: new ActionRecoveryRegistry() },
+        ActionRecoveryRegistry,
+        { provide: BusinessTenantResolver, useValue: tenants },
         { provide: GroupResolverService, useValue: groupResolver },
         { provide: GroupMembershipService, useValue: groupMembership },
         { provide: RoomService, useValue: roomService },
@@ -102,6 +111,8 @@ describe('GroupInviteService', () => {
       ],
     }).compile();
     service = moduleRef.get(GroupInviteService);
+    registry = moduleRef.get(ActionRecoveryRegistry);
+    service.onModuleInit();
   });
 
   it('invites the candidate to the lowest-count available group', async () => {
@@ -295,6 +306,41 @@ describe('GroupInviteService', () => {
       actionStatus: 'succeeded',
       localSync: 'pending',
     });
+    expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+  });
+
+  it('repairs an accepted invitation in the original organization without another invitation', async () => {
+    const inputOccurredAt = new Date().toISOString();
+    groupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    roomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
+    memoryService.saveInvitedGroup.mockRejectedValueOnce(new Error('Redis unavailable'));
+    await service.invite({ ...input, logicalTurnId: input.turnKey, inputOccurredAt });
+    const [intent] = actions.execute.mock.calls[0];
+    const record = { intent, result: { accepted: true, code: 0 } } as ActionRecord;
+    const sync = registry.get(intent.kind)!.sync!;
+    const lease = { assertOwned: jest.fn().mockResolvedValue(undefined) };
+    memoryService.saveInvitedGroup.mockClear();
+    const owners: Array<ReturnType<typeof businessTenant>> = [];
+    memoryService.saveInvitedGroup.mockImplementation(async () => owners.push(businessTenant()));
+
+    tenants.resolve.mockResolvedValueOnce([null]);
+    await expect(sync(record, lease)).rejects.toThrow('邀请发生时的组织待核实');
+    expect(memoryService.saveInvitedGroup).not.toHaveBeenCalled();
+    tenants.resolve.mockResolvedValueOnce(['original-organization']);
+    await runForTenant('other-organization', () => sync(record, lease));
+
+    expect(tenants.resolve).toHaveBeenCalledWith([
+      { botId: input.botImId, at: Date.parse(inputOccurredAt) },
+    ]);
+    expect(owners).toEqual(['original-organization']);
+    expect(lease.assertOwned).toHaveBeenCalledTimes(1);
+    expect(memoryService.saveInvitedGroup).toHaveBeenCalledWith(
+      input.corpId,
+      input.userId,
+      input.sessionId,
+      expect.objectContaining({ invitedAt: inputOccurredAt }),
+      { requireExisting: true },
+    );
     expect(roomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
   });
 

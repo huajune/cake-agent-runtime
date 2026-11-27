@@ -1,4 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
+import { businessTenant } from '@infra/supabase/business-tenant';
 import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -199,10 +200,11 @@ export class ReplyTurnsService {
   }
   private inputContext(recovery: Record<string, unknown>): Record<string, unknown> {
     const primary = recovery.primary as Record<string, unknown>;
-    // Only route identity is needed to authorize this live turn and acknowledge its input later.
-    // No original text/model result is retained for background regeneration.
+    const tenantId = businessTenant();
+    // Capture the verified tenant and route so recovery can finish the original input.
     const keys = ['orgId', 'imBotId', 'chatId', 'imContactId', 'imRoomId', 'groupId', '_apiType'];
     return {
+      ...(tenantId !== undefined && { tenantId }),
       ...(typeof recovery.traceId === 'string' ? { traceId: recovery.traceId } : {}),
       primary: Object.fromEntries(
         keys.filter((key) => primary[key] !== undefined).map((key) => [key, primary[key]]),

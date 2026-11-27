@@ -121,12 +121,12 @@ Stride 目录快照，主键为 `(connection_id)`。
 | 表 | 字段数 | 当前归属与缺口 |
 | --- | ---: | --- |
 | `agent_action_evidence` | 6 | 随动作。用 (corp_id, action_id) 外键关联动作主表。 |
-| `agent_action_records` | 28 | 待完善。保存 account_id、chat_id、input_occurred_at。预约动作恢复时按原 Bot 和时间解组织，动作主表尚无独立租户列。 |
+| `agent_action_records` | 28 | 保存 account_id、chat_id、input_occurred_at。补记预约和候选人群邀请时按原 Bot 与业务时间查询组织。动作主表尚无独立租户列。 |
 | `agent_action_reviews` | 8 | 随动作。用 (corp_id, action_id) 外键关联原动作。 |
 | `agent_execution_events` | 11 | 有 tenant_id。依消息流水的 trace_id 继承。 |
 | `agent_long_term_memories` | 14 | 有 tenant_id。关系记忆按租户、企业、候选人和 Bot 区分，预约指针保存在 bot_user_id 为空的候选人行。 |
 | `agent_reply_inputs` | 5 | 随回复回合。外键为 (corp_id, logical_turn_id)，也保留原消息 ID。回合主表尚无租户列。 |
-| `agent_reply_turns` | 22 | 待完善。保存账号、会话、输入及业务时间，要做租户独立查询需核实原始消息归属。 |
+| `agent_reply_turns` | 22 | 新普通回复在现有 JSON 字段 `recovery.tenantId` 中保存组织，旧回合恢复时按原 Bot 和输入时间核实归属。表本身尚无独立租户列。 |
 | `candidate_blacklist` | 17 | 现行黑名单按 target_id 去重，命中策略共用。记录含 Bot/会话线索，尚不支持同一对象在不同租户独立封禁。 |
 | `chat_messages` | 25 | 有 tenant_id。按原消息时间、渠道连接和 Bot/小组的有效登记归属。 |
 | `daily_ops_report` | 25 | 有 tenant_id。日报投影的唯一维度含组织、企业、日期和 Bot。 |

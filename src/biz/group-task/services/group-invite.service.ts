@@ -14,6 +14,7 @@ import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-re
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { sleep } from '@infra/utils/async.util';
+import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
 import { recordToolDecision } from '@observability/context/tool-observation';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/invite/enterprise-room-count.util';
@@ -124,6 +125,7 @@ export class GroupInviteService implements OnModuleInit {
     private readonly actions: ActionExecutorService,
     private readonly recoveryRegistry: ActionRecoveryRegistry,
     private readonly permits: ActionPermitService,
+    private readonly tenants: BusinessTenantResolver,
   ) {
     this.memberLimit = Number.parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     this.enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || null;
@@ -139,8 +141,17 @@ export class GroupInviteService implements OnModuleInit {
           detail: 'membership_is_not_request_completion_evidence',
         },
       }),
-      sync: (record, context) =>
-        this.syncInviteAction(record.intent, record.result as InviteApiResult, context),
+      sync: async ({ intent, result }, context) => {
+        // Helper-bot invitations have no candidate session to repair.
+        if (!intent.recovery?.candidate) return;
+        const [tenantId] = await this.tenants.resolve([
+          { botId: intent.accountId, at: Date.parse(intent.occurredAt) },
+        ]);
+        if (!tenantId) throw new Error('邀请发生时的组织待核实');
+        await runForTenant(tenantId, () =>
+          this.syncInviteAction(intent, result as InviteApiResult, context),
+        );
+      },
     });
   }
 
