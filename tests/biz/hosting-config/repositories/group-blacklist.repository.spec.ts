@@ -68,6 +68,21 @@ describe('GroupBlacklistRepository', () => {
     expect(repository).toBeDefined();
   });
 
+  it('checks the registered tenant in the same database write and reports a changed assignment', async () => {
+    mockSupabaseClient.rpc.mockReturnValue(makeQueryMock({ error: { code: '42501' } }));
+    await expect(
+      repository.setGroupBlacklisted('group', false, '总部小组开关', 'headquarters'),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(1);
+    expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('set_tenant_hosting_group_blacklisted', {
+      p_connection_id: 'stride-primary',
+      p_tenant_id: 'headquarters',
+      p_group_id: 'group',
+      p_blacklisted: false,
+      p_reason: '总部小组开关',
+    });
+  });
+
   it('updates only the target group through the atomic RPC and reports failures', async () => {
     const items = [{ group_id: 'other', added_at: 1 }];
     mockSupabaseClient.rpc.mockReturnValue(makeQueryMock({ data: items, error: null }));

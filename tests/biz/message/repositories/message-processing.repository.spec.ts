@@ -453,6 +453,31 @@ describe('MessageProcessingRepository', () => {
   // ==================== getMessageProcessingRecordById ====================
 
   describe('getMessageProcessingRecordById', () => {
+    it('reads a migrated headquarters detail from the turn snapshot and backfilled timing column', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      const invocation = { response: { timings: { durations: { requestToFirstTextDeltaMs: 34 } } } };
+      mockSupabaseClient.from.mockReturnValue(
+        makeQueryMock({
+          data: [
+            {
+              message_id: 'historical',
+              chat_id: 'chat',
+              status: 'success',
+              received_at: '2026-11-19T00:00:00Z',
+              ttft_ms: 34,
+              message_processing_turn_snapshots: invocation,
+            },
+          ],
+        }),
+      );
+
+      expect(await repository.getMessageProcessingRecordById('historical')).toMatchObject({
+        messageId: 'historical',
+        agentInvocation: invocation,
+        ttftMs: 34,
+      });
+    });
+
     it('should return null when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 

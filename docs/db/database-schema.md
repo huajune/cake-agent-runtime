@@ -10,6 +10,14 @@
 
 ---
 
+### 组织归属（测试库已验收，正式发布待执行）
+
+11 月 26 日核对测试库 `public` 的 34 张实体表，其中 15 张有 `tenant_id`。相对 v11.22.1，本期净增 7 张。新增表的字段类型、默认值、主键及其余 27 张表的完整字段和归属见[租户数据表与字段](tenant-schema.md)。
+
+组织登记在 `tenants`，成员的 `tenant_members.organization` 通过外键引用组织。小组与组织、Bot 与小组分别在 `hosting_group_ownership`、`hosting_bot_memberships` 记录生效时间。聊天、流水、调用明细、执行和审查记录、复聊、人工介入、运营事件、日报、用户活动及长期记忆使用同一组织主键。历史记录缺少时间或渠道证据时保留空归属。权限、登记操作与回填条件见[租户、成员和业务账号](../product/organization-members-and-business-accounts.md)。
+
+中心员工的服务端查询以当前成员档案确定组织。消息处理的 `source_occurred_at` 与处理接收时间分别保存。幂等活动事件写入 `user_activity_events`，业务报表按 Bot 所属组织汇总，同一活动重放只计一次。[可回滚的测试库验收](../../tests/supabase/business-tenant-ownership.sql)
+
 ## 这次生产切换改了什么
 
 2026 年 11 月 26 日 16:16（北京时间），新加坡生产库完成本批五份迁移，最新版本号为 `20261125100000`。读消息处理详情时，先用主流水定位处理尝试，再按问题读取对应的回合快照或模型 HTTP 请求。[联合迁移与生产验收](../technical/runtime-storage-batch.md) · [v11.22.1 发布记录](https://github.com/huajune/cake-agent-runtime/releases/tag/v11.22.1)
@@ -219,6 +227,8 @@
 | `created_at`       | timestamptz  | now()            | -                                                                                                |
 | `updated_at`       | timestamptz  | now()            | trigger 自动维护                                                                                 |
 | `bot_im_id` | text | — | 处理本轮的托管账号系统标识，用于 BOT 筛选和中心授权范围 |
+| `source_occurred_at` | timestamptz | — | 原始输入的业务时间，普通回复续发沿用这个时间核定组织。 |
+| `tenant_id` | text | — | 由原 Bot 和业务时间确定，证据不足时为空。 |
 | `ttft_ms` | integer | — | 模型首段文本等待时间，单位毫秒 |
 | `guardrail_input` / `guardrail_output` | jsonb | — | 入站和出站守卫的审查摘要 |
 | `post_processing_status` | jsonb | — | 回合结束后的处理状态 |
@@ -239,6 +249,7 @@
 | `created_at` | timestamptz | 首次保存的时间，历史迁入时保留。 |
 | `request` | jsonb | Cake 本轮准备的 SDK 请求、上下文和渠道输入标识。 |
 | `response` | jsonb | 回合级响应和投递摘要。工具调用、步骤、记忆分别由主流水对应字段提供。 |
+| `tenant_id` | text | 继承主流水的组织，主流水补齐归属时同步。 |
 
 #### message_processing_invocations - 模型 HTTP 调用
 
@@ -253,6 +264,7 @@
 | `http_status` | smallint | 收到的 HTTP 状态码。未收到响应时可为空。 |
 | `complete` | boolean | 响应是否已完整采集。 |
 | `request_body` / `response_body` | bytea | 捕获到的请求、响应原始字节，可分别为空。 |
+| `tenant_id` | text | 继承主流水的组织，补齐归属时保留已采集的字节。 |
 
 每天北京时间 03:00 清理。主流水按 `received_at`、回合快照按 `created_at`、HTTP 尝试按 `started_at` 计算期限。两类快照默认跟随主流水的 90 天，在同一批 500 行额度内先清理到期回合，再清理到期 HTTP 调用。删除主流水也会级联删除两类快照。[清理任务](../../src/biz/monitoring/services/cleanup/data-cleanup.service.ts) · [清理函数](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql)
 
@@ -365,7 +377,7 @@ Redis 保存待处理输入、Bull 任务和会话锁。下列关系表记录了
 
 ### 5. agent_long_term_memories - 用户长期记忆
 
-**用途**：按 `(corp_id, user_id, bot_user_id)` 存储候选人与托管账号之间的长期关系档。
+按组织、企微企业、候选人与托管账号存储长期关系档。组织隔离版的唯一键为 `(tenant_id, corp_id, user_id, bot_user_id)`。
 `bot_user_id` 必须使用稳定的企微 `wecomUserId`，不可使用会轮换的 `imBotId`。
 
 **代码位置**：
@@ -439,9 +451,8 @@ Redis 保存待处理输入、Bull 任务和会话锁。下列关系表记录了
 
 **约束与兼容行**：
 
-- 生产关系行唯一约束：`(corp_id, user_id, bot_user_id)`；
-- `bot_user_id IS NULL` 的旧行保留且不参与长期召回；
-- NULL 行由部分唯一索引约束为每个 `(corp_id, user_id)` 至多一行，用于兼容 `active_booking`。
+- 组织迁移前的关系行使用 `(corp_id, user_id, bot_user_id)` 去重。
+- 迁移后组合唯一键采用 `NULLS NOT DISTINCT`。每个组织内的同一企业和候选人最多保留一行 `bot_user_id IS NULL` 的预约指针，长期召回使用有稳定托管账号的关系行。
 
 **触发器**：`trigger_agent_long_term_memories_updated_at`
 
@@ -451,7 +462,7 @@ Redis 保存待处理输入、Bull 任务和会话锁。下列关系表记录了
 - `append_long_term_summary_atomic`：原子追加单层摘要数组，最多保留 20 段
 - `mark_long_term_settled_boundary`：兼容名称；原子更新摘要与独立 `consolidation_watermarks`
 
-**Redis 缓存 key**：`long-term:{corpId}:{userId}:{botUserId}`，TTL 2 小时。
+长期档案缓存时长为两小时。已经确认组织的运行时请求给长期档案、会话和预约快照的 Redis 键加上 `tenant:{tenantId}:` 前缀。
 
 ---
 
@@ -482,11 +493,11 @@ Redis 保存待处理输入、Bull 任务和会话锁。下列关系表记录了
 | `created_at`      | timestamptz | now()    | -                    |
 | `updated_at`      | timestamptz | now()    | -                    |
 
-**唯一约束**：`(chat_id, activity_date)`
+组织隔离版按 `(tenant_id, chat_id, activity_date)` 唯一。原有按会话和日期累计的数据须基于事件证据核实归属。
 
 **操作说明**：
 
-- **写入**：RPC `upsert_user_activity()` — 消息接收时自动累加
+- **写入**　消息接收和 Token 用量分别以事件键调用 `record_user_activity`，首次写入事件才累计活动。
 - **读取**：RPC `get_active_users_by_range()` / `get_daily_user_stats_by_range()`
 - **清理**：不清理，永久保留（托管趋势数据源）
 
@@ -628,12 +639,29 @@ Redis 保存待处理输入、Bull 任务和会话锁。下列关系表记录了
 | `description`               | text         | -        | 配置描述 |
 | `created_at` / `updated_at` | timestamptz  | now()    | -        |
 
-**常用配置键**：
+2026-11-24 逐键核对了正式库的 11 项和测试库的 7 项。下表记录各项的实际用途。
 
-- `group_blacklist` — 群消息黑名单
-- `ai_reply_enabled` — AI 回复全局开关
-- `message_merge_enabled` — 聚合开关
-- `agent_reply_config` — Agent 回复配置（模型/延迟/阈值）
+| 配置键 | 用途 | 已配置的环境 |
+| --- | --- | --- |
+| `ai_reply_enabled` | 平台 AI 回复总开关 | 正式、测试 |
+| `group_blacklist` | 关闭 AI 托管的小组名单 | 正式、测试 |
+| `message_merge_enabled` | 连续消息聚合开关 | 正式、测试 |
+| `agent_reply_config` | 回复模型、分段与节奏、监控阈值 | 正式、测试 |
+| `hosting_member_config` | 按 Bot 读取海绵凭据、飞书接收人、企微昵称和人设，另支持运营接收人和任务派单 | 正式、测试 |
+| `group_task_config` | 群任务通知开关和试运行模式 | 正式、测试 |
+| `conversion_bot_identity_aliases` | 转化分析归并历史 Bot 身份 | 正式、测试 |
+| `feishu_task_config` | 人工介入时创建飞书任务的开关 | 正式 |
+| `oob_reconcile_scan_config` | 带外工单对账扫描开关及每次扫描上限 | 正式 |
+| `runtime_storage_writes` | 数据库触发器按项控制消息、执行步骤、工具回复和评测内容的写入 | 正式 |
+| `system_config` | 消息处理 Worker 的并发数 `workerConcurrency` | 正式 |
+
+`agent_reply_config` 有三种需要区分的情况。
+
+- 测试库保留了 `reviewModelId`、`outputGuardrailLlmEnabled`、`outputGuardrailSemanticShadowEnabled`。当前前后端均无读取入口，正式库没有这三个字段，可从测试配置清理。
+- 两个库都保存了 `alertThrottleWindowMs` 和 `alertThrottleMaxCount`。配置接口接受这两个值，飞书告警发送端目前按去重键限流，同一键 5 分钟内最多发送 3 次。要让这两项可调，需要接通发送端。[告警节流实现](../../src/notification/services/alert-notifier.service.ts)
+- `typingDelayPerCharMs` 是旧字段，消息运行时仍有兼容读取逻辑。[回复速度的计算](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts)
+
+成员开户使用 `tenant_members`。托管凭据和通知仍从 `hosting_member_config` 读取，迁移范围见[组织、成员和业务账号](../product/organization-members-and-business-accounts.md#现有配置如何迁入)。
 
 ---
 

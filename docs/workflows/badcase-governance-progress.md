@@ -74,7 +74,7 @@ node scripts/backfill-badcase-evidence.js --base-url=http://127.0.0.1:8586 --app
 
 ```bash
 curl -X POST http://127.0.0.1:8586/feishu/sync/badcase-governance/document-check \
-  -H "Authorization: Bearer $API_GUARD_TOKEN"
+  -H "Authorization: Bearer $CAKE_MACHINE_API_TOKEN"
 ```
 
 生产配置：

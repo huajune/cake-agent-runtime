@@ -40,6 +40,7 @@ import { MessageRuntimeConfigService } from './runtime/message-runtime-config.se
 import { MessageTraceStoreService } from './telemetry/message-trace-store.service';
 import { MessageWorkerManagerService } from './runtime/message-worker-manager.service';
 import { AcceptInboundMessageService } from './application/accept-inbound-message.service';
+import { PendingHostingSourceService } from './application/pending-hosting-source.service';
 import { ReplyWorkflowService } from './application/reply-workflow.service';
 import { MessageProcessingFailureService } from './application/message-processing-failure.service';
 import { TypingPolicyService } from './delivery/typing-policy.service';
@@ -90,6 +91,7 @@ import {
     MessageTraceStoreService,
     MessageWorkerManagerService,
     MessageService,
+    PendingHostingSourceService,
     MessageProcessor,
     // 子服务（按职责分类）
     MessageDeduplicationService, // 消息去重

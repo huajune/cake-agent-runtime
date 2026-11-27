@@ -1,0 +1,150 @@
+@use '@/assets/styles/account-controls' as controls;
+
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: $spacing-lg $spacing-md;
+  background:
+    radial-gradient(ellipse at 15% 69%, rgba($lilac, 0.26), transparent 32%),
+    radial-gradient(ellipse at 85% 29%, rgba($rose-light, 0.24), transparent 28%), $gradient-page;
+  color: $text-primary;
+}
+.card {
+  --inset: clamp(22px, 4vw, 36px);
+  width: min(100%, 428px);
+  overflow: hidden;
+  border: 1px solid $border;
+  border-radius: $radius-xl;
+  background: $bg-card;
+
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-sm;
+    margin: $spacing-lg var(--inset) 0;
+    padding: $spacing-md 0 $spacing-lg;
+    border-top: 1px solid $border;
+    color: $text-secondary;
+    font-size: $font-size-xs;
+    button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: $primary-dark;
+      font: inherit;
+      white-space: nowrap;
+      cursor: pointer;
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+  button:focus-visible {
+    outline: 2px solid $primary-dark;
+    outline-offset: 2px;
+  }
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: $spacing-md var(--inset);
+  border-bottom: 1px solid $border;
+  background: $gradient-dream;
+  color: $text-heading;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  img {
+    width: 44px;
+    height: 44px;
+    border-radius: $radius-md;
+  }
+}
+.workspaceTag {
+  padding: 2px 8px;
+  border: 1px solid $primary-12;
+  border-radius: 999px;
+  background: $primary-05;
+  color: $text-secondary;
+  font-size: 11px;
+  font-weight: $font-weight-medium;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.intro {
+  display: grid;
+  gap: 6px;
+  margin: var(--inset) var(--inset) $spacing-lg;
+  h1 {
+    @include dashboard-heading;
+    margin: 0;
+  }
+  p {
+    margin: 0;
+    color: #71717a;
+    font-size: $font-size-sm;
+    line-height: $line-height-normal;
+  }
+}
+.form {
+  display: grid;
+  gap: 6px;
+  margin-inline: var(--inset);
+  label {
+    color: $text-heading;
+    font-weight: $font-weight-medium;
+    font-size: $font-size-sm;
+  }
+  label:not(:first-child) {
+    margin-top: 12px;
+  }
+  input {
+    @include controls.field;
+    min-height: 46px;
+  }
+  p {
+    margin-top: $spacing-sm;
+    padding: 10px 12px;
+    border-radius: $radius-md;
+    background: $danger-bg;
+    color: $danger-text;
+    font-size: $font-size-sm;
+  }
+}
+.password {
+  position: relative;
+  input {
+    padding-right: 48px;
+  }
+  button {
+    position: absolute;
+    inset: 1px 1px 1px auto;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    border: 0;
+    border-radius: $radius-md;
+    background: transparent;
+    color: $text-secondary;
+    &:hover {
+      background: $bg-secondary;
+    }
+  }
+}
+.submit {
+  @include button-accent;
+  min-height: 46px;
+  margin-top: $spacing-md;
+
+  @media (prefers-reduced-motion: no-preference) {
+    .arrow {
+      transition: transform $transition-fast;
+    }
+    &:hover:not(:disabled) .arrow {
+      transform: translateX(2px);
+    }
+  }
+}

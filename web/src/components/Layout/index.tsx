@@ -2,14 +2,16 @@ import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '@/components/Sidebar';
 import AutumnGarland from '@/components/AutumnGarland';
+import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import {
   ALL_ROUTE_PATHS,
+  ROUTE_TITLES,
   preloadRouteChunks,
   type AppRoutePath,
 } from '@/routes/lazy-pages';
 import { markRouteNavigationComplete } from '@/utils/perf';
 
-function RouteContentFallback() {
+function RouteContentFallback({ title }: { title?: string }) {
   return (
     <div
       style={{
@@ -19,6 +21,7 @@ function RouteContentFallback() {
         alignContent: 'start',
       }}
     >
+      {title && <h1>{title}</h1>}
       <div
         style={{
           height: '120px',
@@ -55,9 +58,16 @@ function RouteContentFallback() {
 }
 
 export default function Layout() {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => window.matchMedia('(max-width: 640px)').matches,
+  );
   const location = useLocation();
-  const disableAmbientAnimations = location.pathname.startsWith('/agent-test');
+  const authorized = Boolean(useDashboardAccess());
+  const pathname = location.pathname.replace(/\/+$/, '') || '/';
+  const pendingContent = <RouteContentFallback title={ROUTE_TITLES[pathname as AppRoutePath]} />;
+  const disableAmbientAnimations = ['/agent-test', '/accounts', '/hosting'].some((path) =>
+    location.pathname.startsWith(path),
+  );
   const hasScheduledRouteWarmup = useRef(false);
 
   const toggleSidebar = useCallback(() => {
@@ -82,7 +92,7 @@ export default function Layout() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (hasScheduledRouteWarmup.current) return;
+    if (!authorized || hasScheduledRouteWarmup.current) return;
     hasScheduledRouteWarmup.current = true;
 
     const currentPath = ALL_ROUTE_PATHS.includes(location.pathname as AppRoutePath)
@@ -101,9 +111,12 @@ export default function Layout() {
     const globalWindow = window;
 
     if (typeof globalWindow.requestIdleCallback === 'function') {
-      const idleId = globalWindow.requestIdleCallback(() => {
-        void warmRoutes();
-      }, { timeout: 1500 });
+      const idleId = globalWindow.requestIdleCallback(
+        () => {
+          void warmRoutes();
+        },
+        { timeout: 1500 },
+      );
 
       return () => {
         cancelled = true;
@@ -119,7 +132,7 @@ export default function Layout() {
       cancelled = true;
       globalThis.clearTimeout(timer);
     };
-  }, [location.pathname]);
+  }, [location.pathname, authorized]);
 
   return (
     <>
@@ -140,8 +153,8 @@ export default function Layout() {
         <Sidebar isCollapsed={isSidebarCollapsed} onToggle={toggleSidebar} />
         <main className="content">
           <div className="container">
-            <Suspense fallback={<RouteContentFallback />}>
-              <Outlet />
+            <Suspense fallback={pendingContent}>
+              {authorized || pathname === '/accounts' ? <Outlet /> : pendingContent}
             </Suspense>
           </div>
         </main>

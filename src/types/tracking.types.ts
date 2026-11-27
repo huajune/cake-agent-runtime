@@ -64,6 +64,7 @@ export interface PostProcessingStatus {
  * 监控元数据（随消息传递的追踪信息）
  */
 export interface MonitoringMetadata {
+  sourceOccurredAt?: number;
   scenario?: ScenarioType;
   tokenUsage?: number;
   replyPreview?: string;

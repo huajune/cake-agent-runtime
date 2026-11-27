@@ -1,6 +1,7 @@
+import { dashboardFetch } from '@/api/dashboard-session';
 import { useEffect, useState } from 'react';
 
-/** 后端只推刷新信号；业务数据仍通过当前 IP 范围的接口获取。 */
+/** 后端只推刷新信号；业务数据仍通过当前账号组织范围的接口获取。 */
 export function useDashboardUpdates(refresh: () => void) {
   const [connected, setConnected] = useState(false);
   useEffect(() => {
@@ -8,9 +9,7 @@ export function useDashboardUpdates(refresh: () => void) {
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     const connect = async () => {
       try {
-        const token = import.meta.env.API_GUARD_TOKEN;
-        const response = await fetch('/dashboard/events', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        const response = await dashboardFetch('/dashboard/events', {
           signal: controller.signal,
         });
         if (

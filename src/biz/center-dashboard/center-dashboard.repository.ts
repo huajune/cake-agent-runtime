@@ -2,12 +2,11 @@ import { BadRequestException, Injectable, ServiceUnavailableException } from '@n
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import type { CenterRoute } from '@infra/server/dashboard-access/center-routes';
 
-/** 复用原页面的数据契约；所有筛选在 SQL 内与后端机器人范围取交集。 */
 @Injectable()
 export class CenterDashboardRepository {
   constructor(private readonly supabase: SupabaseService) {}
 
-  async read(kind: CenterRoute, botIds: string[], input: Record<string, unknown>) {
+  async read(kind: CenterRoute, tenantId: string, input: Record<string, unknown>) {
     const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
     const scalar = (key: string) => {
       const value = input[key];
@@ -88,9 +87,9 @@ export class CenterDashboardRepository {
     const client = this.supabase.getSupabaseClient();
     if (!client) throw new ServiceUnavailableException('数据服务暂不可用');
     const { data, error } = await client
-      .rpc('center_dashboard_read', {
+      .rpc('tenant_dashboard_read', {
         p_kind: kind,
-        p_bot_ids: botIds,
+        p_tenant_id: tenantId,
         p_start: start,
         p_end: end,
         p_params: params,

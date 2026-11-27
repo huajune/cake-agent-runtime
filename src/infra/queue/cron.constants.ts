@@ -1,6 +1,7 @@
 /** Stable lease/lifecycle identities; values are also persisted in Redis. */
 export const CRON_JOB = {
   OPS_DAILY_REPORT: 'ops-daily-report',
+  HOSTING_DIRECTORY_SYNC: 'hosting-directory-sync',
   SPONGE_STATUS_POLL: 'sponge-status-poll',
   CHAT_RECORD_SYNC: 'chat-record-sync',
   GROUP_ORDER_MORNING: 'group-order-morning',

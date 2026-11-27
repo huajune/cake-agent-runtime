@@ -39,7 +39,7 @@ Dockerfile 构建镜像            docker-compose.yml 启动容器
                                   ↑ 在这里指定端口、环境变量、日志等
 ```
 
-容器启动时需要 `.env.production`，而镜像构建阶段也会从中读取前端构建必需的变量（如 `API_GUARD_TOKEN`、`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`）并注入到 `docker build`。
+容器启动时需要 `.env.production`，而镜像构建阶段也会从中读取前端构建必需的变量（如 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`）并注入到 `docker build`。
 
 ---
 
@@ -81,6 +81,14 @@ GitHub Actions                        远程服务器 /data/cake/
                                           失败 → 自动回滚到上一版本
 3. 飞书企微私域监控群通知部署结果
 ```
+
+11 月 26 日，Supabase 测试项目已验过聊天、消息流水及两类快照的归属、托管开关和租户查询。4 个虚拟员工完成手机号和密码实登，核对了租户范围、重置和停用。外部供应商启用海绵等业务能力时另行验收对应路由。[租户隔离与登录验收](../product/organization-members-and-business-accounts.md#实现与上线边界)
+
+在授权的发布窗口内，先核对目标项目引用、自助注册已关闭（`disable_signup=true`）、Email 已启用。通过 `PATCH /v1/projects/{ref}/config/auth` 单独提交 `{"external_phone_enabled":true}`。回读目标项目的 `/auth/v1/settings`，核对 `external.phone=true`、`external.email=true`、`disable_signup=true`。总部开户时逐个确认已核实的手机号，员工登录走密码校验，整个流程无需配置短信服务。[Supabase Auth 配置接口](https://supabase.com/docs/reference/api/v1-update-auth-service-config)
+
+v11.22.1 已先行应用日期较晚的消息存储迁移。11 月 27 日只读核对时，测试库已执行本 PR 的 23 份迁移，生产库待执行 23 份。消息快照归属迁移之后还有 4 份，分别支持删除空组织、停用与恢复登录、注销与重新开户、查询当前会话权限。最后一份为 `20261127103000_current_dashboard_account.sql`。发布窗口使用 `pnpm exec supabase db push --db-url "$SUPABASE_DB_URL_PROD" --include-all --dry-run` 对照实际待执行清单。如有额外迁移，先核对所属版本，再执行已核实的清单。
+
+验收通过后的发布窗口内，发布人应用相应迁移、启用 Supabase Email 和 Phone 密码认证并关闭自助注册，将本机私有的开户名单、员工和管理员的初始密码文件交到服务器。部署脚本在旧服务运行时核对名单并登记 Stride 托管归属，等旧服务处理完登记前的待回复消息再切换。登记失败或等待超时会保留旧服务。新服务通过健康检查后先开通专用管理员 `cakeadmin`，再为已有手机号的员工开户。中途失败可用同一批文件重试，总部核对实际开户结果后按清单交付。详细步骤见[全员账号开通说明](../../src/biz/center-dashboard/README.md#随正式发布初始化全员账号)。
 
 ### 主聊并发首档
 
@@ -230,7 +238,6 @@ docker compose logs --tail=50 cake-agent
 ```bash
 # SSH 到服务器手动构建查看详细错误
 ssh haimian-deploy 'cd /data/cake && docker build \
-  --build-arg API_GUARD_TOKEN="$(sed -n "s/^API_GUARD_TOKEN=//p" .env.production | head -n1)" \
   --build-arg NEXT_PUBLIC_SUPABASE_URL="$(sed -n "s/^NEXT_PUBLIC_SUPABASE_URL=//p" .env.production | head -n1)" \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$(sed -n "s/^NEXT_PUBLIC_SUPABASE_ANON_KEY=//p" .env.production | head -n1)" \
   -t cake-agent-runtime:latest ./source'

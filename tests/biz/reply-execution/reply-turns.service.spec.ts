@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { runForTenant } from '@infra/supabase/business-tenant';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 
@@ -27,6 +28,16 @@ function setup(mode = 'execute', cutover: string | null = '2026-10-20T00:00:00Z'
 describe('durable reply input boundaries', () => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(new Date(now)));
   afterEach(() => jest.useRealTimers());
+  it('persists the verified business tenant rather than a caller-provided recovery field', async () => {
+    const { service, repository } = setup();
+    await runForTenant('henan', () =>
+      service.open(scope, ['a'], now, { ...turn.recovery, tenantId: 'other' }),
+    );
+    expect(repository.transition).toHaveBeenCalledWith(
+      'open',
+      expect.objectContaining({ recovery: { ...turn.recovery, tenantId: 'henan' } }),
+    );
+  });
   it('returns the original complete membership when only the second input is retried with new input', async () => {
     const { service } = setup();
     expect(await service.open(scope, ['b', 'new'], now, turn.recovery)).toMatchObject({

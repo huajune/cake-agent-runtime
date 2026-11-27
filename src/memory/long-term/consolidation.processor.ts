@@ -1,3 +1,4 @@
+import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
@@ -23,6 +24,7 @@ export class ConsolidationProcessor implements OnModuleInit {
     private readonly consolidation: ConsolidationService,
     private readonly scheduler: ConsolidationSchedulerService,
     private readonly failures: QueueFailureService,
+    private readonly tenants: BusinessTenantResolver,
   ) {}
 
   onModuleInit(): void {
@@ -33,6 +35,16 @@ export class ConsolidationProcessor implements OnModuleInit {
   }
 
   async process(job: Job<MemoryConsolidationJob>): Promise<void> {
+    const { botImId, activityAt, tenantId } = job.data;
+    const activeBotId =
+      botImId || (await this.tenants.historicalBot(job.data.sessionId, activityAt));
+    if (!activeBotId) return;
+    const [owner] = await this.tenants.resolve([{ botId: activeBotId, at: activityAt }]);
+    if (owner && (!tenantId || tenantId === owner))
+      await runForTenant(owner, () => this.processOwned(job));
+  }
+
+  private async processOwned(job: Job<MemoryConsolidationJob>): Promise<void> {
     const { corpId, userId, sessionId, botUserId, botImId } = job.data;
     try {
       if (!botUserId) {

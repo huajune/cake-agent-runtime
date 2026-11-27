@@ -45,12 +45,8 @@
   }
 
   h3 {
+    @include dashboard-heading;
     margin: 0;
-    font-size: 16px;
-    font-weight: $font-weight-medium;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-    color: #14132b;
     display: flex;
     align-items: center;
     gap: 12px;

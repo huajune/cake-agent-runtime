@@ -1,0 +1,98 @@
+.root {
+  position: relative;
+  min-width: 0;
+  &:has(.trigger[aria-expanded='true']) {
+    z-index: 20;
+  }
+}
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: var(--filter-height, 30px);
+  padding: 0 10px;
+  border: 1px solid $border;
+  border-radius: var(--filter-radius, #{$radius-md});
+  background: $bg-card;
+  color: $text-body;
+  font: inherit;
+  font-size: $font-size-xs;
+  text-align: start;
+  cursor: pointer;
+  > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  > svg {
+    flex: none;
+    color: $text-secondary;
+  }
+  &:hover:not(:disabled) {
+    border-color: $border-hover;
+  }
+  &:focus-visible,
+  &[aria-expanded='true'] {
+    border-color: $border-focus;
+    outline: none;
+  }
+  &[aria-expanded='true'] .chevron {
+    transform: rotate(180deg);
+  }
+  &:disabled {
+    cursor: default;
+    color: $text-muted;
+  }
+  @media (forced-colors: active) {
+    &:focus-visible {
+      outline: 1px solid Highlight;
+    }
+  }
+}
+.menu {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  z-index: 20;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(22rem, calc(100vw - 24px));
+  max-height: min(18rem, 50vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  background: $bg-card;
+  box-shadow: $shadow-lg;
+  color: $text-body;
+  font-size: $font-size-control;
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: $radius-md;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    > svg {
+      flex: none;
+    }
+    &[data-active='true'],
+    &:hover {
+      background: $bg-secondary;
+    }
+    &[aria-selected='true'] {
+      color: $primary-dark;
+      font-weight: $font-weight-medium;
+    }
+  }
+}

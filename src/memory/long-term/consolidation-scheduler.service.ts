@@ -1,3 +1,4 @@
+import { businessTenant, tenantMemoryKey } from '@infra/supabase/business-tenant';
 import { retainedJobs } from '@infra/queue/queue-policy';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,6 +18,7 @@ export interface MemoryConsolidationJob {
   botImId?: string;
   /** 注册/刷新任务时的回合结束时间，用于识别在途旧任务。 */
   activityAt: number;
+  tenantId?: string;
 }
 
 @Injectable()
@@ -39,6 +41,8 @@ export class ConsolidationSchedulerService {
    * 到点闲置校验中 fail closed。
    */
   async schedule(input: MemoryConsolidationJob, delayMs?: number): Promise<string> {
+    const tenantId = businessTenant();
+    if (tenantId) input = { ...input, tenantId };
     const baseJobId = this.buildJobId(input.sessionId);
     let jobId = baseJobId;
     const existing = await this.queue.getJob(baseJobId);
@@ -81,6 +85,6 @@ export class ConsolidationSchedulerService {
   }
 
   private buildJobId(sessionId: string): string {
-    return `memory-consolidation:${sessionId}`;
+    return tenantMemoryKey(`memory-consolidation:${sessionId}`);
   }
 }

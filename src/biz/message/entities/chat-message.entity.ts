@@ -20,6 +20,10 @@ export interface ChatMessageRecord {
   source?: StorageMessageSource;
   is_room?: boolean;
   im_bot_id?: string;
+  hosting_connection_id?: string;
+  hosting_group_id?: string;
+  hosting_observed_group_id?: string;
+  tenant_id?: string | null;
   im_contact_id?: string;
   contact_type?: StorageContactType;
   is_self?: boolean;

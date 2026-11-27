@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
+import { businessTenant } from '@infra/supabase/business-tenant';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import {
   RecordReengagementTouchInput,
@@ -91,17 +92,20 @@ export class ReengagementTouchRepository extends BaseRepository {
   }
 
   /**
-   * 会话渠道身份兜底查询：chat_messages 最新一条消息的身份快照。
-   * 与 20260706160000 迁移的存量回填同源（DISTINCT ON chat_id ORDER BY timestamp DESC），
-   * 供存量 Bull 任务（payload 无 channelIdentity）到点补身份。无消息/查询失败返回 null。
+   * 从最近的会话快照补充渠道身份。复聊任务使用锚点核实的 Bot，并只读取所属组织的消息。
    */
-  async getLatestChatChannelIdentity(sessionId: string): Promise<{
+  async getLatestChatChannelIdentity(
+    sessionId: string,
+    botImId?: string,
+  ): Promise<{
     candidateName?: string;
     managerName?: string;
     botImId?: string;
     imContactId?: string;
     externalUserId?: string;
   } | null> {
+    const tenant = businessTenant();
+    if (tenant === null) return null;
     const rows = await this.selectFrom<{
       candidate_name: string | null;
       manager_name: string | null;
@@ -112,9 +116,14 @@ export class ReengagementTouchRepository extends BaseRepository {
       role: string | null;
       is_self: boolean | null;
     }>(
-      'chat_messages',
+      tenant === undefined ? 'chat_messages' : 'tenant_visible_chat_messages',
       'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self,org_id,role',
-      (q) => q.eq('chat_id', sessionId).order('timestamp', { ascending: false }).limit(20),
+      (q) => {
+        let query = q.eq('chat_id', sessionId);
+        if (tenant !== undefined) query = query.eq('tenant_id', tenant);
+        if (botImId) query = query.eq('im_bot_id', botImId);
+        return query.order('timestamp', { ascending: false }).limit(20);
+      },
     );
     const row = rows.find((r) => r.candidate_name || r.manager_name || r.im_bot_id) ?? rows[0];
     if (!row) return null;

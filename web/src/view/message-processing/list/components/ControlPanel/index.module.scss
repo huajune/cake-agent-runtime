@@ -251,46 +251,11 @@ $hairline: $border;
 }
 
 .select {
-  @extend %field;
-  gap: 7px;
+  --filter-height: 32px;
+  --filter-radius: #{$radius-full};
   width: 170px;
   min-width: 110px;
-  padding: 0 26px 0 10px;
-  cursor: pointer;
   flex-shrink: 1;
-}
-
-.selectIcon {
-  flex-shrink: 0;
-  color: $gray-2;
-}
-
-.selectInput {
-  flex: 1;
-  min-width: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  background: transparent;
-  outline: none;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: $font-weight-normal;
-  color: $ink;
-  text-overflow: ellipsis;
-  cursor: pointer;
-
-  &:disabled {
-    color: $gray-2;
-    cursor: not-allowed;
-  }
-}
-
-.selectChevron {
-  position: absolute;
-  right: 9px;
-  color: $gray-2;
-  pointer-events: none;
 }
 
 // ── 统计胶囊：语义色只落在数字与极淡底色上 ──

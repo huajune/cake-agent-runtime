@@ -1,4 +1,9 @@
 import { Test, type TestingModule } from '@nestjs/testing';
+import {
+  BusinessTenantResolver,
+  businessTenant,
+  runForTenant,
+} from '@infra/supabase/business-tenant';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
 import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
@@ -56,10 +61,12 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
   const leases = { run: jest.fn() };
   const crons = { runBatches: jest.fn() };
   const incidents = { notify: jest.fn() };
+  const tenants = { resolve: jest.fn() };
 
   beforeEach(async () => {
     jest.resetAllMocks();
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    tenants.resolve.mockResolvedValue(['original-tenant']);
     assertOwned.mockResolvedValue(undefined);
     leases.run.mockImplementation(
       async (_chatId: string, task: (owned: () => Promise<void>) => Promise<void>) =>
@@ -83,6 +90,7 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
         { provide: ReplyRecoveryLeaseService, useValue: leases },
         { provide: CronRunnerService, useValue: crons },
         { provide: IncidentReporterService, useValue: incidents },
+        { provide: BusinessTenantResolver, useValue: tenants },
       ],
     }).compile();
     service = module.get(ReplyRecoveryService);
@@ -102,6 +110,57 @@ describe('ReplyRecoveryService route and recovery boundaries', () => {
       }),
     );
   }
+
+  it('resumes delivery and completes the input under its saved tenant', async () => {
+    const turn = groupTurn();
+    turn.recovery.tenantId = 'original-tenant';
+    turn.recovery.replySegments = ['原回复'];
+    turns.repository.due.mockResolvedValue([turn]);
+    turns.resumeDelivery.mockResolvedValue(turn);
+    const scopes: Array<string | null | undefined> = [];
+    workflow.resumeDelivery.mockImplementation(async () => {
+      scopes.push(businessTenant());
+      return { ...turn, status: 'settled' };
+    });
+    workflow.resumeInputCompletion.mockImplementation(async () => scopes.push(businessTenant()));
+    await runForTenant('different-tenant', () => service.recoverDue());
+    expect(scopes).toEqual(['original-tenant', 'original-tenant']);
+    expect(tenants.resolve).not.toHaveBeenCalled();
+  });
+
+  it.each([['one'], ['merged', 'input']])(
+    'looks up older turns by the historical bot and original time (%s)',
+    async (...inputIds: string[]) => {
+      const turn = groupTurn({ inputIds });
+      turns.repository.due.mockResolvedValue([turn]);
+      let recoveredTenant: ReturnType<typeof businessTenant>;
+      workflow.resumeInputCompletion.mockImplementation(async () => {
+        recoveredTenant = businessTenant();
+      });
+      await service.recoverDue();
+      expect(tenants.resolve).toHaveBeenCalledWith([
+        {
+          botId: turn.accountId,
+          at: Date.parse(turn.inputOccurredAt),
+          messageId: inputIds.length === 1 ? inputIds[0] : undefined,
+        },
+      ]);
+      expect(workflow.resumeInputCompletion).toHaveBeenCalledTimes(1);
+      expect(recoveredTenant).toBe('original-tenant');
+    },
+  );
+
+  it('defers unresolved input without sending or acknowledging it', async () => {
+    const turn = groupTurn();
+    turn.recovery.replySegments = ['原回复'];
+    turns.repository.due.mockResolvedValue([turn]);
+    turns.resumeDelivery.mockResolvedValue(turn);
+    tenants.resolve.mockResolvedValue([null]);
+    await service.recoverDue();
+    expect(workflow.resumeDelivery).not.toHaveBeenCalled();
+    expect(workflow.resumeInputCompletion).not.toHaveBeenCalled();
+    expect(turns.defer).toHaveBeenCalledWith(turn);
+  });
 
   it.each(['settled', 'acked'] as const)(
     'repairs %s input without route credentials or a sender',

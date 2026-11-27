@@ -18,11 +18,9 @@ export interface BotGroupInfo {
 const BOT_GROUP_TABLE: Record<string, BotGroupInfo> = {
   '1688855974513959': { managerName: 'gaoyaqi', groupName: '琪琪组' },
   '1688854363869800': { managerName: 'ZhuDongSheng', groupName: '小祝组' },
-  '1688857592548257': { managerName: 'HeMin', groupName: '小祝组' },
   '1688856098846503': { managerName: 'LiYuHang', groupName: '小祝组' },
   '1688854359801821': { managerName: 'LiHanTing', groupName: '南瓜组' },
   '1688855171908166': { managerName: 'LiYuHang', groupName: '宇航组' },
-  '1688854747775509': { managerName: 'WuPanPan', groupName: '盼盼组' },
   '1688855468965879': { managerName: 'XinYuQi', groupName: '瑜琦组' },
   '1688857954985709': { managerName: 'JiangYiFeng', groupName: '一锋组' },
 };
@@ -32,10 +30,6 @@ const BOT_GROUP_ALIASES: Record<string, BotGroupInfo> = {
   CongLingKaiShiDeXianShiShiJie: {
     managerName: 'CongLingKaiShiDeXianShiShiJie',
     groupName: '宇航组',
-  },
-  guoxiaoyang: {
-    managerName: '郭晓阳',
-    groupName: '晓阳组',
   },
 };
 

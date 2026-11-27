@@ -310,7 +310,7 @@ AnalyticsDashboardService
 
 中心访问回合完整请求、模型调用清单及单次原文均返回 HTTP 403。[消息接口](../../src/biz/message/message.controller.ts) · [中心访问范围](../../src/biz/center-dashboard/README.md#可见范围)
 
-> API 默认启用 `ApiTokenGuard`，需要 Bearer `API_GUARD_TOKEN`；Dashboard 前端注入鉴权头后调用。
+> API 默认启用 `ApiTokenGuard`，Dashboard 使用个人的 Supabase 访问令牌；自动化监控可使用服务端 `CAKE_MACHINE_API_TOKEN`。
 
 ---
 

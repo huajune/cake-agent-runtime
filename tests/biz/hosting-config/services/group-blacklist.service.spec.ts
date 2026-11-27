@@ -169,6 +169,7 @@ describe('GroupBlacklistService', () => {
         'newGroup',
         true,
         'reason',
+        undefined,
       );
       expect(mockRedisService.setex).toHaveBeenCalledWith(
         expect.any(String),
@@ -216,6 +217,7 @@ describe('GroupBlacklistService', () => {
       expect(mockGroupBlacklistRepository.setGroupBlacklisted).toHaveBeenCalledWith(
         'group1',
         false,
+        undefined,
         undefined,
       );
     });

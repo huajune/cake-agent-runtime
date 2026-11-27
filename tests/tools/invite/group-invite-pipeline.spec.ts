@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
+import { BusinessTenantResolver } from '@infra/supabase/business-tenant';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -390,6 +391,7 @@ describe('runGroupInvitePipeline', () => {
       const moduleRef = await Test.createTestingModule({
         providers: [
           GroupInviteService,
+          { provide: BusinessTenantResolver, useValue: { resolve: jest.fn() } },
           {
             provide: ActionPermitService,
             useValue: { evaluate: jest.fn().mockResolvedValue({ allowed: true }) },

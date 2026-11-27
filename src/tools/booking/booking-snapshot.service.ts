@@ -1,6 +1,7 @@
 import { hasLegacyOpenWorkOrders } from '@biz/candidate-progress/policies/legacy-progress.policies';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
+import { tenantMemoryKey } from '@infra/supabase/business-tenant';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
@@ -301,11 +302,11 @@ export class BookingSnapshotService {
 }
 
 function snapshotCacheKey(botImId: string, phone: string): string {
-  return `booking:snapshot:${botImId}:${phone}`;
+  return tenantMemoryKey(`booking:snapshot:${botImId}:${phone}`);
 }
 
 function candidateCacheKey(corpId: string, userId: string): string {
-  return `booking:snapshot:candidate:${corpId}:${userId}`;
+  return tenantMemoryKey(`booking:snapshot:candidate:${corpId}:${userId}`);
 }
 
 function countSupplier(entries: readonly BookingSnapshotEntry[]): number {

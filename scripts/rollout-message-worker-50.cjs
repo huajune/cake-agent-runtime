@@ -2,11 +2,11 @@
 const { setTimeout: sleep } = require('node:timers/promises');
 
 async function request(path, options) {
-  if (!process.env.API_GUARD_TOKEN) throw new Error('缺少本机 API 认证');
+  if (!process.env.CAKE_MACHINE_API_TOKEN) throw new Error('缺少本机 API 认证');
   const response = await fetch(`http://127.0.0.1:${process.env.PORT || 8585}/message/${path}`, {
     ...options,
     headers: {
-      authorization: `Bearer ${process.env.API_GUARD_TOKEN}`,
+      authorization: `Bearer ${process.env.CAKE_MACHINE_API_TOKEN}`,
       'content-type': 'application/json',
     },
     signal: AbortSignal.timeout(10_000),

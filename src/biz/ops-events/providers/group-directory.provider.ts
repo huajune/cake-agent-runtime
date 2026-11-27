@@ -6,5 +6,5 @@ export interface HostingGroup {
   description?: string;
 }
 export interface GroupDirectoryProvider {
-  getAllGroups(): Promise<HostingGroup[]>;
+  getAllGroups(signal?: AbortSignal): Promise<HostingGroup[]>;
 }

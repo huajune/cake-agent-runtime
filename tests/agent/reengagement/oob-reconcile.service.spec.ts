@@ -1,4 +1,5 @@
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
+import { businessTenant, runForTenant } from '@infra/supabase/business-tenant';
 import { parseLocalDateTime } from '@infra/utils/date.util';
 
 const NOW = parseLocalDateTime('2026-09-22 10:00:00')!.getTime();
@@ -21,6 +22,8 @@ describe('OobReconcileService', () => {
   const BOOKED_MARKER_KEY = 'oob:booked:chat-1';
   const systemConfig = { getAgentReplyConfig: jest.fn() };
 
+  const tenants = { resolve: jest.fn() };
+
   const service = () =>
     new OobReconcileService(
       bookingSnapshot as never,
@@ -30,6 +33,7 @@ describe('OobReconcileService', () => {
       opsEvents as never,
       redis as never,
       systemConfig as never,
+      tenants as never,
     );
 
   const input = {
@@ -72,6 +76,7 @@ describe('OobReconcileService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    tenants.resolve.mockResolvedValue(['henan']);
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
     session.getSessionState.mockResolvedValue({
       facts: { interview_info: { name: { value: '张三' }, phone: { value: '18271421690' } } },
@@ -97,6 +102,53 @@ describe('OobReconcileService', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it.each(['scan', 'resume'] as const)(
+    '%s 按托管号读取本组织的资料和预约，排程携带同一个号',
+    async (trigger) => {
+      session.getSessionState.mockImplementationOnce(async () => {
+        expect(businessTenant()).toBe('henan');
+        return { facts: { interview_info: { name: { value: '张三' } } } };
+      });
+      bookingSnapshot.load.mockImplementationOnce(async () => {
+        expect(businessTenant()).toBe('henan');
+        return okSnapshot([supplierEntry()]);
+      });
+      const result = await runForTenant('headquarters', () =>
+        service().reconcile({
+          ...input,
+          trigger,
+          phone: '18271421690',
+          channelIdentity: undefined,
+        }),
+      );
+      expect(tenants.resolve).toHaveBeenCalledWith([{ botId: 'bot-1', at: NOW }]);
+      expect(result.scheduled).toBe(2);
+      expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channelIdentity: { botImId: 'bot-1' },
+        }),
+      );
+    },
+  );
+
+  it('消息回合沿用已核实的组织，未归属的后台任务在读取资料前结束', async () => {
+    await runForTenant('henan', () => service().reconcile(input));
+    expect(tenants.resolve).not.toHaveBeenCalled();
+    session.getSessionState.mockClear();
+    bookingSnapshot.load.mockClear();
+    scheduler.scheduleBookingResolution.mockClear();
+    tenants.resolve.mockResolvedValue([null]);
+    expect(await service().reconcile({ ...input, trigger: 'scan' })).toMatchObject({
+      reason: 'unknown_tenant',
+    });
+    expect(await runForTenant(null, () => service().reconcile(input))).toMatchObject({
+      reason: 'unknown_tenant',
+    });
+    expect(session.getSessionState).not.toHaveBeenCalled();
+    expect(bookingSnapshot.load).not.toHaveBeenCalled();
+    expect(scheduler.scheduleBookingResolution).not.toHaveBeenCalled();
   });
 
   it('本人手机号来自会话事实；回合触发不穿透缓存，扫描/恢复穿透', async () => {
@@ -419,6 +471,7 @@ describe('OobReconcileService', () => {
           opsEvents as never,
           redis as never,
           systemConfig as never,
+          tenants as never,
           undefined,
           phoneIndex as never,
           tracking as never,
@@ -446,6 +499,7 @@ describe('OobReconcileService', () => {
         opsEvents as never,
         redis as never,
         systemConfig as never,
+        tenants as never,
         undefined,
         undefined,
         tracking as never,
@@ -516,6 +570,7 @@ describe('OobReconcileService', () => {
         opsEvents as never,
         redis as never,
         systemConfig as never,
+        tenants as never,
         userHosting as never,
         phoneIndex as never,
       );

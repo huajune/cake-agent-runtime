@@ -13,13 +13,14 @@ import { ExtractionAccuracyService } from './services/dashboard/extraction-accur
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
 import { DeliverySkipReason } from '@shared-types/tracking.types';
-import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
+import { AllowMachineAccess, ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 import { addLocalDays, formatLocalDate, parseLocalDateStart } from '@infra/utils/date.util';
 
 /**
  * Analytics API 控制器
  * 提供 Dashboard 概览、System 监控、趋势数据、指标等接口
  */
+@AllowMachineAccess()
 @Controller('analytics')
 export class AnalyticsController {
   private readonly logger = new Logger(AnalyticsController.name);
@@ -280,6 +281,7 @@ export class AnalyticsController {
  * Monitoring 兼容出口。
  * Dashboard 历史验收脚本使用 /monitoring/*，这里保留轻量别名并直接暴露全局计数器。
  */
+@AllowMachineAccess()
 @Controller('monitoring')
 export class MonitoringController {
   constructor(

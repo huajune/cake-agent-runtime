@@ -9,7 +9,7 @@ import { isStorableCandidatePhone } from '@resolution/candidate/phone';
  * 仓库没有按手机号索引会话的表；扫描拿到海绵工单里的手机号后，只能靠这份 Redis 映射
  * 找回 {corpId,userId,chatId,botImId}。写入口是会话事实/长期档案落本人手机号的地方
  * （收资逐格落定、办结、报名成功）以及每轮 prepare 解析到本人手机号时的刷新；
- * 多会话共用一个手机号时取最近写入。TTL 30 天，与扫描的 15 天报名窗覆盖一致。
+ * 每个托管号分别保存该手机号最近的会话。TTL 30 天，覆盖扫描的 15 天报名窗。
  *
  * 只是索引，不是事实：读不到就是"反查不到"，由扫描落观测跳过，不做任何推断。
  */
@@ -36,7 +36,7 @@ export class PhoneSessionIndexService {
     const record: PhoneSessionIndexRecord = { ...ref, phone: normalized, updatedAt: now };
     try {
       await Promise.all([
-        this.redis.setex(phoneKey(normalized), INDEX_TTL_SECONDS, record),
+        this.redis.setex(phoneKey(normalized, ref.botImId), INDEX_TTL_SECONDS, record),
         this.redis.setex(chatKey(ref.chatId), INDEX_TTL_SECONDS, record),
       ]);
     } catch (error) {
@@ -48,10 +48,12 @@ export class PhoneSessionIndexService {
     }
   }
 
-  async lookupByPhone(phone: string): Promise<PhoneSessionIndexRecord | null> {
+  async lookupByPhone(phone: string, botImId: string): Promise<PhoneSessionIndexRecord | null> {
     const normalized = phone.trim();
     if (!isStorableCandidatePhone(normalized)) return null;
-    return this.read(phoneKey(normalized));
+    const record = await this.read(phoneKey(normalized, botImId));
+    // Older records have a phone-only key. The scan verifies the recorded Bot before using it.
+    return record ?? this.read(phoneKey(normalized));
   }
 
   async lookupByChat(chatId: string): Promise<PhoneSessionIndexRecord | null> {
@@ -99,8 +101,8 @@ export function isNonProductionSessionRef(
   return NON_PRODUCTION_CHAT_ID_PREFIXES.some((prefix) => chatId.startsWith(prefix));
 }
 
-function phoneKey(phone: string): string {
-  return `oob:phone:${phone}`;
+function phoneKey(phone: string, botImId?: string | null): string {
+  return botImId ? `oob:phone:${encodeURIComponent(botImId)}:${phone}` : `oob:phone:${phone}`;
 }
 
 function chatKey(chatId: string): string {

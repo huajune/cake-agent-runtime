@@ -1,0 +1,120 @@
+@use '@/assets/styles/account-controls' as controls;
+@use '@/assets/styles/tenant-list' as tenant-list;
+
+.page {
+  @include tenant-list.surface;
+
+  > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px $spacing-lg;
+    margin-bottom: $spacing-md;
+
+    h1 {
+      @include dashboard-heading;
+    }
+    p {
+      margin-top: $spacing-xs;
+      font-size: $font-size-xs;
+    }
+  }
+  p {
+    color: $text-secondary;
+    line-height: 1.6;
+  }
+  :where(a, button, input[type='checkbox']):focus-visible {
+    outline: 2px solid $primary-dark;
+    outline-offset: 2px;
+  }
+  > p[role] {
+    font-size: $font-size-sm;
+    padding: 10px 14px;
+    margin-block: 0 $spacing-sm;
+    border-radius: $radius-md;
+    background: $bg-secondary;
+  }
+  > p[role='alert'] {
+    background: $danger-bg;
+    color: $danger-text;
+  }
+}
+
+:where(.page) button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $primary-dark;
+  font: inherit;
+  &:where(:hover:not(:disabled)) {
+    background: $bg-secondary;
+  }
+  &:disabled {
+    color: $text-muted;
+    cursor: default;
+  }
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  button {
+    @include controls.action;
+  }
+  .primary {
+    @include button-accent;
+  }
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px $spacing-md;
+  margin-bottom: $spacing-sm;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+}
+.guideLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  color: $text-secondary;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: $border-hover;
+  svg {
+    flex-shrink: 0;
+  }
+  &:hover {
+    color: $primary-dark;
+    text-decoration-color: currentColor;
+  }
+}
+.syncBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 $spacing-sm;
+  font-variant-numeric: tabular-nums;
+  button {
+    min-height: 34px;
+  }
+}
+.organizations {
+  overflow: clip;
+  border-radius: tenant-list.$radius;
+  > p {
+    padding: $spacing-md;
+  }
+}

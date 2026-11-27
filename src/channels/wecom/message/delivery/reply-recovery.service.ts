@@ -1,11 +1,12 @@
 import { CronRunnerService } from '@infra/queue/cron-runner.service';
+import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
 import { Injectable, Logger } from '@nestjs/common';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 import { Cron, Timeout } from '@nestjs/schedule';
 import { ReplyTurnsService } from '@biz/reply-execution/reply-turns.service';
 import { ReplyWorkflowService } from '../application/reply-workflow.service';
 import { ReplyRecoveryLeaseService } from '@biz/reply-execution/reply-recovery-lease.service';
-import type { ReplyTurn } from '@biz/reply-execution/reply-execution.types';
+import { ReplyDeferredError, type ReplyTurn } from '@biz/reply-execution/reply-execution.types';
 import {
   REPLY_TURN_STATUS,
   REPLY_DELIVERY_OUTCOME,
@@ -25,6 +26,7 @@ export class ReplyRecoveryService {
     private readonly leases: ReplyRecoveryLeaseService,
     private readonly crons: CronRunnerService,
     private readonly incidents: IncidentReporterService,
+    private readonly tenants: BusinessTenantResolver,
   ) {}
 
   /** A restarted instance should not spend its remaining sending window waiting for a cron tick. */
@@ -69,7 +71,9 @@ export class ReplyRecoveryService {
       ) {
         current = await this.turns.resumeDelivery(turn);
         if (current.status === REPLY_TURN_STATUS.PLANNED)
-          current = await this.workflow.resumeDelivery(current, assertOwned);
+          current = await this.inOriginalTenant(current, () =>
+            this.workflow.resumeDelivery(current, assertOwned),
+          );
       } else {
         current = await this.turns.interrupt(turn);
       }
@@ -95,7 +99,9 @@ export class ReplyRecoveryService {
       terminal = await this.turns.requestReview(terminal, reason);
     try {
       if (!unknown && terminal.status !== REPLY_TURN_STATUS.ACKED)
-        await this.workflow.resumeInputCompletion(terminal, assertOwned);
+        await this.inOriginalTenant(terminal, () =>
+          this.workflow.resumeInputCompletion(terminal, assertOwned),
+        );
     } catch (error) {
       if (!terminal.reviewReason && Date.parse(terminal.inputOccurredAt) < Date.now() - 86400_000)
         terminal = await this.turns.requestReview(terminal, REPLY_REVIEW_REASON.RECOVERY_DEADLINE);
@@ -108,6 +114,23 @@ export class ReplyRecoveryService {
         await this.turns.reviewNotified(terminal);
       }
     }
+  }
+
+  private async inOriginalTenant<T>(turn: ReplyTurn, work: () => Promise<T>): Promise<T> {
+    let tenantId = turn.recovery.tenantId;
+    if (tenantId === undefined) {
+      // Older turns store the earliest input time. A merged turn has no matching timestamp per ID.
+      [tenantId] = await this.tenants.resolve([
+        {
+          botId: turn.accountId,
+          at: Date.parse(turn.inputOccurredAt),
+          messageId: turn.inputIds.length === 1 ? turn.inputIds[0] : undefined,
+        },
+      ]);
+    }
+    if (typeof tenantId !== 'string' || !tenantId.trim())
+      throw new ReplyDeferredError('original_reply_tenant_unconfirmed');
+    return runForTenant(tenantId, work);
   }
 
   @Cron('47 */10 * * * *', { timeZone: 'Asia/Shanghai' })

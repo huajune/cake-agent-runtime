@@ -1,3 +1,4 @@
+import { readBotDirectory, type GroupBotsResponse } from './read-bot-directory';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -21,30 +22,6 @@ export interface BotAccount {
   groupId?: string;
   groupName?: string;
   groupAiBotId?: string;
-}
-
-interface GroupBotAccount {
-  id?: string;
-  wxid?: string;
-  wecomUserId?: string;
-  status?: number;
-  name?: string;
-  avatar?: string;
-  corpId?: string;
-  aiStatus?: number;
-  aiBotId?: string;
-  corpName?: string;
-}
-
-interface GroupBotsResponse {
-  errcode?: number;
-  errmsg?: string;
-  groups?: Array<{
-    id?: string;
-    name?: string;
-    groupAiBotId?: string;
-    bots?: GroupBotAccount[];
-  }>;
 }
 
 @Injectable()
@@ -143,7 +120,7 @@ export class BotService {
    * 获取企业内各小组托管账号信息。
    * 使用企业级接口统一读取托管开关同源的小组账号，不依赖 GROUP_TASK_TOKENS。
    */
-  async getConfiguredBotList(strict = false): Promise<BotAccount[]> {
+  async getConfiguredBotList(strict = false, signal?: AbortSignal): Promise<BotAccount[]> {
     const token = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
     if (!token) {
       if (strict) throw new Error('托管账号目录凭据未配置');
@@ -153,10 +130,14 @@ export class BotService {
 
     try {
       const apiUrl = this.apiConfig.endpoints.bot.groupBots();
-      const response = (await this.httpService.get(apiUrl, { token })) as GroupBotsResponse;
+      const response = (await this.httpService.get(
+        apiUrl,
+        { token },
+        ...(signal ? [signal] : []),
+      )) as GroupBotsResponse;
       const bots = new Map<string, BotAccount>();
 
-      for (const group of this.extractGroups(response, strict)) {
+      for (const group of readBotDirectory(response, strict)) {
         for (const bot of group.bots || []) {
           const key = bot.wxid || bot.id || bot.wecomUserId || bot.name;
           if (!key) continue;
@@ -194,56 +175,5 @@ export class BotService {
       this.logger.error('获取企业托管账号列表失败:', error);
       throw error;
     }
-  }
-
-  private extractGroups(
-    response: unknown,
-    strict = false,
-  ): NonNullable<GroupBotsResponse['groups']> {
-    let current = response;
-    while (current && typeof current === 'object' && 'data' in current) {
-      if (strict && 'errcode' in current && current.errcode !== 0)
-        throw new Error('托管账号目录读取失败');
-      current = (current as { data: unknown }).data;
-    }
-
-    if (
-      strict &&
-      current &&
-      typeof current === 'object' &&
-      'errcode' in current &&
-      current.errcode !== 0
-    )
-      throw new Error('托管账号目录读取失败');
-
-    const groups =
-      current && typeof current === 'object' && 'groups' in current
-        ? (current as GroupBotsResponse).groups
-        : undefined;
-
-    if (!Array.isArray(groups)) {
-      if (strict) throw new Error('托管账号目录格式无效');
-      return [];
-    }
-
-    if (strict) {
-      const seen = new Set<string>();
-      for (const group of groups) {
-        if (
-          !group ||
-          typeof group.id !== 'string' ||
-          !group.id.trim() ||
-          !Array.isArray(group.bots)
-        )
-          throw new Error('托管账号目录缺少小组范围');
-        for (const bot of group.bots) {
-          if (!bot || typeof bot.wxid !== 'string' || !bot.wxid.trim() || seen.has(bot.wxid.trim()))
-            throw new Error('托管账号目录身份缺失或重复');
-          seen.add(bot.wxid.trim());
-        }
-      }
-    }
-
-    return groups.filter((group) => group !== null && typeof group === 'object');
   }
 }

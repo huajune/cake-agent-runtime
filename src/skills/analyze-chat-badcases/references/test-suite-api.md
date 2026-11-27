@@ -6,7 +6,7 @@
 
 **本地 dev server**（推荐）：`http://localhost:8585`
 
-如需打生产：从 `.env.production` 临时读 `API_GUARD_TOKEN`，加 `Authorization: Bearer <token>`。**不要把 token 落进任何文件。**
+如需打生产：从 `.env.production` 临时读 `CAKE_MACHINE_API_TOKEN`，加 `Authorization: Bearer <token>`。**不要把 token 落进任何文件。**
 
 ## 常用端点
 

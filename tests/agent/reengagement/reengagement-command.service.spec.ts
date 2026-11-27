@@ -1,4 +1,5 @@
 import { ReengagementCommandService } from '@agent/reengagement/reengagement-command.service';
+import { businessTenant, runForTenant } from '@infra/supabase/business-tenant';
 
 describe('ReengagementCommandService', () => {
   const queue = { add: jest.fn() };
@@ -9,11 +10,13 @@ describe('ReengagementCommandService', () => {
   };
   const session = { recordCandidateActivity: jest.fn() };
   const failures = { report: jest.fn() };
+  const tenants = { historicalBot: jest.fn(), resolve: jest.fn() };
   const service = new ReengagementCommandService(
     queue as never,
     scheduler as never,
     session as never,
     failures as never,
+    tenants as never,
   );
   const input = {
     sessionRef: { corpId: 'corp', userId: 'user', sessionId: 'chat' },
@@ -62,5 +65,37 @@ describe('ReengagementCommandService', () => {
       'schedule',
       expect.any(Error),
     );
+  });
+
+  it('recovers candidate activity in the originating organization outside the inbound request', async () => {
+    const activity = { ...input.sessionRef, timestamp: 1000 };
+    await runForTenant('henan', () => service.recordCandidateActivity(activity));
+    const stored = JSON.parse(JSON.stringify(queue.add.mock.calls[0][1]));
+    expect(stored.tenantId).toBe('henan');
+    session.recordCandidateActivity.mockImplementationOnce(async () => {
+      expect(businessTenant()).toBe('henan');
+    });
+    await runForTenant('headquarters', () => service.process({ data: stored } as never));
+    expect(session.recordCandidateActivity).toHaveBeenCalledWith(
+      'corp',
+      'user',
+      'chat',
+      new Date(1000),
+    );
+    expect(tenants.historicalBot).not.toHaveBeenCalled();
+  });
+
+  it('uses the original session for an older activity job and keeps an unresolved write retryable', async () => {
+    const data = { kind: 'activity', input: { ...input.sessionRef, timestamp: 1000 } };
+    tenants.historicalBot.mockResolvedValueOnce(null).mockResolvedValueOnce('registered-bot');
+    await expect(service.process({ data } as never)).rejects.toThrow('组织');
+    expect(session.recordCandidateActivity).not.toHaveBeenCalled();
+    tenants.resolve.mockResolvedValueOnce(['henan']);
+    session.recordCandidateActivity.mockImplementationOnce(async () => {
+      expect(businessTenant()).toBe('henan');
+    });
+    await service.process({ data } as never);
+    expect(tenants.historicalBot).toHaveBeenCalledWith('chat', 1000);
+    expect(tenants.resolve).toHaveBeenCalledWith([{ botId: 'registered-bot', at: 1000 }]);
   });
 });

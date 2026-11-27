@@ -1,3 +1,4 @@
+import { tenantMemoryKey } from '@infra/supabase/business-tenant';
 import { randomUUID } from 'node:crypto';
 import {
   COMPARE_HASH_FIELD_SCRIPT,
@@ -29,7 +30,7 @@ export class RedisStore implements MemoryStore {
   constructor(private readonly redis: RedisService) {}
 
   async get(key: string): Promise<MemoryEntry | null> {
-    return this.redis.get<MemoryEntry>(key);
+    return this.redis.get<MemoryEntry>(tenantMemoryKey(key));
   }
 
   /**
@@ -61,16 +62,16 @@ export class RedisStore implements MemoryStore {
     };
 
     if (ttl) {
-      await this.redis.setex(key, ttl, entry);
+      await this.redis.setex(tenantMemoryKey(key), ttl, entry);
     } else {
-      await this.redis.set(key, entry);
+      await this.redis.set(tenantMemoryKey(key), entry);
     }
 
     this.logger.debug(`记忆已存储: ${key}`);
   }
 
   async del(key: string): Promise<boolean> {
-    const count = await this.redis.del(key);
+    const count = await this.redis.del(tenantMemoryKey(key));
     if (count > 0) this.logger.debug(`记忆已删除: ${key}`);
     return count > 0;
   }
@@ -84,14 +85,14 @@ export class RedisStore implements MemoryStore {
 
   /** 读取 hash 全部字段。key 不存在返回 null。 */
   async getHash(key: string): Promise<Record<string, unknown> | null> {
-    const fields = await this.redis.hgetall(key);
+    const fields = await this.redis.hgetall(tenantMemoryKey(key));
     return fields && Object.keys(fields).length > 0 ? fields : null;
   }
 
   async readHashFieldSnapshot(key: string, field: string): Promise<HashFieldSnapshot> {
     const result = await this.redis.eval(
       READ_HASH_FIELD_SNAPSHOT_SCRIPT,
-      [key],
+      [tenantMemoryKey(key)],
       [field, randomUUID()],
     );
     const envelope = (typeof result === 'string' ? JSON.parse(result) : result) as {
@@ -124,20 +125,16 @@ export class RedisStore implements MemoryStore {
   ): Promise<boolean> {
     return (
       Number(
-        await this.redis.eval(
-          COMPARE_HASH_FIELD_SCRIPT,
-          [key, ...renewKeys],
-          [
-            field,
-            snapshot.raw === null ? '0' : '1',
-            snapshot.raw ?? '',
-            snapshot.generation ?? '',
-            this.serializeRedisValue(value),
-            ttl ?? 0,
-            options?.requireExisting ? '0' : '1',
-            randomUUID(),
-          ],
-        ),
+        await this.redis.eval(COMPARE_HASH_FIELD_SCRIPT, [key, ...renewKeys].map(tenantMemoryKey), [
+          field,
+          snapshot.raw === null ? '0' : '1',
+          snapshot.raw ?? '',
+          snapshot.generation ?? '',
+          this.serializeRedisValue(value),
+          ttl ?? 0,
+          options?.requireExisting ? '0' : '1',
+          randomUUID(),
+        ]),
       ) === 1
     );
   }
@@ -163,7 +160,7 @@ export class RedisStore implements MemoryStore {
         end
         return changed
       `,
-      [key, ...renewKeys],
+      [key, ...renewKeys].map(tenantMemoryKey),
       args,
     );
     this.logger.debug(`记忆已按字段更新: ${key} [${Object.keys(patch).join(',')}]`);
@@ -179,7 +176,7 @@ export class RedisStore implements MemoryStore {
        end
        redis.call('expire', KEYS[1], ARGV[3])
        return 1`,
-      [key],
+      [tenantMemoryKey(key)],
       [field, iso, ttl],
     );
   }
@@ -203,7 +200,7 @@ export class RedisStore implements MemoryStore {
         end
         return changed
       `,
-      [key],
+      [tenantMemoryKey(key)],
       args,
     );
   }

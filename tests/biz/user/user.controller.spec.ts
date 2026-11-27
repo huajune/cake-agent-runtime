@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import type { Request } from 'express';
+import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
 import { UserController } from '@biz/user/user.controller';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
@@ -6,6 +8,7 @@ describe('UserController (biz/user)', () => {
   let controller: UserController;
   let userHostingService: UserHostingService;
 
+  const req = {} as Request;
   const mockUserHostingService = {
     pauseUser: jest.fn(),
     resumeUser: jest.fn(),
@@ -17,6 +20,12 @@ describe('UserController (biz/user)', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UserController],
       providers: [
+        {
+          provide: DashboardAccessService,
+          useValue: {
+            requireAccount: () => ({ organization: 'headquarters', loginName: 'cakeadmin' }),
+          },
+        },
         {
           provide: UserHostingService,
           useValue: mockUserHostingService,
@@ -182,7 +191,7 @@ describe('UserController (biz/user)', () => {
       const chatId = 'chat-toggle-on';
       mockUserHostingService.resumeUser.mockResolvedValue(undefined);
 
-      const result = await controller.toggleUserHosting(chatId, true);
+      const result = await controller.toggleUserHosting(chatId, true, req);
 
       expect(userHostingService.resumeUser).toHaveBeenCalledWith(chatId);
       expect(userHostingService.pauseUser).not.toHaveBeenCalled();
@@ -197,7 +206,7 @@ describe('UserController (biz/user)', () => {
       const chatId = 'chat-toggle-off';
       mockUserHostingService.pauseUser.mockResolvedValue(undefined);
 
-      const result = await controller.toggleUserHosting(chatId, false);
+      const result = await controller.toggleUserHosting(chatId, false, req);
 
       expect(userHostingService.pauseUser).toHaveBeenCalledWith(chatId, { source: 'manual' });
       expect(userHostingService.resumeUser).not.toHaveBeenCalled();
@@ -211,7 +220,7 @@ describe('UserController (biz/user)', () => {
     it('should propagate errors when enabling fails', async () => {
       mockUserHostingService.resumeUser.mockRejectedValue(new Error('Resume failed'));
 
-      await expect(controller.toggleUserHosting('chat-error', true)).rejects.toThrow(
+      await expect(controller.toggleUserHosting('chat-error', true, req)).rejects.toThrow(
         'Resume failed',
       );
     });
@@ -219,7 +228,7 @@ describe('UserController (biz/user)', () => {
     it('should propagate errors when disabling fails', async () => {
       mockUserHostingService.pauseUser.mockRejectedValue(new Error('Pause failed'));
 
-      await expect(controller.toggleUserHosting('chat-error', false)).rejects.toThrow(
+      await expect(controller.toggleUserHosting('chat-error', false, req)).rejects.toThrow(
         'Pause failed',
       );
     });

@@ -3,31 +3,36 @@ import { timer, map } from 'rxjs';
 import { RawResponse } from '@infra/server/response/decorators/api-response.decorator';
 import type { Request } from 'express';
 import { DashboardAccessService } from '@infra/server/dashboard-access/dashboard-access.service';
-import { CenterScopeService } from './center-scope.service';
+import { isDashboardAdministrator } from '@/types/dashboard-account';
 
 @Controller('dashboard')
 export class DashboardAccessController {
-  constructor(
-    private readonly access: DashboardAccessService,
-    private readonly scopes: CenterScopeService,
-  ) {}
+  constructor(private readonly access: DashboardAccessService) {}
 
   @Sse('events')
   @RawResponse()
   @Header('X-Accel-Buffering', 'no')
   events() {
-    // 不推送全局业务数据；页面收到信号后重新走有范围的读取接口。
+    // Only an invalidation signal. Every data fetch checks current account status again.
     return timer(0, 15000).pipe(map(() => ({ data: { type: 'refresh' } })));
   }
+
   @Get('access')
   @Header('Cache-Control', 'no-store')
   async getAccess(@Req() request: Request) {
-    const access = this.access.resolve(request);
-    if (access.centerId !== 'henan') return { ...access, scopeKey: 'headquarters' };
-    const scope = await this.scopes.getScope();
+    const account = this.access.requireAccount(request);
+    const centerId = account.tenant?.readsAllTenants ? null : account.organization;
     return {
-      ...access,
-      scopeKey: [...scope.groups.map((group) => group.id), ...scope.botIds].sort().join(','),
+      userId: account.userId,
+      displayName: account.name,
+      loginLabel:
+        account.loginName ?? (account.phone ? `手机号尾号 ${account.phone.slice(-4)}` : null),
+      isAdministrator: isDashboardAdministrator(account),
+      tenantRole: account.tenantRole,
+      organization: account.organization,
+      centerId,
+      name: account.tenant?.name ?? account.organization,
+      scopeKey: account.organization,
     };
   }
 }

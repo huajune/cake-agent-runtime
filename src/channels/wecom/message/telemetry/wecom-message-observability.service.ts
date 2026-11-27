@@ -49,6 +49,7 @@ interface WecomTraceRequestContext {
   dispatchMode?: DispatchMode;
   batchId?: string;
   acceptedAt?: number;
+  sourceOccurredAt?: number;
   sourceMessageIds?: string[];
   sourceMessageCount?: number;
   sourceMessageLastAcceptedAt?: number;
@@ -122,7 +123,11 @@ export class WecomMessageObservabilityService {
       context.userId,
       context.userName,
       context.content,
-      { scenario: context.scenario, batchId: context.batchId },
+      {
+        scenario: context.scenario,
+        batchId: context.batchId,
+        sourceOccurredAt: context.sourceOccurredAt,
+      },
       context.managerName,
       acceptedAt,
       {
@@ -155,6 +160,7 @@ export class WecomMessageObservabilityService {
       managerName: parsed.managerName,
       botUserId: primaryMessage.botUserId ?? parsed.managerName,
       imBotId: parsed.imBotId,
+      sourceOccurredAt: parsed.timestamp,
       scenario,
       content,
       imageCount,

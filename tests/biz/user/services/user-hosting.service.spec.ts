@@ -12,6 +12,7 @@ describe('UserHostingService', () => {
   let service: UserHostingService;
 
   const mockUserHostingRepository = {
+    setTenantHosting: jest.fn(),
     findPausedUserIds: jest.fn(),
     upsertPause: jest.fn(),
     updateResume: jest.fn(),
@@ -310,6 +311,40 @@ describe('UserHostingService', () => {
       expect(entry).toBeDefined();
       expect(entry.isPaused).toBe(true);
     });
+  });
+
+  it('applies a tenant switch to the runtime pause cache and only reconciles a changed resume', async () => {
+    const listener = jest.fn();
+    service.registerResumeListener(listener);
+    mockUserHostingRepository.setTenantHosting.mockResolvedValue(true);
+    mockUserHostingRepository.findPausedUserIds.mockResolvedValueOnce([
+      {
+        user_id: 'local-chat',
+        paused_at: new Date().toISOString(),
+        pause_expires_at: new Date(Date.now() + 60000).toISOString(),
+      },
+    ]);
+    await service.setTenantHosting('henan', 'local-chat', false);
+    expect((await service.getChatPause('local-chat')).paused).toBe(true);
+    expect(listener).not.toHaveBeenCalled();
+    mockUserHostingRepository.findPausedUserIds.mockResolvedValue([]);
+    await service.setTenantHosting('henan', 'local-chat', true);
+    expect((await service.getChatPause('local-chat')).paused).toBe(false);
+    mockUserHostingRepository.setTenantHosting.mockResolvedValueOnce(false);
+    await service.setTenantHosting('henan', 'local-chat', true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(mockHandoffEventsRepository.markResolvedByChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not change the runtime cache or notify listeners on a rejected tenant write', async () => {
+    const listener = jest.fn();
+    service.registerResumeListener(listener);
+    mockUserHostingRepository.setTenantHosting.mockRejectedValueOnce(new Error('out of scope'));
+    await expect(service.setTenantHosting('henan', 'foreign', true)).rejects.toThrow(
+      'out of scope',
+    );
+    expect(listener).not.toHaveBeenCalled();
+    expect(mockRedisService.set).not.toHaveBeenCalled();
   });
 
   // ==================== resumeUser ====================
