@@ -86,7 +86,7 @@ GitHub Actions                        远程服务器 /data/cake/
 
 在授权的发布窗口内，先核对目标项目引用、自助注册已关闭（`disable_signup=true`）、Email 已启用。通过 `PATCH /v1/projects/{ref}/config/auth` 单独提交 `{"external_phone_enabled":true}`。回读目标项目的 `/auth/v1/settings`，核对 `external.phone=true`、`external.email=true`、`disable_signup=true`。总部开户时逐个确认已核实的手机号，员工登录走密码校验，整个流程无需配置短信服务。[Supabase Auth 配置接口](https://supabase.com/docs/reference/api/v1-update-auth-service-config)
 
-v11.22.1 已先行应用日期较晚的消息存储迁移。11 月 27 日只读核对时，测试库已执行本 PR 的 23 份迁移，生产库待执行 23 份。消息快照归属迁移之后还有 4 份，分别支持删除空组织、停用与恢复登录、注销与重新开户、查询当前会话权限。最后一份为 `20261127103000_current_dashboard_account.sql`。发布窗口使用 `pnpm exec supabase db push --db-url "$SUPABASE_DB_URL_PROD" --include-all --dry-run` 对照实际待执行清单。如有额外迁移，先核对所属版本，再执行已核实的清单。
+11 月 27 日发布 v11.23.0 时，生产库已包含 v11.22.1 日期较晚的消息存储迁移。使用 `pnpm exec supabase db push --db-url "$SUPABASE_DB_URL_PROD" --include-all --dry-run` 预演后，实际执行了与本次版本逐项匹配的 23 份迁移，最后一份为 `20261127103000_current_dashboard_account.sql`。部署前回读测试和生产迁移历史，两处均为零待执行。生产开户回执确认新开 17 位员工，待处理为零。[本次部署](https://github.com/huajune/cake-agent-runtime/actions/runs/45982853410)
 
 验收通过后的发布窗口内，发布人应用相应迁移、启用 Supabase Email 和 Phone 密码认证并关闭自助注册，将本机私有的开户名单、员工和管理员的初始密码文件交到服务器。部署脚本在旧服务运行时核对名单并登记 Stride 托管归属，等旧服务处理完登记前的待回复消息再切换。登记失败或等待超时会保留旧服务。新服务通过健康检查后先开通专用管理员 `cakeadmin`，再为已有手机号的员工开户。中途失败可用同一批文件重试，总部核对实际开户结果后按清单交付。详细步骤见[全员账号开通说明](../../src/biz/center-dashboard/README.md#随正式发布初始化全员账号)。
 

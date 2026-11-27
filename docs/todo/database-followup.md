@@ -10,4 +10,4 @@
 | 原文、摘要与消息标识 | 后端、数据负责人 | 核对聊天原文、候选人姓名、日报摘要的页面权限与导出去向。飞书运营日报使用摘要，其他导出核对必要字段。确认消息分段与逻辑消息的关联、渠道外部联系人 ID（`chat_messages.external_user_id`）及两个时间字段的读者。 |
 | 转人工数据质量 | 后端、运营 | 按原因核对兜底码、阶段及岗位和工单 ID 的缺失，区分业务上没有与写入遗漏。重点复核改约、预约冲突的工单关联，以及 `other` 的原因说明。 |
 
-租户版在测试库已核验主流水、回合快照和模型 HTTP 尝试的组织继承。正式迁移与历史回填见[组织归属待办](business-data-tenant-id.md)。早期审计明细见[保留策略核查清单](https://github.com/huajune/cake-agent-runtime/blob/v11.18.0/docs/todo/data-retention-policy-unification.md)。
+主流水、回合快照和模型 HTTP 尝试的组织继承已在测试库核验，对应迁移随 v11.23.0 在生产执行。实际新消息抽查与历史回填见[组织归属待办](business-data-tenant-id.md)。早期审计明细见[保留策略核查清单](https://github.com/huajune/cake-agent-runtime/blob/v11.18.0/docs/todo/data-retention-policy-unification.md)。
