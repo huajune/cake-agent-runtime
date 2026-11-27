@@ -1,3 +1,4 @@
+import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
 import {
   captureReplyGeneration,
   takeModelInvocations,
@@ -184,6 +185,7 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly actionPermit: ActionPermitService,
     private readonly candidateProgress: CandidateProgressService,
     private readonly hostingRecovery: ReengagementHostingRecoveryService,
+    private readonly tenants: BusinessTenantResolver,
     @Optional()
     @Inject(REENGAGEMENT_DELIVERY_PORT)
     private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
@@ -199,13 +201,27 @@ export class FollowUpProcessor implements OnModuleInit {
   }
 
   async process(job: Job<FollowUpJob>): Promise<void> {
+    const { anchorAt } = job.data;
+    if (!Number.isFinite(anchorAt) || anchorAt <= 0) return;
+    const botId =
+      job.data.channelIdentity?.botImId ||
+      (await this.tenants.historicalBot(job.data.sessionRef.sessionId, anchorAt));
+    if (!botId) return;
+    const [owner] = await this.tenants.resolve([{ botId, at: anchorAt }]);
+    if (owner) await runForTenant(owner, () => this.processOwned(job, botId));
+  }
+
+  private async processOwned(job: Job<FollowUpJob>, botImId: string): Promise<void> {
     const { sessionRef, scenarioCode, anchorAt, anchorEventId } = job.data;
     const scenario = getScenario(scenarioCode);
     if (!scenario) {
       this.logger.warn(`[reengagement] 未知场景 ${scenarioCode}，跳过`);
       return;
     }
-    const channelIdentity = await this.resolveJobChannelIdentity(job.data);
+    const channelIdentity = {
+      ...(await this.resolveJobChannelIdentity(job.data, botImId)),
+      botImId,
+    };
     const identity: ReengagementTouchIdentity = {
       sessionId: sessionRef.sessionId,
       userId: sessionRef.userId,
@@ -633,14 +649,12 @@ export class FollowUpProcessor implements OnModuleInit {
       this.messageTracking.recordProactiveTurn(
         this.buildProactiveTurnRecord({
           batchId,
-          sessionRef,
+          identity,
           scenario,
-          outcome,
           receivedAt: now,
           status: 'success',
           replyPreview:
             outcome.generatedText ?? (outcome.kind === 'reply' ? outcome.reply?.text : undefined),
-          channelIdentity,
           execution,
           completedAt: Date.now(),
           deliveryResult: {
@@ -710,13 +724,11 @@ export class FollowUpProcessor implements OnModuleInit {
       this.messageTracking.recordProactiveTurn(
         this.buildProactiveTurnRecord({
           batchId,
-          sessionRef,
+          identity,
           scenario,
-          outcome,
           receivedAt: now,
           status: 'success',
           replyPreview: `[未投递:${outcome.kind}]`,
-          channelIdentity,
           execution,
           completedAt: Date.now(),
           deliveryResult: {
@@ -745,12 +757,13 @@ export class FollowUpProcessor implements OnModuleInit {
 
   /**
    * 渠道身份：优先 job payload（排程时冻结）；存量任务（部署窗口前入队）payload 缺失时
-   * 到点兜底查 chat_messages 最新快照（与 20260706160000 迁移回填同源）。不兜底则该
+   * 到点从锚点已核实的组织和 Bot 的聊天快照补充昵称、联系人。不兜底则该
    * 触达行 candidate_name 恒为 NULL 且无法自愈——后续所有事件同样来自无身份的 job.data，
    * record_reengagement_touch 的 COALESCE 只认非空入参。兜底失败按空身份放行不阻断。
    */
   private async resolveJobChannelIdentity(
     jobData: FollowUpJob,
+    botImId: string,
   ): Promise<FollowUpJob['channelIdentity']> {
     const fromJob = jobData.channelIdentity;
     const needsOnboardingIdentityCompletion =
@@ -769,7 +782,10 @@ export class FollowUpProcessor implements OnModuleInit {
       return fromJob;
     }
     try {
-      const resolved = await this.tracking.resolveChannelIdentity(jobData.sessionRef.sessionId);
+      const resolved = await this.tracking.resolveChannelIdentity(
+        jobData.sessionRef.sessionId,
+        botImId,
+      );
       if (resolved) return { ...resolved, ...fromJob };
     } catch (error) {
       this.logger.warn(
@@ -982,19 +998,17 @@ export class FollowUpProcessor implements OnModuleInit {
   /** 主动回合的消息处理流水行（message_id = batchId，供追溯页跳转排障） */
   private buildProactiveTurnRecord(params: {
     batchId: string;
-    sessionRef: FollowUpJob['sessionRef'];
+    identity: ReengagementTouchIdentity;
     scenario: NonNullable<ReturnType<typeof getScenario>>;
-    outcome: TurnOutcome;
     receivedAt: number;
     status: 'success' | 'failure';
     replyPreview?: string;
     error?: string;
-    channelIdentity?: FollowUpJob['channelIdentity'];
     execution: ProactiveTurnExecution;
     completedAt: number;
     deliveryResult?: ProactiveDeliveryResult;
   }): MessageProcessingRecordInput {
-    const { batchId, sessionRef, scenario, execution } = params;
+    const { batchId, identity, scenario, execution } = params;
     const { outcome } = execution;
     const replyText = outcome.reply?.text ?? outcome.generatedText;
     const aiDuration = Math.max(execution.aiEndAt - execution.aiStartAt, 0);
@@ -1010,11 +1024,12 @@ export class FollowUpProcessor implements OnModuleInit {
       request: {
         traceId: batchId,
         messageId: batchId,
-        chatId: sessionRef.sessionId,
-        userId: sessionRef.userId,
-        userName: params.channelIdentity?.candidateName,
-        managerName: params.channelIdentity?.managerName,
-        imBotId: params.channelIdentity?.botImId,
+        chatId: identity.sessionId,
+        userId: identity.userId,
+        userName: identity.candidateName,
+        managerName: identity.managerName,
+        imBotId: identity.botImId,
+        sourceOccurredAt: identity.anchorAt,
         scenario: `reengagement:${scenario.code}`,
         content: `[系统主动跟进:${scenario.code}]`,
         proactiveDirective: `${scenario.objective}。生成要求：${scenario.generationPolicy}`,
@@ -1087,11 +1102,12 @@ export class FollowUpProcessor implements OnModuleInit {
       messageId: batchId,
       modelInvocations: execution.modelInvocations,
       batchId,
-      chatId: sessionRef.sessionId,
-      userId: sessionRef.userId,
-      userName: params.channelIdentity?.candidateName,
-      managerName: params.channelIdentity?.managerName,
-      botImId: params.channelIdentity?.botImId,
+      chatId: identity.sessionId,
+      userId: identity.userId,
+      userName: identity.candidateName,
+      managerName: identity.managerName,
+      botImId: identity.botImId,
+      sourceOccurredAt: identity.anchorAt,
       receivedAt: params.receivedAt,
       status: params.status,
       scenario: `reengagement:${scenario.code}`,
@@ -1126,15 +1142,7 @@ export class FollowUpProcessor implements OnModuleInit {
     job: Job<FollowUpJob>,
   ): Promise<void> {
     const { outcome } = execution;
-    const sessionRef = { sessionId, userId: identity.userId ?? '', corpId: identity.corpId ?? '' };
     const scenario = getScenario(identity.scenarioCode as FollowUpJob['scenarioCode']);
-    const channelIdentity: FollowUpJob['channelIdentity'] = {
-      candidateName: identity.candidateName,
-      managerName: identity.managerName,
-      botImId: identity.botImId,
-      imContactId: identity.imContactId,
-      externalUserId: identity.externalUserId,
-    };
     let deliveryStartAt = 0;
     let confirmedResult: ProactiveDeliveryResult | undefined;
     let touchRecorded = false;
@@ -1158,13 +1166,11 @@ export class FollowUpProcessor implements OnModuleInit {
           this.messageTracking.recordProactiveTurn(
             this.buildProactiveTurnRecord({
               batchId,
-              sessionRef,
+              identity,
               scenario,
-              outcome,
               receivedAt: now,
               status: 'success',
               replyPreview: `[未投递:${reason}]`,
-              channelIdentity,
               execution,
               completedAt: deliveryEndAt,
               deliveryResult,
@@ -1199,13 +1205,11 @@ export class FollowUpProcessor implements OnModuleInit {
         this.messageTracking.recordProactiveTurn(
           this.buildProactiveTurnRecord({
             batchId,
-            sessionRef,
+            identity,
             scenario,
-            outcome,
             receivedAt: now,
             status: 'success',
             replyPreview: outcome.reply?.text,
-            channelIdentity,
             execution,
             completedAt: deliveryEndAt,
             deliveryResult: {
@@ -1229,14 +1233,12 @@ export class FollowUpProcessor implements OnModuleInit {
           this.messageTracking.recordProactiveTurn(
             this.buildProactiveTurnRecord({
               batchId,
-              sessionRef,
+              identity,
               scenario,
-              outcome,
               receivedAt: now,
               status: 'failure',
               replyPreview: outcome.reply?.text,
               error: this.errorMessage(error),
-              channelIdentity,
               execution,
               completedAt: deliveryEndAt,
               deliveryResult: error.result,
@@ -1257,14 +1259,12 @@ export class FollowUpProcessor implements OnModuleInit {
         this.messageTracking.recordProactiveTurn(
           this.buildProactiveTurnRecord({
             batchId,
-            sessionRef,
+            identity,
             scenario,
-            outcome,
             receivedAt: now,
             status: 'failure',
             replyPreview: outcome.reply?.text,
             error: this.errorMessage(error),
-            channelIdentity,
             execution,
             completedAt: deliveryEndAt,
             deliveryResult:

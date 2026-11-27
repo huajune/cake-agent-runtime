@@ -14,8 +14,10 @@ export type AppRoutePath =
   | '/chat-records'
   | '/agent-test'
   | '/test-suite'
+  | '/accounts'
   | '/strategy';
 
+const accountsLoader = () => import('@/view/accounts/list');
 const dashboardLoader = () => import('@/view/dashboard/list');
 const conversionAnalysisLoader = () => import('@/view/conversion-analysis/list');
 const usersLoader = () => import('@/view/users/list');
@@ -28,6 +30,8 @@ const chatRecordsLoader = () => import('@/view/chat-records/list');
 const agentTestLoader = () => import('@/view/agent-test/list');
 const testSuiteLoader = () => import('@/view/test-suite/list');
 const strategyLoader = () => import('@/view/strategy/list');
+
+export const Accounts = lazy(accountsLoader);
 
 export const MESSAGE_PROCESSING_DETAIL_PATH = '/message-processing/detail';
 export const MessageProcessingDetail = lazy(() => import('@/view/message-processing/detail'));
@@ -45,20 +49,22 @@ export const AgentTest = lazy(agentTestLoader);
 export const TestSuite = lazy(testSuiteLoader);
 export const Strategy = lazy(strategyLoader);
 
-export const ALL_ROUTE_PATHS: AppRoutePath[] = [
-  '/',
-  '/conversion-analysis',
-  '/users',
-  '/hosting',
-  '/config',
-  '/system',
-  '/message-processing',
-  '/reengagement',
-  '/chat-records',
-  '/agent-test',
-  '/test-suite',
-  '/strategy',
-];
+export const ROUTE_TITLES: Record<AppRoutePath, string> = {
+  '/': '仪表盘',
+  '/conversion-analysis': '转化分析',
+  '/users': '托管用户',
+  '/hosting': '托管开关',
+  '/config': '运行时配置',
+  '/system': '系统监控',
+  '/message-processing': '消息处理流水',
+  '/reengagement': '二次触发追溯',
+  '/chat-records': '聊天记录',
+  '/agent-test': '对话调试',
+  '/test-suite': '飞书评测集',
+  '/strategy': '策略配置',
+  '/accounts': '账号管理',
+};
+export const ALL_ROUTE_PATHS = Object.keys(ROUTE_TITLES) as AppRoutePath[];
 
 const routeLoaders: Record<AppRoutePath, RouteLoader> = {
   '/': dashboardLoader,
@@ -73,6 +79,7 @@ const routeLoaders: Record<AppRoutePath, RouteLoader> = {
   '/agent-test': agentTestLoader,
   '/test-suite': testSuiteLoader,
   '/strategy': strategyLoader,
+  '/accounts': accountsLoader,
 };
 
 const preloadPromises = new Map<AppRoutePath, Promise<unknown>>();

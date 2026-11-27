@@ -6,6 +6,7 @@ export interface InterventionTaskJob {
   payload: InterventionPayload;
   clientToken: string;
   triggeredAt: string;
+  tenantId?: string;
   request?: Omit<CreateFeishuTaskInput, 'startAt' | 'dueAt'> & { startAt?: string; dueAt?: string };
   dispatchStartedAt?: number;
   taskGuid?: string;

@@ -14,6 +14,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { markSubmitted } from '@resolution/collection';
 import { RedisService } from '@infra/redis/redis.service';
+import { tenantMemoryKey } from '@infra/supabase/business-tenant';
 import type { BookingCollectionForm } from '@resolution/collection';
 
 /** 收资单据自持 TTL：默认 7 天；与会话状态对齐是业务口径，不依赖 MemoryConfig。 */
@@ -25,7 +26,7 @@ interface CollectionFormStoreEntry {
   updatedAt: string;
 }
 
-/** key 形态：`collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`。 */
+/** 表单和两个定位指针都使用当前业务组织的记忆命名空间。 */
 export function buildCollectionFormKey(params: {
   corpId: string;
   userId: string;
@@ -33,7 +34,9 @@ export function buildCollectionFormKey(params: {
   candidateRef: string;
   jobId: number;
 }): string {
-  return `collection-form:${params.corpId}:${params.userId}:${params.botUserId}:${params.candidateRef}:${params.jobId}`;
+  return tenantMemoryKey(
+    `collection-form:${params.corpId}:${params.userId}:${params.botUserId}:${params.candidateRef}:${params.jobId}`,
+  );
 }
 
 /**
@@ -48,7 +51,9 @@ export function buildCollectionFormLocatorKey(params: {
   botUserId: string;
   jobId: number;
 }): string {
-  return `collection-form-current:${params.corpId}:${params.userId}:${params.botUserId}:${params.jobId}`;
+  return tenantMemoryKey(
+    `collection-form-current:${params.corpId}:${params.userId}:${params.botUserId}:${params.jobId}`,
+  );
 }
 
 /**
@@ -63,7 +68,9 @@ export function buildCollectionFormPrimaryLocatorKey(params: {
   botUserId: string;
   jobId: number;
 }): string {
-  return `collection-form-primary:${params.corpId}:${params.userId}:${params.botUserId}:${params.jobId}`;
+  return tenantMemoryKey(
+    `collection-form-primary:${params.corpId}:${params.userId}:${params.botUserId}:${params.jobId}`,
+  );
 }
 
 @Injectable()

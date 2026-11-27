@@ -102,7 +102,7 @@
 1. **可靠性**：监控数据不能因为进程重启归零，运维看板需要长期趋势。
 2. **多实例一致性**：Supabase 作为 SoT + Redis 计数器天然支持水平扩展。
 3. **查询能力**：SQL/RPC 直接支持分位数、窗口切片、JSONB 聚合，比自己维护 Map 更灵活。
-4. 消息收尾时将回合快照和这轮的模型 HTTP 调用随主流水一次提交。列表和统计读取主流水的小字段，总部在详情选中一次调用后才会加载对应的 HTTP 正文。[消息留档与示例](../knowledge-base/10-可观测性体系.md#一轮回复可以有三次模型调用)
+4. 可续发普通回复在保存已审核分段时，把当时的回合快照、模型 HTTP 调用和主流水一并提交。企微受理后再结算投递结果。其他入口在收尾时提交已采集的内容。列表和统计读主流水摘要，总部选中一次调用后再加载 HTTP 正文。[消息留档与示例](../knowledge-base/10-可观测性体系.md#一轮回复可以有三次模型调用)
 
 ### Redis Key 清单
 
@@ -310,7 +310,7 @@ AnalyticsDashboardService
 
 中心访问回合完整请求、模型调用清单及单次原文均返回 HTTP 403。[消息接口](../../src/biz/message/message.controller.ts) · [中心访问范围](../../src/biz/center-dashboard/README.md#可见范围)
 
-> API 默认启用 `ApiTokenGuard`，需要 Bearer `API_GUARD_TOKEN`；Dashboard 前端注入鉴权头后调用。
+> API 默认启用 `ApiTokenGuard`，Dashboard 使用个人的 Supabase 访问令牌；自动化监控可使用服务端 `CAKE_MACHINE_API_TOKEN`。
 
 ---
 
@@ -324,7 +324,7 @@ AnalyticsDashboardService
 | `message_processing_turn_snapshots` | 一次处理至多一份 Cake 回合快照 | `message_id` 关联流水。`request` 保存回合请求和上下文，`response` 保存回合级响应。 |
 | `message_processing_invocations` | 一次供应商 HTTP 请求，重试也单算 | `message_id` 找同轮调用，`id` 定位一次调用。清单读 `provider`、`started_at`、`http_status`、`complete`，点开才取 `request_body` 和 `response_body`。 |
 
-若在接收响应时中断，只能查看已捕获的部分。若在收尾事务提交前进程退出，该轮 HTTP 原文可能缺失。老流水只保留当时实际采集过的内容。[仓储字段与查询](../../src/biz/message/repositories/message-processing.repository.ts) · [存储事务](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql)
+响应中断时保留已采集的部分。进程在第一次保存这些内容之前退出，该轮 HTTP 原文可能缺失。切换前只有 SDK 快照的流水可以查看历史上下文，当时没有逐次采集供应商原文。[仓储字段与查询](../../src/biz/message/repositories/message-processing.repository.ts) · [存储事务](../../supabase/migrations/20261125080100_processing_snapshot_storage.sql) · [可续发回复的保存与结算](../../supabase/migrations/20261125100000_ordinary_reply_segment_io.sql)
 
 ### HourlyStats（小时投影）
 

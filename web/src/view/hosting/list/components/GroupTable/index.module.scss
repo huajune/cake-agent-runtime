@@ -1,169 +1,221 @@
-// GroupTable 组件样式
-@use '@/assets/styles/variables' as *;
+@use '@/assets/styles/tenant-list' as tenant-list;
 
-// 白卡 + 细描边；表格语言与「处理请求流水」一致：淡粉紫蓝表头带、不画行线、悬停整行圆角高亮
-$header-height: 38px;
+$status-column-width: 7.25rem;
+// 总数、组织统计和状态控件共用一列，箭头单独占位。
+$status-inset: $spacing-md + $spacing-sm + tenant-list.$chevron-size;
 
 .section {
-  padding: 16px 20px 20px;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow:
-    0 0 0 1px $border,
-    0 8px 24px rgba($text-primary, 0.045);
-  margin-bottom: $spacing-lg;
+  @include tenant-list.surface;
+  container-type: inline-size;
 }
-
-.sectionHeader {
+.header {
   margin-bottom: $spacing-md;
 
-  h3 {
+  h2 {
+    @include dashboard-heading;
     margin: 0;
-    font-size: 16px;
-    font-weight: $font-weight-medium;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-    color: #14132b;
-    display: flex;
-    align-items: center;
-    gap: $spacing-sm;
   }
 }
-
-.headerCount {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: $radius-full;
-  font-size: 11.5px;
-  font-weight: $font-weight-normal;
-  color: #5b5a86;
-  background: #fff;
-  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
-  font-variant-numeric: tabular-nums;
-}
-
-.sectionDesc {
-  margin: 4px 0 0 0;
+.headerMeta {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-sm;
+  margin-top: $spacing-xs;
+  padding-inline-end: $status-inset;
+  color: $text-secondary;
   font-size: $font-size-xs;
-  color: #5b5a86;
-}
-
-.tableWrapper {
-  margin-top: $spacing-md;
-  overflow-x: auto;
-  border-radius: 10px;
-}
-
-.table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  border-radius: 10px;
-  background: linear-gradient(
-      90deg,
-      rgba(240, 239, 255, 0.9) 0%,
-      rgba(250, 244, 254, 0.8) 50%,
-      rgba(242, 247, 255, 0.8) 100%
-    )
-    top / 100% $header-height no-repeat;
-
-  th,
-  td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 0;
-  }
-
-  th {
-    box-sizing: border-box;
-    height: $header-height;
-    padding: 0 12px;
-    vertical-align: middle;
-    font-size: 11.5px;
-    font-weight: $font-weight-medium;
-    color: $text-body;
-    text-transform: none;
-    letter-spacing: 0.02em;
-    background: transparent;
-    white-space: nowrap;
-  }
-
-  td {
-    font-size: $font-size-sm;
-    color: #3b3a55;
-    background: transparent;
-    transition: background $transition-fast;
-  }
-
-  tbody tr:hover td {
-    background: rgba(240, 239, 255, 0.65);
-  }
-
-  tbody tr:hover td:first-child {
-    border-top-left-radius: 10px;
-    border-bottom-left-radius: 10px;
-  }
-
-  tbody tr:hover td:last-child {
-    border-top-right-radius: 10px;
-    border-bottom-right-radius: 10px;
+  p {
+    margin: 0;
   }
 }
-
-.groupName {
+.total {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-xs;
+  flex: 0 0 $status-column-width;
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.organizations {
+  overflow: clip;
+  border-radius: tenant-list.$radius;
+}
+.organization {
+  & + & {
+    border-top: 1px solid $border;
+  }
+  summary {
+    @include tenant-list.heading;
+    list-style: none;
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+  &[open] {
+    border-radius: tenant-list.$open-corners;
+  }
+  &[open] > summary {
+    @include tenant-list.expanded-heading;
+  }
+}
+.orgIcon {
+  color: $text-body;
+}
+.orgTitle {
+  overflow-wrap: anywhere;
+  color: $text-heading;
+  font-size: $font-size-base;
   font-weight: $font-weight-medium;
-  color: #14132b;
-  font-size: $font-size-sm;
 }
-
+.counts {
+  display: grid;
+  inline-size: $status-column-width;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-self: end;
+  gap: $spacing-sm;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  > span {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  b {
+    margin-inline-start: auto;
+    font-weight: $font-weight-medium;
+  }
+}
+.activeCount {
+  color: $success-text;
+}
+.chevron {
+  color: $text-secondary;
+}
+.tableWrapper {
+  overflow-x: auto;
+}
+.table {
+  @include tenant-list.table;
+  --status-end: #{$status-inset};
+  th:first-child {
+    width: 45%;
+  }
+  th:last-child {
+    width: calc(#{$status-column-width + $spacing-xs} + var(--status-end));
+  }
+  :is(th, td):last-child {
+    padding-inline: $spacing-xs var(--status-end);
+  }
+}
+.groupName {
+  color: $text-heading;
+  font-weight: $font-weight-medium;
+}
 .groupId {
-  font-size: 11px;
+  margin-top: 2px;
   color: $text-muted;
   font-family: $font-family-mono;
-  margin-top: 2px;
+  font-size: 11px;
 }
-
-.groupDesc {
-  font-size: $font-size-sm;
-  color: $text-secondary;
-  max-width: 300px;
-  @include text-ellipsis;
+.description {
+  white-space: pre-line;
 }
-
-.loadingCell {
-  text-align: center !important;
-  padding: $spacing-2xl !important;
-  color: $text-muted;
-  background: transparent !important;
-  height: 200px;
-  vertical-align: middle;
-}
-
-.toggleSwitch {
+.toggle {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  margin: 0;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+label.toggle {
   cursor: pointer;
 }
-
-.statusText {
+.readOnly {
+  color: $text-secondary;
   font-size: $font-size-xs;
-  font-weight: $font-weight-medium;
+}
+.active,
+.blocked {
+  min-width: 50px;
   padding: 2px 8px;
   border-radius: $radius-full;
-  min-width: 50px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
   text-align: center;
-
-  &.enabled {
-    background: rgba($success, 0.1);
-    color: $success;
+  white-space: nowrap;
+}
+.active {
+  color: $success;
+  background: rgba($success, 0.1);
+}
+.blocked {
+  color: $text-muted;
+  background: rgba($text-muted, 0.1);
+}
+.message {
+  margin: 0;
+  padding: $spacing-lg;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  background: $bg-card;
+  color: $text-secondary;
+  text-align: center;
+  button {
+    padding: 6px;
+    border: 0;
+    background: none;
+    color: $primary-dark;
+    font: inherit;
+    text-decoration: underline;
+    &:focus-visible {
+      outline: 2px solid $primary-dark;
+    }
   }
-
-  &.disabled {
-    background: rgba($text-muted, 0.1);
-    color: $text-muted;
+}
+@container (max-width: 26rem) {
+  .section {
+    padding-inline: $spacing-sm;
+  }
+  .headerMeta {
+    padding-inline-end: $spacing-sm;
+  }
+  .organization summary {
+    grid-template-columns: minmax(0, 1fr) tenant-list.$chevron-size;
+    gap: 2px $spacing-sm;
+    padding-inline: $spacing-sm;
+  }
+  .orgIcon {
+    display: none;
+  }
+  .counts {
+    grid-area: 2 / 1 / auto / -1;
+  }
+  .chevron {
+    grid-area: 1 / 2;
+  }
+  .table {
+    --status-end: #{$spacing-sm};
+    th,
+    td {
+      padding-inline: 6px;
+    }
+    th:first-child {
+      width: 6.5rem;
+    }
+  }
+}
+@container (max-width: 18rem) {
+  .table th:first-child {
+    width: auto;
+  }
+  .table th {
+    white-space: normal;
+  }
+}
+@media (pointer: coarse) {
+  .toggle {
+    min-height: 44px;
   }
 }

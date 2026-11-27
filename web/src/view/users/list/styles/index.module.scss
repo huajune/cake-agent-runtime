@@ -47,8 +47,7 @@
 }
 
 // 工具条控件：32px 纯白胶囊 + 淡丁香细边，与全站同款
-.searchControl,
-.selectControl {
+.searchControl {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -122,20 +121,8 @@
 }
 
 .selectControl {
-  select {
-    width: 100%;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: #14132b;
-    font-size: 12.5px;
-    cursor: pointer;
-
-    &:disabled {
-      color: #a3a2b8;
-      cursor: not-allowed;
-    }
-  }
+  --filter-height: 32px;
+  --filter-radius: #{$radius-full};
 }
 
 @include respond-to(md) {

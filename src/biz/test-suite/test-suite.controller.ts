@@ -1,3 +1,4 @@
+import { AllowMachineAccess } from '@infra/server/guards/api-token.guard';
 import {
   Controller,
   Get,
@@ -49,6 +50,7 @@ import {
 import { BatchSource, ExecutionStatus, ReviewStatus, TestType } from './enums/test.enum';
 
 @ApiTags('测试套件')
+@AllowMachineAccess()
 @Controller('test-suite')
 export class TestSuiteController {
   constructor(

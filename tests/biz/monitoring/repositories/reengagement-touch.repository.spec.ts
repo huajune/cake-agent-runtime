@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { runForTenant } from '@infra/supabase/business-tenant';
 import { ReengagementTouchRepository } from '@biz/monitoring/repositories/reengagement-touch.repository';
 import { ReengagementTouchStatus } from '@biz/monitoring/entities/reengagement-touch.entity';
 import { SupabaseService } from '@infra/supabase/supabase.service';
@@ -231,8 +232,13 @@ describe('ReengagementTouchRepository', () => {
     });
     mockSupabaseClient.from.mockReturnValue(queryMock);
 
-    const identity = await repository.getLatestChatChannelIdentity('sess-1');
+    const identity = await runForTenant('org-a', () =>
+      repository.getLatestChatChannelIdentity('sess-1', 'bot-1'),
+    );
 
+    expect(mockSupabaseClient.from).toHaveBeenCalledWith('tenant_visible_chat_messages');
+    expect(queryMock.eq).toHaveBeenCalledWith('tenant_id', 'org-a');
+    expect(queryMock.eq).toHaveBeenCalledWith('im_bot_id', 'bot-1');
     expect(identity).toEqual({
       candidateName: '张三',
       managerName: 'bot-user-1',

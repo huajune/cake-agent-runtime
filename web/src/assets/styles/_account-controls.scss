@@ -1,0 +1,61 @@
+@use './variables' as *;
+
+@mixin action {
+  @include button-base;
+  padding-block: 9px;
+  border: 1px solid rgba($lilac, 0.55);
+  background: $bg-card;
+  color: $text-data;
+  font-size: $font-size-sm;
+  line-height: normal;
+  transition:
+    background-color $transition-fast,
+    border-color $transition-fast;
+
+  &:hover:not(:disabled) {
+    background: $bg-secondary;
+    border-color: $border-hover;
+  }
+}
+
+@mixin field {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  background: $bg-primary;
+  color: $text-primary;
+  font: inherit;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-normal;
+  caret-color: $primary-dark;
+
+  &::placeholder {
+    color: $text-placeholder;
+    opacity: 1;
+  }
+  &[readonly],
+  &:disabled {
+    border-color: $border;
+    background: $bg-secondary;
+    color: $text-secondary;
+  }
+  &:focus {
+    border-color: $border-focus;
+    outline: none;
+    box-shadow: none;
+
+    @media (forced-colors: active) {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
+  // iOS 在小于 16px 的输入框获得焦点时会放大页面。
+  @supports (-webkit-touch-callout: none) {
+    @media (pointer: coarse) {
+      font-size: $font-size-lg;
+    }
+  }
+}

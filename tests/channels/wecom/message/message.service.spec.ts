@@ -11,6 +11,7 @@ import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { MessageRuntimeConfigService } from '@wecom/message/runtime/message-runtime-config.service';
+import { STRIDE_PRIMARY_CONNECTION, VERIFIED_HOSTING_ROUTE } from '@/types/hosting-route';
 
 describe('MessageService', () => {
   let service: MessageService;
@@ -249,11 +250,32 @@ describe('MessageService', () => {
       expect(mockSimpleMergeService.addMessage).not.toHaveBeenCalled();
     });
 
-    it('keeps ordinary observe group inputs on the immediate-ACK legacy path', async () => {
+    it('acknowledges observe group inputs immediately and verifies the tenant route asynchronously', async () => {
+      groupCredentials.verifyCallback.mockResolvedValue({
+        groupId: 'confirmed-group',
+        corpIds: ['qa-corp'],
+      });
       const response = service.handleMessage({ ...validMessageData, _apiType: 'group' });
       expect(response).toEqual({ success: true, message: 'Message received' });
       await flushAsync();
-      expect(groupCredentials.verifyCallback).not.toHaveBeenCalled();
+      expect(groupCredentials.verifyCallback).toHaveBeenCalledTimes(1);
+      expect(mockPipelineService.execute.mock.calls[0][0][VERIFIED_HOSTING_ROUTE]).toEqual({
+        connectionId: STRIDE_PRIMARY_CONNECTION,
+        observedGroupId: 'confirmed-group',
+      });
+    });
+
+    it('keeps the original enterprise group only for an authenticated connection', async () => {
+      service.handleMessage({ ...validMessageData, groupId: 'event-group' });
+      await flushAsync();
+      expect(mockPipelineService.execute.mock.calls[0][0][VERIFIED_HOSTING_ROUTE]).toEqual({
+        connectionId: STRIDE_PRIMARY_CONNECTION,
+        groupId: 'event-group',
+      });
+      config.get.mockReturnValue(undefined);
+      service.handleMessage({ ...validMessageData, groupId: 'event-group' });
+      await flushAsync();
+      expect(mockPipelineService.execute.mock.calls[1][0][VERIFIED_HOSTING_ROUTE]).toBeUndefined();
     });
 
     it('keeps callbacks unknown when the enterprise credential is unavailable', async () => {

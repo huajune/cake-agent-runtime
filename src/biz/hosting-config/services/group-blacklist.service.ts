@@ -63,11 +63,17 @@ export class GroupBlacklistService {
     return items;
   }
 
-  async setGroupBlacklisted(groupId: string, blacklisted: boolean, reason?: string): Promise<void> {
+  async setGroupBlacklisted(
+    groupId: string,
+    blacklisted: boolean,
+    reason?: string,
+    tenantId?: string,
+  ): Promise<void> {
     const items = await this.groupBlacklistRepository.setGroupBlacklisted(
       groupId,
       blacklisted,
       reason,
+      tenantId,
     );
     this.populateMemoryCache(items);
     await this.persistSharedCache();

@@ -33,9 +33,9 @@ export class HttpService {
   /**
    * 调用第三方 API - GET 请求
    */
-  async get(url: string, params?: unknown) {
+  async get(url: string, params?: unknown, signal?: AbortSignal) {
     try {
-      const response = await this.httpClient.get(url, { params });
+      const response = await this.httpClient.get(url, { params, ...(signal && { signal }) });
       // 只记录响应成功，不打印完整数据（可能包含敏感/大量内容）
       this.logger.debug('GET 请求成功');
       return response.data;

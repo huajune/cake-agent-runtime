@@ -15,6 +15,7 @@ export interface UserData {
   firstActiveAt: number; // 时间戳（毫秒）
   lastActiveAt: number; // 时间戳（毫秒）
   isPaused: boolean;
+  canToggleHosting?: boolean;
   pauseExpiresAt?: number | null; // 暂停自动解禁时间戳（毫秒），永久暂停为 null，仅暂停用户列表使用
   isPermanent?: boolean; // 是否永久暂停（不自动解禁）
   pauseReason?: string; // 暂停理由（如候选人黑名单的拉黑理由）
@@ -31,7 +32,7 @@ export type TabType = 'today' | 'paused' | 'permanent' | 'blacklist';
  * 用户表格属性
  */
 export interface UserTableProps {
-  readOnly?: boolean;
+  canToggleHosting: (user: UserData) => boolean;
   users: UserData[];
   isLoading: boolean;
   onToggleHosting: (chatId: string, enabled: boolean) => void;

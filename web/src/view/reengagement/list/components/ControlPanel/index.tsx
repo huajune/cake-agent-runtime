@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import FilterSelect from '@/components/FilterSelect';
 import { Filter, Workflow } from 'lucide-react';
 import { STATUS_OPTIONS } from '../../constants';
 import styles from './index.module.scss';
@@ -138,39 +139,22 @@ export default function ControlPanel({
           )}
         </div>
 
-        <label className={styles.selectWrap}>
-          <Workflow aria-hidden="true" size={14} />
-          <select
-            value={scenarioFilter}
-            onChange={(event) => onScenarioFilterChange(event.target.value)}
-            className={styles.selectInput}
-            aria-label="场景筛选"
-          >
-            <option value={allValue}>全部场景</option>
-            {scenarioOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.selectWrap}>
-          <Filter aria-hidden="true" size={14} />
-          <select
-            value={statusFilter}
-            onChange={(event) => onStatusFilterChange(event.target.value)}
-            className={styles.selectInput}
-            aria-label="状态筛选"
-          >
-            <option value={allValue}>全部状态</option>
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <FilterSelect
+          className={styles.selectWrap}
+          label="场景筛选"
+          icon={Workflow}
+          value={scenarioFilter}
+          options={[{ value: allValue, label: '全部场景' }, ...scenarioOptions]}
+          onChange={onScenarioFilterChange}
+        />
+        <FilterSelect
+          className={styles.selectWrap}
+          label="状态筛选"
+          icon={Filter}
+          value={statusFilter}
+          options={[{ value: allValue, label: '全部状态' }, ...STATUS_OPTIONS]}
+          onChange={onStatusFilterChange}
+        />
 
         <button
           type="button"

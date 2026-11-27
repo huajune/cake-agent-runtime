@@ -19,7 +19,7 @@ describe('PhoneSessionIndexService', () => {
 
     expect(redis.setex).toHaveBeenCalledTimes(2);
     expect(redis.setex).toHaveBeenCalledWith(
-      'oob:phone:18271421690',
+      'oob:phone:bot-1:18271421690',
       30 * 24 * 60 * 60,
       expect.objectContaining({ ...ref, phone: '18271421690' }),
     );
@@ -81,19 +81,33 @@ describe('PhoneSessionIndexService', () => {
   it('按手机号/会话反查；结构不对或读失败返回 null', async () => {
     const service = new PhoneSessionIndexService(redis as never);
     redis.get.mockResolvedValueOnce({ ...ref, phone: '18271421690', updatedAt: 1 });
-    await expect(service.lookupByPhone('18271421690')).resolves.toMatchObject({
+    await expect(service.lookupByPhone('18271421690', ref.botImId)).resolves.toMatchObject({
       chatId: 'chat-1',
       phone: '18271421690',
     });
-    expect(redis.get).toHaveBeenCalledWith('oob:phone:18271421690');
+    expect(redis.get).toHaveBeenCalledWith('oob:phone:bot-1:18271421690');
 
     redis.get.mockResolvedValueOnce({ junk: true });
     await expect(service.lookupByChat('chat-1')).resolves.toBeNull();
 
     redis.get.mockRejectedValueOnce(new Error('redis down'));
     await expect(service.lookupByChat('chat-1')).resolves.toBeNull();
-    await expect(service.lookupByPhone('bad')).resolves.toBeNull();
+    await expect(service.lookupByPhone('bad', ref.botImId)).resolves.toBeNull();
   });
+  it('同一手机号可以分别找到两个托管号下的会话，旧索引仍能读取', async () => {
+    const entries = new Map();
+    redis.setex.mockImplementation(async (key, _ttl, record) => entries.set(key, record));
+    redis.get.mockImplementation(async (key) => entries.get(key));
+    const service = new PhoneSessionIndexService(redis as never);
+    const phone = '18271421690';
+    await service.record(phone, ref);
+    await service.record(phone, { ...ref, botImId: 'bot-2', chatId: 'chat-2' });
+    expect((await service.lookupByPhone(phone, 'bot-1'))?.chatId).toBe('chat-1');
+    expect((await service.lookupByPhone(phone, 'bot-2'))?.chatId).toBe('chat-2');
+    entries.set('oob:phone:' + phone, { ...ref, phone, botImId: 'legacy-bot' });
+    expect((await service.lookupByPhone(phone, 'legacy-bot'))?.botImId).toBe('legacy-bot');
+  });
+
   it('strict repair propagates index failure and permits a later local-only retry', async () => {
     const service = new PhoneSessionIndexService(redis as never);
     redis.setex.mockRejectedValueOnce(new Error('redis unavailable'));

@@ -1,3 +1,5 @@
+import { businessTenant } from '@infra/supabase/business-tenant';
+import type { QueryModifier } from '@infra/supabase/base.repository';
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
@@ -38,6 +40,16 @@ export class ChatMessageRepository extends BaseRepository {
 
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
+  }
+
+  protected override select<T>(columns?: string, modifier?: QueryModifier): Promise<T[]> {
+    const tenant = businessTenant();
+    if (tenant === undefined) return super.select<T>(columns, modifier);
+    if (!tenant) return Promise.resolve([]);
+    return this.selectFrom<T>('tenant_visible_chat_messages', columns, (q) => {
+      const scoped = q.eq('tenant_id', tenant);
+      return modifier ? modifier(scoped) : scoped;
+    });
   }
 
   // ==================== 消息保存 ====================
@@ -926,6 +938,11 @@ export class ChatMessageRepository extends BaseRepository {
       source: toStorageMessageSource(message.source),
       is_room: message.isRoom ?? false,
       im_bot_id: message.imBotId,
+      ...(message.hostingRoute && {
+        hosting_connection_id: message.hostingRoute.connectionId,
+        hosting_group_id: message.hostingRoute.groupId,
+        hosting_observed_group_id: message.hostingRoute.observedGroupId,
+      }),
       im_contact_id: message.imContactId,
       contact_type: toStorageContactType(message.contactType),
       is_self: message.isSelf,

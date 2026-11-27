@@ -103,6 +103,8 @@
 
 > 外部技术/供应商的可行性调研：结论先行、证据分级、带来源；只写约束与判定，不写愿景。
 
+- [运行时与业务数据模型改造验收](technical/runtime-data-model-acceptance-2026-11-19.md) — v11.18.0 五个工作包的方案、兼容性、容量对比和回退演练。
+
 - **[Jev（TypeSafe System One）可行性调研 2026-10-08](technical/jev-feasibility-research-2026-10-08.md)** — 10 条候选三路对抗审查全部驳回；热路径被 T-1/T-2/T-4/T-6/M-rt-1 封死，冷路径每处有零新供应商替代；重议四前提与各候选的非 Jev 正解
 - **[报名、邀请与未知结果验收 2026-11-04](technical/runtime-acceptance-2026-11-04.md)** — 以第 9 节为准：execute 行为验收、故障恢复演练与本批修复；普通回复按 API 受理成功完成，生产切换仍需发布修复并处置切换边界
 
@@ -111,6 +113,7 @@
 ## 📋 产品 (product/)
 
 - **[产品定义](product/product-definition.md)** — 定位、用户角色、核心功能
+- **[租户、成员和业务账号](product/organization-members-and-business-accounts.md)** — 登记组织、员工开户、小组绑定、托管号归属和按组织查看业务。
 - **[复聊功能产品说明](product/reengagement.md)** — 主动跟进的场景、触发/停止规则、内容规范、灰度、指标与验收口径
 - **[Agent 运营手册（理解系统+日常操作）](product/agent-for-operations.md)** ⭐ — 运营向：消息旅程、记忆、工具清单、剧本、可调项、排查（原 product-view + agent-workflow 合并）
 - **[敏感信息与安全护栏全景（运营版）](product/sensitive-info-guardrails-for-operations.md)** — 公平性/诚信/隐私保护与运营处置指引（技术侧见 [security-guardrails.md](architecture/security-guardrails.md)）
@@ -150,10 +153,7 @@
 
 ## 📌 待办与规划 (todo/)
 
-> 入口见 **[Todo 索引](todo/README.md)**。这里只保留有所有者、状态和完成条件的未完成事项；
-> 已落地方案删除并留在 Git 历史，不在 todo 中长期保存执行记录。
-
-- [运行时与业务数据模型改造执行计划](todo/runtime-data-model-execution-plan.md) — 27 张业务表的去留、读写与页面迁移、恢复验收和切换条件。
+当前事项、负责人和验收条件统一在[项目待办](todo/README.md)维护。
 
 ---
 

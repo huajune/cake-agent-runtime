@@ -1,7 +1,6 @@
 // ControlBar — 页头工具卡：首行标题/说明/待保存，次行分区导航胶囊 + 生效说明
 @use '@/assets/styles/variables' as *;
 
-$ink: #14132b;
 $muted: #5b5a86;
 $dream-1: #f0efff;
 $dream-2: #faf4fe;
@@ -32,12 +31,8 @@ $dream-4: #fdfdff;
 }
 
 .title {
+  @include dashboard-heading;
   margin: 0;
-  font-size: 16px;
-  font-weight: $font-weight-medium;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  color: $ink;
   white-space: nowrap;
 }
 

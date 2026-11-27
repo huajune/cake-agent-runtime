@@ -17,10 +17,10 @@ const readArg = (prefix, fallback) => {
 const apply = args.has('--apply');
 const baseUrl = readArg('--base-url', process.env.BADCASE_GOVERNANCE_API_BASE_URL || 'http://127.0.0.1:8585');
 const maxBatches = Number(readArg('--max-batches', '2000'));
-const token = process.env.API_GUARD_TOKEN;
+const token = process.env.CAKE_MACHINE_API_TOKEN;
 
 if (!token) {
-  console.error('缺少 API_GUARD_TOKEN；请先加载服务对应环境变量。');
+  console.error('缺少 CAKE_MACHINE_API_TOKEN；请先加载服务对应环境变量。');
   process.exit(1);
 }
 

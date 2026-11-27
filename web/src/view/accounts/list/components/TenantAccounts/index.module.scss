@@ -1,0 +1,198 @@
+@use '@/assets/styles/tenant-list' as tenant-list;
+
+.panel {
+  container-type: inline-size;
+  min-width: 0;
+  & + & {
+    border-top: 1px solid $border;
+  }
+  &[data-expanded='true'] {
+    border-radius: tenant-list.$open-corners;
+  }
+  h2 {
+    margin: 0;
+  }
+  > div > p {
+    padding: $spacing-md;
+  }
+  nav {
+    border-top: 1px solid $border;
+  }
+}
+
+.panel .heading {
+  @include tenant-list.heading;
+  width: 100%;
+  border-radius: 0;
+  background: transparent;
+  color: $text-body;
+  text-align: start;
+
+  &[aria-expanded='true'] {
+    @include tenant-list.expanded-heading;
+  }
+  .tenantName {
+    color: $text-heading;
+    font-size: $font-size-base;
+    font-weight: $font-weight-medium;
+    overflow-wrap: anywhere;
+  }
+  small {
+    color: $text-secondary;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-normal;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+}
+.chevron {
+  justify-self: end;
+  color: $text-secondary;
+}
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: $spacing-md;
+  button {
+    color: $danger-text;
+    &:hover {
+      background: $danger-bg;
+    }
+  }
+}
+.panel table {
+  @include tenant-list.table;
+  td:first-child {
+    font-weight: $font-weight-medium;
+    color: $text-heading;
+  }
+  td:nth-child(2) {
+    font-variant-numeric: tabular-nums;
+  }
+  td:last-child {
+    padding-block: 6px;
+  }
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  &:has(button) {
+    margin-inline-start: -4px;
+  }
+  button {
+    min-height: 36px;
+    padding-inline: 4px;
+    font-size: $font-size-control;
+    white-space: nowrap;
+  }
+  .danger {
+    color: $danger-text;
+    &:hover:not(:disabled) {
+      background: $danger-bg;
+    }
+  }
+}
+.active,
+.disabled {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.active {
+  color: $success-text;
+  background: $success-soft;
+}
+.disabled {
+  color: $text-muted;
+  background: $bg-secondary;
+}
+.mobileLabel {
+  display: none;
+}
+
+@container (width > 45rem) {
+  .panel table th:last-child {
+    width: max(calc(100cqw / 6), 13rem);
+  }
+}
+
+@container (max-width: 45rem) {
+  .panel table {
+    display: block;
+    tbody {
+      display: block;
+    }
+    thead {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: baseline;
+      gap: 4px 8px;
+      padding: 12px $spacing-md;
+      border-top: 1px solid $border;
+    }
+    td,
+    td:first-child,
+    td:last-child {
+      grid-column: 1 / -1;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+    }
+    td:first-child,
+    td:nth-child(5) {
+      grid-row: 1;
+      margin-bottom: 4px;
+    }
+    td:first-child {
+      grid-column: 1;
+    }
+    td:nth-child(5) {
+      grid-column: 2;
+    }
+    td:is(:nth-child(2), :nth-child(3), :nth-child(4)) {
+      display: grid;
+      grid-template-columns: 4.5em minmax(0, 1fr);
+      gap: 6px;
+      font-size: $font-size-sm;
+    }
+  }
+  .mobileLabel {
+    display: inline;
+    color: $text-secondary;
+  }
+  .actions button {
+    min-height: 44px;
+  }
+}
+
+@container (max-width: 16rem) {
+  .panel .heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px $spacing-sm;
+    > svg:first-child {
+      display: none;
+    }
+    small {
+      grid-column: 1;
+    }
+    .chevron {
+      grid-area: 1 / 2 / span 2;
+    }
+  }
+}

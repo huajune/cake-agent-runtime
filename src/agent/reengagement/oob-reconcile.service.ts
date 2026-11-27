@@ -1,5 +1,10 @@
 import { Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
+import {
+  BusinessTenantResolver,
+  businessTenant,
+  runForTenant,
+} from '@infra/supabase/business-tenant';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -84,6 +89,7 @@ export class OobReconcileService implements OnModuleInit {
     private readonly opsEvents: OpsEventsRecorderService,
     private readonly redis: RedisService,
     private readonly systemConfig: SystemConfigService,
+    private readonly tenants: BusinessTenantResolver,
     @Optional() private readonly userHosting?: UserHostingService,
     @Optional() private readonly phoneSessionIndex?: PhoneSessionIndexService,
     @Optional() private readonly tracking?: ReengagementTrackingService,
@@ -128,15 +134,26 @@ export class OobReconcileService implements OnModuleInit {
   }
 
   async reconcile(input: OobReconcileInput): Promise<OobReconcileResult> {
-    const empty: OobReconcileResult = {
-      status: 'skipped',
-      supplierOwned: 0,
-      scheduled: 0,
-      linkedEvents: 0,
-      slotChecksScheduled: 0,
-    };
+    const botId = input.botImId?.trim();
+    if (!botId) return skipped('unknown_tenant');
+    const turnTenant = input.trigger === 'turn' ? businessTenant() : undefined;
+    const owner =
+      turnTenant === undefined
+        ? (await this.tenants.resolve([{ botId, at: Date.now() }]))[0]
+        : turnTenant;
+    if (!owner) return skipped('unknown_tenant');
+    return runForTenant(owner, () =>
+      this.reconcileOwned({
+        ...input,
+        botImId: botId,
+        channelIdentity: { ...input.channelIdentity, botImId: botId },
+      }),
+    );
+  }
+
+  private async reconcileOwned(input: OobReconcileInput): Promise<OobReconcileResult> {
     const identity = await this.resolveIdentity(input);
-    if (!identity.phone) return { ...empty, reason: 'no_phone' };
+    if (!identity.phone) return skipped('no_phone');
 
     const snapshot = await this.bookingSnapshot.load({
       phone: identity.phone,
@@ -147,7 +164,7 @@ export class OobReconcileService implements OnModuleInit {
       // 回合内 prepare 刚查过（缓存命中即可）；扫描/恢复没有前置查询，必须穿透。
       bypassCache: input.trigger !== 'turn',
     });
-    if (snapshot.status !== 'ok') return { ...empty, reason: snapshot.status };
+    if (snapshot.status !== 'ok') return skipped(snapshot.status);
 
     const now = Date.now();
     const ownedSupplier = snapshot.entries.filter(
@@ -202,7 +219,7 @@ export class OobReconcileService implements OnModuleInit {
     let botUserId = input.botUserId?.trim();
     if (!botUserId && input.botImId) {
       // 旧索引没有长期记忆账号键；只用同一托管账号的会话渠道快照补齐。
-      const channel = await this.tracking?.resolveChannelIdentity(input.chatId);
+      const channel = await this.tracking?.resolveChannelIdentity(input.chatId, input.botImId);
       if (channel?.botImId === input.botImId) botUserId = channel.managerName?.trim();
     }
     if (botUserId) {
@@ -478,6 +495,17 @@ export class OobReconcileService implements OnModuleInit {
       return null;
     }
   }
+}
+
+function skipped(reason: string): OobReconcileResult {
+  return {
+    status: 'skipped',
+    reason,
+    supplierOwned: 0,
+    scheduled: 0,
+    linkedEvents: 0,
+    slotChecksScheduled: 0,
+  };
 }
 
 function anchorMarkerKey(chatId: string, anchorKey: string): string {

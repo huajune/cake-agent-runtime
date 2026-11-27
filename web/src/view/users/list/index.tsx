@@ -1,7 +1,9 @@
+import FilterSelect from '@/components/FilterSelect';
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
 import { useMemo, useState } from 'react';
 import { ArrowUpDown, Bot, Info, Search, X } from 'lucide-react';
 import { useConfiguredBots } from '@/hooks/bot/useBots';
+import { useGroupList } from '@/hooks/config/useWorker';
 import {
   useTodayUsers,
   useToggleUserHosting,
@@ -134,7 +136,8 @@ function filterUsersByControls(
 }
 
 export default function Users() {
-  const restricted = Boolean(useDashboardAccess()?.centerId);
+  const access = useDashboardAccess();
+  const restricted = Boolean(access?.centerId);
   const [activeTab, setActiveTab] = useState<TabType>('today');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('firstActiveDesc');
@@ -143,6 +146,26 @@ export default function Users() {
   const { data: todayUsers = [], isLoading: isTodayLoading } = useTodayUsers();
   const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers(true, !restricted);
   const { data: configuredBots = [], isLoading: isBotsLoading } = useConfiguredBots();
+  const { data: groups } = useGroupList(Boolean(access && !restricted && !access.isAdministrator));
+  const ownBotIds = useMemo(() => {
+    const ownedGroups = new Set(
+      groups?.filter((g) => g.tenantId === access?.organization).map((g) => g.id),
+    );
+    return new Set(
+      configuredBots
+        .filter((bot) => bot.groupId && ownedGroups.has(bot.groupId))
+        .map((bot) => bot.wxid)
+        .filter(Boolean),
+    );
+  }, [groups, configuredBots, access?.organization]);
+  const canToggleHosting = (user: UserData) =>
+    Boolean(
+      access &&
+        (access.isAdministrator ||
+          (restricted
+            ? user.canToggleHosting === true
+            : user.imBotId && ownBotIds.has(user.imBotId))),
+    );
   const toggleHosting = useToggleUserHosting();
   const pauseHosting = usePauseUserHosting();
   const { data: candidateBlacklist, isLoading: isLoadingCandidates } =
@@ -326,6 +349,7 @@ export default function Users() {
             pendingChatId={pendingChatId}
             onAdd={handlePermanentPause}
             onResume={(chatId) => handleToggleHosting(chatId, true)}
+            canToggleHosting={canToggleHosting}
             resolveBotLabel={resolveBotLabel}
           />
         ) : (
@@ -351,48 +375,41 @@ export default function Users() {
                 )}
               </label>
 
-              <label className={styles.selectControl}>
-                <ArrowUpDown aria-hidden="true" size={15} />
-                <select
-                  value={activeSortMode}
-                  onChange={(event) => setSortMode(event.target.value as SortMode)}
-                  aria-label="排序方式"
-                >
-                  {sortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className={styles.selectControl}>
-                <Bot aria-hidden="true" size={15} />
-                <select
-                  value={activeBotFilter}
-                  onChange={(event) => setBotFilter(event.target.value)}
-                  aria-label="托管 bot 过滤"
-                  disabled={isBotsLoading || botOptions.length === 0}
-                >
-                  <option value={ALL_BOTS}>
-                    {isBotsLoading
+              <FilterSelect
+                className={styles.selectControl}
+                label="排序方式"
+                icon={ArrowUpDown}
+                value={activeSortMode}
+                onChange={(value) => setSortMode(value as SortMode)}
+                options={sortOptions}
+              />
+              <FilterSelect
+                className={styles.selectControl}
+                label="托管账号筛选"
+                icon={Bot}
+                value={activeBotFilter}
+                onChange={setBotFilter}
+                disabled={isBotsLoading || botOptions.length === 0}
+                options={[
+                  {
+                    value: ALL_BOTS,
+                    label: isBotsLoading
                       ? '正在加载托管账号'
                       : botOptions.length === 0
                         ? '暂无托管账号'
-                        : '全部托管账号'}
-                  </option>
-                  {botOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label} ({option.count})
-                    </option>
-                  ))}
-                </select>
-              </label>
+                        : '全部托管账号',
+                  },
+                  ...botOptions.map((option) => ({
+                    value: option.value,
+                    label: `${option.label} (${option.count})`,
+                  })),
+                ]}
+              />
             </div>
 
             {/* 用户表格 */}
             <UserTable
-              readOnly={restricted}
+              canToggleHosting={canToggleHosting}
               users={displayUsers}
               isLoading={isLoading}
               onToggleHosting={handleToggleHosting}

@@ -8,6 +8,9 @@ export const BADCASE_FEISHU_URL =
 export const OPERATION_METRICS_FEISHU_URL =
   'https://gingjqcjzc.feishu.cn/wiki/JA9wwoysQiUzBJkFJmnchl9XnJg?table=tblusTgxaBKp9BA7&view=vewC9jds1z';
 
+export const ACCOUNT_ONBOARDING_SOP_URL =
+  'https://gingjqcjzc.feishu.cn/wiki/QR75wvbBIiIy2ekdNH1csJrfn1g';
+
 /**
  * 💜 主题颜色配置
  *

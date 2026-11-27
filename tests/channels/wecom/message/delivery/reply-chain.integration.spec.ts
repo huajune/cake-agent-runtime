@@ -1,4 +1,9 @@
 import { Test, type TestingModule } from '@nestjs/testing';
+import {
+  BusinessTenantResolver,
+  runForTenant,
+  tenantMemoryKey,
+} from '@infra/supabase/business-tenant';
 import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bull';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
@@ -85,6 +90,7 @@ const accountId = 'fixture-account';
 const groupId = 'fixture-group';
 const botId = 'fixture-bot-id';
 const chatId = 'fixture-chat';
+const tenantId = 'fixture-tenant';
 const inboundId = 'fixture-input';
 const newerInputId = 'fixture-later-input';
 const parts = ['第一段验收文字', '第二段验收文字'];
@@ -198,9 +204,14 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     observability.buildMergedRequestContent = jest.fn().mockReturnValue('两条候选人消息');
     // Recreate the services each start. Only the simulated Redis/Bull storage and the isolated SQL database survive.
     const store = {
-      getHash: async (key: string) => structuredClone(sessionHashes.get(key) ?? null),
+      getHash: async (key: string) =>
+        structuredClone(sessionHashes.get(tenantMemoryKey(key)) ?? null),
       patchHash: async (key: string, patch: Record<string, unknown>) => {
-        sessionHashes.set(key, { ...sessionHashes.get(key), ...structuredClone(patch) });
+        const scopedKey = tenantMemoryKey(key);
+        sessionHashes.set(scopedKey, {
+          ...sessionHashes.get(scopedKey),
+          ...structuredClone(patch),
+        });
       },
     };
     const memoryConfig = { sessionFactsTtl: 129600 };
@@ -245,6 +256,11 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       } as never,
       undefined,
     );
+    const tenants = {
+      historicalBot: async (id: string) => (id === chatId ? accountId : null),
+      resolve: async (sources: Array<{ botId?: string }>) =>
+        sources.map((source) => (source.botId === accountId ? tenantId : null)),
+    };
     const commands = new ReengagementCommandService(
       {
         add: async (_name: string, data: FollowUpCommand, opts: { jobId: string }) => {
@@ -257,6 +273,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       followUp,
       session,
       undefined,
+      tenants as never,
     );
     const anchors = new ReengagementAnchorService(commands, session);
     jest.spyOn(anchors, 'handleToolAnchors').mockResolvedValue(undefined);
@@ -281,6 +298,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
         MessageService,
         MessageCallbackAdapterService,
         GroupRouteCredentialsService,
+        { provide: BusinessTenantResolver, useValue: tenants },
         { provide: ConfigService, useValue: config },
         {
           provide: getQueueToken(ACTION_REPAIR_QUEUE),
@@ -345,7 +363,7 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
               shouldDispatch: !message.isSelf,
             })),
             processSingleMessage: (message: EnterpriseMessageCallbackDto) => {
-              const call = workflow.processSingleMessage(message);
+              const call = runForTenant(tenantId, () => workflow.processSingleMessage(message));
               processCalls.push(call);
               return call;
             },
@@ -814,10 +832,10 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
       }),
     });
   }
-  function sessionState() {
-    return module!
-      .get(SessionStateService)
-      .getSessionState('fixture-corp', 'fixture-contact', chatId);
+  function sessionState(tenant = tenantId) {
+    return runForTenant(tenant, () =>
+      module!.get(SessionStateService).getSessionState('fixture-corp', 'fixture-contact', chatId),
+    );
   }
   function replyEvents() {
     return client.query<
@@ -860,6 +878,10 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     expect((await sessionState()).presentedJobs?.map((job) => job.jobId)).toEqual([7101, 7102]);
     expect((await sessionState()).storePresentationRounds).toBe(1);
     expect(databaseState().turn.recovery.effects).not.toHaveProperty('deliveredReply');
+    expect((await sessionState('other-tenant')).presentedJobs).toBeNull();
+    expect(
+      [...sessionHashes.keys()].every((key) => key.startsWith('tenant:' + tenantId + ':')),
+    ).toBe(true);
   }, 30000);
 
   it.each([false, true])(
@@ -1323,7 +1345,9 @@ isolated('reply chain with actual PostgreSQL (simulated provider)', () => {
     const batch = [inboundId, second].map((messageId) =>
       adapter.normalizeCallback(incoming('enterprise', { messageId })),
     );
-    await module!.get(ReplyWorkflowService).processMergedMessages(batch, 'fixture-batch');
+    await runForTenant(tenantId, () =>
+      module!.get(ReplyWorkflowService).processMergedMessages(batch, 'fixture-batch'),
+    );
     expect(sendCalls).toHaveLength(1);
     await restart('execute');
     expireOwner();

@@ -1,4 +1,6 @@
 import { useDashboardAccess } from '@/hooks/useDashboardAccess';
+import { signOutOfDashboard } from '@/api/dashboard-session';
+import toast from 'react-hot-toast';
 import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -7,8 +9,11 @@ import {
   BellRing,
   Bug,
   ClipboardCheck,
+  CircleUserRound,
   Layers,
   LayoutDashboard,
+  ContactRound,
+  LogOut,
   MessageSquare,
   MessageSquareCode,
   PanelLeftClose,
@@ -35,7 +40,8 @@ const NAV_ICON_STROKE = 1.6;
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
-  const restricted = Boolean(useDashboardAccess()?.centerId);
+  const access = useDashboardAccess();
+  const restricted = Boolean(access?.centerId);
   const location = useLocation();
 
   const shouldInterceptNavigation = (event: MouseEvent<HTMLAnchorElement>) =>
@@ -75,8 +81,22 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     [location.pathname, navigate],
   );
 
+  const sidebarClass = `sidebar ${isCollapsed ? 'collapsed' : ''}`;
+  const brand = (
+    <div className="sidebar-header">
+      <div className="sidebar-logo">
+        <img
+          src={logoIcon}
+          alt="Logo"
+          style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover' }}
+        />
+        {!isCollapsed && '蛋糕私域托管'}
+      </div>
+    </div>
+  );
+  if (!access) return <aside className={sidebarClass}>{brand}</aside>;
   return (
-    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+    <aside className={sidebarClass}>
       {/* 背景水印装饰 */}
       <span className="sidebar-watermark">🍁</span>
       <span className="sidebar-watermark-2">🍂</span>
@@ -91,16 +111,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
       </button>
 
-      <div className="sidebar-header">
-        <div className="sidebar-logo">
-          <img
-            src={logoIcon}
-            alt="Logo"
-            style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover' }}
-          />
-          {!isCollapsed && '蛋糕私域托管'}
-        </div>
-      </div>
+      {brand}
 
       <div className="sidebar-menu">
         {/* 数据概览 */}
@@ -171,7 +182,6 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           </span>
           {!isCollapsed && <span className="nav-text">托管开关</span>}
         </NavLink>
-
         <NavLink
           to="/chat-records"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
@@ -292,7 +302,58 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             {!isCollapsed && <span className="nav-text">系统监控</span>}
           </NavLink>
         )}
+        {access?.isAdministrator && (
+          <NavLink
+            to="/accounts"
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? '账号管理' : undefined}
+            {...bindPreload('/accounts')}
+          >
+            <span className="nav-icon">
+              <ContactRound size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
+            </span>
+            {!isCollapsed && <span className="nav-text">账号管理</span>}
+          </NavLink>
+        )}
       </div>
+      {access && (
+        <section className="sidebar-account" aria-label="当前登录账号">
+          {isCollapsed ? (
+            <button
+              type="button"
+              className="sidebar-account-button"
+              aria-label={`展开侧栏，当前登录人是${access.displayName}`}
+              title={access.displayName}
+              onClick={onToggle}
+            >
+              <CircleUserRound
+                size={NAV_ICON_SIZE}
+                strokeWidth={NAV_ICON_STROKE}
+                aria-hidden="true"
+              />
+            </button>
+          ) : (
+            <span className="sidebar-account-name" title={access.displayName}>
+              {access.displayName}
+            </span>
+          )}
+          <button
+            type="button"
+            className="sidebar-account-button"
+            aria-label="退出登录"
+            title="退出登录"
+            onClick={async () => {
+              try {
+                await signOutOfDashboard();
+              } catch {
+                toast.error('退出失败，请重试');
+              }
+            }}
+          >
+            <LogOut size={16} strokeWidth={NAV_ICON_STROKE} aria-hidden="true" />
+          </button>
+        </section>
+      )}
     </aside>
   );
 }

@@ -1,3 +1,4 @@
+import { businessTenant, runForTenant } from '@infra/supabase/business-tenant';
 import { InterventionTaskProcessor } from '@notification/feishu-task/intervention-task.processor';
 import type { InterventionTaskJob } from '@notification/feishu-task/intervention-task-job';
 import type {
@@ -39,7 +40,8 @@ describe('InterventionTaskService', () => {
     FEISHU_TASK_TASKLIST_GUID: 'tl-1',
   };
   const configService = { get: jest.fn((key: string) => env[key]) };
-  const centerScope = { getScope: jest.fn() };
+  const centerScope = { feishuRoute: jest.fn() };
+  const tenants = { resolve: jest.fn() };
   const systemConfig = { getConfigValue: jest.fn() };
   const hostingMember = {
     resolveTaskOwners: jest.fn(async () => ({ supervisor: ['ou_boss'], default: ['ou_default'] })),
@@ -95,7 +97,8 @@ describe('InterventionTaskService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete env.HENAN_FEISHU_TASK_TASKLIST_GUID;
-    centerScope.getScope.mockResolvedValue({ botIds: [] });
+    tenants.resolve.mockResolvedValue(['fixture-org']);
+    centerScope.feishuRoute.mockResolvedValue('internal');
     // clearAllMocks 不还原 mockImplementation，显式重置字段解析默认行为（缺列用例会覆盖它）
     client.resolveFieldGuid.mockImplementation(
       async (_tasklist: string, name: string) => `field:${name}`,
@@ -126,12 +129,36 @@ describe('InterventionTaskService', () => {
       moduleRef as never,
       taskQueue as never,
       centerScope as never,
+      tenants as never,
     );
     service.onApplicationBootstrap();
   });
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('按托管号所属组织读取预约，队列组织不匹配时跳过任务', async () => {
+    longTerm.tryGetActiveBookings.mockImplementationOnce(async () => {
+      expect(businessTenant()).toBe('fixture-org');
+      return null;
+    });
+    const job = {
+      payload: basePayload,
+      clientToken: 'fixture-job',
+      triggeredAt: new Date().toISOString(),
+    };
+    await expect(service.prepareRequest(job)).resolves.toMatchObject({ tasklistGuid: 'tl-1' });
+    expect(longTerm.tryGetActiveBookings).toHaveBeenCalledTimes(1);
+    await expect(service.prepareRequest({ ...job, tenantId: 'other-org' })).resolves.toBeNull();
+    expect(longTerm.tryGetActiveBookings).toHaveBeenCalledTimes(1);
+    expect(client.createTask).not.toHaveBeenCalled();
+    await runForTenant('fixture-org', () => service.submit(basePayload));
+    expect(taskQueue.add).toHaveBeenCalledWith(
+      'create',
+      expect.objectContaining({ tenantId: 'fixture-org' }),
+      expect.anything(),
+    );
   });
 
   it('DEFAULT_FIELD_NAMES 键顺序即清单表头列顺序（列顺序 = 创建顺序，不可重排）', () => {
@@ -163,7 +190,7 @@ describe('InterventionTaskService', () => {
   describe('河南任务清单隔离', () => {
     beforeEach(() => {
       env.HENAN_FEISHU_TASK_TASKLIST_GUID = 'tl-henan';
-      centerScope.getScope.mockResolvedValue({ botIds: [basePayload.botImId] });
+      centerScope.feishuRoute.mockResolvedValue('henan');
       service = new InterventionTaskService(
         client as never,
         configService as never,
@@ -173,6 +200,7 @@ describe('InterventionTaskService', () => {
         moduleRef as never,
         taskQueue as never,
         centerScope as never,
+        tenants as never,
       );
     });
 
@@ -200,7 +228,7 @@ describe('InterventionTaskService', () => {
     });
 
     it('非河南账号继续进入总部清单', async () => {
-      centerScope.getScope.mockResolvedValue({ botIds: [] });
+      centerScope.feishuRoute.mockResolvedValue('internal');
       await service.submit(basePayload);
       expect(client.createTask).toHaveBeenCalledWith(
         expect.objectContaining({ tasklistGuid: 'tl-1' }),
@@ -208,7 +236,7 @@ describe('InterventionTaskService', () => {
     });
 
     it('归属查询失败时不建任务、不回退总部', async () => {
-      centerScope.getScope.mockRejectedValue(new Error('directory unavailable'));
+      centerScope.feishuRoute.mockRejectedValue(new Error('directory unavailable'));
       await expect(service.submit(basePayload)).rejects.toThrow('directory unavailable');
       expect(client.createTask).not.toHaveBeenCalled();
     });
@@ -221,7 +249,7 @@ describe('InterventionTaskService', () => {
   });
 
   it('河南清单未配置时不回退总部', async () => {
-    centerScope.getScope.mockResolvedValue({ botIds: [basePayload.botImId] });
+    centerScope.feishuRoute.mockResolvedValue('henan');
     await expect(service.submit(basePayload)).rejects.toThrow('目标任务清单尚未配置');
     expect(client.createTask).not.toHaveBeenCalled();
   });
@@ -246,6 +274,7 @@ describe('InterventionTaskService', () => {
           moduleRef as never,
           taskQueue as never,
           centerScope as never,
+          tenants as never,
         ),
     ).toThrow('河南任务清单必须与总部清单不同');
   });
@@ -269,6 +298,7 @@ describe('InterventionTaskService', () => {
       moduleRef as never,
       taskQueue as never,
       centerScope as never,
+      tenants as never,
     );
     noTasklistService.onApplicationBootstrap();
 

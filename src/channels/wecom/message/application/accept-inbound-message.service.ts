@@ -1,3 +1,4 @@
+import { businessTenant } from '@infra/supabase/business-tenant';
 import { ReengagementCommandService } from '@agent/reengagement/reengagement-command.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
@@ -5,6 +6,7 @@ import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
+import { VERIFIED_HOSTING_ROUTE } from '@/types/hosting-route';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
 import { FilterResult, MessageFilterService } from './filter.service';
 import { ImageDescriptionService } from './image-description.service';
@@ -122,6 +124,13 @@ export class AcceptInboundMessageService {
       };
     }
 
+    if (businessTenant() === null) {
+      await this.recordUserMessageToHistory(messageData, filterResult.content);
+      return {
+        shouldDispatch: false,
+        response: { success: true, message: '托管归属待核实，消息已归档' },
+      };
+    }
     // 候选人入站事件（非 self、过滤通过、非重复、非群聊）：friend.added（首次插入时开户长期记忆）
     // + candidate.message_received + 原子检测首条破冰（candidate.engaged）。
     // 微信「加好友纯默认招呼语」不计候选人消息/破冰。活跃时间等待可靠写入，统计事件异步写。
@@ -384,6 +393,7 @@ export class AcceptInboundMessageService {
       role: 'assistant',
       content,
       timestamp: this.resolveStoredTimestamp(parsed.timestamp),
+      hostingRoute: this.eventHostingRoute(messageData),
       candidateName,
       managerName: messageData.botUserId,
       messageType: messageData.messageType,
@@ -627,6 +637,7 @@ export class AcceptInboundMessageService {
       role: 'user',
       content,
       timestamp: this.resolveStoredTimestamp(parsed.timestamp),
+      hostingRoute: this.eventHostingRoute(messageData),
       candidateName: messageData.contactName || contactName,
       managerName: messageData.botUserId,
       messageType: messageData.messageType,
@@ -663,5 +674,12 @@ export class AcceptInboundMessageService {
 
   private resolveStoredTimestamp(timestamp: number): number {
     return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now();
+  }
+
+  private eventHostingRoute(message: EnterpriseMessageCallbackDto) {
+    const timestamp = Number(message.timestamp);
+    return Number.isSafeInteger(timestamp) && timestamp > 0
+      ? message[VERIFIED_HOSTING_ROUTE]
+      : undefined;
   }
 }

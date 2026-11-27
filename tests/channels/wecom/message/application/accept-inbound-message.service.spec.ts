@@ -2,6 +2,7 @@ import { AcceptInboundMessageService } from '@channels/wecom/message/application
 import { EnterpriseMessageCallbackDto } from '@channels/wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
+import { VERIFIED_HOSTING_ROUTE } from '@/types/hosting-route';
 
 describe('AcceptInboundMessageService', () => {
   const deduplicationService = {
@@ -168,6 +169,24 @@ describe('AcceptInboundMessageService', () => {
       'im-contact-1',
       'chat-1',
       new Date(1713168001234),
+    );
+  });
+
+  it('persists the verified connection only for events with a usable original timestamp', async () => {
+    const route = { connectionId: 'test-source', groupId: 'test-group' };
+    await service.execute(createMessage({ [VERIFIED_HOSTING_ROUTE]: route }));
+    expect(chatSession.saveMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ hostingRoute: route }),
+    );
+    await service.execute(
+      createMessage({
+        messageId: 'invalid-timestamp',
+        timestamp: 'unavailable',
+        [VERIFIED_HOSTING_ROUTE]: route,
+      }),
+    );
+    expect(chatSession.saveMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ hostingRoute: undefined }),
     );
   });
 

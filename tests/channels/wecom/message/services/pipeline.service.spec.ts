@@ -1,3 +1,5 @@
+import { BusinessTenantResolver } from '@infra/supabase/business-tenant';
+import { PendingHostingSourceService } from '@wecom/message/application/pending-hosting-source.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -47,6 +49,10 @@ import { BotService } from '@wecom/bot/bot.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
+  const tenants = {
+    resolve: jest.fn(async (sources: unknown[]) => sources.map(() => 'qa-tenant' as string | null)),
+  };
+  const pendingSource = { restore: jest.fn() };
 
   const mockDeduplicationService = {
     isMessageProcessedAsync: jest.fn(),
@@ -207,6 +213,8 @@ describe('MessagePipelineService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessagePipelineService,
+        { provide: PendingHostingSourceService, useValue: pendingSource },
+        { provide: BusinessTenantResolver, useValue: tenants },
         AcceptInboundMessageService,
         {
           provide: ReengagementCommandService,
@@ -653,6 +661,50 @@ describe('MessagePipelineService', () => {
       );
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-456');
+    });
+    it('delivers and acknowledges only the verified in-flight input during the first cutover', async () => {
+      const other = {
+        ...validMessageData,
+        messageId: 'unverified-input',
+        payload: { text: 'unverified' },
+      };
+      tenants.resolve
+        .mockResolvedValueOnce([null, null, 'qa-tenant'])
+        .mockResolvedValueOnce(['qa-tenant', null, 'qa-tenant'])
+        .mockResolvedValueOnce([null, 'qa-tenant']);
+      pendingSource.restore.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      mockSimpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+        messages: [validMessageData, other],
+        batchId: 'cutover-batch',
+      });
+      await service.processMergedMessages([validMessageData, other], 'cutover-batch');
+      expect(mockRunnerService.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [{ role: 'user', content: 'Hello!' }],
+        }),
+      );
+      expect(mockDeliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(mockRunnerService.invoke).toHaveBeenCalledTimes(1);
+      expect(mockSimpleMergeService.ackPendingMessageIds).toHaveBeenCalledWith('chat-123', [
+        'msg-123',
+      ]);
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalledWith(
+        'unverified-input',
+      );
+    });
+    it('defers an in-flight reply if the Bot changes organization before a new input can be merged', async () => {
+      tenants.resolve
+        .mockResolvedValueOnce(['qa-tenant', 'qa-tenant'])
+        .mockResolvedValueOnce(['new-tenant', 'new-tenant']);
+      mockSimpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
+        messages: [validMessageData, { ...validMessageData, messageId: 'new-owner-input' }],
+        batchId: 'moving',
+      });
+      await expect(service.processMergedMessages([validMessageData], 'moving')).resolves.toBe(
+        'deferred',
+      );
+      expect(mockDeliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(mockSimpleMergeService.ackPendingMessageIds).not.toHaveBeenCalled();
     });
   });
 });

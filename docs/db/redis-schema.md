@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Redis (Upstash) 缓存层设计文档
 
-**最后更新**：2026-08-28
+**最后更新**　2026-11-24
 
 **Redis 客户端**：`@upstash/redis`（REST）+ `ioredis`（Bull Queue TCP）
 
@@ -14,6 +14,7 @@
 
 ## 目录
 
+- [租户业务键](#租户业务键)
 - [总览](#总览)
 - [命名规范](#命名规范)
 - [消息管道（wecom:message:\*）](#消息管道wecommessage)
@@ -28,6 +29,39 @@
 - [故障排查](#故障排查)
 
 ---
+
+## 租户业务键
+
+下表的每个后缀都接在 `{env}:tenant:{encodedTenantId}:` 后。环境取 `RUNTIME_ENV`、`NODE_ENV`、`development` 中首个有效值。租户取原始业务的组织，对组织 ID 调用 `encodeURIComponent`。例如，测试环境河南会话的预约指针可以是 `test:tenant:henan:active-booking:corp-demo:user-demo`。同一企业和候选人在另一个租户会得到不同的键。
+
+| 用途 | 前缀后的完整键 | 默认 TTL | 数据来源 |
+| --- | --- | --- | --- |
+| 收资表实体 | `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | 7 天 | 表单的完整状态 |
+| 当前办理人 | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}` | 7 天 | 当前办理表单的人键，可以是代报名人 |
+| 主候选人 | `collection-form-primary:{corpId}:{userId}:{botUserId}:{jobId}` | 7 天 | 主联系人的表单指针 |
+| 预约指针 | `active-booking:{corpId}:{userId}` | 2 小时 | 回源本租户 `agent_long_term_memories` 中 `bot_user_id IS NULL` 的行，预约动作后失效 |
+| 预约快照 | `booking:snapshot:{botImId}:{phone}` | 5 分钟 | 用该 Bot 配置的凭据查询海绵工单 |
+| 候选人快照镜像 | `booking:snapshot:candidate:{corpId}:{userId}` | 最多 5 分钟 | 出站守卫按候选人读取。命中原快照时沿用剩余有效期 |
+| 会话最近消息 | `memory:short_term:chat:{chatId}` | 7 天 | 消息热缓存 |
+| 会话事实与工作台 | `factsv2:{corpId}:{userId}:{sessionId}` | 7 天加 12 小时 | 会话事实与工作台共用一个 Redis Hash |
+| 阶段指针 | `stage:{corpId}:{userId}:{sessionId}` | 7 天加 12 小时 | 随会话写入续期 |
+| 长期关系档缓存 | `long-term:{corpId}:{userId}:{botUserId}` | 2 小时 | 本租户、候选人与 Bot 的关系档 |
+
+服务在原消息或任务的租户上下文中构造这些键。业务归属显式待核实时会报错。无业务上下文的平台调用使用仅带环境前缀的旧格式。租户作用域的收资表和预约缓存读取不会尝试旧键。[前缀](../../src/infra/supabase/business-tenant.ts) · [收资表和两个指针](../../src/tools/collection/collection-form.store.ts) · [预约指针](../../src/memory/stores/supabase.store.ts) · [预约快照和镜像](../../src/tools/booking/booking-snapshot.service.ts)
+
+跨租户共用的运行时键仅加环境前缀。下列几组与预约、托管或排查常有关联：
+
+| 用途 | 键或键族 |
+| --- | --- |
+| 海绵单笔工单，5 分钟 | `sponge:workorder:{workOrderId}`，按海绵工单号缓存单笔详情，键未包含租户和 Bot。 |
+| 带外工单反查索引，30 天 | `oob:phone:{encodedBotImId}:{phone}`、`oob:phone:{phone}`（旧记录或缺 Bot）、`oob:chat:{chatId}`。扫描按 Bot 核实命中结果后处理。 |
+| 带外工单扫描与去重 | `oob:reconcile-scan:lock:v1`、`oob:reconcile-scan:progress:v1`、`oob:anchor:{chatId}:{anchorKey}`、`oob:booked:{chatId}` |
+| 主动复聊频控与投递 | `reengagement:touch:{touchKey}`、`reengagement:sent:{sessionId}`、`reengagement:lastTouch:{sessionId}`、`reengagement:once:{key}` |
+| 托管与调度 | 候选人黑名单 `hosting:blacklist:candidates:v2`、暂停过期锁 `hosting:paused-users:expire-lock:v1`，以及下表中的小组黑名单、暂停用户缓存和全局开关 |
+| 群任务 | `group-task:msg:{execId}:{groupKey}`、`group-task:result:{execId}:{groupId}`、`group-task:meta:{execId}`、`group-task:bot-dispatch-lock:{imBotId}`、`group-task:bot-last-dispatch:{imBotId}`、`group-task:sent:{type}:{date[-timeSlot]}:{groupId}` |
+| 平台定时任务、评测 | `cron:lock:{id}`、`cron:last-observed:{id}`、`cron:lifecycle:{id}`、`cron:sponge-status-poll:cursor:v2`、`ops:job-data-audit:lock`、`test-suite:feedback:dedup:{digest}` |
+
+消息去重、合并队列、会话处理锁、监控计数和 Bull 队列也各有共享键。租户在后台能查到哪些消息、能暂停哪个会话，由服务端按数据库中的归属核对。下面各节均以业务后缀描述键的结构。
 
 ## 总览
 
@@ -237,7 +271,7 @@ Redis Hash 不支持 field TTL，因此 facts 与 workbench 共享同一个 key 
 
 Supabase `agent_long_term_memories` 是权威源。无 bot 的旧缓存 key 不再读取，等待自然过期。
 
-### 10-11. 收资表单实体与定位指针
+### 收资表单实体与定位指针
 
 **代码位置**：
 [src/tools/collection/collection-form.store.ts](../../src/tools/collection/collection-form.store.ts)
@@ -246,9 +280,10 @@ Supabase `agent_long_term_memories` 是权威源。无 bot 的旧缓存 key 不�
 | ---------------------------------------------------------------------- | --------------------------------- | ---- |
 | `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | 完整 `BookingCollectionForm` 快照 | 7 天 |
 | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | 当前办理人的 `candidateRef`       | 7 天 |
+| `collection-form-primary:{corpId}:{userId}:{botUserId}:{jobId}` | 主候选人的 `candidateRef` | 7 天 |
 
 collection form 是 tools 自持的业务单据，不属于 memory；它采用整实体覆盖写，不使用 deep merge。
-key 形状与 TTL 在候选人证据链收口中保持不变：手机号到达前 `candidateRef=session`，到达后
+租户前缀见上表。手机号到达前 `candidateRef=session`，到达后
 由 `CollectionFormService` rebind 到 11 位手机号；稳定 `botUserId` 继续作为隔离维度。
 
 `BookingCollectionForm`、`FormSlot`、recap、errorList 和提交终态只存在于上述 key，绝不写入
@@ -373,6 +408,8 @@ session / long-term memory，不搬运表单实体或槽位状态。
 
 Bull Queue 使用独立的 Redis TCP 连接（`UPSTASH_REDIS_TCP_URL`），所有队列 Key 由 Bull 自动管理，前缀固定为 `bull:{RUNTIME_ENV|NODE_ENV}`。
 
+已注册的队列还包括 `group-task`、`memory-consolidation`、`reengagement`、`reengagement-commands`、`action-local-repair`、`intervention-tasks` 和 `critical-ops-events`。记忆沉淀队列的基础 job ID 为 `tenant:{encodedTenantId}:memory-consolidation:{sessionId}`，Bull 自行管理队列键。
+
 **全局配置**（[src/infra/queue/bull.module.ts](../../src/infra/queue/bull.module.ts)）：
 
 | 项                                   | 值                                            |
@@ -459,6 +496,8 @@ bull:{env}:test-suite:{waiting|active|completed|failed|delayed|{jobId}}
 | 阶段指针                       | 7 天 + 12 小时                                       | 自动过期                          |
 | 长期关系档缓存                 | 2 小时                                     | 自动过期；Supabase 为权威源       |
 | 收资表单与定位指针             | 7 天                                       | tools 域自动过期或办结后主动删除  |
+| 预约指针 | 2 小时 | 预约投影写入后失效 |
+| 预约快照和候选人镜像 | 最多 5 分钟 | 预约状态变更后失效 |
 | 托管共享缓存                   | 无                                         | 观察者 / 定期同步                 |
 | 监控实时计数                   | 无                                         | 持续累计                          |
 | 群成员缓存                     | 10 min                                     | 自动过期 + 定期 hydrate           |
@@ -513,11 +552,11 @@ curl -X GET "$UPSTASH_REDIS_REST_URL/llen/production:wecom:message:pending:{chat
   -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
 
 # 检查会话 facts hash
-curl -X GET "$UPSTASH_REDIS_REST_URL/hgetall/production:factsv2:{corpId}:{userId}:{sessionId}" \
+curl -X GET "$UPSTASH_REDIS_REST_URL/hgetall/production:tenant:{encodedTenantId}:factsv2:{corpId}:{userId}:{sessionId}" \
   -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
 
 # 检查短期记忆缓存长度
-curl -X GET "$UPSTASH_REDIS_REST_URL/llen/production:memory:short_term:chat:{chatId}" \
+curl -X GET "$UPSTASH_REDIS_REST_URL/llen/production:tenant:{encodedTenantId}:memory:short_term:chat:{chatId}" \
   -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
 
 # 检查测试批次进度

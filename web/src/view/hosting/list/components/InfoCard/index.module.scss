@@ -4,16 +4,16 @@
 .card {
   padding: 16px 20px;
   border-radius: 16px;
-  background: #fff;
+  background: $bg-card;
   box-shadow:
     0 0 0 1px $border,
     0 8px 24px rgba($text-primary, 0.045);
-  margin-bottom: $spacing-xl;
+  margin: $spacing-sm 0 $spacing-xl;
 }
 
 .title {
   margin: 0 0 $spacing-md 0;
-  color: #14132b;
+  color: $text-heading;
   font-size: $font-size-base;
   font-weight: $font-weight-medium;
   display: flex;

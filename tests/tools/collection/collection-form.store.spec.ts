@@ -6,6 +6,8 @@ import {
   CollectionFormStore,
 } from '@tools/collection/collection-form.store';
 import { createHash } from 'crypto';
+import { runForTenant } from '@infra/supabase/business-tenant';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
 import { createForm, markSubmitted, type ContractFieldDef } from '@resolution/collection';
 
 const FIELD: ContractFieldDef = {
@@ -61,7 +63,7 @@ describe('CollectionFormStore', () => {
     expect(redis.get).toHaveBeenLastCalledWith(buildCollectionFormPrimaryLocatorKey(SCOPE));
   });
 
-  it('主候选人整实体、活动指针与主指针均按收资域 3 天 TTL 覆盖写', async () => {
+  it('主候选人整实体、活动指针与主指针均按收资域 7 天 TTL 覆盖写', async () => {
     const form = createForm({
       candidateRef: '18271421690',
       jobId: SCOPE.jobId,
@@ -162,6 +164,42 @@ describe('CollectionFormStore', () => {
     await expect(
       store.readPrimaryCandidateRef({ ...SCOPE, botUserId: 'wecom-user-B' }),
     ).resolves.toBe(shared.candidateRef);
+  });
+
+  it('按组织加载、补写和删除各自的收资表与候选人指针', async () => {
+    const snapshots = new Map<string, unknown>();
+    redis.setex.mockImplementation(async (key, _ttl, entry) => snapshots.set(key, entry));
+    redis.get.mockImplementation(async (key) => snapshots.get(key) ?? null);
+    redis.del.mockImplementation(async (key) => Number(snapshots.delete(key)));
+    const forms = new CollectionFormService(store, {} as never);
+    const form = createForm({ ...SCOPE, candidateRef: 'session', contract: [FIELD] });
+    const ref = { ...SCOPE, candidateRef: form.candidateRef };
+    const digest = createHash('sha256').update(JSON.stringify(form)).digest('hex');
+    await store.write(SCOPE, markSubmitted(form, 11)); // 切换前无组织标识的旧表
+    await runForTenant('old-org', async () => {
+      expect(await forms.peekPrimary(SCOPE)).toBeNull();
+      await forms.persist(SCOPE, form);
+    });
+    await runForTenant('new-org', async () => {
+      expect(await forms.peekActive(SCOPE)).toBeNull();
+      expect(await store.readCurrentCandidateRef(SCOPE)).toBeNull();
+      expect(await store.readPrimaryCandidateRef(SCOPE)).toBeNull();
+      expect(await forms.loadOrCreate(SCOPE, [FIELD])).toEqual(form);
+      expect(await store.markSubmittedIfUnchanged(ref, digest, 12)).toBe(false);
+      await forms.persist(SCOPE, markSubmitted(form, 13));
+    });
+    await runForTenant('old-org', async () => {
+      await expect(store.markSubmittedIfUnchanged(ref, digest, 12)).resolves.toBe(true);
+      expect(redis.eval.mock.lastCall?.[1]).toEqual([buildCollectionFormKey(ref)]);
+      await store.remove(ref);
+    });
+    await runForTenant('new-org', async () => {
+      expect((await forms.peekPrimary(SCOPE))?.workOrderId).toBe(13);
+      expect((await forms.peekActive(SCOPE))?.workOrderId).toBe(13);
+    });
+    await expect(runForTenant(null, () => forms.peekActive(SCOPE))).rejects.toThrow(
+      '业务归属待核实',
+    );
   });
 
   it('删除当前实体时同步删除 locator', async () => {

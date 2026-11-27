@@ -1,6 +1,7 @@
 import { ActionOpsEventService } from '@biz/ops-events/services/action-ops-event.service';
 import { ActionPermitService } from '@biz/action-permit/services/action-permit.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { BusinessTenantResolver, runForTenant } from '@infra/supabase/business-tenant';
 import { z } from 'zod';
 import { ActionExecutorService } from '@biz/action-execution/action-executor.service';
 import { ActionRecoveryRegistry } from '@biz/action-execution/action-recovery.registry';
@@ -71,6 +72,7 @@ export class ToolActionService implements OnModuleInit {
     private readonly snapshots: BookingSnapshotService,
     private readonly permits: ActionPermitService,
     private readonly actionOpsEvents: ActionOpsEventService,
+    private readonly tenants: BusinessTenantResolver,
   ) {}
 
   onModuleInit(): void {
@@ -85,7 +87,15 @@ export class ToolActionService implements OnModuleInit {
             detail: 'manual_provider_request_verification_required',
           },
         }),
-        sync: (record, context) => this.sync(record.intent, record.result, context),
+        sync: async ({ intent, result }, context) => {
+          if (!intent.kind.startsWith('sponge.')) return;
+          // Recovery runs outside the originating request and needs its business tenant.
+          const [owner] = await this.tenants.resolve([
+            { botId: intent.accountId, at: Date.parse(intent.occurredAt) },
+          ]);
+          if (!owner) throw new Error('预约动作发生时的组织待核实');
+          await runForTenant(owner, () => this.sync(intent, result, context));
+        },
       });
   }
 
@@ -194,7 +204,6 @@ export class ToolActionService implements OnModuleInit {
     rawResult: unknown,
     context?: ActionSyncContext,
   ): Promise<void> {
-    if (!intent.kind.startsWith('sponge.')) return;
     const data = recoverySchema.parse(intent.recovery);
     const result = z
       .object({ success: z.boolean(), workOrderId: z.number().nullish() })

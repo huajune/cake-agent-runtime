@@ -1,5 +1,6 @@
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import { parseLocalDateTime } from '@infra/utils/date.util';
+import { runForTenant } from '@infra/supabase/business-tenant';
 
 const NOW = parseLocalDateTime('2026-09-22 10:00:00')!.getTime();
 
@@ -178,6 +179,33 @@ describe('BookingSnapshotService', () => {
       300,
       expect.objectContaining({ fetchedAt: NOW }),
     );
+  });
+
+  it('候选人预约快照只读取当前组织的缓存', async () => {
+    const cache = new Map<string, unknown>();
+    redis.get.mockImplementation(async (key: string) => cache.get(key) ?? null);
+    redis.setex.mockImplementation(async (key: string, _ttl: number, value: unknown) =>
+      cache.set(key, value),
+    );
+    const svc = service();
+    await runForTenant('before', () => svc.load(baseInput));
+    await expect(
+      runForTenant('after', () => svc.peekForCandidate(baseInput.corpId, baseInput.userId)),
+    ).resolves.toBeNull();
+    sponge.fetchSignupWorkOrders.mockResolvedValue({
+      candidateName: '张三',
+      total: 0,
+      workOrders: [],
+    });
+    await expect(runForTenant('after', () => svc.load(baseInput))).resolves.toMatchObject({
+      entries: [],
+      fromCache: false,
+    });
+    await expect(
+      runForTenant('before', () => svc.peekForCandidate(baseInput.corpId, baseInput.userId)),
+    ).resolves.toMatchObject({
+      entries: [expect.objectContaining({ workOrderId: supplierOrder.workOrderId })],
+    });
   });
 
   it('缓存命中不打海绵；命中面试类关键词（bypassCache）时穿透', async () => {

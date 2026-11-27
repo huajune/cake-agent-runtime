@@ -43,14 +43,14 @@ HTTP 请求
 | 能力             | 当前实现                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------- |
 | 环境变量启动校验 | `src/infra/config/env.validation.ts`；必填缺失或类型错误时拒绝启动                    |
-| API Token        | `src/infra/server/guards/api-token.guard.ts`；全局 Bearer Token，`@Public()` 端点豁免 |
+| API Token        | `src/infra/server/guards/api-token.guard.ts`；校验员工会话和启用的组织账号，`@Public()` 端点豁免 |
 | DTO 校验         | Nest 全局 `ValidationPipe`                                                            |
 | Provider 韧性    | `src/providers/reliable.service.ts`；错误分类、同模型重试、fallback 链                |
 | 消息窗口         | `MAX_HISTORY_PER_CHAT` 默认 300（硬上限）；`AGENT_MAX_INPUT_CHARS` 默认 24000         |
 | 输出预算         | `AGENT_MAX_OUTPUT_TOKENS` 默认 4096                                                   |
 | 告警节流         | `AlertNotifierService`；同类事件按 dedupe / throttle 约束，避免告警风暴               |
 
-`API_GUARD_TOKEN` 未配置时保留开发兼容放行并打印 WARN；生产不能把这一兼容行为当作安全默认值。
+自动化可配置专用服务端凭据 `CAKE_MACHINE_API_TOKEN`，仅能访问标注 `@AllowMachineAccess()` 的接口。账号管理和全局 AI 回复开关要求专用管理员 `cakeadmin` 的有效会话。服务端核对已确认的 Auth 身份与账号表中的专用登录名。
 
 ---
 

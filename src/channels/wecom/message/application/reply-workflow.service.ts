@@ -121,6 +121,10 @@ interface AgentCallParams {
   hasNewerUserInput?: () => Promise<boolean>;
 }
 
+type SelectPending = (
+  messages: EnterpriseMessageCallbackDto[],
+) => Promise<EnterpriseMessageCallbackDto[]>;
+
 interface ReplyWork {
   primaryMessage: EnterpriseMessageCallbackDto;
   traceId: string;
@@ -133,6 +137,7 @@ interface ReplyWork {
   batchContext?: { batchId: string; allMessages: EnterpriseMessageCallbackDto[] };
   /** 本轮实际接纳的 pending 身份，包含 replay；由入口共享以覆盖失败收尾。 */
   pendingMessageIds?: Set<string>;
+  selectPending?: SelectPending;
   assertOwned?: () => Promise<void>;
   startTrace: () => Promise<void>;
 }
@@ -166,11 +171,19 @@ export class ReplyWorkflowService {
     @Optional() private readonly config?: ConfigService,
   ) {}
 
-  async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
-    return withProcessingTurn(messageData.messageId, () => this.processSingleReply(messageData));
+  async processSingleMessage(
+    messageData: EnterpriseMessageCallbackDto,
+    selectPending?: SelectPending,
+  ): Promise<void> {
+    return withProcessingTurn(messageData.messageId, () =>
+      this.processSingleReply(messageData, selectPending),
+    );
   }
 
-  private async processSingleReply(messageData: EnterpriseMessageCallbackDto): Promise<void> {
+  private async processSingleReply(
+    messageData: EnterpriseMessageCallbackDto,
+    selectPending?: SelectPending,
+  ): Promise<void> {
     const parsed = MessageParser.parse(messageData);
     const { chatId, content, contactName, messageId } = parsed;
     const scenario = MessageParser.determineScenario();
@@ -202,6 +215,7 @@ export class ReplyWorkflowService {
         parsed,
         isSingleMessage: true,
         pendingMessageIds,
+        selectPending,
       });
     } catch (error) {
       if (error instanceof ReplyDeferredError) {
@@ -227,9 +241,10 @@ export class ReplyWorkflowService {
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
     assertOwned?: () => Promise<void>,
+    selectPending?: SelectPending,
   ): Promise<'deferred' | void> {
     return withProcessingTurn(batchId, () =>
-      this.processMergedReply(messages, batchId, assertOwned),
+      this.processMergedReply(messages, batchId, assertOwned, selectPending),
     );
   }
 
@@ -237,6 +252,7 @@ export class ReplyWorkflowService {
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
     assertOwned?: () => Promise<void>,
+    selectPending?: SelectPending,
   ): Promise<'deferred' | void> {
     if (messages.length === 0) return;
 
@@ -279,6 +295,7 @@ export class ReplyWorkflowService {
         parsed,
         isSingleMessage: false,
         assertOwned,
+        selectPending,
         batchContext: { batchId, allMessages: messages },
         pendingMessageIds,
       });
@@ -436,6 +453,7 @@ export class ReplyWorkflowService {
         const { messages: newerMessages } = await this.fetchPendingSinceAgentStart(
           chatId,
           allMessages,
+          params.selectPending,
         );
         return newerMessages.length > 0;
       },
@@ -524,7 +542,7 @@ export class ReplyWorkflowService {
 
         // 每次读取当前列表，用原消息身份去重；过期重建后的列表不能沿用旧下标。
         const { messages: newMessages, pendingMessageIds: replayIds } =
-          await this.fetchPendingSinceAgentStart(chatId, allMessages);
+          await this.fetchPendingSinceAgentStart(chatId, allMessages, params.selectPending);
         for (const id of replayIds) pendingMessageIds.add(id);
         if (newMessages.length === 0) {
           break;
@@ -1962,19 +1980,11 @@ export class ReplyWorkflowService {
   private async fetchPendingSinceAgentStart(
     chatId: string,
     currentMessages: EnterpriseMessageCallbackDto[],
+    selectPending?: SelectPending,
   ): Promise<{ messages: EnterpriseMessageCallbackDto[]; pendingMessageIds: string[] }> {
+    let snapshot: EnterpriseMessageCallbackDto[];
     try {
-      const { messages } = await this.simpleMergeService.claimPendingSnapshot(chatId);
-      const knownIds = new Set(currentMessages.map((message) => message.messageId));
-      const newMessages = messages.filter(({ messageId }) => {
-        if (knownIds.has(messageId)) return false;
-        knownIds.add(messageId);
-        return true;
-      });
-      return {
-        messages: newMessages,
-        pendingMessageIds: messages.map((message) => message.messageId),
-      };
+      snapshot = (await this.simpleMergeService.claimPendingSnapshot(chatId)).messages;
     } catch (error) {
       const errorMessage = toErrorMessage(error);
       this.logger.warn(
@@ -1982,6 +1992,19 @@ export class ReplyWorkflowService {
       );
       return { messages: [], pendingMessageIds: [] };
     }
+    const acceptedIds = new Set(currentMessages.map((message) => message.messageId));
+    const seen = new Set(acceptedIds);
+    const newer = snapshot.filter(({ messageId }) => {
+      if (seen.has(messageId)) return false;
+      seen.add(messageId);
+      return true;
+    });
+    const messages = newer.length && selectPending ? await selectPending(newer) : newer;
+    for (const message of messages) acceptedIds.add(message.messageId);
+    return {
+      messages,
+      pendingMessageIds: snapshot.map((m) => m.messageId).filter((id) => acceptedIds.has(id)),
+    };
   }
 
   private buildDeliveryContext(

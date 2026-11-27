@@ -68,12 +68,13 @@ export class ReengagementTrackingService {
    */
   async resolveChannelIdentity(
     sessionId: string,
+    botImId?: string,
   ): Promise<Pick<
     ReengagementTouchIdentity,
     'candidateName' | 'managerName' | 'botImId' | 'imContactId' | 'externalUserId'
   > | null> {
     try {
-      return await this.repository.getLatestChatChannelIdentity(sessionId);
+      return await this.repository.getLatestChatChannelIdentity(sessionId, botImId);
     } catch (error) {
       this.logger.warn(
         `[二次触发追溯] 渠道身份兜底查询失败 sessionId=${sessionId}: ${toErrorMessage(error)}`,

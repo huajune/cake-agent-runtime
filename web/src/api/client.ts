@@ -1,3 +1,4 @@
+import { dashboardHeaders } from './dashboard-session';
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 // ==================== 错误类型 ====================
@@ -42,11 +43,9 @@ export const api = axios.create({
 
 // -------------------- 请求拦截器 --------------------
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = import.meta.env.API_GUARD_TOKEN;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+  const headers = await dashboardHeaders();
+  config.headers.Authorization = headers.Authorization;
   return config;
 });
 
@@ -84,6 +83,9 @@ api.interceptors.response.use(
 
     // HTTP 错误但有后端错误体
     const body = error.response.data as Record<string, unknown> | undefined;
+    if (error.config?.url !== '/dashboard/access' && [401, 403].includes(error.response.status)) {
+      window.dispatchEvent(new Event('cake-dashboard-access-changed'));
+    }
     if (body && typeof body === 'object' && 'error' in body) {
       const err = body.error as Record<string, unknown>;
       throw new ApiError(

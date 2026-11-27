@@ -360,7 +360,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 2. 收集本轮需要展示的目标 `batchId`，排除临时 smoke、误建批次和与本轮无关的历史批次。
 3. 运行 `node scripts/sync-test-suite-batches-to-prod.js <batchId...>`。不要用 `pnpm --` 透传参数。脚本只把现有 `test_batches / test_executions / test_conversation_snapshots` upsert 到生产库，不触发批次执行、不调用模型、不发送候选人消息。
 4. 同步输出中 `warnings` 必须为空，且 `production.executionCount` 必须等于这些批次在测试环境的执行记录总数；否则不能宣称同步成功。
-5. 用 `.env.production` 的 `API_GUARD_TOKEN` 查询生产端 `GET /test-suite/batches/:id` 和 `GET /test-suite/batches/:id/executions`，全量核对批次名称、状态、总数、通过/失败/待评审（含 skipped）分布，以及至少一条执行详情中的实际回复、工具调用和评审备注。
+5. 用 `.env.production` 的 `CAKE_MACHINE_API_TOKEN` 查询生产端 `GET /test-suite/batches/:id` 和 `GET /test-suite/batches/:id/executions`，全量核对批次名称、状态、总数、通过/失败/待评审（含 skipped）分布，以及至少一条执行详情中的实际回复、工具调用和评审备注。
 6. 对用户报告两套口径：Dashboard 的 `pass_rate`（通常以总 case 数为分母）以及剔除 skipped/资产不可评估后的可评估通过率，避免两者看起来矛盾。
 
 只有以下情况可以不自动同步：用户明确要求仅本地验证；缺少 `.env.production`；目标批次仍在运行或评审结论尚未稳定；同步会把未脱敏隐私带入生产。此时必须明确报告“未同步”及原因，不能静默跳过。
@@ -494,7 +494,7 @@ title/blockCount/insertionIndex）。不要把它当成“尚未启用”而跳�
 - 不要依赖任何手动勾选字段来决定是否进入 `测试集 / 验证集`
 - 不要硬编码红线清单；业务规则在 `src/biz/strategy/`，要用时去读
 - 不要把 SQL 原始结果直接丢给用户——先按 chat_id 聚合成对话流水再分析
-- 不要在任何文件里写 `API_GUARD_TOKEN` 的值
+- 不要在任何文件里写 `CAKE_MACHINE_API_TOKEN` 的值
 - 批量排查先读流水摘要。定位具体回合后，查 `message_processing_turn_snapshots.request` 看 Cake 准备的上下文。核对供应商实际输入时，先列出该处理 ID 的模型调用，再点读选中调用的 `request_body`。
 
 ## 参考文件

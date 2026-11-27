@@ -198,7 +198,7 @@ export class OobReconcileScanCronService {
         if (seen.has(seenKey)) continue;
         seen.add(seenKey);
 
-        const record = await this.phoneSessionIndex.lookupByPhone(phone);
+        const record = await this.phoneSessionIndex.lookupByPhone(phone, botImId);
         if (!record) {
           summary.unresolved += 1;
           continue;

@@ -1,0 +1,73 @@
+@use './variables' as *;
+
+$radius: 10px;
+$open-corners: $radius $radius 0 0;
+$chevron-size: 1rem;
+
+@mixin surface {
+  min-width: 0;
+  padding: 16px 20px 20px;
+  border-radius: $radius-xl;
+  background: $bg-card;
+  box-shadow:
+    0 0 0 1px $border,
+    0 8px 24px rgba($text-primary, 0.045);
+  color: $text-primary;
+}
+
+@mixin heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto $chevron-size;
+  align-items: center;
+  gap: $spacing-sm;
+  min-height: 56px;
+  padding: 12px $spacing-md;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+    .chevron {
+      outline: 2px solid $border-focus;
+      outline-offset: 2px;
+      border-radius: $radius-sm;
+    }
+  }
+}
+
+@mixin expanded-heading {
+  border-radius: $open-corners;
+  background: $gradient-table-header;
+  .chevron {
+    transform: rotate(180deg);
+  }
+}
+
+@mixin table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  th,
+  td {
+    padding: 12px;
+    border: 0;
+    background: transparent;
+    text-align: start;
+    vertical-align: middle;
+  }
+  th {
+    @include dashboard-column-label;
+    height: 38px;
+    padding-block: 0;
+    white-space: nowrap;
+  }
+  td {
+    color: $text-data;
+    font-size: $font-size-sm;
+    overflow-wrap: anywhere;
+  }
+  tbody tr:hover {
+    background: transparent;
+  }
+}

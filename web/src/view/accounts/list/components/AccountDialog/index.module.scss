@@ -1,0 +1,173 @@
+@use '@/assets/styles/account-controls' as controls;
+
+.dialog {
+  --dialog-inset: clamp(18px, 4vw, 28px);
+  width: min(calc(100% - 24px), 400px);
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 0;
+  border-radius: $radius-xl;
+  background: $bg-card;
+  color: $text-body;
+  box-shadow: $shadow-xl;
+
+  &[data-action='open'] {
+    width: min(calc(100% - 24px), 500px);
+  }
+  &::backdrop {
+    background: rgba($text-primary, 0.36);
+  }
+
+  form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: $spacing-md;
+    padding: var(--dialog-inset) var(--dialog-inset) 0;
+  }
+  h2 {
+    @include dashboard-heading;
+    margin: 0 0 2px;
+    color: $text-primary;
+    font-weight: $font-weight-semibold;
+  }
+  label {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    color: $text-heading;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+  }
+  form > p {
+    font-size: $font-size-sm;
+  }
+  input:not([type='checkbox']),
+  select {
+    @include controls.field;
+  }
+  @supports (appearance: base-select) {
+    select,
+    select::picker(select) {
+      appearance: base-select;
+    }
+    select {
+      align-items: center;
+      gap: $spacing-sm;
+      cursor: pointer;
+
+      &:disabled {
+        cursor: default;
+      }
+      &:where(:hover:enabled) {
+        border-color: $border-hover;
+      }
+      &:open {
+        border-color: $border-focus;
+      }
+      &::picker-icon {
+        content: '';
+        flex: none;
+        width: 7px;
+        height: 7px;
+        margin: -3px 3px 0 auto;
+        border: solid $text-secondary;
+        border-width: 0 1.5px 1.5px 0;
+        transform: rotate(45deg);
+      }
+      &:open::picker-icon {
+        margin-block-start: 3px;
+        transform: rotate(225deg);
+      }
+      &::picker(select) {
+        inline-size: anchor-size(width);
+        max-inline-size: calc(100vw - 24px);
+        max-block-size: min(16rem, 50dvh);
+        overflow: auto;
+        overscroll-behavior: contain;
+        margin-block: 4px;
+        padding: 4px;
+        border: 1px solid $border;
+        border-radius: $radius-lg;
+        background: $bg-card;
+        box-shadow: $shadow-lg;
+        color: $text-body;
+        font: inherit;
+      }
+      option {
+        display: flex;
+        align-items: center;
+        gap: $spacing-sm;
+        min-height: 36px;
+        padding: 7px 10px;
+        border-radius: $radius-md;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        cursor: pointer;
+      }
+      option:disabled {
+        display: none;
+      }
+      option:hover,
+      option:focus-visible {
+        background: $bg-secondary;
+      }
+      option:focus-visible {
+        outline: 1px solid $border-focus;
+        outline-offset: -1px;
+      }
+      option:checked {
+        background: $primary-08;
+        color: $primary-dark;
+        font-weight: $font-weight-medium;
+      }
+      option::checkmark {
+        order: 1;
+        margin-inline-start: auto;
+        color: $primary-dark;
+      }
+    }
+    @media (pointer: coarse) {
+      select option {
+        min-height: 44px;
+      }
+    }
+  }
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: $spacing-sm;
+    margin: $spacing-xs calc(-1 * var(--dialog-inset)) 0;
+    padding: $spacing-md var(--dialog-inset);
+    border-top: 1px solid $border;
+    background: $bg-page;
+
+    button {
+      @include controls.action;
+    }
+  }
+  &:not([data-action='disable'], [data-action='deleteTenant'], [data-action='deleteLogin'])
+    .primary {
+    @include button-accent;
+  }
+  .danger {
+    color: $danger-text;
+    padding: 10px 12px;
+    border-radius: $radius-md;
+    background: $danger-bg;
+  }
+  &:is([data-action='disable'], [data-action='deleteTenant'], [data-action='deleteLogin'])
+    .primary {
+    color: $danger-text;
+    background: $bg-card;
+    border-color: rgba($danger, 0.35);
+    box-shadow: none;
+    &:hover:not(:disabled) {
+      border-color: $danger;
+      background: $danger-bg;
+      box-shadow: none;
+    }
+  }
+}

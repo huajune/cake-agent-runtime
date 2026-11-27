@@ -103,7 +103,16 @@ async function deleteRecord(key: string): Promise<void> {
 }
 
 export async function loadAgentTestDraftCache(): Promise<AgentTestDraftCache> {
-  return (await getRecordValue<AgentTestDraftCache>(DRAFT_KEY)) ?? {};
+  const draft = (await getRecordValue<AgentTestDraftCache>(DRAFT_KEY)) ?? {};
+  // 旧版会把预填的托管号自动写入草稿。清除该预设，保留手工选择和对话内容。
+  if (draft.botImId?.trim() === '1688854747775509') {
+    return {
+      ...draft,
+      botImId: '',
+      botUserId: draft.botUserId?.trim() === 'ZhuJie' ? '' : draft.botUserId,
+    };
+  }
+  return draft;
 }
 
 export async function saveAgentTestDraftCache(draft: AgentTestDraftCache): Promise<void> {

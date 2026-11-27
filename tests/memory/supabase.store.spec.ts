@@ -1,3 +1,4 @@
+import { runForTenant } from '@infra/supabase/business-tenant';
 import { SupabaseStore } from '@memory/stores/supabase.store';
 import {
   MAX_SESSION_SUMMARIES,
@@ -17,6 +18,7 @@ describe('SupabaseStore', () => {
 
   const mockMaybeSingle = jest.fn();
   const mockEqChain = {
+    filter: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     is: jest.fn().mockReturnThis(),
     maybeSingle: mockMaybeSingle,
@@ -26,7 +28,11 @@ describe('SupabaseStore', () => {
   };
   const mockSelect = jest.fn().mockReturnValue(mockEqChain);
   const mockUpsert = jest.fn().mockResolvedValue({ error: null });
-  const mockDeleteChain = { eq: jest.fn().mockReturnThis(), error: null };
+  const mockDeleteChain = {
+    filter: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    error: null,
+  };
   const mockDelete = jest.fn().mockReturnValue(mockDeleteChain);
   const mockRpc = jest.fn();
 
@@ -96,6 +102,20 @@ describe('SupabaseStore', () => {
         }).success,
       ).toBe(true);
     });
+  });
+
+  it('isolates the same external relation and Redis cache for two tenants', async () => {
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+    await runForTenant('supplier-A', () => store.getProfile('corp', 'user', 'bot'));
+    await runForTenant('supplier-B', () => store.getProfile('corp', 'user', 'bot'));
+    expect(mockEqChain.filter.mock.calls).toEqual([
+      ['tenant_id', 'eq', 'supplier-A'],
+      ['tenant_id', 'eq', 'supplier-B'],
+    ]);
+    expect(mockRedis.get.mock.calls.map((call) => call[0])).toEqual([
+      'tenant:supplier-A:long-term:corp:user:bot',
+      'tenant:supplier-B:long-term:corp:user:bot',
+    ]);
   });
 
   describe('getProfile', () => {

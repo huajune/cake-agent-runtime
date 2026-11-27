@@ -60,13 +60,13 @@ export const HISTORY_PLACEHOLDER = `粘贴对话记录，格式如：
 export const CHAT_API_ENDPOINT = '/test-suite/chat/ai-stream';
 export const DEFAULT_SCENARIO = 'candidate-consultation';
 
-// 拉群链路默认 ID（来源：Ariel 历史会话）
+// 真实拉群联调时由操作人填写当前托管 Bot 的两个 ID。
 export const DEFAULT_GROUP_INVITE_IDS: {
   userId: string;
   botUserId: string;
   botImId: string;
 } = {
   userId: '7881300085910772',
-  botUserId: 'ZhuJie',
-  botImId: '1688854747775509',
+  botUserId: '',
+  botImId: '',
 };
