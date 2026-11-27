@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
+import { BusinessTenantResolver } from '@infra/supabase/business-tenant';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { RoomService } from '@channels/wecom/room/room.service';
@@ -114,6 +115,7 @@ describe('buildInviteToGroupTool', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         GroupInviteService,
+        { provide: BusinessTenantResolver, useValue: { resolve: jest.fn() } },
         {
           provide: ActionPermitService,
           useValue: { evaluate: jest.fn().mockResolvedValue({ allowed: true }) },
